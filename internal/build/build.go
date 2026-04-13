@@ -38,6 +38,12 @@ func App(appRoot, name string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	keepTempDir := false
+	defer func() {
+		if !keepTempDir {
+			_ = os.RemoveAll(tempDir)
+		}
+	}()
 	if err := copyTree(appRoot, tempDir); err != nil {
 		return nil, err
 	}
@@ -68,6 +74,7 @@ func App(appRoot, name string) (*Result, error) {
 	if err := runGo(tempDir, "build", "-o", binary, "./pulse_internal_main"); err != nil {
 		return nil, err
 	}
+	keepTempDir = true
 	return &Result{Dir: tempDir, Binary: binary}, nil
 }
 

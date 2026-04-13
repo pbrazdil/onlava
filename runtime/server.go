@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
@@ -23,6 +24,16 @@ func newServer(listenAddr string) (*http.Server, error) {
 		public:  httprouter.New(),
 		private: httprouter.New(),
 	}
+	s.public.GlobalOPTIONS = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		applyCORSHeaders(w.Header(), req)
+		if allow := w.Header().Get("Allow"); allow != "" {
+			w.Header().Set("Access-Control-Allow-Methods", allow)
+		}
+		if requested := req.Header.Get("Access-Control-Request-Headers"); requested != "" {
+			w.Header().Set("Access-Control-Allow-Headers", requested)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	s.public.NotFound = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		errs.HTTPError(w, errs.B().Code(errs.NotFound).Msg("endpoint not found").Err())
 	})
@@ -37,10 +48,61 @@ func newServer(listenAddr string) (*http.Server, error) {
 
 	httpServer := &http.Server{
 		Addr:    listenAddr,
-		Handler: s.public,
+		Handler: withCORS(s.public),
 	}
 	s.http = httpServer
 	return httpServer, nil
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		applyCORSHeaders(w.Header(), req)
+		next.ServeHTTP(w, req)
+	})
+}
+
+func applyCORSHeaders(headers http.Header, req *http.Request) {
+	if req == nil {
+		return
+	}
+	origin := strings.TrimSpace(req.Header.Get("Origin"))
+	if origin == "" {
+		return
+	}
+	headers.Set("Access-Control-Allow-Origin", origin)
+	headers.Set("Access-Control-Allow-Credentials", "true")
+	addVary(headers, "Origin", "Authorization")
+	if req.Method == http.MethodOptions {
+		addVary(headers, "Access-Control-Request-Method", "Access-Control-Request-Headers")
+	}
+}
+
+func addVary(headers http.Header, values ...string) {
+	existing := make(map[string]bool)
+	for _, value := range headers.Values("Vary") {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				existing[part] = true
+			}
+		}
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		existing[value] = true
+	}
+	if len(existing) == 0 {
+		return
+	}
+	merged := make([]string, 0, len(existing))
+	for value := range existing {
+		merged = append(merged, value)
+	}
+	slices.Sort(merged)
+	headers.Set("Vary", strings.Join(merged, ", "))
 }
 
 func (s *server) registerRaw(ep *Endpoint) {

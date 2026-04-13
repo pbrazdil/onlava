@@ -3,6 +3,7 @@ package codegen
 import (
 	"bytes"
 	"fmt"
+	"go/ast"
 	"go/format"
 	"go/printer"
 	"go/token"
@@ -101,11 +102,12 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 	if authHandler != nil && authHandler.Package != pkg {
 		authHandler = nil
 	}
+	hasSecrets := hasSecretsVar(pkg)
 	serviceStruct := pkg.Service.Struct
 	if serviceStruct != nil && serviceStruct.Package != pkg {
 		serviceStruct = nil
 	}
-	if len(pkgEndpoints) == 0 && authHandler == nil && serviceStruct == nil {
+	if len(pkgEndpoints) == 0 && authHandler == nil && serviceStruct == nil && !hasSecrets {
 		return nil, nil
 	}
 
@@ -134,7 +136,7 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 	for _, ep := range pkgEndpoints {
 		writeEndpoint(&buf, im, ep, serviceStruct)
 	}
-	writeRegistrations(&buf, im, pkgEndpoints, authHandler, serviceStruct)
+	writeRegistrations(&buf, im, pkgEndpoints, authHandler, serviceStruct, hasSecrets)
 	writeImports(&buf, im)
 
 	return format.Source([]byte(buf.String()))
@@ -160,6 +162,9 @@ func generateMain(app *model.App) ([]byte, error) {
 }
 
 func hasResources(pkg *model.Package) bool {
+	if hasSecretsVar(pkg) {
+		return true
+	}
 	if pkg.Service.Struct != nil && pkg.Service.Struct.Package == pkg {
 		return true
 	}
@@ -307,8 +312,11 @@ func writeMethodWrapper(buf *strings.Builder, im *imports, ep *model.Endpoint) {
 	buf.WriteString("}\n\n")
 }
 
-func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.Endpoint, authHandler *model.AuthHandler, ss *model.ServiceStruct) {
+func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.Endpoint, authHandler *model.AuthHandler, ss *model.ServiceStruct, hasSecrets bool) {
 	buf.WriteString("func init() {\n")
+	if hasSecrets {
+		buf.WriteString("\tpulseruntime.MustPopulateSecrets(&secrets)\n")
+	}
 	for _, ep := range endpoints {
 		writeEndpointRegistration(buf, im, ep, ss)
 	}
@@ -354,6 +362,37 @@ func writeEndpointRegistration(buf *strings.Builder, im *imports, ep *model.Endp
 		buf.WriteString("\t\t},\n")
 	}
 	buf.WriteString("\t})\n")
+}
+
+func hasSecretsVar(pkg *model.Package) bool {
+	for _, file := range pkg.Files {
+		for _, decl := range file.AST.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				value, ok := spec.(*ast.ValueSpec)
+				if !ok || len(value.Names) != 1 || value.Names[0].Name != "secrets" {
+					continue
+				}
+				if _, ok := value.Type.(*ast.StructType); ok {
+					return true
+				}
+				if len(value.Values) != 1 {
+					continue
+				}
+				lit, ok := value.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				if _, ok := lit.Type.(*ast.StructType); ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func writeAuthRegistration(buf *strings.Builder, im *imports, ah *model.AuthHandler, ss *model.ServiceStruct) {

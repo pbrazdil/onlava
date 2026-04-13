@@ -4,11 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
-
-	"pulse.dev/internal/app"
-	"pulse.dev/internal/build"
 )
 
 func main() {
@@ -20,14 +16,20 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: pulse run [--port <n>] [--listen <addr>]")
+		return usageError()
 	}
 	switch args[0] {
 	case "run":
 		return runCommand(args[1:])
+	case "build":
+		return buildCommand(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func usageError() error {
+	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>]\n  pulse build [-o <path>]")
 }
 
 func runCommand(args []string) error {
@@ -57,23 +59,7 @@ func runCommand(args []string) error {
 	}
 
 	addr := resolveListenAddr(listen, port)
-	root, cfg, err := app.DiscoverRoot(".")
-	if err != nil {
-		return err
-	}
-	result, err := build.App(root, cfg.Name)
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(result.Dir)
-
-	cmd := exec.Command(result.Binary)
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "PULSE_LISTEN_ADDR="+addr)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	return cmd.Run()
+	return runWithWatch(addr)
 }
 
 func resolveListenAddr(listen string, port int) string {
