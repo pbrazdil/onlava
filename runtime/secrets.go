@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +42,7 @@ func PopulateSecrets(target any) error {
 	}
 
 	typ := elem.Type()
+	var missing []missingSecret
 	for i := 0; i < elem.NumField(); i++ {
 		field := elem.Field(i)
 		structField := typ.Field(i)
@@ -49,13 +52,43 @@ func PopulateSecrets(target any) error {
 		if field.Kind() != reflect.String {
 			return fmt.Errorf("runtime: secret field %s must be string, got %s", structField.Name, field.Type())
 		}
-		value, ok := lookupSecretValue(env, structField.Name)
+		keys := secretEnvKeys(structField.Name)
+		value, ok := lookupSecretValue(env, keys)
 		if !ok {
+			missing = append(missing, missingSecret{Field: structField.Name, Keys: keys})
 			continue
 		}
 		field.SetString(value)
 	}
+	logMissingSecrets(missing)
 	return nil
+}
+
+type missingSecret struct {
+	Field string
+	Keys  []string
+}
+
+func logMissingSecrets(missing []missingSecret) {
+	if len(missing) == 0 {
+		return
+	}
+	fields := make([]string, 0, len(missing))
+	keys := make([]string, 0, len(missing)*2)
+	seenKeys := make(map[string]bool, len(missing)*2)
+	for _, secret := range missing {
+		fields = append(fields, secret.Field)
+		for _, key := range secret.Keys {
+			if seenKeys[key] {
+				continue
+			}
+			seenKeys[key] = true
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(fields)
+	slices.Sort(keys)
+	slog.Warn("pulse secrets missing", "fields", fields, "env_keys", keys, "source", ".env")
 }
 
 func loadSecretsEnv() (map[string]string, error) {
@@ -122,8 +155,7 @@ func parseDotEnvValue(value string) (string, error) {
 	return value, nil
 }
 
-func lookupSecretValue(fileEnv map[string]string, fieldName string) (string, bool) {
-	keys := secretEnvKeys(fieldName)
+func lookupSecretValue(fileEnv map[string]string, keys []string) (string, bool) {
 	for _, key := range keys {
 		if value, ok := os.LookupEnv(key); ok {
 			return value, true

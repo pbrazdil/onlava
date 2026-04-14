@@ -190,12 +190,13 @@ func runGo(dir string, args ...string) error {
 
 func rewriteEncoreCompat(path string, src []byte) ([]byte, error) {
 	text := string(src)
-	needsCronStrip := strings.Contains(text, "encore.dev/cron") && strings.Contains(text, "cron.NewJob")
+	needsCronRewrite := strings.Contains(text, "encore.dev/cron")
 	needsRlogRewrite := strings.Contains(text, "encore.dev/rlog")
 	needsAuthRewrite := strings.Contains(text, "encore.dev/beta/auth")
 	needsErrsRewrite := strings.Contains(text, "encore.dev/beta/errs")
+	needsMiddlewareRewrite := strings.Contains(text, "encore.dev/middleware")
 	needsRootRewrite := strings.Contains(text, "\"encore.dev\"")
-	if !needsCronStrip && !needsRlogRewrite && !needsAuthRewrite && !needsErrsRewrite && !needsRootRewrite {
+	if !needsCronRewrite && !needsRlogRewrite && !needsAuthRewrite && !needsErrsRewrite && !needsMiddlewareRewrite && !needsRootRewrite {
 		return src, nil
 	}
 
@@ -209,46 +210,22 @@ func rewriteEncoreCompat(path string, src []byte) ([]byte, error) {
 	if rewriteImportPath(file, "encore.dev/rlog", "pulse.dev/rlog", "") {
 		changed = true
 	}
+	if rewriteImportPath(file, "encore.dev/cron", "pulse.dev/cron", "") {
+		changed = true
+	}
 	if rewriteImportPath(file, "encore.dev/beta/auth", "pulse.dev/auth", "") {
 		changed = true
 	}
 	if rewriteImportPath(file, "encore.dev/beta/errs", "pulse.dev/errs", "") {
 		changed = true
 	}
+	if rewriteImportPath(file, "encore.dev/middleware", "pulse.dev/middleware", "") {
+		changed = true
+	}
 	if rewriteImportPath(file, "encore.dev", "pulse.dev", "encore") {
 		changed = true
 	}
 
-	if needsCronStrip {
-		cronAliases := cronImportAliases(file)
-		if len(cronAliases) > 0 {
-			var decls []ast.Decl
-			for _, decl := range file.Decls {
-				gen, ok := decl.(*ast.GenDecl)
-				if !ok || gen.Tok != token.VAR {
-					decls = append(decls, decl)
-					continue
-				}
-				var specs []ast.Spec
-				for _, spec := range gen.Specs {
-					valueSpec, ok := spec.(*ast.ValueSpec)
-					if ok && isUnsupportedCronJob(valueSpec, cronAliases) {
-						changed = true
-						continue
-					}
-					specs = append(specs, spec)
-				}
-				if len(specs) == 0 {
-					changed = true
-					continue
-				}
-				gen.Specs = specs
-				decls = append(decls, gen)
-			}
-			file.Decls = decls
-			pruneUnusedCronImports(file, cronAliases)
-		}
-	}
 	if !changed {
 		return src, nil
 	}
@@ -258,21 +235,6 @@ func rewriteEncoreCompat(path string, src []byte) ([]byte, error) {
 		return nil, err
 	}
 	return out, nil
-}
-
-func cronImportAliases(file *ast.File) map[string]bool {
-	aliases := make(map[string]bool)
-	for _, imp := range file.Imports {
-		if strings.Trim(imp.Path.Value, "\"") != "encore.dev/cron" {
-			continue
-		}
-		if imp.Name != nil && imp.Name.Name != "." {
-			aliases[imp.Name.Name] = true
-			continue
-		}
-		aliases["cron"] = true
-	}
-	return aliases
 }
 
 func rewriteImportPath(file *ast.File, oldPath, newPath, alias string) bool {
@@ -288,64 +250,6 @@ func rewriteImportPath(file *ast.File, oldPath, newPath, alias string) bool {
 		changed = true
 	}
 	return changed
-}
-
-func isUnsupportedCronJob(spec *ast.ValueSpec, cronAliases map[string]bool) bool {
-	if len(spec.Names) != 1 || spec.Names[0].Name != "_" || len(spec.Values) != 1 {
-		return false
-	}
-	call, ok := spec.Values[0].(*ast.CallExpr)
-	if !ok {
-		return false
-	}
-	sel, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || sel.Sel.Name != "NewJob" {
-		return false
-	}
-	ident, ok := sel.X.(*ast.Ident)
-	return ok && cronAliases[ident.Name]
-}
-
-func pruneUnusedCronImports(file *ast.File, cronAliases map[string]bool) {
-	used := false
-	ast.Inspect(file, func(node ast.Node) bool {
-		sel, ok := node.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		ident, ok := sel.X.(*ast.Ident)
-		if ok && cronAliases[ident.Name] {
-			used = true
-			return false
-		}
-		return true
-	})
-	if used {
-		return
-	}
-
-	var decls []ast.Decl
-	for _, decl := range file.Decls {
-		gen, ok := decl.(*ast.GenDecl)
-		if !ok || gen.Tok != token.IMPORT {
-			decls = append(decls, decl)
-			continue
-		}
-		var specs []ast.Spec
-		for _, spec := range gen.Specs {
-			imp := spec.(*ast.ImportSpec)
-			if strings.Trim(imp.Path.Value, "\"") == "encore.dev/cron" {
-				continue
-			}
-			specs = append(specs, spec)
-		}
-		if len(specs) == 0 {
-			continue
-		}
-		gen.Specs = specs
-		decls = append(decls, gen)
-	}
-	file.Decls = decls
 }
 
 func renderAST(fset *token.FileSet, file *ast.File) []byte {

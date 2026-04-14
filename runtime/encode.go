@@ -9,8 +9,11 @@ import (
 	"strings"
 )
 
-func encodeResponse(w http.ResponseWriter, resp any) error {
+func encodeResponseWithStatus(w http.ResponseWriter, resp any, explicitStatus int) error {
 	status := http.StatusOK
+	if explicitStatus != 0 {
+		status = explicitStatus
+	}
 	if resp == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -31,7 +34,7 @@ func encodeResponse(w http.ResponseWriter, resp any) error {
 		if err != nil {
 			return err
 		}
-		if bodyStatus != 0 {
+		if explicitStatus == 0 && bodyStatus != 0 {
 			status = bodyStatus
 		}
 		w.Header().Set("Content-Type", "application/json")

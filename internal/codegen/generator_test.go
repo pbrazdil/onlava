@@ -85,6 +85,85 @@ func Hook(w http.ResponseWriter, req *http.Request) {}
 	}
 }
 
+func TestGenerateRegistersMiddlewareAndEndpointLinks(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/middlewaregen\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"middlewaregen"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:api public tag:foo
+func Hello(ctx context.Context) error { return nil }
+`)
+	writeFile(t, dir, "svc/mw.go", `package svc
+
+import "pulse.dev/middleware"
+
+//pulse:middleware target=tag:foo
+func Apply(req middleware.Request, next middleware.Next) middleware.Response {
+	return next(req)
+}
+`)
+
+	app, err := parse.App(dir, "middlewaregen")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["svc/pulse.gen.go"])
+	if !strings.Contains(got, "RegisterMiddleware(&pulseruntime.Middleware") {
+		t.Fatalf("expected middleware registration, got:\n%s", got)
+	}
+	if !strings.Contains(got, `MiddlewareIDs: []string{"example.com/middlewaregen/svc.Apply"}`) {
+		t.Fatalf("expected endpoint middleware ids, got:\n%s", got)
+	}
+}
+
+func TestGenerateMainImportsCronOnlyPackages(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/cronapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"cronapp"}`)
+	writeFile(t, dir, "service/api.go", `package service
+
+import "context"
+
+//pulse:api private
+func Run(ctx context.Context) error { return nil }
+`)
+	writeFile(t, dir, "jobs/jobs.go", `package jobs
+
+import (
+	"example.com/cronapp/service"
+	"pulse.dev/cron"
+)
+
+var _ = cron.NewJob("tick", cron.JobConfig{
+	Title:    "Tick",
+	Every:    60,
+	Endpoint: service.Run,
+})
+`)
+
+	app, err := parse.App(dir, "cronapp")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["pulse_internal_main/main.go"])
+	if !strings.Contains(got, `_ "example.com/cronapp/jobs"`) {
+		t.Fatalf("expected generated main to import cron package, got:\n%s", got)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()

@@ -107,10 +107,12 @@ func newExternalState(ep *Endpoint, req *http.Request, path shared.PathParams, p
 	if ep.Raw {
 		requestType = shared.RawAPICall
 	}
+	started := time.Now()
 	return &requestState{
-		started: time.Now(),
+		started: started,
 		request: shared.Request{
 			Type:       requestType,
+			Started:    started,
 			Service:    ep.Service,
 			Endpoint:   ep.Name,
 			Method:     req.Method,

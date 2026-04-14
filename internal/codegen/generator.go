@@ -102,12 +102,13 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 	if authHandler != nil && authHandler.Package != pkg {
 		authHandler = nil
 	}
+	pkgMiddleware := packageMiddleware(pkg)
 	hasSecrets := hasSecretsVar(pkg)
 	serviceStruct := pkg.Service.Struct
 	if serviceStruct != nil && serviceStruct.Package != pkg {
 		serviceStruct = nil
 	}
-	if len(pkgEndpoints) == 0 && authHandler == nil && serviceStruct == nil && !hasSecrets {
+	if len(pkgEndpoints) == 0 && len(pkgMiddleware) == 0 && authHandler == nil && serviceStruct == nil && !hasSecrets {
 		return nil, nil
 	}
 
@@ -119,6 +120,9 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 	im.use("pulseruntime", "pulse.dev/runtime")
 	if needsContextImport(pkgEndpoints, authHandler) {
 		im.use("context", "context")
+	}
+	if len(pkgMiddleware) > 0 {
+		im.use("pulsemiddleware", "pulse.dev/middleware")
 	}
 	if serviceStruct != nil {
 		im.use("sync", "sync")
@@ -136,7 +140,7 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 	for _, ep := range pkgEndpoints {
 		writeEndpoint(&buf, im, ep, serviceStruct)
 	}
-	writeRegistrations(&buf, im, pkgEndpoints, authHandler, serviceStruct, hasSecrets)
+	writeRegistrations(&buf, im, pkgEndpoints, pkgMiddleware, authHandler, serviceStruct, hasSecrets)
 	writeImports(&buf, im)
 
 	return format.Source([]byte(buf.String()))
@@ -162,6 +166,9 @@ func generateMain(app *model.App) ([]byte, error) {
 }
 
 func hasResources(pkg *model.Package) bool {
+	if hasCronJobs(pkg) {
+		return true
+	}
 	if hasSecretsVar(pkg) {
 		return true
 	}
@@ -171,12 +178,64 @@ func hasResources(pkg *model.Package) bool {
 	if pkg.Service.AuthHandler != nil && pkg.Service.AuthHandler.Package == pkg {
 		return true
 	}
+	for _, mw := range pkg.Service.Middleware {
+		if mw.Package == pkg {
+			return true
+		}
+	}
 	for _, ep := range pkg.Service.Endpoints {
 		if ep.Package == pkg {
 			return true
 		}
 	}
 	return false
+}
+
+func hasCronJobs(pkg *model.Package) bool {
+	for _, file := range pkg.Files {
+		cronAliases := cronImportAliases(file.AST)
+		if len(cronAliases) == 0 {
+			continue
+		}
+		found := false
+		ast.Inspect(file.AST, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "NewJob" {
+				return true
+			}
+			ident, ok := sel.X.(*ast.Ident)
+			if ok && cronAliases[ident.Name] {
+				found = true
+				return false
+			}
+			return true
+		})
+		if found {
+			return true
+		}
+	}
+	return false
+}
+
+func cronImportAliases(file *ast.File) map[string]bool {
+	aliases := make(map[string]bool)
+	for _, imp := range file.Imports {
+		switch strings.Trim(imp.Path.Value, "\"") {
+		case "pulse.dev/cron", "encore.dev/cron":
+		default:
+			continue
+		}
+		if imp.Name != nil && imp.Name.Name != "." {
+			aliases[imp.Name.Name] = true
+			continue
+		}
+		aliases["cron"] = true
+	}
+	return aliases
 }
 
 func hasRaw(endpoints []*model.Endpoint) bool {
@@ -186,6 +245,16 @@ func hasRaw(endpoints []*model.Endpoint) bool {
 		}
 	}
 	return false
+}
+
+func packageMiddleware(pkg *model.Package) []*model.Middleware {
+	var middlewares []*model.Middleware
+	for _, mw := range pkg.Service.Middleware {
+		if mw.Package == pkg {
+			middlewares = append(middlewares, mw)
+		}
+	}
+	return middlewares
 }
 
 func needsContextImport(endpoints []*model.Endpoint, authHandler *model.AuthHandler) bool {
@@ -312,10 +381,13 @@ func writeMethodWrapper(buf *strings.Builder, im *imports, ep *model.Endpoint) {
 	buf.WriteString("}\n\n")
 }
 
-func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.Endpoint, authHandler *model.AuthHandler, ss *model.ServiceStruct, hasSecrets bool) {
+func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.Endpoint, middlewares []*model.Middleware, authHandler *model.AuthHandler, ss *model.ServiceStruct, hasSecrets bool) {
 	buf.WriteString("func init() {\n")
 	if hasSecrets {
 		buf.WriteString("\tpulseruntime.MustPopulateSecrets(&secrets)\n")
+	}
+	for _, mw := range middlewares {
+		writeMiddlewareRegistration(buf, im, mw, ss)
 	}
 	for _, ep := range endpoints {
 		writeEndpointRegistration(buf, im, ep, ss)
@@ -334,6 +406,9 @@ func writeEndpointRegistration(buf *strings.Builder, im *imports, ep *model.Endp
 	fmt.Fprintf(buf, "\t\tRaw: %t,\n", ep.Raw)
 	fmt.Fprintf(buf, "\t\tPath: %q,\n", ep.Path)
 	fmt.Fprintf(buf, "\t\tMethods: %s,\n", renderMethodLiteral(ep.Methods))
+	if len(ep.Middleware) > 0 {
+		fmt.Fprintf(buf, "\t\tMiddlewareIDs: %s,\n", renderMiddlewareIDs(ep.Middleware))
+	}
 	fmt.Fprintf(buf, "\t\tPathParams: %s,\n", renderParamSpecs(ep.PathParams))
 	if ep.Payload != nil {
 		fmt.Fprintf(buf, "\t\tPayloadType: pulseruntime.TypeOf[%s](),\n", im.typeExpr(ep.Payload.Type))
@@ -361,6 +436,21 @@ func writeEndpointRegistration(buf *strings.Builder, im *imports, ep *model.Endp
 		buf.WriteString(call)
 		buf.WriteString("\t\t},\n")
 	}
+	buf.WriteString("\t})\n")
+}
+
+func writeMiddlewareRegistration(buf *strings.Builder, im *imports, mw *model.Middleware, ss *model.ServiceStruct) {
+	fmt.Fprintf(buf, "\tpulseruntime.RegisterMiddleware(&pulseruntime.Middleware{\n")
+	fmt.Fprintf(buf, "\t\tID: %q,\n", middlewareID(mw))
+	buf.WriteString("\t\tInvoke: func(req pulsemiddleware.Request, next pulsemiddleware.Next) pulsemiddleware.Response {\n")
+	callTarget := mw.Name
+	if mw.Receiver != nil && ss != nil {
+		fmt.Fprintf(buf, "\t\t\tservice, err := %s()\n", ss.GetterName)
+		buf.WriteString("\t\t\tif err != nil {\n\t\t\t\treturn pulsemiddleware.Response{Err: err}\n\t\t\t}\n")
+		callTarget = "service." + mw.Name
+	}
+	fmt.Fprintf(buf, "\t\t\treturn %s(req, next)\n", callTarget)
+	buf.WriteString("\t\t},\n")
 	buf.WriteString("\t})\n")
 }
 
@@ -513,6 +603,21 @@ func renderMethodLiteral(methods []string) string {
 		quoted = append(quoted, fmt.Sprintf("%q", method))
 	}
 	return "[]string{" + strings.Join(quoted, ", ") + "}"
+}
+
+func renderMiddlewareIDs(middlewares []*model.Middleware) string {
+	if len(middlewares) == 0 {
+		return "nil"
+	}
+	ids := make([]string, 0, len(middlewares))
+	for _, mw := range middlewares {
+		ids = append(ids, fmt.Sprintf("%q", middlewareID(mw)))
+	}
+	return "[]string{" + strings.Join(ids, ", ") + "}"
+}
+
+func middlewareID(mw *model.Middleware) string {
+	return mw.Package.ImportPath + "." + mw.Name
 }
 
 func renderParamSpecs(params []model.Param) string {

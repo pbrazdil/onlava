@@ -135,6 +135,65 @@ func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
 	})
 }
 
+func TestPulseRunMiddlewareApp(t *testing.T) {
+	repo := repoRoot(t)
+	appDir := filepath.Join(repo, "testdata", "apps", "middleware")
+	port := freePort(t)
+	addr := "127.0.0.1:" + port
+	binary := buildPulseBinary(t, repo)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
+	cmd.Env = os.Environ()
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cmd.Stdin = nil
+	cmd.Dir = appDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start pulse run: %v", err)
+	}
+	defer stopPulseProcess(t, cancel, cmd)
+
+	waitForHTTP(t, "http://"+addr+"/service.Context")
+	assertJSONResponseWithHeaders(t, mustRequest(t, http.MethodGet, "http://"+addr+"/service.Context", nil), http.StatusOK, map[string]any{"message": "svc"}, map[string]string{
+		"X-Global-Middleware": "true",
+	})
+	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "middleware:handler"})
+	getJSON(t, "http://"+addr+"/service.Error", nil, http.StatusInternalServerError, map[string]any{"code": "internal", "message": "middleware error"})
+	assertJSONResponseWithHeaders(t, mustRequest(t, http.MethodGet, "http://"+addr+"/raw/alpha", nil), http.StatusOK, map[string]any{"id": "alpha"}, map[string]string{
+		"X-Raw-Middleware": "true",
+	})
+}
+
+func TestPulseRunExecutesCronJobs(t *testing.T) {
+	repo := repoRoot(t)
+	appDir := filepath.Join(repo, "testdata", "apps", "cron")
+	port := freePort(t)
+	addr := "127.0.0.1:" + port
+	binary := buildPulseBinary(t, repo)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
+	cmd.Env = os.Environ()
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cmd.Stdin = nil
+	cmd.Dir = appDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start pulse run: %v", err)
+	}
+	defer stopPulseProcess(t, cancel, cmd)
+
+	waitForHTTP(t, "http://"+addr+"/cron/status")
+	waitForCronStatus(t, "http://"+addr+"/cron/status")
+}
+
 func TestPulseBuildProducesRunnableBinary(t *testing.T) {
 	repo := repoRoot(t)
 	appDir := filepath.Join(repo, "testdata", "apps", "basic")
@@ -240,6 +299,35 @@ func waitForJSONResponse(t *testing.T, url string, wantStatus int, want map[stri
 	t.Fatalf("response did not settle to %v at %s", want, url)
 }
 
+func waitForCronStatus(t *testing.T, url string) {
+	t.Helper()
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		var got map[string]any
+		decodeErr := json.NewDecoder(resp.Body).Decode(&got)
+		resp.Body.Close()
+		if decodeErr == nil && resp.StatusCode == http.StatusOK &&
+			toString(got["count"]) != "0" &&
+			strings.TrimSpace(toString(got["cron"])) != "" &&
+			toString(got["type"]) == "api-call" &&
+			toString(got["path"]) == "/service.Run" {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("cron job did not execute at %s", url)
+}
+
 func postJSON(t *testing.T, url string, body any, headers map[string]string, wantStatus int, want map[string]any) {
 	t.Helper()
 	data, err := json.Marshal(body)
@@ -340,6 +428,11 @@ func assertCORSActual(t *testing.T, url string) {
 
 func assertJSONResponse(t *testing.T, req *http.Request, wantStatus int, want map[string]any) {
 	t.Helper()
+	assertJSONResponseWithHeaders(t, req, wantStatus, want, nil)
+}
+
+func assertJSONResponseWithHeaders(t *testing.T, req *http.Request, wantStatus int, want map[string]any, wantHeaders map[string]string) {
+	t.Helper()
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -350,6 +443,11 @@ func assertJSONResponse(t *testing.T, req *http.Request, wantStatus int, want ma
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("unexpected status %d, want %d: %s", resp.StatusCode, wantStatus, body)
 	}
+	for key, wantValue := range wantHeaders {
+		if got := resp.Header.Get(key); got != wantValue {
+			t.Fatalf("unexpected header %s=%q, want %q", key, got, wantValue)
+		}
+	}
 	var got map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
@@ -357,6 +455,15 @@ func assertJSONResponse(t *testing.T, req *http.Request, wantStatus int, want ma
 	if !mapsEqual(got, want) {
 		t.Fatalf("unexpected body: got=%v want=%v", got, want)
 	}
+}
+
+func mustRequest(t *testing.T, method, url string, body io.Reader) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return req
 }
 
 func mapsEqual(got, want map[string]any) bool {

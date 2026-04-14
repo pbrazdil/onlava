@@ -16,6 +16,7 @@ type App struct {
 	ModulePath string
 	Packages   []*Package
 	Services   []*Service
+	Middleware []*Middleware
 }
 
 type Service struct {
@@ -27,6 +28,7 @@ type Service struct {
 	Struct      *ServiceStruct
 	Endpoints   []*Endpoint
 	AuthHandler *AuthHandler
+	Middleware  []*Middleware
 }
 
 type Package struct {
@@ -81,7 +83,33 @@ type Endpoint struct {
 	PathParams   []Param
 	Payload      *Field
 	Response     *Field
+	Tags         []string
+	Middleware   []*Middleware
 	TokenPos     token.Pos
+}
+
+type SelectorKind string
+
+const (
+	SelectorAll SelectorKind = "all"
+	SelectorTag SelectorKind = "tag"
+)
+
+type Selector struct {
+	Kind  SelectorKind
+	Value string
+}
+
+type Middleware struct {
+	Service  *Service
+	Package  *Package
+	File     *File
+	Name     string
+	Decl     *ast.FuncDecl
+	Receiver *Receiver
+	Global   bool
+	Targets  []Selector
+	TokenPos token.Pos
 }
 
 type AuthHandler struct {

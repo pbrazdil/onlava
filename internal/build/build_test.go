@@ -57,7 +57,7 @@ func TestCopyTreeSkipsHiddenDirsAndBrokenSymlinks(t *testing.T) {
 	}
 }
 
-func TestCopyTreeStripsEncoreCronJobs(t *testing.T) {
+func TestCopyTreeRewritesEncoreCronJobs(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()
 
@@ -92,8 +92,14 @@ func PruneOldLogs(ctx context.Context) error { return nil }
 		t.Fatal(err)
 	}
 	got := string(data)
-	if strings.Contains(got, "cron.NewJob") || strings.Contains(got, `"encore.dev/cron"`) {
-		t.Fatalf("expected Encore cron to be stripped, got:\n%s", got)
+	if strings.Contains(got, `"encore.dev/cron"`) {
+		t.Fatalf("expected encore.dev/cron import to be rewritten, got:\n%s", got)
+	}
+	if !strings.Contains(got, `"pulse.dev/cron"`) {
+		t.Fatalf("expected pulse.dev/cron import to be present, got:\n%s", got)
+	}
+	if !strings.Contains(got, `cron.NewJob("audit-prune"`) {
+		t.Fatalf("expected cron job definition to remain, got:\n%s", got)
 	}
 	if !strings.Contains(got, "func PruneOldLogs") {
 		t.Fatalf("expected endpoint to remain, got:\n%s", got)
@@ -147,18 +153,20 @@ func TestCopyTreeRewritesEncoreCompatImports(t *testing.T) {
 	}
 	const input = `package svc
 
-import (
-	encore "encore.dev"
-	"encore.dev/beta/auth"
-	"encore.dev/beta/errs"
-)
+	import (
+		encore "encore.dev"
+		"encore.dev/beta/auth"
+		"encore.dev/beta/errs"
+		"encore.dev/middleware"
+	)
 
-func Hello() {
-	_ = encore.Meta()
-	_, _ = auth.UserID()
-	_ = errs.B()
-}
-`
+	func Hello() {
+		_ = encore.Meta()
+		_, _ = auth.UserID()
+		_ = errs.B()
+		_ = middleware.NewRequest(nil, nil)
+	}
+	`
 	if err := os.WriteFile(path, []byte(input), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -172,12 +180,12 @@ func Hello() {
 		t.Fatal(err)
 	}
 	got := string(data)
-	for _, oldPath := range []string{`"encore.dev"`, `"encore.dev/beta/auth"`, `"encore.dev/beta/errs"`} {
+	for _, oldPath := range []string{`"encore.dev"`, `"encore.dev/beta/auth"`, `"encore.dev/beta/errs"`, `"encore.dev/middleware"`} {
 		if strings.Contains(got, oldPath) {
 			t.Fatalf("expected %s to be rewritten, got:\n%s", oldPath, got)
 		}
 	}
-	for _, newPath := range []string{`encore "pulse.dev"`, `"pulse.dev/auth"`, `"pulse.dev/errs"`} {
+	for _, newPath := range []string{`encore "pulse.dev"`, `"pulse.dev/auth"`, `"pulse.dev/errs"`, `"pulse.dev/middleware"`} {
 		if !strings.Contains(got, newPath) {
 			t.Fatalf("expected %s to be present, got:\n%s", newPath, got)
 		}

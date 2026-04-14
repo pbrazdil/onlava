@@ -23,6 +23,7 @@ type directive struct {
 	name    string
 	options map[string]bool
 	fields  map[string]string
+	tags    []string
 }
 
 func App(root, name string) (*model.App, error) {
@@ -86,6 +87,7 @@ func App(root, name string) (*model.App, error) {
 
 	var rawEndpoints []*model.Endpoint
 	var authHandlers []*model.AuthHandler
+	var middlewares []*model.Middleware
 
 	for _, pkg := range app.Packages {
 		serviceRoot := serviceRootForDir(pkg.RelDir)
@@ -169,6 +171,15 @@ func App(root, name string) (*model.App, error) {
 						}
 						ah.Service = pkg.Service
 						authHandlers = append(authHandlers, ah)
+					case "middleware":
+						mw, err := parseMiddleware(pkg, file, node, dir)
+						if err != nil {
+							errs = append(errs, err.Error())
+							continue
+						}
+						mw.Service = pkg.Service
+						middlewares = append(middlewares, mw)
+						pkg.Service.Middleware = append(pkg.Service.Middleware, mw)
 					}
 				}
 			}
@@ -184,6 +195,8 @@ func App(root, name string) (*model.App, error) {
 	if len(authHandlers) == 1 {
 		authHandlers[0].Service.AuthHandler = authHandlers[0]
 	}
+	sortMiddleware(root, middlewares)
+	app.Middleware = middlewares
 
 	for _, svc := range app.Services {
 		if svc.Struct != nil {
@@ -195,6 +208,11 @@ func App(root, name string) (*model.App, error) {
 			if svc.AuthHandler != nil && svc.AuthHandler.Receiver != nil && svc.AuthHandler.Receiver.TypeName != svc.Struct.TypeName {
 				errs = append(errs, fmt.Sprintf("auth handler %s receiver %s does not match pulse:service struct %s", svc.AuthHandler.Name, svc.AuthHandler.Receiver.TypeName, svc.Struct.TypeName))
 			}
+			for _, mw := range svc.Middleware {
+				if mw.Receiver != nil && mw.Receiver.TypeName != svc.Struct.TypeName {
+					errs = append(errs, fmt.Sprintf("middleware %s receiver %s does not match pulse:service struct %s", mw.Name, mw.Receiver.TypeName, svc.Struct.TypeName))
+				}
+			}
 		} else {
 			for _, ep := range svc.Endpoints {
 				if ep.Receiver != nil {
@@ -203,6 +221,11 @@ func App(root, name string) (*model.App, error) {
 			}
 			if svc.AuthHandler != nil && svc.AuthHandler.Receiver != nil {
 				errs = append(errs, fmt.Sprintf("auth handler %s uses receiver %s but service %s has no pulse:service struct", svc.AuthHandler.Name, svc.AuthHandler.Receiver.TypeName, svc.Name))
+			}
+			for _, mw := range svc.Middleware {
+				if mw.Receiver != nil {
+					errs = append(errs, fmt.Sprintf("middleware %s uses receiver %s but service %s has no pulse:service struct", mw.Name, mw.Receiver.TypeName, svc.Name))
+				}
 			}
 		}
 
@@ -213,6 +236,27 @@ func App(root, name string) (*model.App, error) {
 				errs = append(errs, fmt.Sprintf("duplicate endpoint name %s in service %s", ep.Name, svc.Name))
 			}
 			seenNames[key] = true
+		}
+	}
+	for _, mw := range middlewares {
+		matched := false
+		for _, ep := range candidateEndpoints(app, mw) {
+			if middlewareMatchesEndpoint(mw, ep) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			errs = append(errs, fmt.Sprintf("middleware %s target matches no endpoints", mw.Name))
+		}
+	}
+	for _, svc := range app.Services {
+		for _, ep := range svc.Endpoints {
+			for _, mw := range middlewares {
+				if middlewareAppliesToService(mw, svc) && middlewareMatchesEndpoint(mw, ep) {
+					ep.Middleware = append(ep.Middleware, mw)
+				}
+			}
 		}
 	}
 
@@ -276,6 +320,7 @@ func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *
 		Path:         dir.fields["path"],
 		PathExplicit: dir.fields["path"] != "",
 		Methods:      parseMethods(dir.fields["method"]),
+		Tags:         append([]string(nil), dir.tags...),
 		TokenPos:     fn.Pos(),
 	}
 	if dir.options["public"] {
@@ -397,6 +442,44 @@ func parseAuthHandler(pkg *model.Package, file *model.File, fn *ast.FuncDecl) (*
 	return ah, nil
 }
 
+func parseMiddleware(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *directive) (*model.Middleware, error) {
+	sigObj := pkg.GoPkg.TypesInfo.Defs[fn.Name]
+	if sigObj == nil {
+		return nil, fmt.Errorf("unable to resolve middleware %s", fn.Name.Name)
+	}
+	sig, ok := sigObj.Type().(*types.Signature)
+	if !ok {
+		return nil, fmt.Errorf("%s is not a function", fn.Name.Name)
+	}
+	if sig.Params().Len() != 2 || sig.Results().Len() != 1 {
+		return nil, fmt.Errorf("middleware %s must have signature func(middleware.Request, middleware.Next) middleware.Response", fn.Name.Name)
+	}
+	if !isMiddlewareNamedType(sig.Params().At(0).Type(), "Request") ||
+		!isMiddlewareNamedType(sig.Params().At(1).Type(), "Next") ||
+		!isMiddlewareNamedType(sig.Results().At(0).Type(), "Response") {
+		return nil, fmt.Errorf("middleware %s must have signature func(middleware.Request, middleware.Next) middleware.Response", fn.Name.Name)
+	}
+
+	targets, err := parseMiddlewareTargets(dir.fields["target"])
+	if err != nil {
+		return nil, fmt.Errorf("middleware %s: %w", fn.Name.Name, err)
+	}
+
+	mw := &model.Middleware{
+		Package:  pkg,
+		File:     file,
+		Name:     fn.Name.Name,
+		Decl:     fn,
+		Global:   dir.options["global"],
+		Targets:  targets,
+		TokenPos: fn.Pos(),
+	}
+	if fn.Recv != nil {
+		mw.Receiver = receiverFromFieldList(pkg.GoPkg.Fset, fn.Recv)
+	}
+	return mw, nil
+}
+
 func parseServiceStruct(pkg *model.Package, file *model.File, decl *ast.GenDecl) (*model.ServiceStruct, error) {
 	if len(decl.Specs) != 1 {
 		return nil, fmt.Errorf("pulse:service must be declared on a single struct type")
@@ -454,6 +537,12 @@ func parseDirective(group *ast.CommentGroup) *directive {
 			fields:  make(map[string]string),
 		}
 		for _, part := range parts[1:] {
+			if value, ok := strings.CutPrefix(part, "tag:"); ok && value != "" {
+				if !slices.Contains(dir.tags, value) {
+					dir.tags = append(dir.tags, value)
+				}
+				continue
+			}
 			if key, value, ok := strings.Cut(part, "="); ok {
 				dir.fields[key] = value
 				continue
@@ -639,6 +728,97 @@ func parseMethods(value string) []string {
 	return methods
 }
 
+func parseMiddlewareTargets(value string) ([]model.Selector, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, fmt.Errorf("missing target selector")
+	}
+	parts := strings.Split(value, ",")
+	targets := make([]model.Selector, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("invalid empty target selector")
+		}
+		switch {
+		case part == "all":
+			targets = append(targets, model.Selector{Kind: model.SelectorAll})
+		case strings.HasPrefix(part, "tag:"):
+			tag := strings.TrimSpace(strings.TrimPrefix(part, "tag:"))
+			if tag == "" {
+				return nil, fmt.Errorf("invalid tag selector %q", part)
+			}
+			targets = append(targets, model.Selector{Kind: model.SelectorTag, Value: tag})
+		default:
+			return nil, fmt.Errorf("unsupported target selector %q", part)
+		}
+	}
+	return targets, nil
+}
+
+func sortMiddleware(root string, middlewares []*model.Middleware) {
+	slices.SortStableFunc(middlewares, func(a, b *model.Middleware) int {
+		if a.Global != b.Global {
+			if a.Global {
+				return -1
+			}
+			return 1
+		}
+		aPath := relativeFilePath(root, a.File.Path)
+		bPath := relativeFilePath(root, b.File.Path)
+		if cmp := strings.Compare(aPath, bPath); cmp != 0 {
+			return cmp
+		}
+		switch {
+		case a.TokenPos < b.TokenPos:
+			return -1
+		case a.TokenPos > b.TokenPos:
+			return 1
+		default:
+			return 0
+		}
+	})
+}
+
+func relativeFilePath(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(rel)
+}
+
+func candidateEndpoints(app *model.App, mw *model.Middleware) []*model.Endpoint {
+	if mw.Global {
+		var endpoints []*model.Endpoint
+		for _, svc := range app.Services {
+			endpoints = append(endpoints, svc.Endpoints...)
+		}
+		return endpoints
+	}
+	if mw.Service == nil {
+		return nil
+	}
+	return mw.Service.Endpoints
+}
+
+func middlewareAppliesToService(mw *model.Middleware, svc *model.Service) bool {
+	return mw.Global || mw.Service == svc
+}
+
+func middlewareMatchesEndpoint(mw *model.Middleware, ep *model.Endpoint) bool {
+	for _, target := range mw.Targets {
+		switch target.Kind {
+		case model.SelectorAll:
+			return true
+		case model.SelectorTag:
+			if slices.Contains(ep.Tags, target.Value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func paramKind(t types.Type) (pulseruntime.ParamKind, bool) {
 	switch u := types.Unalias(t).(type) {
 	case *types.Basic:
@@ -677,8 +857,17 @@ func paramKind(t types.Type) (pulseruntime.ParamKind, bool) {
 }
 
 func isAuthUIDType(t types.Type) bool {
-	for _, pkgPath := range []string{"pulse.dev/auth", "pulse.dev/beta/auth", "encore.dev/beta/auth"} {
+	for _, pkgPath := range []string{"pulse.dev/auth", "encore.dev/beta/auth"} {
 		if isNamedType(t, pkgPath, "UID") {
+			return true
+		}
+	}
+	return false
+}
+
+func isMiddlewareNamedType(t types.Type, name string) bool {
+	for _, pkgPath := range []string{"pulse.dev/middleware", "encore.dev/middleware"} {
+		if isNamedType(t, pkgPath, name) {
 			return true
 		}
 	}

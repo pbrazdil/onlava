@@ -1,8 +1,11 @@
 package runtime
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -58,6 +61,37 @@ func TestPopulateSecretsRejectsNonStringFields(t *testing.T) {
 	}
 	if err := PopulateSecrets(&secrets); err == nil {
 		t.Fatal("PopulateSecrets returned nil error for non-string field")
+	}
+}
+
+func TestPopulateSecretsLogsMissingFields(t *testing.T) {
+	dir := t.TempDir()
+	writeRuntimeFile(t, dir, ".env", "PresentSecret=top-secret\n")
+
+	prevDir, restoreDir := chdirRuntimeTest(t, dir)
+	defer restoreDir(prevDir)
+	resetSecretsEnvCache()
+
+	var logs bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prevLogger)
+
+	var secrets struct {
+		PresentSecret string
+		MissingSecret string
+	}
+	if err := PopulateSecrets(&secrets); err != nil {
+		t.Fatalf("PopulateSecrets returned error: %v", err)
+	}
+	if secrets.PresentSecret != "top-secret" {
+		t.Fatalf("PresentSecret = %q, want %q", secrets.PresentSecret, "top-secret")
+	}
+	gotLogs := logs.String()
+	for _, want := range []string{"pulse secrets missing", "MissingSecret", "MISSING_SECRET"} {
+		if !strings.Contains(gotLogs, want) {
+			t.Fatalf("logs %q do not contain %q", gotLogs, want)
+		}
 	}
 }
 

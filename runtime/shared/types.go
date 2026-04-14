@@ -82,4 +82,7 @@ type Request struct {
 	Method     string
 	Headers    http.Header
 	Payload    any
+
+	// CronIdempotencyKey is set when the current request was triggered by a cron job.
+	CronIdempotencyKey string
 }

@@ -120,6 +120,70 @@ func Hello(ctx context.Context) error { return nil }
 	}
 }
 
+func TestParseMiddlewareTargetsAndTags(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/middlewareapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"middlewareapp"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:api public tag:foo
+func Hello(ctx context.Context) error { return nil }
+`)
+	writeFile(t, dir, "svc/mw/mw.go", `package mw
+
+import "pulse.dev/middleware"
+
+//pulse:middleware target=tag:foo
+func ServiceTag(req middleware.Request, next middleware.Next) middleware.Response {
+	return next(req)
+}
+`)
+	writeFile(t, dir, "globalmw/mw.go", `package globalmw
+
+import "pulse.dev/middleware"
+
+//pulse:middleware global target=all
+func Global(req middleware.Request, next middleware.Next) middleware.Response {
+	return next(req)
+}
+`)
+
+	app, err := parse.App(dir, "middlewareapp")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	if len(app.Middleware) != 2 {
+		t.Fatalf("expected 2 middleware declarations, got %d", len(app.Middleware))
+	}
+	var svcFound bool
+	var svc = app.Services[0]
+	for _, candidate := range app.Services {
+		if candidate.Name == "svc" {
+			svc = candidate
+			svcFound = true
+			break
+		}
+	}
+	if !svcFound {
+		t.Fatalf("expected to find svc service, got %+v", app.Services)
+	}
+	if len(svc.Endpoints) != 1 {
+		t.Fatalf("expected 1 endpoint, got %d", len(svc.Endpoints))
+	}
+	ep := svc.Endpoints[0]
+	if got := strings.Join(ep.Tags, ","); got != "foo" {
+		t.Fatalf("unexpected endpoint tags: %s", got)
+	}
+	if len(ep.Middleware) != 2 {
+		t.Fatalf("expected endpoint middleware to include global and service match, got %d", len(ep.Middleware))
+	}
+	if !ep.Middleware[0].Global || ep.Middleware[1].Global {
+		t.Fatalf("expected global middleware to sort before service middleware: %+v", ep.Middleware)
+	}
+}
+
 func TestParseRejectsAppsWithoutPulseDirectives(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/nopulse\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")

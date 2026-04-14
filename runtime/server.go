@@ -7,22 +7,20 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/julienschmidt/httprouter"
-
 	"pulse.dev/errs"
 	"pulse.dev/runtime/shared"
 )
 
 type server struct {
-	public  *httprouter.Router
-	private *httprouter.Router
+	public  *routeTable
+	private *routeTable
 	http    *http.Server
 }
 
 func newServer(listenAddr string) (*http.Server, error) {
 	s := &server{
-		public:  httprouter.New(),
-		private: httprouter.New(),
+		public:  newRouteTable(),
+		private: newRouteTable(),
 	}
 	s.public.GlobalOPTIONS = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		applyCORSHeaders(w.Header(), req)
@@ -106,7 +104,7 @@ func addVary(headers http.Header, values ...string) {
 }
 
 func (s *server) registerRaw(ep *Endpoint) {
-	handler := func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
+	handler := func(w http.ResponseWriter, req *http.Request, params routeParams) {
 		pathParams := make(shared.PathParams, 0, len(params))
 		for _, param := range params {
 			pathParams = append(pathParams, shared.PathParam{Name: param.Key, Value: strings.TrimPrefix(param.Value, "/")})
@@ -123,15 +121,21 @@ func (s *server) registerRaw(ep *Endpoint) {
 		restore := enterState(state)
 		defer restore()
 
-		req = req.WithContext(ctx)
-		ep.RawHandler(w, req)
+		status, headers, body, callErr := executeRawEndpoint(ep, req.WithContext(ctx))
+		applyHeaders(w.Header(), headers)
+		if callErr != nil {
+			errs.HTTPErrorWithCode(w, callErr, status)
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write(body)
 	}
 
 	registerRoute(s.selectRouter(ep), ep.Path, ep.Methods, handler)
 }
 
 func (s *server) registerTyped(ep *Endpoint) {
-	handler := func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
+	handler := func(w http.ResponseWriter, req *http.Request, params routeParams) {
 		pathValues, pathParams, err := decodePathParams(ep, params)
 		if err != nil {
 			errs.HTTPError(w, err)
@@ -155,12 +159,13 @@ func (s *server) registerTyped(ep *Endpoint) {
 		restore := enterState(state)
 		defer restore()
 
-		resp, callErr := ep.Invoke(ctx, pathValues, payload)
+		resp, status, headers, callErr := executeTypedEndpoint(ep, ctx, pathValues, payload)
+		applyHeaders(w.Header(), headers)
 		if callErr != nil {
-			errs.HTTPError(w, callErr)
+			errs.HTTPErrorWithCode(w, callErr, status)
 			return
 		}
-		if err := encodeResponse(w, resp); err != nil {
+		if err := encodeResponseWithStatus(w, resp, status); err != nil {
 			errs.HTTPError(w, errs.Wrap(err, "encode response"))
 			return
 		}
@@ -169,17 +174,15 @@ func (s *server) registerTyped(ep *Endpoint) {
 	registerRoute(s.selectRouter(ep), ep.Path, ep.Methods, handler)
 }
 
-func (s *server) selectRouter(ep *Endpoint) *httprouter.Router {
+func (s *server) selectRouter(ep *Endpoint) *routeTable {
 	if ep.Access == Private {
 		return s.private
 	}
 	return s.public
 }
 
-func registerRoute(router *httprouter.Router, path string, methods []string, handler httprouter.Handle) {
-	for _, method := range expandMethods(methods) {
-		router.Handle(method, path, handler)
-	}
+func registerRoute(router *routeTable, path string, methods []string, handler routeHandle) {
+	router.Handle(methods, path, handler)
 }
 
 func expandMethods(methods []string) []string {
@@ -226,7 +229,7 @@ func authenticateRequest(req *http.Request, ep *Endpoint) (AuthInfo, error) {
 	return info, nil
 }
 
-func decodePathParams(ep *Endpoint, params httprouter.Params) ([]any, shared.PathParams, error) {
+func decodePathParams(ep *Endpoint, params routeParams) ([]any, shared.PathParams, error) {
 	values := make([]any, 0, len(ep.PathParams))
 	decoded := make(shared.PathParams, 0, len(ep.PathParams))
 	for _, spec := range ep.PathParams {

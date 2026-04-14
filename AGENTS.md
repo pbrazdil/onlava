@@ -1,3 +1,6 @@
+Engineering Constraints
+Keep dependencies minimal. Prefer the Go standard library unless an external dependency has a clear, concrete payoff that justifies the added maintenance and upgrade surface.
+
 Summary
 Build a new Pulse-native Go-only local runtime that makes pulse run start a single HTTP server for Pulse services and preserve the most common Encore API behavior, with strict Pulse naming and no compatibility layer for Encore syntax.
 

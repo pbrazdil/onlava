@@ -24,10 +24,14 @@ func Main(cfg AppConfig) error {
 	}
 	SetAppConfig(cfg)
 
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+
 	server, err := newServer(cfg.ListenAddr)
 	if err != nil {
 		return err
 	}
+	scheduler := startCronScheduler(runCtx)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -41,10 +45,22 @@ func Main(cfg AppConfig) error {
 
 	select {
 	case <-sigCtx.Done():
+		cancelRun()
+		cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cronCancel()
+		if err := scheduler.Stop(cronCtx); err != nil && !errors.Is(err, context.Canceled) {
+			return err
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return server.Shutdown(shutdownCtx)
 	case err := <-errCh:
+		cancelRun()
+		cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cronCancel()
+		if stopErr := scheduler.Stop(cronCtx); stopErr != nil && !errors.Is(stopErr, context.Canceled) {
+			return stopErr
+		}
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
