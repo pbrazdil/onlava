@@ -1,10 +1,14 @@
 package build
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	appcfg "pulse.dev/internal/app"
+	"pulse.dev/internal/parse"
 )
 
 func TestCopyTreeSkipsHiddenDirsAndBrokenSymlinks(t *testing.T) {
@@ -226,5 +230,178 @@ func Open(conn string) (*pgxpool.Pool, error) {
 	}
 	if !strings.Contains(got, `"pulse.dev/pgxpool"`) {
 		t.Fatalf("expected pulse.dev/pgxpool import to be present, got:\n%s", got)
+	}
+}
+
+func TestPrepareReusesPersistentWorkspace(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+
+	first, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("first prepare: %v", err)
+	}
+	if !first.NeedsTidy {
+		t.Fatal("expected first prepare to require go mod tidy")
+	}
+	if err := Compile(first); err != nil {
+		t.Fatalf("first compile: %v", err)
+	}
+
+	model, err = parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("re-parse app: %v", err)
+	}
+	second, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{ChangedPaths: []string{"svc/api.go"}})
+	if err != nil {
+		t.Fatalf("second prepare: %v", err)
+	}
+	if first.Dir != second.Dir {
+		t.Fatalf("workspace dir = %q, want %q", second.Dir, first.Dir)
+	}
+	if second.NeedsTidy {
+		t.Fatal("expected incremental prepare to skip go mod tidy")
+	}
+	if err := Compile(second); err != nil {
+		t.Fatalf("second compile without tidy: %v", err)
+	}
+}
+
+func TestPrepareMarksTidyNeededWhenGoModChanges(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	goModPath := filepath.Join(appDir, "go.mod")
+	data, err := os.ReadFile(goModPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, []byte("\nrequire golang.org/x/text v0.22.0\n")...)
+	if err := os.WriteFile(goModPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	model, err = parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("re-parse app: %v", err)
+	}
+	next, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare after go.mod change: %v", err)
+	}
+	if !next.NeedsTidy {
+		t.Fatal("expected go.mod change to require go mod tidy")
+	}
+}
+
+func TestSyncWorkspaceRemovesStaleFiles(t *testing.T) {
+	root := t.TempDir()
+	writeBuildTestFile(t, root, "go.mod", "module example.com/test\n")
+	writeBuildTestFile(t, root, "svc/api.go", "package svc\n")
+	if err := removeUnexpectedFilesFromLists(root, []string{"go.mod", "svc/api.go"}, []string{"pulse_internal_main/x"}); err != nil {
+		t.Fatalf("first cleanup: %v", err)
+	}
+	stalePath := filepath.Join(root, "svc", "stale.go")
+	if err := os.WriteFile(stalePath, []byte("package svc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := removeUnexpectedFilesFromLists(root, []string{"go.mod", "svc/api.go"}, []string{"pulse_internal_main/x"}); err != nil {
+		t.Fatalf("second cleanup: %v", err)
+	}
+	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale file to be removed, stat err = %v", err)
+	}
+}
+
+func TestLoadCachedGraph(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	result.GraphFingerprint = "graph-1"
+	result.Metadata = json.RawMessage(`{"ok":true}`)
+	result.APIEncoding = json.RawMessage(`{"api":"v1"}`)
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() error = %v", err)
+	}
+	if !ok || cached == nil {
+		t.Fatal("expected cached graph to load")
+	}
+	if string(cached.Metadata) != `{"ok":true}` {
+		t.Fatalf("metadata = %s", cached.Metadata)
+	}
+	if string(cached.APIEncoding) != `{"api":"v1"}` {
+		t.Fatalf("api encoding = %s", cached.APIEncoding)
+	}
+	if cached.Result == nil || cached.Result.Dir == "" {
+		t.Fatal("expected cached result to include workspace")
+	}
+}
+
+func newBuildTestApp(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	writeBuildTestFile(t, root, "go.mod", "module example.com/buildtest\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeBuildTestFile(t, root, "pulse.app", `{"name":"buildtest"}`)
+	writeBuildTestFile(t, root, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:api public
+func Hello(ctx context.Context) error { return nil }
+`)
+	return root
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Clean(filepath.Join(wd, "..", ".."))
+}
+
+func writeBuildTestFile(t *testing.T, root, rel, contents string) {
+	t.Helper()
+	path := filepath.Join(root, rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -127,7 +127,7 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool) error {
+func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, snapshot fileSnapshot, changedPaths []string) error {
 	s.setCompiling(true, "")
 	if err := s.persistStatus(ctx); err != nil {
 		return err
@@ -143,15 +143,30 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool) err
 		metadata    json.RawMessage
 		apiEncoding json.RawMessage
 		result      *build.Result
+		cached      *build.CachedGraph
 		err         error
 	)
+	graphFingerprint := snapshotFingerprint(snapshot)
 	if err := s.console.Phase("Building Pulse application graph", func() error {
+		cached, _, err = build.LoadCachedGraph(s.root, s.cfg.Name, graphFingerprint)
+		if err != nil {
+			return err
+		}
+		if cached != nil {
+			metadata = append(json.RawMessage(nil), cached.Metadata...)
+			apiEncoding = append(json.RawMessage(nil), cached.APIEncoding...)
+			result = cached.Result
+			return nil
+		}
 		model, err = parse.App(s.root, s.cfg.Name)
 		return err
 	}); err != nil {
 		return s.handleCompileError(ctx, nil, nil, err)
 	}
 	if err := s.console.Phase("Analyzing service topology", func() error {
+		if cached != nil {
+			return nil
+		}
 		metadata, err = devmeta.BuildMetadataSnapshot(model)
 		if err != nil {
 			return err
@@ -165,17 +180,27 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool) err
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
 	if err := s.console.Phase("Generating boilerplate code", func() error {
-		result, err = build.Prepare(s.root, model, s.cfg)
+		if cached != nil {
+			return nil
+		}
+		result, err = build.Prepare(s.root, model, s.cfg, build.PrepareOptions{ChangedPaths: changedPaths})
+		if err == nil && result != nil {
+			result.GraphFingerprint = graphFingerprint
+			result.Metadata = append(json.RawMessage(nil), metadata...)
+			result.APIEncoding = append(json.RawMessage(nil), apiEncoding...)
+		}
 		return err
 	}); err != nil {
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
 	if err := s.console.Phase("Compiling application source code", func() error {
+		if result != nil && result.GraphFingerprint == "" {
+			result.GraphFingerprint = graphFingerprint
+			result.Metadata = append(json.RawMessage(nil), metadata...)
+			result.APIEncoding = append(json.RawMessage(nil), apiEncoding...)
+		}
 		return build.Compile(result)
 	}); err != nil {
-		if result != nil {
-			_ = os.RemoveAll(result.Dir)
-		}
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
 
@@ -185,9 +210,6 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool) err
 		current, err = s.startApp(ctx, result, metadata, apiEncoding)
 		return err
 	}); err != nil {
-		if result != nil {
-			_ = os.RemoveAll(result.Dir)
-		}
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
 	if previous != nil {
@@ -368,11 +390,6 @@ func (s *runningApp) stop() error {
 	if s == nil {
 		return nil
 	}
-	defer func() {
-		if s.buildDir != "" {
-			_ = os.RemoveAll(s.buildDir)
-		}
-	}()
 	if s.cmd == nil || s.cmd.Process == nil {
 		return nil
 	}

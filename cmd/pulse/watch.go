@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/signal"
@@ -55,7 +58,7 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 		return err
 	}
 
-	if err := supervisor.RebuildAndRestart(ctx, true); err != nil {
+	if err := supervisor.RebuildAndRestart(ctx, true, snapshot, nil); err != nil {
 		supervisor.console.InitialBuildFailed(err)
 	}
 
@@ -70,7 +73,7 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 		paths := changedPaths(snapshot, nextSnapshot)
 		snapshot = nextSnapshot
 		supervisor.announceRebuild(paths)
-		if err := supervisor.RebuildAndRestart(ctx, false); err != nil {
+		if err := supervisor.RebuildAndRestart(ctx, false, snapshot, paths); err != nil {
 			supervisor.console.RebuildFailed(err)
 		}
 	}
@@ -226,4 +229,23 @@ func changedPaths(before, after fileSnapshot) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+func snapshotFingerprint(snapshot fileSnapshot) string {
+	paths := make([]string, 0, len(snapshot))
+	for path := range snapshot {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	h := sha256.New()
+	for _, path := range paths {
+		stamp := snapshot[path]
+		_, _ = h.Write([]byte(path))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(stamp.modTime.Format(time.RFC3339Nano)))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(fmt.Sprintf("%d", stamp.size)))
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }

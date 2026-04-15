@@ -60,9 +60,6 @@ func buildCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = os.RemoveAll(result.Dir)
-	}()
 
 	if err := copyBinary(result.Binary, outputPath); err != nil {
 		return err
