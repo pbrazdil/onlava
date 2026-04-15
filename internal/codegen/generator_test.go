@@ -124,6 +124,41 @@ func Apply(req middleware.Request, next middleware.Next) middleware.Response {
 	}
 }
 
+func TestGenerateRegistersServiceInitializer(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"serviceinit"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:service
+type Service struct{}
+
+func initService() (*Service, error) { return &Service{}, nil }
+
+//pulse:api public
+func (s *Service) Hello(ctx context.Context) error { return nil }
+`)
+
+	app, err := parse.App(dir, "serviceinit")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["svc/pulse.gen.go"])
+	if !strings.Contains(got, `pulseruntime.RegisterServiceInitializer("svc", func() error {`) {
+		t.Fatalf("expected service initializer registration, got:\n%s", got)
+	}
+	if !strings.Contains(got, "_, err := pulseInternalGetService()") {
+		t.Fatalf("expected service initializer to call generated getter, got:\n%s", got)
+	}
+}
+
 func TestGenerateMainImportsCronOnlyPackages(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/cronapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")

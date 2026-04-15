@@ -100,18 +100,20 @@ type AppConfig struct {
 }
 
 type registry struct {
-	mu          sync.RWMutex
-	meta        shared.AppMetadata
-	endpoints   map[string]*Endpoint
-	middlewares map[string]*Middleware
-	authHandler *AuthHandler
-	cronJobs    map[string]*CronJob
+	mu                  sync.RWMutex
+	meta                shared.AppMetadata
+	endpoints           map[string]*Endpoint
+	middlewares         map[string]*Middleware
+	authHandler         *AuthHandler
+	cronJobs            map[string]*CronJob
+	serviceInitializers map[string]func() error
 }
 
 var global = &registry{
-	endpoints:   make(map[string]*Endpoint),
-	middlewares: make(map[string]*Middleware),
-	cronJobs:    make(map[string]*CronJob),
+	endpoints:           make(map[string]*Endpoint),
+	middlewares:         make(map[string]*Middleware),
+	cronJobs:            make(map[string]*CronJob),
+	serviceInitializers: make(map[string]func() error),
 	meta: shared.AppMetadata{
 		Environment: shared.Environment{
 			Name:  "local",
@@ -188,6 +190,21 @@ func RegisterCronJob(job *CronJob) {
 	global.cronJobs[job.ID] = job
 }
 
+func RegisterServiceInitializer(service string, init func() error) {
+	if strings.TrimSpace(service) == "" {
+		panic("runtime: service initializer missing service name")
+	}
+	if init == nil {
+		panic(fmt.Sprintf("runtime: service initializer for %s is nil", service))
+	}
+	global.mu.Lock()
+	defer global.mu.Unlock()
+	if _, exists := global.serviceInitializers[service]; exists {
+		panic(fmt.Sprintf("runtime: duplicate service initializer for %s", service))
+	}
+	global.serviceInitializers[service] = init
+}
+
 func LookupEndpoint(service, name string) (*Endpoint, bool) {
 	global.mu.RLock()
 	defer global.mu.RUnlock()
@@ -242,6 +259,46 @@ func listCronJobs() []*CronJob {
 		return compare(a.ID, b.ID)
 	})
 	return result
+}
+
+func InitializeServices() error {
+	global.mu.RLock()
+	initializers := make([]struct {
+		service string
+		init    func() error
+	}, 0, len(global.serviceInitializers))
+	for service, init := range global.serviceInitializers {
+		initializers = append(initializers, struct {
+			service string
+			init    func() error
+		}{service: service, init: init})
+	}
+	global.mu.RUnlock()
+
+	slices.SortFunc(initializers, func(a, b struct {
+		service string
+		init    func() error
+	}) int {
+		return compare(a.service, b.service)
+	})
+
+	results := make(chan error, len(initializers))
+	for _, initializer := range initializers {
+		initializer := initializer
+		go func() {
+			if err := initializer.init(); err != nil {
+				results <- fmt.Errorf("initialize service %s: %w", initializer.service, err)
+				return
+			}
+			results <- nil
+		}()
+	}
+	for range initializers {
+		if err := <-results; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func endpointKey(service, name string) string {

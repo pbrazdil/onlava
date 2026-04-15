@@ -141,6 +141,10 @@ func (s *Service) Secret(ctx context.Context) (*EchoResponse, error) {
 }
 
 func init() {
+	pulseruntime.RegisterServiceInitializer("service", func() error {
+		_, err := pulseInternalGetService()
+		return err
+	})
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",
 		Name:         "AuthEcho",

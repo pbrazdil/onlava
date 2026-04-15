@@ -235,6 +235,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		"PULSE_LISTEN_ADDR="+s.addr,
 		"PULSE_APP_ID="+s.cfg.Name,
 		"PULSE_APP_ROOT="+s.root,
+		"PULSE_DEV_SUPERVISOR=1",
 		"PULSE_LOCAL_PROXY=0",
 		"PULSE_DEV_REPORT_URL=http://"+devdash.ListenAddr()+devdash.ReportPath,
 		"PULSE_DEV_REPORT_TOKEN="+s.reportToken,

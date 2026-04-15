@@ -422,6 +422,12 @@ func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.En
 	if hasSecrets {
 		buf.WriteString("\tpulseruntime.MustPopulateSecrets(&secrets)\n")
 	}
+	if ss != nil {
+		fmt.Fprintf(buf, "\tpulseruntime.RegisterServiceInitializer(%q, func() error {\n", ss.Service.Name)
+		fmt.Fprintf(buf, "\t\t_, err := %s()\n", ss.GetterName)
+		buf.WriteString("\t\treturn err\n")
+		buf.WriteString("\t})\n")
+	}
 	for _, mw := range middlewares {
 		writeMiddlewareRegistration(buf, im, mw, ss)
 	}

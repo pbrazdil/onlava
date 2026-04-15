@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
+
+	"pulse.dev/internal/localproxy"
 )
 
 func ListenAddrFromEnv() string {
@@ -34,12 +39,32 @@ func Main(cfg AppConfig) error {
 	if err != nil {
 		return err
 	}
+	if err := InitializeServices(); err != nil {
+		return err
+	}
 	scheduler := startCronScheduler(runCtx)
 
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- server.ListenAndServe()
 	}()
+
+	var routes localproxy.Routes
+	if !launchedBySupervisor() {
+		proxy, err := startLocalHTTPSProxy(cfg)
+		if err != nil {
+			slog.Warn("local HTTPS proxy unavailable", "err", err)
+		} else if proxy != nil {
+			defer func() {
+				_ = proxy.Close()
+			}()
+			routes = proxy.Routes()
+			if routes.APIURL != "" {
+				SetPublicBaseURL(routes.APIURL)
+			}
+			printRuntimeBanner(osStdout(), cfg.ListenAddr, routes)
+		}
+	}
 
 	logTrace(context.Background(), fmt.Sprintf("registered %d API endpoints", len(listEndpoints())))
 	logTrace(context.Background(), "listening for incoming HTTP requests")
@@ -71,3 +96,68 @@ func Main(cfg AppConfig) error {
 		return err
 	}
 }
+
+func launchedBySupervisor() bool {
+	return os.Getenv("PULSE_DEV_SUPERVISOR") == "1"
+}
+
+func startLocalHTTPSProxy(cfg AppConfig) (*localproxy.Proxy, error) {
+	if os.Getenv("PULSE_LOCAL_PROXY") == "0" {
+		return nil, nil
+	}
+	workspace := cfg.Workspace
+	if workspace == "" {
+		workspace = localproxy.DiscoverWorkspace(mustGetwd(), cfg.Name)
+	}
+	proxyCfg := localproxy.BuildConfig(localproxy.Config{
+		Workspace:         workspace,
+		APIHost:           cfg.ProxyAPIHost,
+		ConsoleHost:       cfg.ProxyConsoleHost,
+		MCPHost:           cfg.ProxyMCPHost,
+		FrontendHost:      cfg.ProxyFrontendHost,
+		APIUpstream:       cfg.ListenAddr,
+		DashboardUpstream: strings.TrimSpace(os.Getenv("PULSE_DEV_DASHBOARD_ADDR")),
+		FrontendUpstream:  localproxy.DiscoverFrontendUpstream(mustGetwd()),
+	})
+	if proxyCfg.Workspace == "" && proxyCfg.APIHost == "" {
+		return nil, nil
+	}
+	return localproxy.Start(proxyCfg)
+}
+
+func printRuntimeBanner(out io.Writer, listenAddr string, routes localproxy.Routes) {
+	if out == nil {
+		return
+	}
+	apiURL := "http://" + listenAddr
+	if routes.APIURL != "" {
+		apiURL = routes.APIURL
+	}
+
+	lines := []string{
+		"",
+		"  Pulse development server running!",
+		"",
+		fmt.Sprintf("  %-26s  %s", "Your API is running at:", apiURL),
+	}
+	if routes.ConsoleURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Development Dashboard URL:", routes.ConsoleURL))
+	}
+	if routes.MCPBaseURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "MCP SSE URL:", routes.MCPBaseURL+"/sse?appID="+Meta().AppID))
+	}
+	if routes.FrontendURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Pulse App URL:", routes.FrontendURL))
+	}
+	lines = append(lines, "")
+	for _, line := range lines {
+		_, _ = fmt.Fprintln(out, line)
+	}
+}
+
+func mustGetwd() string {
+	wd, _ := os.Getwd()
+	return wd
+}
+
+var osStdout = func() io.Writer { return os.Stdout }

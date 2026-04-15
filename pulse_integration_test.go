@@ -144,6 +144,58 @@ func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
 	})
 }
 
+func TestPulseRunInitializesServiceStructsAtStartup(t *testing.T) {
+	repo := repoRoot(t)
+	appDir := filepath.Join(t.TempDir(), "serviceinit")
+	markerPath := filepath.Join(t.TempDir(), "init.marker")
+	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repo+"\n")
+	writeFile(t, filepath.Join(appDir, "pulse.app"), `{"name":"serviceinit"}`)
+	writeFile(t, filepath.Join(appDir, "svc", "api.go"), `package svc
+
+import (
+	"context"
+	"os"
+)
+
+//pulse:service
+type Service struct{}
+
+func initService() (*Service, error) {
+	if path := os.Getenv("PULSE_INIT_MARKER"); path != "" {
+		if err := os.WriteFile(path, []byte("started"), 0o644); err != nil {
+			return nil, err
+		}
+	}
+	return &Service{}, nil
+}
+
+//pulse:api public
+func (s *Service) Hello(ctx context.Context) error { return nil }
+`)
+
+	port := freePort(t)
+	addr := "127.0.0.1:" + port
+	dashAddr := "127.0.0.1:" + freePort(t)
+	binary := buildPulseBinary(t, repo)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
+	cmd.Env = append(pulseRunEnv(dashAddr), "PULSE_INIT_MARKER="+markerPath)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cmd.Stdin = nil
+	cmd.Dir = appDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start pulse run: %v", err)
+	}
+	defer stopPulseProcess(t, cancel, cmd)
+
+	waitForFile(t, markerPath)
+}
+
 func TestPulseRunMiddlewareApp(t *testing.T) {
 	repo := repoRoot(t)
 	appDir := filepath.Join(repo, "testdata", "apps", "middleware")
@@ -757,6 +809,18 @@ func waitForURL(t *testing.T, client *http.Client, url string) {
 	t.Fatalf("server did not start: %s", url)
 }
 
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("file was not created: %s", path)
+}
+
 func waitForJSONResponse(t *testing.T, url string, wantStatus int, want map[string]any) {
 	t.Helper()
 	client := &http.Client{Timeout: time.Second}
@@ -1107,6 +1171,16 @@ func rewriteFixtureReplace(t *testing.T, goModPath, repo string) {
 func writePulseApp(t *testing.T, appDir, contents string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(appDir, "pulse.app"), []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeFile(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
