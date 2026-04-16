@@ -225,15 +225,15 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	previous := s.currentApp()
 	var current *runningApp
 	if err := s.console.Phase("Starting Pulse application", func() error {
+		if previous != nil {
+			if err := previous.stop(); err != nil {
+				return err
+			}
+		}
 		current, err = s.startApp(ctx, result, metadata, apiEncoding)
 		return err
 	}); err != nil {
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
-	}
-	if previous != nil {
-		if err := previous.stop(); err != nil {
-			return err
-		}
 	}
 
 	s.mu.Lock()
