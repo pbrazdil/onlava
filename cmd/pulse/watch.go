@@ -43,6 +43,10 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopParentMonitor := startParentMonitor(ctx, cancel)
+	defer stopParentMonitor()
 
 	snapshot, err := scanWatchedFiles(root)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	appcfg "pulse.dev/internal/app"
+	"pulse.dev/internal/codegen"
 	"pulse.dev/internal/parse"
 )
 
@@ -368,6 +369,203 @@ func TestLoadCachedGraph(t *testing.T) {
 	}
 	if cached.Result == nil || cached.Result.Dir == "" {
 		t.Fatal("expected cached result to include workspace")
+	}
+}
+
+func TestRefreshCachedWorkspaceResyncsMissingSourceFiles(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	result.GraphFingerprint = "graph-1"
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	newFile := "svc/helper.go"
+	writeBuildTestFile(t, appDir, newFile, "package svc\n\nfunc helper() {}\n")
+
+	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() error = %v", err)
+	}
+	if !ok || cached == nil || cached.Result == nil {
+		t.Fatal("expected cached graph to load")
+	}
+	if _, err := os.Stat(filepath.Join(cached.Result.Dir, filepath.FromSlash(newFile))); !os.IsNotExist(err) {
+		t.Fatalf("expected cached workspace to initially miss %s, stat err=%v", newFile, err)
+	}
+
+	reused, err := RefreshCachedWorkspace(appDir, cached.Result)
+	if err != nil {
+		t.Fatalf("RefreshCachedWorkspace() error = %v", err)
+	}
+	if !reused {
+		t.Fatal("expected cached workspace refresh to be reusable")
+	}
+	if _, err := os.Stat(filepath.Join(cached.Result.Dir, filepath.FromSlash(newFile))); err != nil {
+		t.Fatalf("expected refreshed workspace to include %s: %v", newFile, err)
+	}
+	found := false
+	for _, rel := range cached.Result.SourceFiles {
+		if rel == newFile {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("refreshed source files missing %s: %v", newFile, cached.Result.SourceFiles)
+	}
+}
+
+func TestRefreshCachedWorkspaceMarksNeedsTidyWhenImportsChange(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	result.GraphFingerprint = "graph-1"
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	writeBuildTestFile(t, appDir, "svc/extra.go", `package svc
+
+import _ "rsc.io/quote"
+`)
+
+	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() error = %v", err)
+	}
+	if !ok || cached == nil || cached.Result == nil {
+		t.Fatal("expected cached graph to load")
+	}
+
+	reused, err := RefreshCachedWorkspace(appDir, cached.Result)
+	if err != nil {
+		t.Fatalf("RefreshCachedWorkspace() error = %v", err)
+	}
+	if !reused {
+		t.Fatal("expected cached workspace refresh to be reusable")
+	}
+	if !cached.Result.NeedsTidy {
+		t.Fatal("expected refreshed cached workspace to require go mod tidy")
+	}
+}
+
+func TestRefreshCachedWorkspaceFallsBackWhenGeneratedFileMissing(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	result.GraphFingerprint = "graph-1"
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	target := filepath.Join(result.Dir, "svc", "pulse.gen.go")
+	if err := os.Remove(target); err != nil {
+		t.Fatalf("remove generated file: %v", err)
+	}
+
+	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() error = %v", err)
+	}
+	if !ok || cached == nil || cached.Result == nil {
+		t.Fatal("expected cached graph to load")
+	}
+
+	reused, err := RefreshCachedWorkspace(appDir, cached.Result)
+	if err != nil {
+		t.Fatalf("RefreshCachedWorkspace() error = %v", err)
+	}
+	if reused {
+		t.Fatal("expected cached workspace refresh to force regeneration when a generated file is missing")
+	}
+}
+
+func TestSyncSourceFilesDetectsNewFilesOutsideChangedPaths(t *testing.T) {
+	root := t.TempDir()
+	appRoot := t.TempDir()
+
+	writeBuildTestFile(t, appRoot, "go.mod", "module example.com/test\n\ngo 1.25.0\n")
+	writeBuildTestFile(t, appRoot, "svc/api.go", "package svc\n")
+
+	prev, err := syncAllSourceFiles(root, appRoot, nil)
+	if err != nil {
+		t.Fatalf("syncAllSourceFiles() error = %v", err)
+	}
+
+	const asset = "svc/templates/cv_classic.css"
+	writeBuildTestFile(t, appRoot, asset, "body { color: black; }\n")
+
+	got, err := syncSourceFiles(root, appRoot, prev, []string{"svc/api.go"})
+	if err != nil {
+		t.Fatalf("syncSourceFiles() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(asset))); err != nil {
+		t.Fatalf("expected new asset to be synced into workspace: %v", err)
+	}
+	found := false
+	for _, rel := range got {
+		if rel == asset {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected source files to include %s, got %v", asset, got)
+	}
+}
+
+func TestSyncGeneratedFilesKeepsPathsThatAreNowRegularSourceFiles(t *testing.T) {
+	root := t.TempDir()
+	appRoot := t.TempDir()
+	rel := "house/rooftopology_api.go"
+	writeBuildTestFile(t, appRoot, rel, "package house\n\nfunc helper() {}\n")
+	writeBuildTestFile(t, root, rel, "package house\n\nfunc oldGenerated() {}\n")
+
+	got, err := syncGeneratedFiles(root, appRoot, &codegen.Output{
+		Rewritten: map[string][]byte{},
+		Generated: map[string][]byte{},
+	}, []string{rel}, []string{rel})
+	if err != nil {
+		t.Fatalf("syncGeneratedFiles() error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("generated files = %v, want empty", got)
+	}
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("expected source-backed file to remain: %v", err)
+	}
+	if string(data) != "package house\n\nfunc oldGenerated() {}\n" {
+		t.Fatalf("unexpected file contents after syncGeneratedFiles: %q", data)
 	}
 }
 

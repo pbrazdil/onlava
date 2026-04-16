@@ -55,10 +55,11 @@ func App(root, name string) (*model.App, error) {
 	serviceNames := make(map[string]*model.Service)
 
 	for _, pkg := range pkgs {
-		if len(pkg.GoFiles) == 0 {
+		paths := syntaxFilePaths(pkg)
+		if len(paths) == 0 {
 			continue
 		}
-		absDir := filepath.Dir(pkg.GoFiles[0])
+		absDir := filepath.Dir(paths[0])
 		relDir, err := filepath.Rel(root, absDir)
 		if err != nil {
 			errs = append(errs, err.Error())
@@ -75,7 +76,11 @@ func App(root, name string) (*model.App, error) {
 			RelDir:     relDir,
 		}
 		for i, file := range pkg.Syntax {
-			mpkg.Files = append(mpkg.Files, &model.File{Path: pkg.GoFiles[i], AST: file})
+			if i >= len(paths) {
+				errs = append(errs, fmt.Sprintf("package %s returned %d syntax files but only %d source paths", pkg.PkgPath, len(pkg.Syntax), len(paths)))
+				break
+			}
+			mpkg.Files = append(mpkg.Files, &model.File{Path: paths[i], AST: file})
 		}
 		app.Packages = append(app.Packages, mpkg)
 		byRelDir[relDir] = mpkg
@@ -296,6 +301,19 @@ func App(root, name string) (*model.App, error) {
 		return nil, errors.New(strings.Join(errs, "\n"))
 	}
 	return app, nil
+}
+
+func syntaxFilePaths(pkg *packages.Package) []string {
+	switch {
+	case len(pkg.CompiledGoFiles) == len(pkg.Syntax):
+		return pkg.CompiledGoFiles
+	case len(pkg.GoFiles) == len(pkg.Syntax):
+		return pkg.GoFiles
+	case len(pkg.CompiledGoFiles) > 0:
+		return pkg.CompiledGoFiles
+	default:
+		return pkg.GoFiles
+	}
 }
 
 func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *directive) (*model.Endpoint, error) {

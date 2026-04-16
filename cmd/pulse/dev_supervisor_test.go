@@ -106,3 +106,40 @@ func containsString(items []string, want string) bool {
 	}
 	return false
 }
+
+func TestLooksLikePulseDashboardProcess(t *testing.T) {
+	tests := []struct {
+		name string
+		info procInfo
+		want bool
+	}{
+		{
+			name: "pulse run process",
+			info: procInfo{pid: 100, ppid: 1, cmd: "/usr/local/bin/pulse run"},
+			want: true,
+		},
+		{
+			name: "non orphaned pulse run process",
+			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/pulse run"},
+			want: true,
+		},
+		{
+			name: "pulse app binary is not dashboard",
+			info: procInfo{pid: 100, ppid: 42, cmd: "/tmp/pulse-app"},
+			want: false,
+		},
+		{
+			name: "non pulse process",
+			info: procInfo{pid: 100, ppid: 1, cmd: "/usr/bin/python3 -m http.server"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := looksLikePulseDashboardProcess(tt.info); got != tt.want {
+				t.Fatalf("looksLikePulseDashboardProcess(%+v) = %v, want %v", tt.info, got, tt.want)
+			}
+		})
+	}
+}

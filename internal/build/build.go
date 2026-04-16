@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -98,7 +99,7 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 	if err != nil {
 		return nil, err
 	}
-	generatedFiles, err := syncGeneratedFiles(workspaceDir, appRoot, gen, state.GeneratedFiles)
+	generatedFiles, err := syncGeneratedFiles(workspaceDir, appRoot, gen, state.GeneratedFiles, sourceFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -182,42 +183,86 @@ func copyTree(src, dst string) error {
 
 func syncSourceFiles(root, appRoot string, prevFiles, changedPaths []string) ([]string, error) {
 	if len(prevFiles) == 0 || len(changedPaths) == 0 {
-		return syncAllSourceFiles(root, appRoot)
+		return syncAllSourceFiles(root, appRoot, nil)
 	}
-	files := make(map[string]struct{}, len(prevFiles))
+	currentFiles, err := listSourceFiles(appRoot)
+	if err != nil {
+		return nil, err
+	}
+	current := make(map[string]struct{}, len(currentFiles))
+	for _, rel := range currentFiles {
+		current[rel] = struct{}{}
+	}
+	prev := make(map[string]struct{}, len(prevFiles))
 	for _, rel := range prevFiles {
-		files[filepath.ToSlash(rel)] = struct{}{}
+		prev[filepath.ToSlash(rel)] = struct{}{}
 	}
+	changed := make(map[string]struct{}, len(changedPaths))
 	for _, rel := range changedPaths {
 		rel = filepath.ToSlash(rel)
-		if !isSourceFile(rel) {
-			continue
-		}
-		path := filepath.Join(appRoot, filepath.FromSlash(rel))
-		info, err := os.Stat(path)
-		if errors.Is(err, os.ErrNotExist) || (err == nil && (info.IsDir() || shouldSkipFile(rel))) {
-			delete(files, rel)
+		changed[rel] = struct{}{}
+		if _, ok := current[rel]; !ok {
 			if removeErr := os.Remove(filepath.Join(root, filepath.FromSlash(rel))); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 				return nil, removeErr
 			}
 			continue
 		}
-		if err != nil {
-			return nil, err
+	}
+
+	for _, rel := range currentFiles {
+		_, wasTracked := prev[rel]
+		_, wasChanged := changed[rel]
+		target := filepath.Join(root, filepath.FromSlash(rel))
+		if !wasChanged && wasTracked {
+			if _, err := os.Stat(target); err == nil {
+				continue
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
 		}
-		data, err := sourceFileData(path, rel)
+		data, err := sourceFileData(filepath.Join(appRoot, filepath.FromSlash(rel)), rel)
 		if err != nil {
 			return nil, err
 		}
 		if err := writeFileIfChanged(root, rel, data); err != nil {
 			return nil, err
 		}
+	}
+
+	for rel := range prev {
+		if _, ok := current[rel]; ok {
+			continue
+		}
+		if removeErr := os.Remove(filepath.Join(root, filepath.FromSlash(rel))); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return nil, removeErr
+		}
+	}
+	return currentFiles, nil
+}
+
+func syncAllSourceFiles(root, appRoot string, skip map[string]struct{}) ([]string, error) {
+	currentFiles, err := listSourceFiles(appRoot)
+	if err != nil {
+		return nil, err
+	}
+	files := make(map[string]struct{}, len(currentFiles))
+	for _, rel := range currentFiles {
 		files[rel] = struct{}{}
+		if _, ok := skip[rel]; ok {
+			continue
+		}
+		data, err := sourceFileData(filepath.Join(appRoot, filepath.FromSlash(rel)), rel)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeFileIfChanged(root, rel, data); err != nil {
+			return nil, err
+		}
 	}
 	return sortedKeys(files), nil
 }
 
-func syncAllSourceFiles(root, appRoot string) ([]string, error) {
+func listSourceFiles(appRoot string) ([]string, error) {
 	files := make(map[string]struct{})
 	err := filepath.WalkDir(appRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -236,15 +281,7 @@ func syncAllSourceFiles(root, appRoot string) ([]string, error) {
 		if d.IsDir() || !isSourceFile(rel) || shouldSkipFile(rel) || shouldSkipSymlink(path, d) {
 			return nil
 		}
-		rel = filepath.ToSlash(rel)
-		data, err := sourceFileData(path, rel)
-		if err != nil {
-			return err
-		}
-		if err := writeFileIfChanged(root, rel, data); err != nil {
-			return err
-		}
-		files[rel] = struct{}{}
+		files[filepath.ToSlash(rel)] = struct{}{}
 		return nil
 	})
 	if err != nil {
@@ -612,6 +649,38 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 	}, true, nil
 }
 
+func RefreshCachedWorkspace(appRoot string, result *Result) (bool, error) {
+	if result == nil {
+		return false, fmt.Errorf("nil build result")
+	}
+	generated := make(map[string]struct{}, len(result.GeneratedFiles))
+	for _, rel := range result.GeneratedFiles {
+		rel = filepath.ToSlash(rel)
+		generated[rel] = struct{}{}
+		if _, err := os.Stat(filepath.Join(result.Dir, filepath.FromSlash(rel))); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return false, nil
+			}
+			return false, err
+		}
+	}
+	sourceFiles, err := syncAllSourceFiles(result.Dir, appRoot, generated)
+	if err != nil {
+		return false, err
+	}
+	result.SourceFiles = sourceFiles
+	if err := removeUnexpectedFilesFromLists(result.Dir, result.SourceFiles, result.GeneratedFiles); err != nil {
+		return false, err
+	}
+	depFingerprint, err := dependencyFingerprintFromWorkspace(result.Dir)
+	if err != nil {
+		return false, err
+	}
+	result.NeedsTidy = result.DependencyFingerprint != depFingerprint
+	result.DependencyFingerprint = depFingerprint
+	return true, nil
+}
+
 func saveBuildState(root string, state buildState) error {
 	data, err := json.Marshal(state)
 	if err != nil {
@@ -620,7 +689,7 @@ func saveBuildState(root string, state buildState) error {
 	return os.WriteFile(filepath.Join(root, buildStateFile), data, 0o644)
 }
 
-func syncGeneratedFiles(root, appRoot string, gen *codegen.Output, prev []string) ([]string, error) {
+func syncGeneratedFiles(root, appRoot string, gen *codegen.Output, prev, sourceFiles []string) ([]string, error) {
 	next := make(map[string][]byte, len(gen.Rewritten)+len(gen.Generated))
 	for rel, data := range gen.Rewritten {
 		rel = filepath.ToSlash(rel)
@@ -644,6 +713,9 @@ func syncGeneratedFiles(root, appRoot string, gen *codegen.Output, prev []string
 	for _, rel := range prev {
 		rel = filepath.ToSlash(rel)
 		if _, ok := next[rel]; ok {
+			continue
+		}
+		if slices.Contains(sourceFiles, rel) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(root, filepath.FromSlash(rel))); err != nil && !errors.Is(err, os.ErrNotExist) {

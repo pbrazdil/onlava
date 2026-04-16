@@ -15,8 +15,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -65,7 +67,7 @@ func newDashboardServer(supervisor *devSupervisor, assetsDir string) *dashboardS
 
 func (s *dashboardServer) Start(ctx context.Context) error {
 	addr := devdash.ListenAddr()
-	if err := portAvailable(addr); err != nil {
+	if err := ensureDashboardPortAvailable(addr); err != nil {
 		return fmt.Errorf("pulse dashboard failed to listen on %s: %w", addr, err)
 	}
 	ln, err := netListen("tcp", addr)
@@ -81,6 +83,115 @@ func (s *dashboardServer) Start(ctx context.Context) error {
 			slog.Error("pulse dashboard server failed", "err", err)
 		}
 	}()
+	return nil
+}
+
+func ensureDashboardPortAvailable(addr string) error {
+	if err := portAvailable(addr); err == nil {
+		return nil
+	}
+	if addr != devdash.DashboardAddr {
+		return portAvailable(addr)
+	}
+	pid, ok := findListeningPID(addr)
+	if !ok {
+		return portAvailable(addr)
+	}
+	info, ok := inspectProcess(pid)
+	if !ok {
+		return portAvailable(addr)
+	}
+	if !looksLikePulseDashboardProcess(info) {
+		return portAvailable(addr)
+	}
+	if err := stopProcess(pid); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := portAvailable(addr); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return portAvailable(addr)
+}
+
+type procInfo struct {
+	pid  int
+	ppid int
+	cmd  string
+}
+
+func looksLikePulseDashboardProcess(info procInfo) bool {
+	lower := strings.ToLower(info.cmd)
+	return strings.Contains(lower, "pulse") && strings.Contains(lower, " run")
+}
+
+func findListeningPID(addr string) (int, bool) {
+	cmd := exec.Command("lsof", "-nP", "-iTCP@"+addr, "-sTCP:LISTEN", "-t")
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, false
+	}
+	lines := strings.Fields(string(output))
+	if len(lines) == 0 {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(lines[0])
+	if err != nil {
+		return 0, false
+	}
+	return pid, true
+}
+
+func inspectProcess(pid int) (procInfo, bool) {
+	cmd := exec.Command("ps", "-o", "pid=,ppid=,command=", "-p", strconv.Itoa(pid))
+	output, err := cmd.Output()
+	if err != nil {
+		return procInfo{}, false
+	}
+	line := strings.TrimSpace(string(output))
+	if line == "" {
+		return procInfo{}, false
+	}
+	parts := strings.Fields(line)
+	if len(parts) < 3 {
+		return procInfo{}, false
+	}
+	gotPID, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return procInfo{}, false
+	}
+	ppid, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return procInfo{}, false
+	}
+	return procInfo{
+		pid:  gotPID,
+		ppid: ppid,
+		cmd:  strings.Join(parts[2:], " "),
+	}, true
+}
+
+func stopProcess(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := inspectProcess(pid); !ok {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err := proc.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
 	return nil
 }
 

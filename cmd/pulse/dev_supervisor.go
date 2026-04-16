@@ -181,7 +181,25 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	}
 	if err := s.console.Phase("Generating boilerplate code", func() error {
 		if cached != nil {
-			return nil
+			reused, refreshErr := build.RefreshCachedWorkspace(s.root, result)
+			if refreshErr != nil {
+				return refreshErr
+			}
+			if reused {
+				return nil
+			}
+			model, err = parse.App(s.root, s.cfg.Name)
+			if err != nil {
+				return err
+			}
+			metadata, err = devmeta.BuildMetadataSnapshot(model)
+			if err != nil {
+				return err
+			}
+			apiEncoding, err = devmeta.BuildAPIEncoding(model)
+			if err != nil {
+				return err
+			}
 		}
 		result, err = build.Prepare(s.root, model, s.cfg, build.PrepareOptions{ChangedPaths: changedPaths})
 		if err == nil && result != nil {

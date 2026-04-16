@@ -69,6 +69,7 @@ func BuildAPIEncoding(app *model.App) (json.RawMessage, error) {
 			"rpcs": rpcs,
 		})
 	}
+	services = append(services, builtinAPIEncodingServices()...)
 	data, err := json.Marshal(map[string]any{
 		"services": services,
 	})
@@ -127,10 +128,57 @@ func buildServices(app *model.App) []map[string]any {
 			"metrics":    []any{},
 		})
 	}
+	services = append(services, builtinServices()...)
 	sort.Slice(services, func(i, j int) bool {
 		return services[i]["name"].(string) < services[j]["name"].(string)
 	})
 	return services
+}
+
+func builtinServices() []map[string]any {
+	return []map[string]any{
+		{
+			"name":     "platform",
+			"rel_path": "",
+			"rpcs": []map[string]any{
+				{
+					"name":            "Stats",
+					"doc":             "",
+					"service_name":    "platform",
+					"access_type":     "public",
+					"proto":           "REGULAR",
+					"path":            buildBuiltinPath("/platform.Stats"),
+					"http_methods":    []string{"GET"},
+					"request_schema":  nil,
+					"response_schema": buildReflectSchema(reflect.TypeOf(pulseruntime.PlatformStatsResponse{})),
+					"tags":            []any{},
+				},
+			},
+			"migrations": []any{},
+			"databases":  []any{},
+			"has_config": false,
+			"buckets":    []any{},
+			"metrics":    []any{},
+		},
+	}
+}
+
+func builtinAPIEncodingServices() []map[string]any {
+	return []map[string]any{
+		{
+			"name": "platform",
+			"rpcs": []map[string]any{
+				{
+					"name":         "Stats",
+					"path":         "/platform.Stats",
+					"methods":      []string{"GET"},
+					"raw":          false,
+					"access_type":  "public",
+					"service_name": "platform",
+				},
+			},
+		},
+	}
 }
 
 func buildAuthHandler(app *model.App) map[string]any {
@@ -322,11 +370,15 @@ func buildTraceNodes(pkg *model.Package) []map[string]any {
 }
 
 func buildPath(ep *model.Endpoint) map[string]any {
+	return buildBuiltinPath(ep.Path)
+}
+
+func buildBuiltinPath(pathValue string) map[string]any {
 	path := map[string]any{
 		"type":     "URL",
 		"segments": []map[string]any{},
 	}
-	parts := strings.Split(strings.TrimPrefix(ep.Path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(pathValue, "/"), "/")
 	segments := make([]map[string]any, 0, len(parts))
 	for _, part := range parts {
 		if part == "" {
@@ -355,6 +407,94 @@ func buildSchema(field *model.Field) any {
 		return nil
 	}
 	return buildType(field.Type, make(map[types.Type]bool))
+}
+
+func buildReflectSchema(typ reflect.Type) any {
+	if typ == nil {
+		return nil
+	}
+	return buildReflectType(typ, make(map[reflect.Type]bool))
+}
+
+func buildReflectType(typ reflect.Type, seen map[reflect.Type]bool) map[string]any {
+	for typ.Kind() == reflect.Pointer {
+		return map[string]any{
+			"pointer": map[string]any{
+				"base": buildReflectType(typ.Elem(), seen),
+			},
+		}
+	}
+	if typ.PkgPath() == "time" && typ.Name() == "Time" {
+		return map[string]any{"builtin": "STRING"}
+	}
+	switch typ.Kind() {
+	case reflect.Bool:
+		return map[string]any{"builtin": "BOOL"}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return map[string]any{"builtin": strings.ToUpper(typ.Kind().String())}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return map[string]any{"builtin": strings.ToUpper(typ.Kind().String())}
+	case reflect.Float32:
+		return map[string]any{"builtin": "FLOAT32"}
+	case reflect.Float64:
+		return map[string]any{"builtin": "FLOAT64"}
+	case reflect.String:
+		return map[string]any{"builtin": "STRING"}
+	case reflect.Struct:
+		if seen[typ] {
+			return map[string]any{"builtin": "ANY"}
+		}
+		seen[typ] = true
+		defer delete(seen, typ)
+		fields := make([]map[string]any, 0, typ.NumField())
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			if !field.IsExported() {
+				continue
+			}
+			tag := string(field.Tag)
+			fields = append(fields, map[string]any{
+				"name":              field.Name,
+				"doc":               "",
+				"typ":               buildReflectType(field.Type, seen),
+				"json_name":         reflectJSONName(field),
+				"optional":          strings.Contains(tag, "omitempty"),
+				"query_string_name": "",
+				"raw_tag":           tag,
+				"tags":              parseTags(tag),
+			})
+		}
+		return map[string]any{
+			"struct": map[string]any{
+				"fields": fields,
+			},
+		}
+	case reflect.Slice, reflect.Array:
+		return map[string]any{
+			"list": map[string]any{
+				"elem": buildReflectType(typ.Elem(), seen),
+			},
+		}
+	case reflect.Map:
+		return map[string]any{
+			"map": map[string]any{
+				"key":   buildReflectType(typ.Key(), seen),
+				"value": buildReflectType(typ.Elem(), seen),
+			},
+		}
+	default:
+		return map[string]any{"builtin": "ANY"}
+	}
+}
+
+func reflectJSONName(field reflect.StructField) string {
+	if raw, ok := field.Tag.Lookup("json"); ok {
+		name := strings.Split(raw, ",")[0]
+		if name != "" && name != "-" {
+			return name
+		}
+	}
+	return field.Name
 }
 
 func buildType(typ types.Type, seen map[types.Type]bool) map[string]any {

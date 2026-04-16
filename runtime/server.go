@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/pprof"
 	"reflect"
 	"slices"
 	"strings"
@@ -45,6 +46,8 @@ func newServer(listenAddr string) (*http.Server, error) {
 		s.registerTyped(ep)
 	}
 	s.registerPulseConfig()
+	s.registerPlatformStats()
+	s.registerPProf()
 
 	httpServer := &http.Server{
 		Addr:    listenAddr,
@@ -71,6 +74,43 @@ func (s *server) registerPulseConfig() {
 			errs.HTTPError(w, errs.Wrap(err, "encode pulse config"))
 		}
 	})
+}
+
+func (s *server) registerPlatformStats() {
+	handler := func(w http.ResponseWriter, req *http.Request, _ routeParams) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		if err := json.NewEncoder(w).Encode(collectPlatformStats()); err != nil {
+			errs.HTTPError(w, errs.Wrap(err, "encode platform stats"))
+		}
+	}
+	registerRoute(s.public, "/platform.Stats", []string{http.MethodGet}, handler)
+}
+
+func (s *server) registerPProf() {
+	routes := []struct {
+		path    string
+		methods []string
+		handler http.HandlerFunc
+	}{
+		{path: "/debug/pprof/", methods: []string{http.MethodGet}, handler: pprof.Index},
+		{path: "/debug/pprof/cmdline", methods: []string{http.MethodGet}, handler: pprof.Cmdline},
+		{path: "/debug/pprof/profile", methods: []string{http.MethodGet}, handler: pprof.Profile},
+		{path: "/debug/pprof/symbol", methods: []string{http.MethodGet, http.MethodPost}, handler: pprof.Symbol},
+		{path: "/debug/pprof/trace", methods: []string{http.MethodGet}, handler: pprof.Trace},
+		{path: "/debug/pprof/allocs", methods: []string{http.MethodGet}, handler: pprof.Handler("allocs").ServeHTTP},
+		{path: "/debug/pprof/block", methods: []string{http.MethodGet}, handler: pprof.Handler("block").ServeHTTP},
+		{path: "/debug/pprof/goroutine", methods: []string{http.MethodGet}, handler: pprof.Handler("goroutine").ServeHTTP},
+		{path: "/debug/pprof/heap", methods: []string{http.MethodGet}, handler: pprof.Handler("heap").ServeHTTP},
+		{path: "/debug/pprof/mutex", methods: []string{http.MethodGet}, handler: pprof.Handler("mutex").ServeHTTP},
+		{path: "/debug/pprof/threadcreate", methods: []string{http.MethodGet}, handler: pprof.Handler("threadcreate").ServeHTTP},
+	}
+	for _, item := range routes {
+		handler := item.handler
+		registerRoute(s.public, item.path, item.methods, func(w http.ResponseWriter, req *http.Request, _ routeParams) {
+			handler(w, req)
+		})
+	}
 }
 
 func withCORS(next http.Handler) http.Handler {

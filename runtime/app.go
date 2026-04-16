@@ -34,6 +34,8 @@ func Main(cfg AppConfig) error {
 
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
+	stopSupervisorMonitor := startSupervisorParentMonitor(cancelRun)
+	defer stopSupervisorMonitor()
 
 	server, err := newServer(cfg.ListenAddr)
 	if err != nil {
@@ -71,9 +73,13 @@ func Main(cfg AppConfig) error {
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		<-sigCtx.Done()
+		cancelRun()
+	}()
 
 	select {
-	case <-sigCtx.Done():
+	case <-runCtx.Done():
 		cancelRun()
 		cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cronCancel()
