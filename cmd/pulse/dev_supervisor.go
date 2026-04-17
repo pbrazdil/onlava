@@ -18,7 +18,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"pulse.dev/internal/app"
@@ -55,7 +54,7 @@ type devSupervisor struct {
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-func newDevSupervisor(root string, cfg app.Config, addr string, verbose bool) (*devSupervisor, error) {
+func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr string, verbose bool) (*devSupervisor, error) {
 	store, err := devdash.OpenStore(os.Getenv("PULSE_DEV_CACHE_DIR"))
 	if err != nil {
 		return nil, err
@@ -82,7 +81,7 @@ func newDevSupervisor(root string, cfg app.Config, addr string, verbose bool) (*
 			UpdatedAt:  time.Now().UTC(),
 		},
 	}
-	uiDir, err := prepareDashboardUIDir(s.console)
+	uiDir, err := prepareDashboardUIDir(ctx, s.console)
 	if err != nil {
 		_ = store.Close()
 		return nil, err
@@ -217,7 +216,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 			result.Metadata = append(json.RawMessage(nil), metadata...)
 			result.APIEncoding = append(json.RawMessage(nil), apiEncoding...)
 		}
-		return build.Compile(result)
+		return build.CompileContext(ctx, result)
 	}); err != nil {
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
@@ -268,6 +267,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 
 func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, metadata, apiEncoding json.RawMessage) (*runningApp, error) {
 	cmd := exec.Command(result.Binary)
+	configureChildProcess(cmd)
 	cmd.Dir = s.root
 	cmd.Env = appChildEnv(
 		os.Environ(),
@@ -411,7 +411,7 @@ func (s *runningApp) stop() error {
 	if s.cmd == nil || s.cmd.Process == nil {
 		return nil
 	}
-	_ = s.cmd.Process.Signal(os.Interrupt)
+	_ = interruptProcessTree(s.cmd)
 	select {
 	case err := <-s.done:
 		if err == nil || isExpectedExit(err) {
@@ -419,7 +419,7 @@ func (s *runningApp) stop() error {
 		}
 		return err
 	case <-time.After(stopTimeout):
-		_ = s.cmd.Process.Signal(syscall.SIGKILL)
+		_ = killProcessTree(s.cmd)
 		err := <-s.done
 		if err == nil || isExpectedExit(err) {
 			return nil

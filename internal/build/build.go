@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -123,11 +124,15 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 }
 
 func Compile(result *Result) error {
+	return CompileContext(context.Background(), result)
+}
+
+func CompileContext(ctx context.Context, result *Result) error {
 	if result == nil {
 		return fmt.Errorf("nil build result")
 	}
 	if result.NeedsTidy {
-		if err := runGo(result.Dir, "mod", "tidy"); err != nil {
+		if err := runGoContext(ctx, result.Dir, "mod", "tidy"); err != nil {
 			return err
 		}
 		fingerprint, err := dependencyFingerprintFromWorkspace(result.Dir)
@@ -136,7 +141,7 @@ func Compile(result *Result) error {
 		}
 		result.DependencyFingerprint = fingerprint
 	}
-	if err := runGo(result.Dir, "build", "-o", result.Binary, "./pulse_internal_main"); err != nil {
+	if err := runGoContext(ctx, result.Dir, "build", "-o", result.Binary, "./pulse_internal_main"); err != nil {
 		return err
 	}
 	if err := saveBuildState(result.Dir, buildState{
@@ -400,7 +405,11 @@ func patchGoModData(data []byte, repoRoot string) ([]byte, error) {
 }
 
 func runGo(dir string, args ...string) error {
-	cmd := exec.Command("go", args...)
+	return runGoContext(context.Background(), dir, args...)
+}
+
+func runGoContext(ctx context.Context, dir string, args ...string) error {
+	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	if err != nil {

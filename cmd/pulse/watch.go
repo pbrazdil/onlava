@@ -53,7 +53,7 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 		return err
 	}
 
-	supervisor, err := newDevSupervisor(root, cfg, addr, verbose)
+	supervisor, err := newDevSupervisor(ctx, root, cfg, addr, verbose)
 	if err != nil {
 		return err
 	}

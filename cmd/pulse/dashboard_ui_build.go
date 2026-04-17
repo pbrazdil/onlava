@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -27,7 +28,7 @@ var dashboardUISourcePaths = []string{
 	"public",
 }
 
-func prepareDashboardUIDir(console *runConsole) (string, error) {
+func prepareDashboardUIDir(ctx context.Context, console *runConsole) (string, error) {
 	if dir := strings.TrimSpace(os.Getenv("PULSE_DEV_DASHBOARD_UI_DIR")); dir != "" {
 		return dir, nil
 	}
@@ -45,7 +46,7 @@ func prepareDashboardUIDir(console *runConsole) (string, error) {
 		return "", err
 	}
 	if depsStale {
-		installFn := func() error { return installDashboardUIDeps(uiRoot) }
+		installFn := func() error { return installDashboardUIDeps(ctx, uiRoot) }
 		if console != nil {
 			if err := console.Phase("Installing Pulse dashboard UI packages", installFn); err != nil {
 				return "", err
@@ -60,7 +61,7 @@ func prepareDashboardUIDir(console *runConsole) (string, error) {
 		return "", err
 	}
 	if stale {
-		buildFn := func() error { return buildDashboardUI(uiRoot) }
+		buildFn := func() error { return buildDashboardUI(ctx, uiRoot) }
 		if console != nil {
 			if err := console.Phase("Building Pulse dashboard UI", buildFn); err != nil {
 				return "", err
@@ -180,12 +181,13 @@ func latestDashboardUIModTime(path string) (time.Time, bool, error) {
 	return latest, found, nil
 }
 
-func buildDashboardUI(uiRoot string) error {
+func buildDashboardUI(ctx context.Context, uiRoot string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err != nil {
 		return fmt.Errorf("dashboard UI build requires bun: %w", err)
 	}
-	cmd := exec.Command(bunPath, "run", "build")
+	cmd := exec.CommandContext(ctx, bunPath, "run", "build")
+	configureChildProcess(cmd)
 	cmd.Dir = uiRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -198,12 +200,13 @@ func buildDashboardUI(uiRoot string) error {
 	return nil
 }
 
-func installDashboardUIDeps(uiRoot string) error {
+func installDashboardUIDeps(ctx context.Context, uiRoot string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err != nil {
 		return fmt.Errorf("dashboard UI install requires bun: %w", err)
 	}
-	cmd := exec.Command(bunPath, "install")
+	cmd := exec.CommandContext(ctx, bunPath, "install")
+	configureChildProcess(cmd)
 	cmd.Dir = uiRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
