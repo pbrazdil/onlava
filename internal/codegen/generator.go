@@ -130,6 +130,7 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 		im.use("pulsemiddleware", "pulse.dev/middleware")
 	}
 	if serviceStruct != nil {
+		im.use("pulsepubsub", "pulse.dev/pubsub")
 		im.use("sync", "sync")
 		im.use("time", "time")
 	}
@@ -200,6 +201,9 @@ func appConfigLiteral(appModel *model.App, cfg appcfg.Config) string {
 }
 
 func hasResources(pkg *model.Package) bool {
+	if hasPubSub(pkg) {
+		return true
+	}
 	if hasCronJobs(pkg) {
 		return true
 	}
@@ -223,6 +227,56 @@ func hasResources(pkg *model.Package) bool {
 		}
 	}
 	return false
+}
+
+func hasPubSub(pkg *model.Package) bool {
+	for _, file := range pkg.Files {
+		aliases := pubsubImportAliases(file.AST)
+		if len(aliases) == 0 {
+			continue
+		}
+		found := false
+		ast.Inspect(file.AST, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if sel.Sel.Name != "NewTopic" && sel.Sel.Name != "NewSubscription" {
+				return true
+			}
+			ident, ok := sel.X.(*ast.Ident)
+			if ok && aliases[ident.Name] {
+				found = true
+				return false
+			}
+			return true
+		})
+		if found {
+			return true
+		}
+	}
+	return false
+}
+
+func pubsubImportAliases(file *ast.File) map[string]bool {
+	aliases := make(map[string]bool)
+	for _, imp := range file.Imports {
+		switch strings.Trim(imp.Path.Value, "\"") {
+		case "pulse.dev/pubsub", "encore.dev/pubsub":
+		default:
+			continue
+		}
+		if imp.Name != nil && imp.Name.Name != "." {
+			aliases[imp.Name.Name] = true
+			continue
+		}
+		aliases["pubsub"] = true
+	}
+	return aliases
 }
 
 func hasCronJobs(pkg *model.Package) bool {
@@ -426,6 +480,9 @@ func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.En
 		fmt.Fprintf(buf, "\tpulseruntime.RegisterServiceInitializer(%q, func() error {\n", ss.Service.Name)
 		fmt.Fprintf(buf, "\t\t_, err := %s()\n", ss.GetterName)
 		buf.WriteString("\t\treturn err\n")
+		buf.WriteString("\t})\n")
+		fmt.Fprintf(buf, "\tpulsepubsub.RegisterServiceAccessorFor[*%s](func() (any, error) {\n", ss.TypeName)
+		fmt.Fprintf(buf, "\t\treturn %s()\n", ss.GetterName)
 		buf.WriteString("\t})\n")
 	}
 	for _, mw := range middlewares {

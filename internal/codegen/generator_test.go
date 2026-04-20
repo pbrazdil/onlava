@@ -199,6 +199,75 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 	}
 }
 
+func TestGenerateMainImportsPubSubOnlyPackages(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/pubsubapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"pubsubapp"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:api private
+func Run(ctx context.Context) error { return nil }
+`)
+	writeFile(t, dir, "events/events.go", `package events
+
+import (
+	"context"
+	"pulse.dev/pubsub"
+)
+
+type Event struct { Value string }
+
+var Topic = pubsub.NewTopic[*Event]("events", pubsub.TopicConfig{
+	DeliveryGuarantee: pubsub.AtLeastOnce,
+})
+
+var _ = pubsub.NewSubscription(Topic, "events-sub", pubsub.SubscriptionConfig[*Event]{
+	Handler: func(ctx context.Context, msg *Event) error { return nil },
+})
+`)
+
+	app, err := parse.App(dir, "pubsubapp")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["pulse_internal_main/main.go"])
+	if !strings.Contains(got, `_ "example.com/pubsubapp/events"`) {
+		t.Fatalf("expected generated main to import pubsub package, got:\n%s", got)
+	}
+}
+
+func TestGenerateRegistersPubSubServiceAccessor(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/pubsubsvc\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"pubsubsvc"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+//pulse:service
+type Service struct{}
+`)
+
+	app, err := parse.App(dir, "pubsubsvc")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["svc/pulse.gen.go"])
+	if !strings.Contains(got, `pulsepubsub.RegisterServiceAccessorFor[*Service](func() (any, error) {`) {
+		t.Fatalf("expected generated service accessor registration, got:\n%s", got)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()

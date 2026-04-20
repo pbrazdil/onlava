@@ -7,13 +7,15 @@ import (
 	"testing"
 )
 
-func TestScanWatchedFilesIncludesOnlyGoFiles(t *testing.T) {
+func TestScanWatchedFilesIncludesWatchedSourceFiles(t *testing.T) {
 	root := t.TempDir()
 
 	writeWatchFile(t, root, "pulse.app", `{"name":"watchapp"}`)
 	writeWatchFile(t, root, "go.mod", "module example.com/watchapp\n\ngo 1.26.0\n")
 	writeWatchFile(t, root, ".env", "DatabaseURL=postgres://localhost/db\n")
 	writeWatchFile(t, root, "svc/api.go", "package svc\n")
+	writeWatchFile(t, root, "svc/native.cpp", "int main() { return 0; }\n")
+	writeWatchFile(t, root, "svc/native.h", "#pragma once\n")
 	writeWatchFile(t, root, "README.md", "# ignored\n")
 	writeWatchFile(t, root, ".git/config", "[core]\n")
 	writeWatchFile(t, root, "node_modules/pkg/index.js", "console.log('ignored')\n")
@@ -23,7 +25,7 @@ func TestScanWatchedFilesIncludesOnlyGoFiles(t *testing.T) {
 		t.Fatalf("scanWatchedFiles returned error: %v", err)
 	}
 
-	for _, want := range []string{"svc/api.go"} {
+	for _, want := range []string{"svc/api.go", "svc/native.cpp", "svc/native.h"} {
 		if _, ok := snapshot[want]; !ok {
 			t.Fatalf("snapshot missing %q: %+v", want, snapshot)
 		}

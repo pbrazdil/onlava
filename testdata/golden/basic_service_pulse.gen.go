@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	pulsepubsub "pulse.dev/pubsub"
 	pulseruntime "pulse.dev/runtime"
 	"sync"
 	"time"
@@ -144,6 +145,9 @@ func init() {
 	pulseruntime.RegisterServiceInitializer("service", func() error {
 		_, err := pulseInternalGetService()
 		return err
+	})
+	pulsepubsub.RegisterServiceAccessorFor[*Service](func() (any, error) {
+		return pulseInternalGetService()
 	})
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",

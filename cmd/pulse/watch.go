@@ -201,7 +201,12 @@ func shouldSkipWatchDir(rel string) bool {
 }
 
 func isWatchedFile(rel string) bool {
-	return filepath.Ext(rel) == ".go"
+	switch filepath.Ext(rel) {
+	case ".go", ".cpp", ".h":
+		return true
+	default:
+		return false
+	}
 }
 
 func snapshotsEqual(a, b fileSnapshot) bool {

@@ -350,14 +350,6 @@ func sourceFileData(path, rel string) ([]byte, error) {
 	return data, nil
 }
 
-func writeFile(root, rel string, data []byte) error {
-	path := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
-}
-
 func writeFileIfChanged(root, rel string, data []byte) error {
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -371,18 +363,6 @@ func writeFileIfChanged(root, rel string, data []byte) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-func patchGoMod(path, repoRoot string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	patched, err := patchGoModData(data, repoRoot)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, patched, 0o644)
 }
 
 func patchGoModData(data []byte, repoRoot string) ([]byte, error) {
@@ -402,10 +382,6 @@ func patchGoModData(data []byte, repoRoot string) ([]byte, error) {
 		return nil, err
 	}
 	return formatted, nil
-}
-
-func runGo(dir string, args ...string) error {
-	return runGoContext(context.Background(), dir, args...)
 }
 
 func runGoContext(ctx context.Context, dir string, args ...string) error {
@@ -759,9 +735,10 @@ func rewriteEncoreCompat(path string, src []byte) ([]byte, error) {
 	needsAuthRewrite := strings.Contains(text, "encore.dev/beta/auth")
 	needsErrsRewrite := strings.Contains(text, "encore.dev/beta/errs")
 	needsMiddlewareRewrite := strings.Contains(text, "encore.dev/middleware")
+	needsPubSubRewrite := strings.Contains(text, "encore.dev/pubsub")
 	needsPGXPoolRewrite := strings.Contains(text, "github.com/jackc/pgx/v5/pgxpool")
 	needsRootRewrite := strings.Contains(text, "\"encore.dev\"")
-	if !needsCronRewrite && !needsRlogRewrite && !needsAuthRewrite && !needsErrsRewrite && !needsMiddlewareRewrite && !needsPGXPoolRewrite && !needsRootRewrite {
+	if !needsCronRewrite && !needsRlogRewrite && !needsAuthRewrite && !needsErrsRewrite && !needsMiddlewareRewrite && !needsPubSubRewrite && !needsPGXPoolRewrite && !needsRootRewrite {
 		return src, nil
 	}
 
@@ -785,6 +762,9 @@ func rewriteEncoreCompat(path string, src []byte) ([]byte, error) {
 		changed = true
 	}
 	if rewriteImportPath(file, "encore.dev/middleware", "pulse.dev/middleware", "") {
+		changed = true
+	}
+	if rewriteImportPath(file, "encore.dev/pubsub", "pulse.dev/pubsub", "") {
 		changed = true
 	}
 	if rewriteImportPath(file, "github.com/jackc/pgx/v5/pgxpool", "pulse.dev/pgxpool", "") {

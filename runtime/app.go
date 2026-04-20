@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"pulse.dev/internal/localproxy"
+	"pulse.dev/pubsub"
 )
 
 func ListenAddrFromEnv() string {
@@ -42,6 +43,10 @@ func Main(cfg AppConfig) error {
 		return err
 	}
 	if err := InitializeServices(); err != nil {
+		return err
+	}
+	stopPubSub, err := pubsub.StartLocalRuntime(runCtx, pubsub.LocalRuntimeConfig{AppID: cfg.Name})
+	if err != nil {
 		return err
 	}
 	scheduler := startCronScheduler(runCtx)
@@ -81,6 +86,11 @@ func Main(cfg AppConfig) error {
 	select {
 	case <-runCtx.Done():
 		cancelRun()
+		pubsubCtx, pubsubCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer pubsubCancel()
+		if err := stopPubSub(pubsubCtx); err != nil && !errors.Is(err, context.Canceled) {
+			return err
+		}
 		cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cronCancel()
 		if err := scheduler.Stop(cronCtx); err != nil && !errors.Is(err, context.Canceled) {
@@ -91,6 +101,11 @@ func Main(cfg AppConfig) error {
 		return server.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		cancelRun()
+		pubsubCtx, pubsubCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer pubsubCancel()
+		if stopErr := stopPubSub(pubsubCtx); stopErr != nil && !errors.Is(stopErr, context.Canceled) {
+			return stopErr
+		}
 		cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cronCancel()
 		if stopErr := scheduler.Stop(cronCtx); stopErr != nil && !errors.Is(stopErr, context.Canceled) {
