@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"pulse.dev/internal/stdlog"
 )
 
 func main() {
@@ -13,6 +16,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func init() {
+	stdlog.Install(os.Stderr)
+	log.SetFlags(log.LstdFlags)
 }
 
 func run(args []string) error {

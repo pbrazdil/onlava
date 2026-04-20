@@ -224,15 +224,25 @@ func maybeValidate(value any) error {
 		Validate() error
 	}
 	if v, ok := value.(validator); ok {
-		return v.Validate()
+		return normalizeValidationError(v.Validate())
 	}
 	rv := reflect.ValueOf(value)
 	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
 		if v, ok := rv.Elem().Interface().(validator); ok {
-			return v.Validate()
+			return normalizeValidationError(v.Validate())
 		}
 	}
 	return nil
+}
+
+func normalizeValidationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := errs.As(err); ok {
+		return err
+	}
+	return errs.B().Code(errs.InvalidArgument).Msg(err.Error()).Cause(err).Err()
 }
 
 func isStructLike(typ reflect.Type) bool {

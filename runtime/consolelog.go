@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"slices"
 	"strings"
@@ -11,12 +12,15 @@ import (
 	"time"
 
 	"pulse.dev/errs"
+	"pulse.dev/internal/stdlog"
 	"pulse.dev/internal/termstyle"
 )
 
 const levelTrace = slog.Level(-8)
 
 func init() {
+	stdlog.Install(osStderr())
+	log.SetFlags(log.LstdFlags)
 	// Install the Pulse console logger before generated package init code runs.
 	slog.SetDefault(slog.New(newPulseConsoleHandler(osStderr())))
 }
