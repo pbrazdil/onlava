@@ -21,6 +21,7 @@ type runURLs struct {
 	Dashboard string
 	MCP       string
 	Frontend  string
+	DBStudio  string
 }
 
 func newRunConsole(out, err io.Writer, verbose bool) *runConsole {
@@ -76,6 +77,9 @@ func (c *runConsole) Banner(urls runURLs) {
 	c.printf(c.out, "  %-*s  %s\n", width, "MCP SSE URL:", urls.MCP)
 	if urls.Frontend != "" {
 		c.printf(c.out, "  %-*s  %s\n", width, "Pulse App URL:", urls.Frontend)
+	}
+	if urls.DBStudio != "" {
+		c.printf(c.out, "  %-*s  %s\n", width, "Drizzle Studio URL:", urls.DBStudio)
 	}
 	c.printf(c.out, "\n")
 }

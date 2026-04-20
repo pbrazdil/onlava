@@ -201,6 +201,9 @@ func shouldSkipWatchDir(rel string) bool {
 }
 
 func isWatchedFile(rel string) bool {
+	if filepath.Base(rel) == "encore.gen.go" {
+		return false
+	}
 	switch filepath.Ext(rel) {
 	case ".go", ".cpp", ".h":
 		return true

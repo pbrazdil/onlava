@@ -185,6 +185,9 @@ func appConfigLiteral(appModel *model.App, cfg appcfg.Config) string {
 		fmt.Sprintf("Workspace: %q", workspace),
 		"ListenAddr: pulseruntime.ListenAddrFromEnv()",
 	}
+	if cfg.EnableDBStudio {
+		fields = append(fields, "EnableDBStudio: true")
+	}
 	if cfg.Proxy.APIHost != "" {
 		fields = append(fields, fmt.Sprintf("ProxyAPIHost: %q", cfg.Proxy.APIHost))
 	}

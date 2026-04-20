@@ -30,7 +30,7 @@ func run(args []string) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose]\n  pulse build [--app-root <path>] [-o <path>]")
+	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]")
 }
 
 func runCommand(args []string) error {

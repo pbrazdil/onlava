@@ -10,9 +10,11 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"pulse.dev/internal/dbstudio"
 	"pulse.dev/internal/localproxy"
 	"pulse.dev/pubsub"
 )
@@ -57,6 +59,9 @@ func Main(cfg AppConfig) error {
 	}()
 
 	var routes localproxy.Routes
+	dbStudioURL := ""
+	var dbStudioMu sync.Mutex
+	var dbStudio *dbstudio.Instance
 	if !launchedBySupervisor() {
 		proxy, err := startLocalHTTPSProxy(cfg)
 		if err != nil {
@@ -69,8 +74,43 @@ func Main(cfg AppConfig) error {
 			if routes.APIURL != "" {
 				SetPublicBaseURL(routes.APIURL)
 			}
-			printRuntimeBanner(osStdout(), cfg.ListenAddr, routes)
 		}
+		if cfg.EnableDBStudio {
+			root := appRootFromEnvOrCWD()
+			studioCfg, ok, err := dbstudio.Discover(root)
+			if err != nil {
+				slog.Warn("db studio unavailable", "err", err)
+			} else if ok {
+				dbStudioURL = dbstudio.DefaultURL(dbstudio.DefaultPort)
+				go func() {
+					inst, startErr := dbstudio.Start(runCtx, dbstudio.Options{
+						AppRoot: root,
+						AppID:   cfg.Name,
+						Config:  studioCfg,
+						Port:    dbstudio.DefaultPort,
+						Stdout:  osStdout(),
+						Stderr:  osStderr(),
+					})
+					if startErr != nil {
+						slog.Warn("db studio unavailable", "err", startErr)
+						return
+					}
+					if inst == nil {
+						return
+					}
+					dbStudioMu.Lock()
+					dbStudio = inst
+					dbStudioMu.Unlock()
+				}()
+			}
+		}
+		defer func() {
+			dbStudioMu.Lock()
+			inst := dbStudio
+			dbStudioMu.Unlock()
+			_ = inst.Close()
+		}()
+		printRuntimeBanner(osStdout(), cfg.ListenAddr, routes, dbStudioURL)
 	}
 
 	logTrace(context.Background(), fmt.Sprintf("registered %d API endpoints", len(listEndpoints())))
@@ -146,7 +186,7 @@ func startLocalHTTPSProxy(cfg AppConfig) (*localproxy.Proxy, error) {
 	return localproxy.Start(proxyCfg)
 }
 
-func printRuntimeBanner(out io.Writer, listenAddr string, routes localproxy.Routes) {
+func printRuntimeBanner(out io.Writer, listenAddr string, routes localproxy.Routes, dbStudioURL string) {
 	if out == nil {
 		return
 	}
@@ -170,6 +210,9 @@ func printRuntimeBanner(out io.Writer, listenAddr string, routes localproxy.Rout
 	if routes.FrontendURL != "" {
 		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Pulse App URL:", routes.FrontendURL))
 	}
+	if dbStudioURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Drizzle Studio URL:", dbStudioURL))
+	}
 	lines = append(lines, "")
 	for _, line := range lines {
 		_, _ = fmt.Fprintln(out, line)
@@ -182,3 +225,10 @@ func mustGetwd() string {
 }
 
 var osStdout = func() io.Writer { return os.Stdout }
+
+func appRootFromEnvOrCWD() string {
+	if root := strings.TrimSpace(os.Getenv("PULSE_APP_ROOT")); root != "" {
+		return root
+	}
+	return mustGetwd()
+}

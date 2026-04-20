@@ -10,6 +10,9 @@
 # Local dependencies and caches
 node_modules/
 .direnv/
+/dbstudio/dist/
+/dbstudio/reference/pretty/
+/dbstudio/reference/original/index.js.map
 
 # Local build and test outputs
 /pulse
@@ -25,3 +28,4 @@ coverage.out
 *.sqlite-shm
 .playwright-mcp/
 .pulse/
+.codex-tmp/

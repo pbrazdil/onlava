@@ -17,7 +17,7 @@ func TestPrintRuntimeBanner(t *testing.T) {
 		ConsoleURL:  "https://console.test.localhost",
 		MCPBaseURL:  "https://mcp.test.localhost",
 		FrontendURL: "https://pulse.test.localhost",
-	})
+	}, "http://127.0.0.1:4002")
 
 	text := out.String()
 	for _, want := range []string{
@@ -30,6 +30,8 @@ func TestPrintRuntimeBanner(t *testing.T) {
 		"https://mcp.test.localhost/sse?appID=testapp",
 		"Pulse App URL:",
 		"https://pulse.test.localhost",
+		"Drizzle Studio URL:",
+		"http://127.0.0.1:4002",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("banner %q missing %q", text, want)

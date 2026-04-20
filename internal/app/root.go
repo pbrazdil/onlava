@@ -9,9 +9,10 @@ import (
 )
 
 type Config struct {
-	Name  string      `json:"name"`
-	ID    string      `json:"id"`
-	Proxy ProxyConfig `json:"proxy"`
+	Name           string      `json:"name"`
+	ID             string      `json:"id"`
+	Proxy          ProxyConfig `json:"proxy"`
+	EnableDBStudio bool        `json:"-"`
 }
 
 type ProxyConfig struct {

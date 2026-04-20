@@ -93,6 +93,7 @@ type AppConfig struct {
 	Name              string
 	Workspace         string
 	ListenAddr        string
+	EnableDBStudio    bool
 	ProxyAPIHost      string
 	ProxyConsoleHost  string
 	ProxyMCPHost      string

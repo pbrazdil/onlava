@@ -14,6 +14,7 @@ func TestScanWatchedFilesIncludesWatchedSourceFiles(t *testing.T) {
 	writeWatchFile(t, root, "go.mod", "module example.com/watchapp\n\ngo 1.26.0\n")
 	writeWatchFile(t, root, ".env", "DatabaseURL=postgres://localhost/db\n")
 	writeWatchFile(t, root, "svc/api.go", "package svc\n")
+	writeWatchFile(t, root, "svc/encore.gen.go", "package svc\n")
 	writeWatchFile(t, root, "svc/native.cpp", "int main() { return 0; }\n")
 	writeWatchFile(t, root, "svc/native.h", "#pragma once\n")
 	writeWatchFile(t, root, "README.md", "# ignored\n")
@@ -30,7 +31,7 @@ func TestScanWatchedFilesIncludesWatchedSourceFiles(t *testing.T) {
 			t.Fatalf("snapshot missing %q: %+v", want, snapshot)
 		}
 	}
-	for _, ignored := range []string{"pulse.app", "go.mod", ".env", "README.md", ".git/config", "node_modules/pkg/index.js"} {
+	for _, ignored := range []string{"pulse.app", "go.mod", ".env", "README.md", ".git/config", "node_modules/pkg/index.js", "svc/encore.gen.go"} {
 		if _, ok := snapshot[ignored]; ok {
 			t.Fatalf("snapshot unexpectedly included %q: %+v", ignored, snapshot)
 		}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	appcfg "pulse.dev/internal/app"
 	"pulse.dev/internal/codegen"
 	"pulse.dev/internal/parse"
 )
@@ -265,6 +266,33 @@ type Service struct{}
 	got := string(out.Generated["svc/pulse.gen.go"])
 	if !strings.Contains(got, `pulsepubsub.RegisterServiceAccessorFor[*Service](func() (any, error) {`) {
 		t.Fatalf("expected generated service accessor registration, got:\n%s", got)
+	}
+}
+
+func TestGenerateMainEnablesDBStudioWhenConfigured(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/dbstudioapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"dbstudioapp"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:api private
+func Run(ctx context.Context) error { return nil }
+`)
+
+	app, err := parse.App(dir, "dbstudioapp")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.GenerateWithConfig(app, appcfg.Config{EnableDBStudio: true})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["pulse_internal_main/main.go"])
+	if !strings.Contains(got, "EnableDBStudio: true") {
+		t.Fatalf("expected generated main to enable db studio, got:\n%s", got)
 	}
 }
 

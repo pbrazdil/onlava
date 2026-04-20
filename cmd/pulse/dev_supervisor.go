@@ -22,6 +22,7 @@ import (
 
 	"pulse.dev/internal/app"
 	"pulse.dev/internal/build"
+	"pulse.dev/internal/dbstudio"
 	"pulse.dev/internal/devdash"
 	"pulse.dev/internal/devmeta"
 	"pulse.dev/internal/localproxy"
@@ -43,6 +44,9 @@ type devSupervisor struct {
 
 	store       *devdash.Store
 	dashboard   *dashboardServer
+	dbStudio    *dbstudio.Instance
+	dbStudioUI  *dbStudioUIServer
+	dbStudioURL string
 	proxy       *localproxy.Proxy
 	reportToken string
 	console     *runConsole
@@ -102,6 +106,16 @@ func (s *devSupervisor) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if s.dbStudio != nil {
+		if err := s.dbStudio.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.dbStudioUI != nil {
+		if err := s.dbStudioUI.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if err := s.stopCurrent(); err != nil {
 		errs = append(errs, err)
 	}
@@ -119,6 +133,9 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 	}
 	if err := s.dashboard.Start(ctx); err != nil {
 		return err
+	}
+	if err := s.startDBStudio(ctx); err != nil {
+		slog.Warn("db studio unavailable", "err", err)
 	}
 	if err := s.startLocalProxy(); err != nil {
 		slog.Warn("local HTTPS proxy unavailable", "err", err)
@@ -260,6 +277,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 			Dashboard: s.dashboardURL(),
 			MCP:       s.mcpURL(),
 			Frontend:  s.frontendURL(),
+			DBStudio:  s.dbStudioURL,
 		})
 	}
 	return nil
@@ -520,6 +538,47 @@ func (s *devSupervisor) frontendURL() string {
 		return s.proxy.Routes().FrontendURL
 	}
 	return ""
+}
+
+func (s *devSupervisor) startDBStudio(ctx context.Context) error {
+	cfg, ok, err := dbstudio.Discover(s.root)
+	if err != nil || !ok {
+		return err
+	}
+	s.dbStudioURL = dbStudioDirectURL(dbstudio.DefaultPort)
+	if uiDir, uiErr := prepareDBStudioUIDir(ctx, s.console); uiErr != nil {
+		slog.Warn("db studio UI unavailable", "err", uiErr)
+	} else if dbStudioUIAssetsAvailable(uiDir) {
+		uiServer := newDBStudioUIServer(uiDir)
+		if startErr := uiServer.Start(ctx); startErr != nil {
+			slog.Warn("db studio UI unavailable", "err", startErr)
+		} else {
+			s.dbStudioUI = uiServer
+			s.dbStudioURL = dbStudioUIURL(dbstudio.DefaultPort)
+		}
+	}
+	go func() {
+		inst, startErr := dbstudio.Start(ctx, dbstudio.Options{
+			AppRoot: s.root,
+			AppID:   s.cfg.Name,
+			Config:  cfg,
+			Port:    dbstudio.DefaultPort,
+			Verbose: s.console != nil && s.console.verbose,
+			Stdout:  os.Stdout,
+			Stderr:  os.Stderr,
+		})
+		if startErr != nil {
+			slog.Warn("db studio unavailable", "err", startErr)
+			return
+		}
+		if inst == nil {
+			return
+		}
+		s.mu.Lock()
+		s.dbStudio = inst
+		s.mu.Unlock()
+	}()
+	return nil
 }
 
 func (s *devSupervisor) activeAppID() string {

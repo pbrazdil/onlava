@@ -14,6 +14,14 @@ import (
 	"pulse.dev/internal/app"
 )
 
+type uiBuildSpec struct {
+	envVar       string
+	root         string
+	installTitle string
+	buildTitle   string
+	sourcePaths  []string
+}
+
 var dashboardUISourcePaths = []string{
 	"package.json",
 	"bun.lock",
@@ -29,26 +37,42 @@ var dashboardUISourcePaths = []string{
 }
 
 func prepareDashboardUIDir(ctx context.Context, console *runConsole) (string, error) {
-	if dir := strings.TrimSpace(os.Getenv("PULSE_DEV_DASHBOARD_UI_DIR")); dir != "" {
+	return prepareUIDir(ctx, console, uiBuildSpec{
+		envVar:       "PULSE_DEV_DASHBOARD_UI_DIR",
+		root:         filepath.Join(app.RepoRoot(), "ui"),
+		installTitle: "Installing Pulse dashboard UI packages",
+		buildTitle:   "Building Pulse dashboard UI",
+		sourcePaths:  dashboardUISourcePaths,
+	})
+}
+
+func dashboardUIDepsStale(uiRoot string) (bool, error) {
+	return uiDepsStale(uiRoot)
+}
+
+func dashboardUIBuildStale(uiRoot string) (bool, error) {
+	return uiBuildStale(uiRoot, dashboardUISourcePaths)
+}
+
+func prepareUIDir(ctx context.Context, console *runConsole, spec uiBuildSpec) (string, error) {
+	if dir := strings.TrimSpace(os.Getenv(spec.envVar)); dir != "" {
 		return dir, nil
 	}
-
-	uiRoot := filepath.Join(app.RepoRoot(), "ui")
-	if _, err := os.Stat(filepath.Join(uiRoot, "package.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(spec.root, "package.json")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
 		}
 		return "", err
 	}
 
-	depsStale, err := dashboardUIDepsStale(uiRoot)
+	depsStale, err := uiDepsStale(spec.root)
 	if err != nil {
 		return "", err
 	}
 	if depsStale {
-		installFn := func() error { return installDashboardUIDeps(ctx, uiRoot) }
+		installFn := func() error { return installUIDeps(ctx, spec.root) }
 		if console != nil {
-			if err := console.Phase("Installing Pulse dashboard UI packages", installFn); err != nil {
+			if err := console.Phase(spec.installTitle, installFn); err != nil {
 				return "", err
 			}
 		} else if err := installFn(); err != nil {
@@ -56,14 +80,14 @@ func prepareDashboardUIDir(ctx context.Context, console *runConsole) (string, er
 		}
 	}
 
-	stale, err := dashboardUIBuildStale(uiRoot)
+	stale, err := uiBuildStale(spec.root, spec.sourcePaths)
 	if err != nil {
 		return "", err
 	}
 	if stale {
-		buildFn := func() error { return buildDashboardUI(ctx, uiRoot) }
+		buildFn := func() error { return buildUI(ctx, spec.root) }
 		if console != nil {
-			if err := console.Phase("Building Pulse dashboard UI", buildFn); err != nil {
+			if err := console.Phase(spec.buildTitle, buildFn); err != nil {
 				return "", err
 			}
 		} else if err := buildFn(); err != nil {
@@ -71,7 +95,7 @@ func prepareDashboardUIDir(ctx context.Context, console *runConsole) (string, er
 		}
 	}
 
-	distDir := filepath.Join(uiRoot, "dist")
+	distDir := filepath.Join(spec.root, "dist")
 	if _, err := os.Stat(filepath.Join(distDir, "index.html")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
@@ -81,7 +105,7 @@ func prepareDashboardUIDir(ctx context.Context, console *runConsole) (string, er
 	return distDir, nil
 }
 
-func dashboardUIDepsStale(uiRoot string) (bool, error) {
+func uiDepsStale(uiRoot string) (bool, error) {
 	nodeModulesInfo, err := os.Stat(filepath.Join(uiRoot, "node_modules"))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -107,7 +131,7 @@ func dashboardUIDepsStale(uiRoot string) (bool, error) {
 	return false, nil
 }
 
-func dashboardUIBuildStale(uiRoot string) (bool, error) {
+func uiBuildStale(uiRoot string, sourcePaths []string) (bool, error) {
 	distIndexPath := filepath.Join(uiRoot, "dist", "index.html")
 	distInfo, err := os.Stat(distIndexPath)
 	if err != nil {
@@ -118,7 +142,7 @@ func dashboardUIBuildStale(uiRoot string) (bool, error) {
 	}
 
 	cutoff := distInfo.ModTime()
-	for _, rel := range dashboardUISourcePaths {
+	for _, rel := range sourcePaths {
 		path := filepath.Join(uiRoot, rel)
 		modTime, ok, err := latestDashboardUIModTime(path)
 		if err != nil {
@@ -181,10 +205,10 @@ func latestDashboardUIModTime(path string) (time.Time, bool, error) {
 	return latest, found, nil
 }
 
-func buildDashboardUI(ctx context.Context, uiRoot string) error {
+func buildUI(ctx context.Context, uiRoot string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err != nil {
-		return fmt.Errorf("dashboard UI build requires bun: %w", err)
+		return fmt.Errorf("UI build requires bun: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, bunPath, "run", "build")
 	configureChildProcess(cmd)
@@ -193,17 +217,21 @@ func buildDashboardUI(ctx context.Context, uiRoot string) error {
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
 		if msg == "" {
-			return fmt.Errorf("dashboard UI build failed: %w", err)
+			return fmt.Errorf("UI build failed: %w", err)
 		}
-		return fmt.Errorf("dashboard UI build failed: %w\n%s", err, msg)
+		return fmt.Errorf("UI build failed: %w\n%s", err, msg)
 	}
 	return nil
 }
 
-func installDashboardUIDeps(ctx context.Context, uiRoot string) error {
+func buildDashboardUI(ctx context.Context, uiRoot string) error {
+	return buildUI(ctx, uiRoot)
+}
+
+func installUIDeps(ctx context.Context, uiRoot string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err != nil {
-		return fmt.Errorf("dashboard UI install requires bun: %w", err)
+		return fmt.Errorf("UI install requires bun: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, bunPath, "install")
 	configureChildProcess(cmd)
@@ -212,9 +240,13 @@ func installDashboardUIDeps(ctx context.Context, uiRoot string) error {
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
 		if msg == "" {
-			return fmt.Errorf("dashboard UI install failed: %w", err)
+			return fmt.Errorf("UI install failed: %w", err)
 		}
-		return fmt.Errorf("dashboard UI install failed: %w\n%s", err, msg)
+		return fmt.Errorf("UI install failed: %w\n%s", err, msg)
 	}
 	return nil
+}
+
+func installDashboardUIDeps(ctx context.Context, uiRoot string) error {
+	return installUIDeps(ctx, uiRoot)
 }
