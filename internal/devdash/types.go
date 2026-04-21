@@ -48,6 +48,7 @@ type AppStatus struct {
 }
 
 type ProcessOutput struct {
+	ID        int64     `json:"id"`
 	AppID     string    `json:"appID"`
 	PID       string    `json:"pid"`
 	Stream    string    `json:"stream"`
@@ -122,11 +123,18 @@ type StoredRequestData struct {
 type OnboardingState map[string]time.Time
 
 type ReportEnvelope struct {
-	Type         string        `json:"type"`
-	AppID        string        `json:"app_id"`
-	TraceSummary *TraceSummary `json:"trace_summary,omitempty"`
-	TraceEvent   *TraceEvent   `json:"trace_event,omitempty"`
-	LogEvent     *LogEvent     `json:"log_event,omitempty"`
+	Type         string          `json:"type"`
+	AppID        string          `json:"app_id"`
+	TraceSummary *TraceSummary   `json:"trace_summary,omitempty"`
+	TraceEvent   *TraceEvent     `json:"trace_event,omitempty"`
+	LogEvent     *LogEvent       `json:"log_event,omitempty"`
+	PubSub       json.RawMessage `json:"pubsub,omitempty"`
+}
+
+type PubSubSnapshot struct {
+	AppID     string          `json:"app_id"`
+	Topics    json.RawMessage `json:"topics"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 type QueryRequest struct {

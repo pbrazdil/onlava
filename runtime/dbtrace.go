@@ -1,9 +1,12 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"pulse.dev/internal/devdash"
 	"pulse.dev/runtime/shared"
@@ -22,6 +25,11 @@ type dbQueryTrace struct {
 
 const maxDBQueryLength = 2048
 
+var (
+	singleQuotedSQLLiteralRE = regexp.MustCompile(`'([^']|'')*'`)
+	doubleQuotedSQLLiteralRE = regexp.MustCompile(`"([^"]|"")*"`)
+)
+
 // TraceDBQueryStart starts a child trace for a database query and returns
 // a context carrying the query trace metadata for TraceDBQueryEnd.
 func TraceDBQueryStart(ctx context.Context, query string, argsCount int) context.Context {
@@ -33,7 +41,7 @@ func TraceDBQueryStart(ctx context.Context, query string, argsCount int) context
 	if state == nil {
 		state = currentState()
 	}
-	if state == nil || state.trace == nil {
+	if state == nil || state.trace == nil || !state.traceEnabled {
 		return ctx
 	}
 
@@ -155,10 +163,64 @@ func normalizeDBQuery(query string) string {
 	if query == "" {
 		return "unknown"
 	}
+	query = singleQuotedSQLLiteralRE.ReplaceAllString(query, "?")
+	query = doubleQuotedSQLLiteralRE.ReplaceAllString(query, "?")
+	query = redactNumericSQLLiterals(query)
 	if len(query) > maxDBQueryLength {
 		return query[:maxDBQueryLength] + "..."
 	}
 	return query
+}
+
+func redactNumericSQLLiterals(query string) string {
+	var out bytes.Buffer
+	for i := 0; i < len(query); {
+		ch := rune(query[i])
+		if !unicode.IsDigit(ch) {
+			out.WriteByte(query[i])
+			i++
+			continue
+		}
+		prev := byte(0)
+		if i > 0 {
+			prev = query[i-1]
+		}
+		if prev == '$' || isSQLIdentByte(prev) {
+			out.WriteByte(query[i])
+			i++
+			continue
+		}
+		j := i + 1
+		dotUsed := false
+		for j < len(query) {
+			next := query[j]
+			if next == '.' && !dotUsed {
+				dotUsed = true
+				j++
+				continue
+			}
+			if next < '0' || next > '9' {
+				break
+			}
+			j++
+		}
+		next := byte(0)
+		if j < len(query) {
+			next = query[j]
+		}
+		if isSQLIdentByte(next) {
+			out.WriteString(query[i:j])
+			i = j
+			continue
+		}
+		out.WriteByte('?')
+		i = j
+	}
+	return out.String()
+}
+
+func isSQLIdentByte(ch byte) bool {
+	return ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
 }
 
 func dbQueryOperation(query string) string {

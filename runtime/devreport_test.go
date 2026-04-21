@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"syscall"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"pulse.dev/internal/devdash"
+	"pulse.dev/runtime/shared"
 )
 
 func TestDevReporterDisablesOnConnectionRefused(t *testing.T) {
@@ -45,4 +47,53 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
+}
+
+func TestTracedRoundTripperRedactsSensitiveURLAndError(t *testing.T) {
+	reporter := &devReporter{
+		appID: "app",
+		queue: make(chan devdash.ReportEnvelope, 4),
+	}
+	restoreReporter := setTestReporter(reporter)
+	defer restoreReporter()
+
+	state := &requestState{
+		request: shared.Request{
+			Service:  "users",
+			Endpoint: "ExchangeSession",
+		},
+		traceEnabled: true,
+		trace: &traceSpan{
+			traceID: "trace-1",
+			spanID:  "span-1",
+			isRoot:  true,
+		},
+	}
+	restoreState := enterState(state)
+	defer restoreState()
+
+	transport := &tracedRoundTripper{
+		reporter: reporter,
+		base: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, syscall.ECONNREFUSED
+		}),
+	}
+
+	req, err := http.NewRequestWithContext(withState(context.Background(), state), http.MethodGet, "https://user:pass@example.com/path?token=abc&x=1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = transport.RoundTrip(req)
+
+	start := <-reporter.queue
+	end := <-reporter.queue
+	startPayload := start.TraceEvent.Event["span_event"].(map[string]any)["http_call_start"].(map[string]any)
+	if got := startPayload["url"]; got != "https://user:%5Bredacted%5D@example.com/path?token=%5Bredacted%5D&x=1" {
+		t.Fatalf("redacted url = %#v", got)
+	}
+	endPayload := end.TraceEvent.Event["span_event"].(map[string]any)["http_call_end"].(map[string]any)
+	errPayload := endPayload["err"].(map[string]any)
+	if got := errPayload["msg"]; got != "connection refused" {
+		t.Fatalf("error msg = %#v", got)
+	}
 }

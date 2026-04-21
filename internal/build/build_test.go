@@ -372,6 +372,51 @@ func TestLoadCachedGraph(t *testing.T) {
 	}
 }
 
+func TestLoadCachedGraphRejectsOldBuildStateVersion(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	result.GraphFingerprint = "graph-1"
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	statePath := filepath.Join(result.Dir, buildStateFile)
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read build state: %v", err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatalf("decode build state: %v", err)
+	}
+	delete(state, "version")
+	data, err = json.Marshal(state)
+	if err != nil {
+		t.Fatalf("encode old build state: %v", err)
+	}
+	if err := os.WriteFile(statePath, data, 0o644); err != nil {
+		t.Fatalf("write old build state: %v", err)
+	}
+
+	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() error = %v", err)
+	}
+	if ok || cached != nil {
+		t.Fatalf("expected old build state to be rejected, got ok=%v cached=%#v", ok, cached)
+	}
+}
+
 func TestRefreshCachedWorkspaceResyncsMissingSourceFiles(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 
 	"pulse.dev/errs"
 	"pulse.dev/internal/devdash"
+	"pulse.dev/internal/redact"
 	"pulse.dev/runtime/shared"
 )
 
@@ -209,12 +211,24 @@ func shouldDisableDevReporting(err error) bool {
 	return errors.As(err, &opErr)
 }
 
-func startRequestTrace(state *requestState) {
-	if state == nil || state.trace != nil {
-		return
-	}
+func ReportPubSubSnapshot(topics any) {
 	reporter := activeReporter()
 	if reporter == nil {
+		return
+	}
+	data, err := json.Marshal(topics)
+	if err != nil {
+		return
+	}
+	reporter.enqueue(devdash.ReportEnvelope{
+		Type:   "pubsub",
+		AppID:  reporter.appID,
+		PubSub: data,
+	})
+}
+
+func startRequestTrace(state *requestState) {
+	if state == nil || state.trace != nil || (!state.logsEnabled && !state.traceEnabled) {
 		return
 	}
 	span := &traceSpan{
@@ -232,6 +246,10 @@ func startRequestTrace(state *requestState) {
 		state.request.Started = span.started
 	}
 	state.trace = span
+	reporter := activeReporter()
+	if reporter == nil || !state.traceEnabled {
+		return
+	}
 	reporter.enqueue(devdash.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
@@ -262,10 +280,6 @@ func finishRequestTrace(state *requestState, httpStatus int, payload any, err er
 	if state == nil || state.trace == nil {
 		return
 	}
-	reporter := activeReporter()
-	if reporter == nil {
-		return
-	}
 	span := state.trace
 	duration := time.Since(span.started)
 	if span.isRoot && err != nil {
@@ -273,6 +287,11 @@ func finishRequestTrace(state *requestState, httpStatus int, payload any, err er
 	}
 	if span.isRoot {
 		logRequestCompleted(state, duration, err)
+	}
+	reporter := activeReporter()
+	if reporter == nil || !state.traceEnabled {
+		state.trace = nil
+		return
 	}
 	endpointName := optionalString(span.endpoint)
 	reporter.enqueue(devdash.ReportEnvelope{
@@ -323,11 +342,7 @@ func finishRequestTrace(state *requestState, httpStatus int, payload any, err er
 
 func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(context.Context) (AuthInfo, error)) (AuthInfo, error) {
 	parent := stateFromContext(ctx)
-	if parent == nil || parent.trace == nil {
-		return invoke(ctx)
-	}
-	reporter := activeReporter()
-	if reporter == nil {
+	if parent == nil || parent.trace == nil || (!parent.logsEnabled && !parent.traceEnabled) {
 		return invoke(ctx)
 	}
 	child := &traceSpan{
@@ -347,71 +362,76 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 	defer restore()
 	logAuthHandlerStart(&clone, handler)
 
-	reporter.enqueue(devdash.ReportEnvelope{
-		Type:  "trace-event",
-		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
-			TraceID:   child.traceID,
-			SpanID:    child.spanID,
-			EventID:   reporter.nextEventID(),
-			EventTime: child.started,
-			Event: map[string]any{
-				"span_start": map[string]any{
-					"auth": map[string]any{
-						"service_name":  handler.Service,
-						"endpoint_name": parent.request.Endpoint,
+	reporter := activeReporter()
+	if reporter != nil && parent.traceEnabled {
+		reporter.enqueue(devdash.ReportEnvelope{
+			Type:  "trace-event",
+			AppID: reporter.appID,
+			TraceEvent: &devdash.TraceEvent{
+				TraceID:   child.traceID,
+				SpanID:    child.spanID,
+				EventID:   reporter.nextEventID(),
+				EventTime: child.started,
+				Event: map[string]any{
+					"span_start": map[string]any{
+						"auth": map[string]any{
+							"service_name":  handler.Service,
+							"endpoint_name": parent.request.Endpoint,
+						},
 					},
 				},
 			},
-		},
-	})
+		})
+	}
 
 	info, err := invoke(callCtx)
 	logAuthHandlerCompleted(&clone, handler, info, err, time.Since(child.started))
-	reporter.enqueue(devdash.ReportEnvelope{
-		Type:  "trace-event",
-		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
-			TraceID:   child.traceID,
-			SpanID:    child.spanID,
-			EventID:   reporter.nextEventID(),
-			EventTime: time.Now().UTC(),
-			Event: map[string]any{
-				"span_end": map[string]any{
-					"duration_nanos": uint64(time.Since(child.started)),
-					"status_code":    statusCodeName(err),
-					"auth": map[string]any{
-						"service_name":  handler.Service,
-						"endpoint_name": parent.request.Endpoint,
-						"uid":           info.UID,
+	if reporter != nil && parent.traceEnabled {
+		reporter.enqueue(devdash.ReportEnvelope{
+			Type:  "trace-event",
+			AppID: reporter.appID,
+			TraceEvent: &devdash.TraceEvent{
+				TraceID:   child.traceID,
+				SpanID:    child.spanID,
+				EventID:   reporter.nextEventID(),
+				EventTime: time.Now().UTC(),
+				Event: map[string]any{
+					"span_end": map[string]any{
+						"duration_nanos": uint64(time.Since(child.started)),
+						"status_code":    statusCodeName(err),
+						"auth": map[string]any{
+							"service_name":  handler.Service,
+							"endpoint_name": parent.request.Endpoint,
+							"uid":           info.UID,
+						},
+						"error": traceError(err),
 					},
-					"error": traceError(err),
 				},
 			},
-		},
-	})
-	reporter.enqueue(devdash.ReportEnvelope{
-		Type:  "trace-summary",
-		AppID: reporter.appID,
-		TraceSummary: &devdash.TraceSummary{
-			AppID:         reporter.appID,
-			TraceID:       child.traceID,
-			SpanID:        child.spanID,
-			Type:          child.spanType,
-			IsRoot:        false,
-			IsError:       err != nil,
-			StartedAt:     child.started,
-			DurationNanos: uint64(time.Since(child.started)),
-			ServiceName:   child.service,
-			EndpointName:  optionalString(child.endpoint),
-			ParentSpanID:  optionalString(child.parentSpanID),
-		},
-	})
+		})
+		reporter.enqueue(devdash.ReportEnvelope{
+			Type:  "trace-summary",
+			AppID: reporter.appID,
+			TraceSummary: &devdash.TraceSummary{
+				AppID:         reporter.appID,
+				TraceID:       child.traceID,
+				SpanID:        child.spanID,
+				Type:          child.spanType,
+				IsRoot:        false,
+				IsError:       err != nil,
+				StartedAt:     child.started,
+				DurationNanos: uint64(time.Since(child.started)),
+				ServiceName:   child.service,
+				EndpointName:  optionalString(child.endpoint),
+				ParentSpanID:  optionalString(child.parentSpanID),
+			},
+		})
+	}
 	return info, err
 }
 
 func startInternalCallTrace(parent *requestState, child *requestState) {
-	if parent == nil || parent.trace == nil || child == nil {
+	if parent == nil || parent.trace == nil || child == nil || (!parent.logsEnabled && !parent.traceEnabled) || (!child.logsEnabled && !child.traceEnabled) {
 		return
 	}
 	child.trace = &traceSpan{
@@ -425,7 +445,7 @@ func startInternalCallTrace(parent *requestState, child *requestState) {
 		requestType:  child.request.Type,
 	}
 	reporter := activeReporter()
-	if reporter == nil {
+	if reporter == nil || !child.traceEnabled {
 		return
 	}
 	reporter.enqueue(devdash.ReportEnvelope{
@@ -455,7 +475,7 @@ func startInternalCallTrace(parent *requestState, child *requestState) {
 
 func recordMiddlewareEvent(name, phase string, err error) {
 	state := currentState()
-	if state == nil || state.trace == nil {
+	if state == nil || state.trace == nil || !state.traceEnabled {
 		return
 	}
 	reporter := activeReporter()
@@ -621,7 +641,7 @@ func traceError(err error) any {
 		return nil
 	}
 	return map[string]any{
-		"msg": err.Error(),
+		"msg": redact.String(err.Error()),
 	}
 }
 
@@ -634,14 +654,7 @@ func tracePathParams(params shared.PathParams) []string {
 }
 
 func flattenHeaders(headers http.Header) map[string]string {
-	if len(headers) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(headers))
-	for key, values := range headers {
-		out[key] = stringsJoin(values, ", ")
-	}
-	return out
+	return redact.Headers(headers)
 }
 
 func traceField(key string, value any) map[string]any {
@@ -678,6 +691,9 @@ func (h *reportingHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *reportingHandler) Handle(ctx context.Context, record slog.Record) error {
+	if state := currentState(); state != nil && !state.logsEnabled {
+		return nil
+	}
 	if err := h.base.Handle(ctx, record); err != nil {
 		return err
 	}
@@ -686,7 +702,11 @@ func (h *reportingHandler) Handle(ctx context.Context, record slog.Record) error
 	}
 	attrs := make(map[string]any)
 	record.Attrs(func(attr slog.Attr) bool {
-		attrs[attr.Key] = attr.Value.Any()
+		value := redactedSlogValue(attr.Key, attr.Value.Resolve())
+		attrs[attr.Key] = value.Any()
+		if value.Kind() != slog.KindAny {
+			attrs[attr.Key] = consoleValueString(value)
+		}
 		return true
 	})
 	traceID := ""
@@ -732,7 +752,7 @@ func (t *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	state := currentState()
 	var traceID, spanID string
 	var start time.Time
-	if state != nil && state.trace != nil && t.reporter != nil {
+	if state != nil && state.trace != nil && state.traceEnabled && t.reporter != nil {
 		traceID = state.trace.traceID
 		spanID = state.trace.spanID
 		start = time.Now().UTC()
@@ -748,7 +768,7 @@ func (t *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 					"span_event": map[string]any{
 						"http_call_start": map[string]any{
 							"method": req.Method,
-							"url":    req.URL.String(),
+							"url":    redactURL(req.URL),
 						},
 					},
 				},
@@ -762,7 +782,7 @@ func (t *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 			end["status_code"] = resp.StatusCode
 		}
 		if err != nil {
-			end["err"] = map[string]any{"msg": err.Error()}
+			end["err"] = map[string]any{"msg": redact.String(err.Error())}
 		}
 		t.reporter.enqueue(devdash.ReportEnvelope{
 			Type:  "trace-event",
@@ -783,11 +803,20 @@ func (t *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	return resp, err
 }
 
+func redactURL(value *url.URL) string {
+	if value == nil {
+		return ""
+	}
+	if redacted, ok := redact.URL(value.String()); ok {
+		return redacted
+	}
+	return value.String()
+}
+
 // Small wrappers keep this file testable without making os/strings/bytes direct globals in tests.
 var (
 	bytesReader = func(data []byte) io.Reader { return bytes.NewReader(data) }
 	osGetenv    = os.Getenv
 	osStderr    = func() io.Writer { return os.Stderr }
-	stringsJoin = strings.Join
 	stringsTrim = strings.TrimSpace
 )

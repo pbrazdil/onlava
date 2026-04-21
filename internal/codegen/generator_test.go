@@ -86,6 +86,45 @@ func Hook(w http.ResponseWriter, req *http.Request) {}
 	}
 }
 
+func TestGeneratePopulatesSecretsBeforePackageVarInitializers(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/earlysecrets\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"earlysecrets"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+var secrets struct {
+	TestQueueConcurrency string
+}
+
+var maxConcurrency = secrets.TestQueueConcurrency
+
+//pulse:api public
+func Hello(ctx context.Context) error { return nil }
+`)
+
+	app, err := parse.App(dir, "earlysecrets")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["svc/00_pulse_config.gen.go"])
+	for _, want := range []string{
+		`var pulseInternalDotEnvInitialized = pulseruntime.MustLoadDotEnvIntoEnv()`,
+		`var pulseInternalSecretsInitialized = func() bool {`,
+		`pulseruntime.MustPopulateSecrets(&secrets)`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected early secrets file to contain %q, got:\n%s", want, got)
+		}
+	}
+}
+
 func TestGenerateRegistersMiddlewareAndEndpointLinks(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/middlewaregen\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
@@ -157,6 +196,46 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 	}
 	if !strings.Contains(got, "_, err := pulseInternalGetService()") {
 		t.Fatalf("expected service initializer to call generated getter, got:\n%s", got)
+	}
+}
+
+func TestGenerateRegistersServiceShutdownAndMockLookup(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/serviceshutdown\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"serviceshutdown"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:service
+type Service struct{}
+
+func initService() (*Service, error) { return &Service{}, nil }
+
+func (s *Service) Shutdown(force context.Context) {}
+
+//pulse:api public
+func (s *Service) Hello(ctx context.Context) error { return nil }
+`)
+
+	app, err := parse.App(dir, "serviceshutdown")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["svc/pulse.gen.go"])
+	for _, want := range []string{
+		`pulseruntime.LookupServiceMock(pulseruntime.TypeOf[*Service]())`,
+		`pulseruntime.MarkServiceInitialized("svc", func(force context.Context) { pulseInternalServiceService.svc.Shutdown(force) })`,
+		`pulseruntime.RegisterEndpointFunc(Hello, "svc", "Hello")`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected generated file to contain %q, got:\n%s", want, got)
+		}
 	}
 }
 
@@ -293,6 +372,48 @@ func Run(ctx context.Context) error { return nil }
 	got := string(out.Generated["pulse_internal_main/main.go"])
 	if !strings.Contains(got, "EnableDBStudio: true") {
 		t.Fatalf("expected generated main to enable db studio, got:\n%s", got)
+	}
+}
+
+func TestGenerateMainIncludesObservabilityFiltersWhenConfigured(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/obsapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"obsapp"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:api public
+func Run(ctx context.Context) error { return nil }
+`)
+
+	app, err := parse.App(dir, "obsapp")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.GenerateWithConfig(app, appcfg.Config{
+		Observability: appcfg.ObservabilityConfig{
+			Logs: appcfg.EndpointFilterConfig{
+				ExcludeEndpoints: []string{"sync.*"},
+			},
+			Tracing: appcfg.EndpointFilterConfig{
+				IncludeEndpoints: []string{"tenants.Config"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["pulse_internal_main/main.go"])
+	for _, want := range []string{
+		`Observability: pulseruntime.ObservabilityConfig{`,
+		`Logs: pulseruntime.EndpointFilterConfig{ExcludeEndpoints: []string{"sync.*"}}`,
+		`Tracing: pulseruntime.EndpointFilterConfig{IncludeEndpoints: []string{"tenants.Config"}}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected generated main to contain %q, got:\n%s", want, got)
+		}
 	}
 }
 

@@ -9,6 +9,8 @@
 
 # Local dependencies and caches
 node_modules/
+/ui/node_modules/
+/dbstudio/node_modules/
 .direnv/
 /dbstudio/dist/
 /dbstudio/reference/pretty/

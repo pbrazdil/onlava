@@ -210,8 +210,7 @@ func buildUI(ctx context.Context, uiRoot string) error {
 	if err != nil {
 		return fmt.Errorf("UI build requires bun: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, bunPath, "run", "build")
-	configureChildProcess(cmd)
+	cmd := commandTreeContext(ctx, bunPath, "run", "build")
 	cmd.Dir = uiRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -233,8 +232,7 @@ func installUIDeps(ctx context.Context, uiRoot string) error {
 	if err != nil {
 		return fmt.Errorf("UI install requires bun: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, bunPath, "install")
-	configureChildProcess(cmd)
+	cmd := commandTreeContext(ctx, bunPath, "install")
 	cmd.Dir = uiRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {

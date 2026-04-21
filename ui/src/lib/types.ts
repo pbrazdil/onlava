@@ -22,6 +22,7 @@ export interface DashboardMeta {
   svcs: ServiceMeta[];
   cron_jobs: CronJob[];
   middleware: MiddlewareMeta[];
+  pubsub_topics?: unknown[];
   sql_databases: DatabaseMeta[];
   auth_handler?: AuthHandlerMeta;
 }
@@ -137,6 +138,48 @@ export interface ProcessOutput {
   stream: string;
   output: string;
   created_at: string;
+}
+
+export interface PubSubSnapshot {
+  app_id: string;
+  topics: PubSubTopic[];
+  updated_at?: string;
+  period?: string;
+  history?: PubSubHistoryPoint[];
+}
+
+export interface PubSubHistoryPoint {
+  topics: PubSubTopic[];
+  updated_at?: string;
+}
+
+export interface PubSubTopic {
+  name: string;
+  stream?: string;
+  subject?: string;
+  delivery?: string;
+  ordering_key?: string;
+  published: number;
+  pending: number;
+  subscriptions: PubSubSubscription[];
+}
+
+export interface PubSubSubscription {
+  name: string;
+  service_name?: string;
+  max_workers: number;
+  max_ack_pending?: number;
+  ack_deadline_ms?: number;
+  message_retention_s?: number;
+  pending: number;
+  ack_pending: number;
+  redelivered: number;
+  picked_up: number;
+  completed: number;
+  failed: number;
+  dead_lettered: number;
+  in_flight: number;
+  avg_duration_ms: number;
 }
 
 export interface DashboardNotification {

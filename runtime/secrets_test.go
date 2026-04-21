@@ -53,6 +53,38 @@ func TestPopulateSecretsUsesEnvironmentOverrideAndSnakeCase(t *testing.T) {
 	}
 }
 
+func TestLoadDotEnvIntoEnvAddsMissingValuesWithoutOverridingEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	writeRuntimeFile(t, dir, ".env", "Present=from-file\nMissing=from-file\n")
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldwd)
+		resetSecretsEnvCache()
+	})
+	t.Setenv("Present", "from-env")
+	t.Setenv("Missing", "")
+	if err := os.Unsetenv("Missing"); err != nil {
+		t.Fatal(err)
+	}
+	resetSecretsEnvCache()
+
+	if err := LoadDotEnvIntoEnv(); err != nil {
+		t.Fatalf("LoadDotEnvIntoEnv: %v", err)
+	}
+	if got := os.Getenv("Present"); got != "from-env" {
+		t.Fatalf("Present = %q, want from-env", got)
+	}
+	if got := os.Getenv("Missing"); got != "from-file" {
+		t.Fatalf("Missing = %q, want from-file", got)
+	}
+}
+
 func TestPopulateSecretsRejectsNonStringFields(t *testing.T) {
 	resetSecretsEnvCache()
 

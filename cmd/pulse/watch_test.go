@@ -26,14 +26,33 @@ func TestScanWatchedFilesIncludesWatchedSourceFiles(t *testing.T) {
 		t.Fatalf("scanWatchedFiles returned error: %v", err)
 	}
 
-	for _, want := range []string{"svc/api.go", "svc/native.cpp", "svc/native.h"} {
+	for _, want := range []string{"pulse.app", "svc/api.go", "svc/native.cpp", "svc/native.h"} {
 		if _, ok := snapshot[want]; !ok {
 			t.Fatalf("snapshot missing %q: %+v", want, snapshot)
 		}
 	}
-	for _, ignored := range []string{"pulse.app", "go.mod", ".env", "README.md", ".git/config", "node_modules/pkg/index.js", "svc/encore.gen.go"} {
+	for _, ignored := range []string{"go.mod", ".env", "README.md", ".git/config", "node_modules/pkg/index.js", "svc/encore.gen.go"} {
 		if _, ok := snapshot[ignored]; ok {
 			t.Fatalf("snapshot unexpectedly included %q: %+v", ignored, snapshot)
+		}
+	}
+}
+
+func TestShouldIgnoreWatchPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "svc/api.go", want: false},
+		{path: "svc/native.cpp", want: false},
+		{path: ".git/config", want: true},
+		{path: "node_modules/pkg/index.js", want: true},
+		{path: "pulse_internal_main/main.go", want: true},
+		{path: "svc/.cache/tmp.go", want: true},
+	}
+	for _, tt := range tests {
+		if got := shouldIgnoreWatchPath(tt.path); got != tt.want {
+			t.Fatalf("shouldIgnoreWatchPath(%q) = %v, want %v", tt.path, got, tt.want)
 		}
 	}
 }

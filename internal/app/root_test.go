@@ -8,7 +8,7 @@ import (
 
 func TestDiscoverRootAcceptsLegacyID(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pulse.app"), []byte(`{"id":"legacy-app","proxy":{"workspace":"onlv","api_host":"api.onlv.localhost","console_host":"console.onlv.localhost","mcp_host":"mcp.onlv.localhost","frontend_host":"pulse.onlv.localhost"}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "pulse.app"), []byte(`{"id":"legacy-app","proxy":{"workspace":"onlv","api_host":"api.onlv.localhost","console_host":"console.onlv.localhost","mcp_host":"mcp.onlv.localhost","frontend_host":"pulse.onlv.localhost"},"observability":{"logs":{"exclude_endpoints":["sync.*"]},"tracing":{"include_endpoints":["tenants.Config"]}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -27,6 +27,12 @@ func TestDiscoverRootAcceptsLegacyID(t *testing.T) {
 	}
 	if cfg.Proxy.APIHost != "api.onlv.localhost" {
 		t.Fatalf("cfg.Proxy.APIHost = %q, want %q", cfg.Proxy.APIHost, "api.onlv.localhost")
+	}
+	if len(cfg.Observability.Logs.ExcludeEndpoints) != 1 || cfg.Observability.Logs.ExcludeEndpoints[0] != "sync.*" {
+		t.Fatalf("cfg.Observability.Logs.ExcludeEndpoints = %v", cfg.Observability.Logs.ExcludeEndpoints)
+	}
+	if len(cfg.Observability.Tracing.IncludeEndpoints) != 1 || cfg.Observability.Tracing.IncludeEndpoints[0] != "tenants.Config" {
+		t.Fatalf("cfg.Observability.Tracing.IncludeEndpoints = %v", cfg.Observability.Tracing.IncludeEndpoints)
 	}
 }
 

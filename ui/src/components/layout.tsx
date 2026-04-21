@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: "/$appId/envs/local/api", label: "Service Catalog" },
   { to: "/$appId/envs/local/traces", label: "Traces" },
   { to: "/$appId/db", label: "DB Explorer" },
+  { to: "/$appId/pubsub", label: "Pub/Sub" },
   { to: "/$appId/cron", label: "Cron" },
 ] as const;
 
@@ -18,6 +19,7 @@ const REQUESTS_NAV_ITEMS = [
   { kind: "ghost", label: "Infra", icon: IconLayers },
   { kind: "ghost", label: "Flow", icon: IconFlow },
   { kind: "route", to: "/$appId/db", label: "DB Explorer", icon: IconDatabase },
+  { kind: "route", to: "/$appId/pubsub", label: "Pub/Sub", icon: IconFlow },
   { kind: "ghost", label: "Snippets", icon: IconSnippets },
 ] as const;
 

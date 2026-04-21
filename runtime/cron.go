@@ -214,15 +214,18 @@ func withCronInvocation(ctx context.Context, job *CronJob, scheduledAt time.Time
 	headers := make(http.Header)
 	headers.Set(pulseCronExecutionHeader, executionID)
 	headers.Set(encoreCronExecutionHeader, executionID)
+	request := shared.Request{
+		Type:               shared.APICall,
+		Started:            scheduledAt,
+		Method:             "CRON",
+		Headers:            headers,
+		CronIdempotencyKey: executionID,
+	}
 	return withState(ctx, &requestState{
-		started: scheduledAt,
-		request: shared.Request{
-			Type:               shared.APICall,
-			Started:            scheduledAt,
-			Method:             "CRON",
-			Headers:            headers,
-			CronIdempotencyKey: executionID,
-		},
+		started:      scheduledAt,
+		request:      request,
+		logsEnabled:  true,
+		traceEnabled: true,
 	})
 }
 

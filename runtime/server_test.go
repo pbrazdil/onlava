@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -92,6 +93,53 @@ func TestPlatformStatsEndpoint(t *testing.T) {
 	}
 	if body.Profiles.CPU != "https://api.onlv.localhost/debug/pprof/profile?seconds=30" {
 		t.Fatalf("cpu profile URL = %q", body.Profiles.CPU)
+	}
+}
+
+func TestDevPubSubClearEndpointRequiresTokenAndCallsRuntime(t *testing.T) {
+	prevGetenv := osGetenv
+	prevClearer := localPubSubClearer
+	defer func() {
+		osGetenv = prevGetenv
+		localPubSubClearer = prevClearer
+	}()
+	osGetenv = func(key string) string {
+		if key == "PULSE_DEV_REPORT_TOKEN" {
+			return "secret"
+		}
+		return ""
+	}
+	called := false
+	localPubSubClearer = func(context.Context) (any, error) {
+		called = true
+		return []map[string]any{{"name": "events"}}, nil
+	}
+	SetAppConfig(AppConfig{Name: "onlvnext-o5o2", ListenAddr: "127.0.0.1:4000"})
+
+	server, err := newServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/__pulse/pubsub/clear", nil)
+	server.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unauthorized status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if called {
+		t.Fatal("clearer called without token")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/__pulse/pubsub/clear", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	server.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("authorized status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !called {
+		t.Fatal("clearer not called")
 	}
 }
 

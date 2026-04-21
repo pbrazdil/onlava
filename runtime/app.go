@@ -9,14 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
-	"sync"
 	"syscall"
 	"time"
-
-	"pulse.dev/internal/dbstudio"
-	"pulse.dev/internal/localproxy"
-	"pulse.dev/pubsub"
 )
 
 func ListenAddrFromEnv() string {
@@ -47,7 +41,7 @@ func Main(cfg AppConfig) error {
 	if err := InitializeServices(); err != nil {
 		return err
 	}
-	stopPubSub, err := pubsub.StartLocalRuntime(runCtx, pubsub.LocalRuntimeConfig{AppID: cfg.Name})
+	stopPubSub, err := startLocalPubSubRuntime(runCtx, cfg)
 	if err != nil {
 		return err
 	}
@@ -58,141 +52,98 @@ func Main(cfg AppConfig) error {
 		errCh <- server.ListenAndServe()
 	}()
 
-	var routes localproxy.Routes
-	dbStudioURL := ""
-	var dbStudioMu sync.Mutex
-	var dbStudio *dbstudio.Instance
 	if !launchedBySupervisor() {
-		proxy, err := startLocalHTTPSProxy(cfg)
-		if err != nil {
-			slog.Warn("local HTTPS proxy unavailable", "err", err)
-		} else if proxy != nil {
-			defer func() {
-				_ = proxy.Close()
-			}()
-			routes = proxy.Routes()
-			if routes.APIURL != "" {
-				SetPublicBaseURL(routes.APIURL)
-			}
-		}
-		if cfg.EnableDBStudio {
-			root := appRootFromEnvOrCWD()
-			studioCfg, ok, err := dbstudio.Discover(root)
+		info := StandaloneDevInfo{}
+		if standaloneDevStarter != nil {
+			session, started, err := standaloneDevStarter(runCtx, cfg)
 			if err != nil {
-				slog.Warn("db studio unavailable", "err", err)
-			} else if ok {
-				dbStudioURL = dbstudio.DefaultURL(dbstudio.DefaultPort)
-				go func() {
-					inst, startErr := dbstudio.Start(runCtx, dbstudio.Options{
-						AppRoot: root,
-						AppID:   cfg.Name,
-						Config:  studioCfg,
-						Port:    dbstudio.DefaultPort,
-						Stdout:  osStdout(),
-						Stderr:  osStderr(),
-					})
-					if startErr != nil {
-						slog.Warn("db studio unavailable", "err", startErr)
-						return
-					}
-					if inst == nil {
-						return
-					}
-					dbStudioMu.Lock()
-					dbStudio = inst
-					dbStudioMu.Unlock()
+				slog.Warn("standalone dev runtime unavailable", "err", err)
+			}
+			if session != nil {
+				defer func() {
+					_ = session.Close()
 				}()
 			}
+			info = started
+			if info.APIURL != "" {
+				SetPublicBaseURL(info.APIURL)
+			}
 		}
-		defer func() {
-			dbStudioMu.Lock()
-			inst := dbStudio
-			dbStudioMu.Unlock()
-			_ = inst.Close()
-		}()
-		printRuntimeBanner(osStdout(), cfg.ListenAddr, routes, dbStudioURL)
+		printRuntimeBanner(osStdout(), cfg.ListenAddr, info)
 	}
 
 	logTrace(context.Background(), fmt.Sprintf("registered %d API endpoints", len(listEndpoints())))
 	logTrace(context.Background(), "listening for incoming HTTP requests")
 
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
 	go func() {
 		<-sigCtx.Done()
+		stopSignals()
 		cancelRun()
 	}()
 
 	select {
 	case <-runCtx.Done():
 		cancelRun()
-		pubsubCtx, pubsubCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer pubsubCancel()
-		if err := stopPubSub(pubsubCtx); err != nil && !errors.Is(err, context.Canceled) {
-			return err
-		}
-		cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cronCancel()
-		if err := scheduler.Stop(cronCtx); err != nil && !errors.Is(err, context.Canceled) {
-			return err
-		}
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return server.Shutdown(shutdownCtx)
+		return shutdownRuntime(server, stopPubSub, scheduler)
 	case err := <-errCh:
 		cancelRun()
-		pubsubCtx, pubsubCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer pubsubCancel()
-		if stopErr := stopPubSub(pubsubCtx); stopErr != nil && !errors.Is(stopErr, context.Canceled) {
-			return stopErr
-		}
-		cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cronCancel()
-		if stopErr := scheduler.Stop(cronCtx); stopErr != nil && !errors.Is(stopErr, context.Canceled) {
-			return stopErr
-		}
+		stopErr := shutdownRuntime(server, stopPubSub, scheduler)
 		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+			return stopErr
 		}
-		return err
+		return errorsJoin(err, stopErr)
 	}
+}
+
+func shutdownRuntime(server *http.Server, stopPubSub func(context.Context) error, scheduler *cronScheduler) error {
+	var shutdownErrs []error
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if server != nil {
+		if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, context.Canceled) {
+			shutdownErrs = append(shutdownErrs, err)
+		}
+	}
+
+	pubsubCtx, pubsubCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer pubsubCancel()
+	if stopPubSub != nil {
+		if err := stopPubSub(pubsubCtx); err != nil && !errors.Is(err, context.Canceled) {
+			shutdownErrs = append(shutdownErrs, err)
+		}
+	}
+
+	cronCtx, cronCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cronCancel()
+	if scheduler != nil {
+		if err := scheduler.Stop(cronCtx); err != nil && !errors.Is(err, context.Canceled) {
+			shutdownErrs = append(shutdownErrs, err)
+		}
+	}
+
+	serviceCtx, serviceCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer serviceCancel()
+	if err := ShutdownServices(serviceCtx); err != nil && !errors.Is(err, context.Canceled) {
+		shutdownErrs = append(shutdownErrs, err)
+	}
+
+	return errorsJoin(shutdownErrs...)
 }
 
 func launchedBySupervisor() bool {
 	return os.Getenv("PULSE_DEV_SUPERVISOR") == "1"
 }
 
-func startLocalHTTPSProxy(cfg AppConfig) (*localproxy.Proxy, error) {
-	if os.Getenv("PULSE_LOCAL_PROXY") == "0" {
-		return nil, nil
-	}
-	workspace := cfg.Workspace
-	if workspace == "" {
-		workspace = localproxy.DiscoverWorkspace(mustGetwd(), cfg.Name)
-	}
-	proxyCfg := localproxy.BuildConfig(localproxy.Config{
-		Workspace:         workspace,
-		APIHost:           cfg.ProxyAPIHost,
-		ConsoleHost:       cfg.ProxyConsoleHost,
-		MCPHost:           cfg.ProxyMCPHost,
-		FrontendHost:      cfg.ProxyFrontendHost,
-		APIUpstream:       cfg.ListenAddr,
-		DashboardUpstream: strings.TrimSpace(os.Getenv("PULSE_DEV_DASHBOARD_ADDR")),
-		FrontendUpstream:  localproxy.DiscoverFrontendUpstream(mustGetwd()),
-	})
-	if proxyCfg.Workspace == "" && proxyCfg.APIHost == "" {
-		return nil, nil
-	}
-	return localproxy.Start(proxyCfg)
-}
-
-func printRuntimeBanner(out io.Writer, listenAddr string, routes localproxy.Routes, dbStudioURL string) {
+func printRuntimeBanner(out io.Writer, listenAddr string, info StandaloneDevInfo) {
 	if out == nil {
 		return
 	}
 	apiURL := "http://" + listenAddr
-	if routes.APIURL != "" {
-		apiURL = routes.APIURL
+	if info.APIURL != "" {
+		apiURL = info.APIURL
 	}
 
 	lines := []string{
@@ -201,17 +152,17 @@ func printRuntimeBanner(out io.Writer, listenAddr string, routes localproxy.Rout
 		"",
 		fmt.Sprintf("  %-26s  %s", "Your API is running at:", apiURL),
 	}
-	if routes.ConsoleURL != "" {
-		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Development Dashboard URL:", routes.ConsoleURL))
+	if info.ConsoleURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Development Dashboard URL:", info.ConsoleURL))
 	}
-	if routes.MCPBaseURL != "" {
-		lines = append(lines, fmt.Sprintf("  %-26s  %s", "MCP SSE URL:", routes.MCPBaseURL+"/sse?appID="+Meta().AppID))
+	if info.MCPBaseURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "MCP SSE URL:", info.MCPBaseURL+"/sse?appID="+Meta().AppID))
 	}
-	if routes.FrontendURL != "" {
-		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Pulse App URL:", routes.FrontendURL))
+	if info.FrontendURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Pulse App URL:", info.FrontendURL))
 	}
-	if dbStudioURL != "" {
-		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Drizzle Studio URL:", dbStudioURL))
+	if info.DBStudioURL != "" {
+		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Drizzle Studio URL:", info.DBStudioURL))
 	}
 	lines = append(lines, "")
 	for _, line := range lines {
@@ -219,16 +170,4 @@ func printRuntimeBanner(out io.Writer, listenAddr string, routes localproxy.Rout
 	}
 }
 
-func mustGetwd() string {
-	wd, _ := os.Getwd()
-	return wd
-}
-
 var osStdout = func() io.Writer { return os.Stdout }
-
-func appRootFromEnvOrCWD() string {
-	if root := strings.TrimSpace(os.Getenv("PULSE_APP_ROOT")); root != "" {
-		return root
-	}
-	return mustGetwd()
-}

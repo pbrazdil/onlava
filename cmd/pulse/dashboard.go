@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -35,6 +34,7 @@ var dashboardUpgrader = websocket.Upgrader{
 type dashboardServer struct {
 	supervisor *devSupervisor
 	http       *http.Server
+	state      dashboardRunState
 
 	mu          sync.Mutex
 	clients     map[*dashboardClient]struct{}
@@ -46,6 +46,7 @@ func newDashboardServer(supervisor *devSupervisor, assetsDir string) *dashboardS
 	assets, _ := dashboardAssetFS(assetsDir)
 	s := &dashboardServer{
 		supervisor:  supervisor,
+		state:       newDashboardRunState(supervisor.root, devdash.ListenAddr()),
 		clients:     make(map[*dashboardClient]struct{}),
 		mcpSessions: make(map[string]*mcpSession),
 		assets:      assets,
@@ -67,12 +68,16 @@ func newDashboardServer(supervisor *devSupervisor, assetsDir string) *dashboardS
 
 func (s *dashboardServer) Start(ctx context.Context) error {
 	addr := devdash.ListenAddr()
-	if err := ensureDashboardPortAvailable(addr); err != nil {
+	if err := ensureDashboardPortAvailable(addr, s.state); err != nil {
 		return fmt.Errorf("pulse dashboard failed to listen on %s: %w", addr, err)
 	}
 	ln, err := netListen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("pulse dashboard failed to listen on %s: %w", addr, err)
+	}
+	if err := s.state.write(); err != nil {
+		_ = ln.Close()
+		return fmt.Errorf("pulse dashboard failed to persist run state: %w", err)
 	}
 	go func() {
 		<-ctx.Done()
@@ -84,37 +89,6 @@ func (s *dashboardServer) Start(ctx context.Context) error {
 		}
 	}()
 	return nil
-}
-
-func ensureDashboardPortAvailable(addr string) error {
-	if err := portAvailable(addr); err == nil {
-		return nil
-	}
-	if addr != devdash.DashboardAddr {
-		return portAvailable(addr)
-	}
-	pid, ok := findListeningPID(addr)
-	if !ok {
-		return portAvailable(addr)
-	}
-	info, ok := inspectProcess(pid)
-	if !ok {
-		return portAvailable(addr)
-	}
-	if !looksLikePulseDashboardProcess(info) {
-		return portAvailable(addr)
-	}
-	if err := stopProcess(pid); err != nil {
-		return err
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if err := portAvailable(addr); err == nil {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return portAvailable(addr)
 }
 
 type procInfo struct {
@@ -179,7 +153,7 @@ func stopProcess(pid int) error {
 	if err != nil {
 		return err
 	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+	if err := proc.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
 	}
 	deadline := time.Now().Add(2 * time.Second)
@@ -199,7 +173,11 @@ func (s *dashboardServer) Close() error {
 	if s == nil || s.http == nil {
 		return nil
 	}
-	return s.http.Close()
+	err := s.http.Close()
+	if stateErr := s.state.remove(); stateErr != nil {
+		return errors.Join(err, stateErr)
+	}
+	return err
 }
 
 func (s *dashboardServer) handleRoot(w http.ResponseWriter, req *http.Request) {
@@ -374,6 +352,57 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 			params.AppID = s.supervisor.activeAppID()
 		}
 		return s.supervisor.store.ListProcessOutput(ctx, params.AppID, params.Limit)
+	case "pubsub/status":
+		var params struct {
+			AppID  string `json:"app_id"`
+			Period string `json:"period"`
+		}
+		_ = json.Unmarshal(raw, &params)
+		if params.AppID == "" {
+			params.AppID = s.supervisor.activeAppID()
+		}
+		snapshot, err := s.supervisor.store.GetPubSubSnapshot(ctx, params.AppID)
+		if err != nil {
+			return nil, err
+		}
+		var updated any
+		if !snapshot.UpdatedAt.IsZero() {
+			updated = snapshot.UpdatedAt
+		}
+		period := pubSubHistoryPeriod(params.Period)
+		history, err := s.supervisor.store.ListPubSubSnapshots(ctx, params.AppID, time.Now().UTC().Add(-period))
+		if err != nil {
+			return nil, err
+		}
+		historyItems := make([]map[string]any, 0, len(history)+1)
+		for _, item := range history {
+			historyItems = append(historyItems, map[string]any{
+				"topics":     json.RawMessage(item.Topics),
+				"updated_at": item.UpdatedAt,
+			})
+		}
+		if len(historyItems) == 0 && len(snapshot.Topics) > 0 {
+			historyItems = append(historyItems, map[string]any{
+				"topics":     json.RawMessage(snapshot.Topics),
+				"updated_at": updated,
+			})
+		}
+		return map[string]any{
+			"app_id":     snapshot.AppID,
+			"topics":     json.RawMessage(snapshot.Topics),
+			"updated_at": updated,
+			"period":     period.String(),
+			"history":    historyItems,
+		}, nil
+	case "pubsub/clear":
+		var params struct {
+			AppID string `json:"app_id"`
+		}
+		_ = json.Unmarshal(raw, &params)
+		if params.AppID == "" {
+			params.AppID = s.supervisor.activeAppID()
+		}
+		return s.clearPubSub(ctx, params.AppID)
 	case "traces/clear":
 		var params struct {
 			AppID string `json:"app_id"`
@@ -520,6 +549,23 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 			report.LogEvent.AppID = report.AppID
 			_ = s.supervisor.store.WriteLogEvent(req.Context(), report.LogEvent)
 		}
+	case "pubsub":
+		if len(report.PubSub) > 0 {
+			now := time.Now().UTC()
+			_ = s.supervisor.store.UpsertPubSubSnapshot(req.Context(), devdash.PubSubSnapshot{
+				AppID:     report.AppID,
+				Topics:    report.PubSub,
+				UpdatedAt: now,
+			})
+			s.notify(&devdash.Notification{
+				Method: "pubsub/update",
+				Params: map[string]any{
+					"app_id":     report.AppID,
+					"topics":     json.RawMessage(report.PubSub),
+					"updated_at": now,
+				},
+			})
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -570,6 +616,72 @@ func (s *dashboardServer) removeClient(client *dashboardClient) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.clients, client)
+}
+
+func (s *dashboardServer) clearPubSub(ctx context.Context, appID string) (map[string]any, error) {
+	status, err := s.supervisor.statusFor(ctx, firstNonEmpty(appID, s.supervisor.activeAppID()))
+	if err != nil {
+		return nil, err
+	}
+	if !status.Running {
+		return nil, fmt.Errorf("app not running")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+status.Addr+"/__pulse/pubsub/clear", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.supervisor.reportToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("clear pubsub queue failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var out struct {
+		AppID     string          `json:"app_id"`
+		Topics    json.RawMessage `json:"topics"`
+		UpdatedAt time.Time       `json:"updated_at"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	if out.AppID == "" {
+		out.AppID = status.AppID
+	}
+	if len(out.Topics) == 0 {
+		out.Topics = json.RawMessage(`[]`)
+	}
+	if out.UpdatedAt.IsZero() {
+		out.UpdatedAt = time.Now().UTC()
+	}
+	snapshot := devdash.PubSubSnapshot{
+		AppID:     out.AppID,
+		Topics:    out.Topics,
+		UpdatedAt: out.UpdatedAt,
+	}
+	if err := s.supervisor.store.UpsertPubSubSnapshot(ctx, snapshot); err != nil {
+		return nil, err
+	}
+	s.notify(&devdash.Notification{
+		Method: "pubsub/update",
+		Params: map[string]any{
+			"app_id":     snapshot.AppID,
+			"topics":     json.RawMessage(snapshot.Topics),
+			"updated_at": snapshot.UpdatedAt,
+		},
+	})
+	return map[string]any{
+		"app_id":     snapshot.AppID,
+		"topics":     json.RawMessage(snapshot.Topics),
+		"updated_at": snapshot.UpdatedAt,
+		"history": []map[string]any{{
+			"topics":     json.RawMessage(snapshot.Topics),
+			"updated_at": snapshot.UpdatedAt,
+		}},
+	}, nil
 }
 
 func (s *dashboardServer) apiCall(ctx context.Context, params devdash.APICallRequest) (map[string]any, error) {
@@ -936,6 +1048,23 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func pubSubHistoryPeriod(value string) time.Duration {
+	switch strings.TrimSpace(value) {
+	case "5m":
+		return 5 * time.Minute
+	case "15m":
+		return 15 * time.Minute
+	case "1h":
+		return time.Hour
+	case "6h":
+		return 6 * time.Hour
+	case "24h":
+		return 24 * time.Hour
+	default:
+		return 15 * time.Minute
+	}
 }
 
 var netListen = func(network, address string) (net.Listener, error) {

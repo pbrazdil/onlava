@@ -131,6 +131,19 @@ func (s *Store) migrate(ctx context.Context) error {
 			updated_at text not null,
 			primary key (app_id, id)
 		)`,
+		`create table if not exists pubsub_snapshots (
+			app_id text primary key,
+			snapshot_json text not null default '{}',
+			updated_at text not null
+		)`,
+		`create table if not exists pubsub_snapshot_history (
+			id integer primary key autoincrement,
+			app_id text not null,
+			snapshot_json text not null default '{}',
+			created_at text not null
+		)`,
+		`create index if not exists idx_pubsub_snapshot_history_app_created
+			on pubsub_snapshot_history (app_id, created_at)`,
 	}
 
 	for _, stmt := range stmts {
@@ -139,6 +152,101 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) UpsertPubSubSnapshot(ctx context.Context, snapshot PubSubSnapshot) error {
+	if snapshot.AppID == "" {
+		return errors.New("pubsub snapshot app id is required")
+	}
+	if len(snapshot.Topics) == 0 {
+		snapshot.Topics = json.RawMessage(`[]`)
+	}
+	if snapshot.UpdatedAt.IsZero() {
+		snapshot.UpdatedAt = time.Now().UTC()
+	}
+	snapshot.UpdatedAt = snapshot.UpdatedAt.UTC()
+	_, err := s.db.ExecContext(ctx, `
+		insert into pubsub_snapshots (app_id, snapshot_json, updated_at)
+		values (?, ?, ?)
+		on conflict(app_id) do update set
+			snapshot_json = excluded.snapshot_json,
+			updated_at = excluded.updated_at
+	`, snapshot.AppID, string(snapshot.Topics), snapshot.UpdatedAt.Format(time.RFC3339Nano))
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		insert into pubsub_snapshot_history (app_id, snapshot_json, created_at)
+		values (?, ?, ?)
+	`, snapshot.AppID, string(snapshot.Topics), snapshot.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	_, _ = s.db.ExecContext(ctx, `
+		delete from pubsub_snapshot_history
+		where app_id = ? and created_at < ?
+	`, snapshot.AppID, snapshot.UpdatedAt.Add(-48*time.Hour).Format(time.RFC3339Nano))
+	return nil
+}
+
+func (s *Store) GetPubSubSnapshot(ctx context.Context, appID string) (PubSubSnapshot, error) {
+	var data string
+	var updatedAt string
+	err := s.db.QueryRowContext(ctx, `
+		select snapshot_json, updated_at
+		from pubsub_snapshots
+		where app_id = ?
+	`, appID).Scan(&data, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return PubSubSnapshot{
+			AppID:     appID,
+			Topics:    json.RawMessage(`[]`),
+			UpdatedAt: time.Time{},
+		}, nil
+	}
+	if err != nil {
+		return PubSubSnapshot{}, err
+	}
+	ts, _ := time.Parse(time.RFC3339Nano, updatedAt)
+	return PubSubSnapshot{
+		AppID:     appID,
+		Topics:    json.RawMessage(data),
+		UpdatedAt: ts,
+	}, nil
+}
+
+func (s *Store) ListPubSubSnapshots(ctx context.Context, appID string, since time.Time) ([]PubSubSnapshot, error) {
+	if appID == "" {
+		return nil, errors.New("pubsub snapshot app id is required")
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		select snapshot_json, created_at
+		from pubsub_snapshot_history
+		where app_id = ? and created_at >= ?
+		order by created_at asc
+	`, appID, since.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var snapshots []PubSubSnapshot
+	for rows.Next() {
+		var data string
+		var createdAt string
+		if err := rows.Scan(&data, &createdAt); err != nil {
+			return nil, err
+		}
+		ts, _ := time.Parse(time.RFC3339Nano, createdAt)
+		snapshots = append(snapshots, PubSubSnapshot{
+			AppID:     appID,
+			Topics:    json.RawMessage(data),
+			UpdatedAt: ts,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return snapshots, nil
 }
 
 func (s *Store) UpsertApp(ctx context.Context, app AppRecord) error {
@@ -285,7 +393,7 @@ func (s *Store) ListProcessOutput(ctx context.Context, appID string, limit int) 
 		limit = 200
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		select app_id, pid, stream, output, created_at
+		select id, app_id, pid, stream, output, created_at
 		from process_output
 		where app_id = ?
 		order by id desc
@@ -300,7 +408,7 @@ func (s *Store) ListProcessOutput(ctx context.Context, appID string, limit int) 
 	for rows.Next() {
 		var item ProcessOutput
 		var createdAt string
-		if err := rows.Scan(&item.AppID, &item.PID, &item.Stream, &item.Output, &createdAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.AppID, &item.PID, &item.Stream, &item.Output, &createdAt); err != nil {
 			return nil, err
 		}
 		item.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
@@ -314,6 +422,35 @@ func (s *Store) ListProcessOutput(ctx context.Context, appID string, limit int) 
 		items[i], items[j] = items[j], items[i]
 	}
 	return items, nil
+}
+
+func (s *Store) ListProcessOutputSince(ctx context.Context, appID string, afterID int64, limit int) ([]ProcessOutput, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		select id, app_id, pid, stream, output, created_at
+		from process_output
+		where app_id = ? and id > ?
+		order by id asc
+		limit ?
+	`, appID, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []ProcessOutput
+	for rows.Next() {
+		var item ProcessOutput
+		var createdAt string
+		if err := rows.Scan(&item.ID, &item.AppID, &item.PID, &item.Stream, &item.Output, &createdAt); err != nil {
+			return nil, err
+		}
+		item.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *Store) AppendTraceSummary(ctx context.Context, summary *TraceSummary) error {

@@ -90,7 +90,7 @@ func TestRoutesForExplicitHosts(t *testing.T) {
 	}
 }
 
-func TestCaddyfileIncludesExpectedHosts(t *testing.T) {
+func TestConfigJSONIncludesExpectedHosts(t *testing.T) {
 	cfg := Config{
 		Workspace:         "onlv",
 		APIUpstream:       "127.0.0.1:4000",
@@ -100,49 +100,58 @@ func TestCaddyfileIncludesExpectedHosts(t *testing.T) {
 		HTTPSPort:         9443,
 		SkipInstallTrust:  true,
 	}
-	got := caddyfile(cfg)
+	data, err := configJSON(cfg)
+	if err != nil {
+		t.Fatalf("configJSON() error = %v", err)
+	}
+	got := string(data)
 	for _, want := range []string{
-		"local_certs",
-		"skip_install_trust",
-		"http_port 9080",
-		"https_port 9443",
+		`"http_port":9080`,
+		`"https_port":9443`,
+		`"install_trust":false`,
 		"api.onlv.localhost",
 		"console.onlv.localhost",
 		"mcp.onlv.localhost",
 		"pulse.onlv.localhost",
-		"@pulse_config path /__pulse/config",
-		"reverse_proxy @pulse_config 127.0.0.1:4000",
-		"header_up Host {upstream_hostport}",
+		"/__pulse/config",
+		"127.0.0.1:4000",
+		"{http.reverse_proxy.upstream.hostport}",
 	} {
 		if !contains(got, want) {
-			t.Fatalf("caddyfile missing %q in:\n%s", want, got)
+			t.Fatalf("configJSON missing %q in:\n%s", want, got)
 		}
 	}
 }
 
-func TestCaddyfileSuppressesLogsWhenNotVerbose(t *testing.T) {
-	quiet := caddyfile(Config{
+func TestConfigJSONSuppressesLogsWhenNotVerbose(t *testing.T) {
+	quietData, err := configJSON(Config{
 		Workspace:   "onlv",
 		APIUpstream: "127.0.0.1:4000",
 	})
+	if err != nil {
+		t.Fatalf("configJSON quiet error = %v", err)
+	}
+	quiet := string(quietData)
 	for _, want := range []string{
-		"log default",
-		"output stderr",
-		"level PANIC",
+		`"logs":{"default":{"level":"PANIC"}}`,
 	} {
 		if !contains(quiet, want) {
-			t.Fatalf("quiet caddyfile missing %q:\n%s", want, quiet)
+			t.Fatalf("quiet config missing %q:\n%s", want, quiet)
 		}
 	}
 
-	verbose := caddyfile(Config{
+	verboseData, err := configJSON(Config{
 		Workspace:   "onlv",
 		APIUpstream: "127.0.0.1:4000",
 		Verbose:     true,
 	})
-	for _, unwanted := range []string{"log default", "level PANIC"} {
+	if err != nil {
+		t.Fatalf("configJSON verbose error = %v", err)
+	}
+	verbose := string(verboseData)
+	for _, unwanted := range []string{`"logs":`, `"level":"PANIC"`} {
 		if contains(verbose, unwanted) {
-			t.Fatalf("verbose caddyfile should not include %q:\n%s", unwanted, verbose)
+			t.Fatalf("verbose config should not include %q:\n%s", unwanted, verbose)
 		}
 	}
 }

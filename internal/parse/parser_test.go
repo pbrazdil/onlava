@@ -199,6 +199,29 @@ func Helper() {}
 	}
 }
 
+func TestParseRejectsInvalidServiceShutdownSignature(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/badshutdown\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"badshutdown"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:service
+type Service struct{}
+
+func (s *Service) Shutdown() {}
+
+//pulse:api public
+func (s *Service) Hello(ctx context.Context) error { return nil }
+`)
+
+	_, err := parse.App(dir, "badshutdown")
+	if err == nil || !strings.Contains(err.Error(), "Shutdown method must have signature func(context.Context)") {
+		t.Fatalf("expected invalid shutdown signature error, got %v", err)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()

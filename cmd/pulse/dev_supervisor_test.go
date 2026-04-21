@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,6 +26,26 @@ func TestAppChildEnvLeavesColorUnsetWhenDisabled(t *testing.T) {
 	env := appChildEnv([]string{"A=1"}, false, "B=2")
 	if containsString(env, "CLICOLOR_FORCE=1") {
 		t.Fatalf("appChildEnv(%v) unexpectedly added CLICOLOR_FORCE=1", env)
+	}
+}
+
+func TestAppEnvWithDotEnvAddsMissingValuesWithoutOverridingProcessEnv(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("A=from-file\nB=2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env, err := appEnvWithDotEnv([]string{"A=from-process"}, root)
+	if err != nil {
+		t.Fatalf("appEnvWithDotEnv: %v", err)
+	}
+	if !containsString(env, "A=from-process") {
+		t.Fatalf("env missing process value: %v", env)
+	}
+	if containsString(env, "A=from-file") {
+		t.Fatalf("env should not override process value: %v", env)
+	}
+	if !containsString(env, "B=2") {
+		t.Fatalf("env missing .env value: %v", env)
 	}
 }
 

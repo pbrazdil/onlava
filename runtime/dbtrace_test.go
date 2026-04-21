@@ -21,6 +21,7 @@ func TestTraceDBQueryRecordsChildSpan(t *testing.T) {
 			Service:  "tenants",
 			Endpoint: "Config",
 		},
+		traceEnabled: true,
 		trace: &traceSpan{
 			traceID: "trace-1",
 			spanID:  "parent-1",
@@ -97,6 +98,38 @@ func TestTraceDBQueryWithoutRequestIsNoop(t *testing.T) {
 	case report := <-reporter.queue:
 		t.Fatalf("unexpected report: %#v", report)
 	default:
+	}
+}
+
+func TestTraceDBQueryRedactsInlineLiterals(t *testing.T) {
+	reporter := &devReporter{
+		appID: "app",
+		queue: make(chan devdash.ReportEnvelope, 4),
+	}
+	restoreReporter := setTestReporter(reporter)
+	defer restoreReporter()
+
+	state := &requestState{
+		request: shared.Request{
+			Service:  "users",
+			Endpoint: "Lookup",
+		},
+		traceEnabled: true,
+		trace: &traceSpan{
+			traceID: "trace-2",
+			spanID:  "parent-2",
+			isRoot:  true,
+		},
+	}
+
+	ctx := TraceDBQueryStart(withState(context.Background(), state), `SELECT * FROM users WHERE email = 'secret@example.com' AND age = 42`, 0)
+	TraceDBQueryEnd(ctx, "", -1, nil)
+
+	start := <-reporter.queue
+	startPayload, _ := start.TraceEvent.Event["span_start"].(map[string]any)
+	dbStart, _ := startPayload["db"].(map[string]any)
+	if got := dbStart["query"]; got != "SELECT * FROM users WHERE email = ? AND age = ?" {
+		t.Fatalf("redacted query = %#v", got)
 	}
 }
 

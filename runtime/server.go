@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"pulse.dev/errs"
 	"pulse.dev/runtime/shared"
@@ -46,6 +47,7 @@ func newServer(listenAddr string) (*http.Server, error) {
 		s.registerTyped(ep)
 	}
 	s.registerPulseConfig()
+	s.registerDevPubSubAdmin()
 	s.registerPlatformStats()
 	s.registerPProf()
 
@@ -72,6 +74,30 @@ func (s *server) registerPulseConfig() {
 			APIBaseURL: meta.APIBaseURL,
 		}); err != nil {
 			errs.HTTPError(w, errs.Wrap(err, "encode pulse config"))
+		}
+	})
+}
+
+func (s *server) registerDevPubSubAdmin() {
+	registerRoute(s.public, "/__pulse/pubsub/clear", []string{http.MethodPost}, func(w http.ResponseWriter, req *http.Request, _ routeParams) {
+		token := strings.TrimSpace(osGetenv("PULSE_DEV_REPORT_TOKEN"))
+		if token == "" || req.Header.Get("Authorization") != "Bearer "+token {
+			errs.HTTPError(w, errs.B().Code(errs.NotFound).Msg("endpoint not found").Err())
+			return
+		}
+		topics, err := clearLocalPubSubRuntime(req.Context())
+		if err != nil {
+			errs.HTTPError(w, errs.Wrap(err, "clear pubsub queue"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"app_id":     Meta().AppID,
+			"topics":     topics,
+			"updated_at": time.Now().UTC(),
+		}); err != nil {
+			errs.HTTPError(w, errs.Wrap(err, "encode pubsub clear response"))
 		}
 	})
 }
@@ -284,15 +310,18 @@ func authenticateRequest(req *http.Request, ep *Endpoint) (AuthInfo, error) {
 	}
 	ctx := req.Context()
 	if stateFromContext(ctx) == nil {
+		request := shared.Request{
+			Type:     shared.APICall,
+			Service:  ep.Service,
+			Endpoint: ep.Name,
+			Method:   req.Method,
+			Path:     req.URL.Path,
+			Headers:  req.Header.Clone(),
+		}
 		ctx = context.WithValue(ctx, requestStateKey{}, &requestState{
-			request: shared.Request{
-				Type:     shared.APICall,
-				Service:  ep.Service,
-				Endpoint: ep.Name,
-				Method:   req.Method,
-				Path:     req.URL.Path,
-				Headers:  req.Header.Clone(),
-			},
+			request:      request,
+			logsEnabled:  logsEnabledForRequest(request),
+			traceEnabled: traceEnabledForRequest(request),
 		})
 	}
 	info, err := traceAuthCall(ctx, handler, func(callCtx context.Context) (AuthInfo, error) {

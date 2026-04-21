@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"pulse.dev/internal/model"
-	pulseruntime "pulse.dev/runtime"
+	"pulse.dev/internal/runtimeapi"
 )
 
 func BuildMetadataSnapshot(app *model.App) (json.RawMessage, error) {
@@ -150,7 +150,7 @@ func builtinServices() []map[string]any {
 					"path":            buildBuiltinPath("/platform.Stats"),
 					"http_methods":    []string{"GET"},
 					"request_schema":  nil,
-					"response_schema": buildReflectSchema(reflect.TypeOf(pulseruntime.PlatformStatsResponse{})),
+					"response_schema": buildReflectSchema(reflect.TypeOf(runtimeapi.PlatformStatsResponse{})),
 					"tags":            []any{},
 				},
 			},
@@ -737,11 +737,11 @@ func serviceName(svc *model.Service) string {
 	return svc.Name
 }
 
-func accessName(access pulseruntime.Access) string {
+func accessName(access runtimeapi.Access) string {
 	switch access {
-	case pulseruntime.Public:
+	case runtimeapi.Public:
 		return "PUBLIC"
-	case pulseruntime.Auth:
+	case runtimeapi.Auth:
 		return "AUTH"
 	default:
 		return "PRIVATE"

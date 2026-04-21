@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"pulse.dev/internal/app"
 	"pulse.dev/internal/devdash"
@@ -171,6 +172,60 @@ func TestDashboardGraphQLUnsupportedOperation(t *testing.T) {
 	}
 }
 
+func TestDashboardPubSubStatusRPCAndReport(t *testing.T) {
+	server := newTestDashboardServer(t)
+	if err := server.supervisor.store.UpsertPubSubSnapshot(context.Background(), devdash.PubSubSnapshot{
+		AppID:     "app-test",
+		Topics:    json.RawMessage(`[{"name":"old-events","published":1,"pending":0,"subscriptions":[]}]`),
+		UpdatedAt: time.Now().UTC().Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("seed old pubsub snapshot: %v", err)
+	}
+	body := []byte(`{"type":"pubsub","app_id":"app-test","pubsub":[{"name":"events","published":1,"pending":0,"subscriptions":[]}]}`)
+	req := httptest.NewRequest(http.MethodPost, devdash.ReportPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+server.supervisor.reportToken)
+	rec := httptest.NewRecorder()
+
+	server.handleReport(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("handleReport status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	raw, err := json.Marshal(map[string]any{"app_id": "app-test", "period": "5m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := server.dispatchRPC(context.Background(), "pubsub/status", raw)
+	if err != nil {
+		t.Fatalf("pubsub/status: %v", err)
+	}
+	payload := result.(map[string]any)
+	topicsRaw, ok := payload["topics"].(json.RawMessage)
+	if !ok {
+		t.Fatalf("topics type = %T", payload["topics"])
+	}
+	if !bytes.Contains(topicsRaw, []byte(`"events"`)) {
+		t.Fatalf("unexpected topics: %s", topicsRaw)
+	}
+	history, ok := payload["history"].([]map[string]any)
+	if !ok || len(history) != 1 {
+		t.Fatalf("history = %#v", payload["history"])
+	}
+	raw, err = json.Marshal(map[string]any{"app_id": "app-test", "period": "15m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = server.dispatchRPC(context.Background(), "pubsub/status", raw)
+	if err != nil {
+		t.Fatalf("pubsub/status 15m: %v", err)
+	}
+	payload = result.(map[string]any)
+	history, ok = payload["history"].([]map[string]any)
+	if !ok || len(history) != 2 {
+		t.Fatalf("15m history = %#v", payload["history"])
+	}
+}
+
 func newTestDashboardServer(t *testing.T) *dashboardServer {
 	t.Helper()
 
@@ -183,8 +238,9 @@ func newTestDashboardServer(t *testing.T) *dashboardServer {
 	})
 
 	supervisor := &devSupervisor{
-		cfg:   app.Config{Name: "app-test"},
-		store: store,
+		cfg:         app.Config{Name: "app-test"},
+		store:       store,
+		reportToken: "test-token",
 	}
 	return newDashboardServer(supervisor, "")
 }

@@ -341,8 +341,8 @@ func (s *dashboardServer) mcpToolDefinitions() []mcpToolDefinition {
 		},
 		{
 			Name:        "get_pubsub",
-			Description: "Encore-compatible stub for unsupported Pub/Sub inspection.",
-			Call:        unsupported("get_pubsub"),
+			Description: "Return Pulse Pub/Sub topics, subscriptions, queue depth, worker counts, and processing stats.",
+			Call:        s.mcpGetPubSub,
 		},
 		{
 			Name:        "get_storage_buckets",
@@ -420,6 +420,28 @@ func (s *dashboardServer) mcpGetAuthHandlers(ctx context.Context, session *mcpSe
 
 func (s *dashboardServer) mcpGetCronJobs(ctx context.Context, session *mcpSession, args map[string]any) (any, bool, error) {
 	return s.mcpMetadataSection(ctx, session, args, "cron_jobs")
+}
+
+func (s *dashboardServer) mcpGetPubSub(ctx context.Context, session *mcpSession, args map[string]any) (any, bool, error) {
+	status, err := s.mcpStatus(ctx, session, args)
+	if err != nil {
+		return nil, true, err
+	}
+	snapshot, err := s.supervisor.store.GetPubSubSnapshot(ctx, status.AppID)
+	if err != nil {
+		return nil, true, err
+	}
+	var topics any = []any{}
+	if len(snapshot.Topics) > 0 {
+		if err := json.Unmarshal(snapshot.Topics, &topics); err != nil {
+			return nil, true, err
+		}
+	}
+	return map[string]any{
+		"app_id":     status.AppID,
+		"topics":     topics,
+		"updated_at": snapshot.UpdatedAt,
+	}, false, nil
 }
 
 func (s *dashboardServer) mcpGetSecrets(ctx context.Context, session *mcpSession, args map[string]any) (any, bool, error) {

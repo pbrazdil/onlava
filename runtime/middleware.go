@@ -16,7 +16,10 @@ func executeTypedEndpoint(ep *Endpoint, ctx context.Context, pathArgs []any, pay
 		if callCtx == nil {
 			callCtx = context.Background()
 		}
-		out, err := ep.Invoke(callCtx, pathArgs, payload)
+		out, mocked, err := invokeTypedEndpointMock(ep, callCtx, pathArgs, payload)
+		if !mocked {
+			out, err = ep.Invoke(callCtx, pathArgs, payload)
+		}
 		if err != nil {
 			return pulsemiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
 		}
@@ -32,7 +35,13 @@ func executeRawEndpoint(ep *Endpoint, req *http.Request) (int, http.Header, []by
 		if ctx := mwReq.Context(); ctx != nil && ctx != req.Context() {
 			httpReq = req.WithContext(ctx)
 		}
-		ep.RawHandler(capture, httpReq)
+		if mocked, err := invokeRawEndpointMock(ep, capture, httpReq); mocked {
+			if err != nil {
+				return pulsemiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
+			}
+		} else {
+			ep.RawHandler(capture, httpReq)
+		}
 
 		resp := pulsemiddleware.Response{HTTPStatus: capture.StatusCode()}
 		copyHeaders(resp.Header(), capture.Header())

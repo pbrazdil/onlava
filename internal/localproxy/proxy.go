@@ -1,9 +1,11 @@
 package localproxy
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,6 +16,13 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp/headers"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
+	"github.com/caddyserver/caddy/v2/modules/caddypki"
+	"github.com/caddyserver/caddy/v2/modules/caddytls"
+
+	"pulse.dev/internal/stdlog"
 )
 
 const (
@@ -139,17 +148,17 @@ func Start(cfg Config) (*Proxy, error) {
 	if cfg.FrontendUpstream != "" && routes.FrontendHost == "" {
 		return nil, fmt.Errorf("local proxy requires a frontend host when frontend routing is enabled")
 	}
-	adapter := caddyconfig.GetAdapter("caddyfile")
-	if adapter == nil {
-		return nil, fmt.Errorf("caddyfile adapter unavailable")
-	}
-	configJSON, _, err := adapter.Adapt([]byte(caddyfile(cfg)), nil)
+	configJSON, err := configJSON(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("adapt caddyfile: %w", err)
+		return nil, err
 	}
 	if err := caddy.Load(configJSON, true); err != nil {
 		return nil, fmt.Errorf("start local HTTPS proxy: %w", err)
 	}
+	// Caddy redirects the process standard logger while loading its apps.
+	// Restore Pulse's filtered writer so net/http idle-channel noise is
+	// suppressed even when Caddy verbose logging is enabled.
+	stdlog.Install(os.Stderr)
 	return &Proxy{routes: routes}, nil
 }
 
@@ -233,65 +242,147 @@ func routesFor(cfg Config) Routes {
 	return routes
 }
 
-func caddyfile(cfg Config) string {
-	var b strings.Builder
-	b.WriteString("{\n")
-	b.WriteString("\tadmin off\n")
-	b.WriteString("\tpersist_config off\n")
-	b.WriteString("\tlocal_certs\n")
+func configJSON(cfg Config) ([]byte, error) {
+	warnings := []caddyconfig.Warning{}
+	routes := proxyRoutes(cfg, &warnings)
+	subjects := routeSubjects(cfg)
+
+	persist := false
+	installTrust := !cfg.SkipInstallTrust
+	config := &caddy.Config{
+		Admin: &caddy.AdminConfig{
+			Disabled: true,
+			Config:   &caddy.ConfigSettings{Persist: &persist},
+		},
+		AppsRaw: caddy.ModuleMap{
+			"http": caddyconfig.JSON(&caddyhttp.App{
+				HTTPPort:  cfg.HTTPPort,
+				HTTPSPort: cfg.HTTPSPort,
+				Servers: map[string]*caddyhttp.Server{
+					"pulse": {
+						Listen: []string{fmt.Sprintf(":%d", cfg.HTTPSPort)},
+						Routes: routes,
+					},
+				},
+			}, &warnings),
+			"tls": caddyconfig.JSON(&caddytls.TLS{
+				Automation: &caddytls.AutomationConfig{
+					Policies: []*caddytls.AutomationPolicy{
+						{
+							SubjectsRaw: subjects,
+							IssuersRaw: []json.RawMessage{
+								caddyconfig.JSONModuleObject(caddytls.InternalIssuer{}, "module", "internal", &warnings),
+							},
+						},
+					},
+				},
+			}, &warnings),
+			"pki": caddyconfig.JSON(&caddypki.PKI{
+				CAs: map[string]*caddypki.CA{
+					"local": {InstallTrust: &installTrust},
+				},
+			}, &warnings),
+		},
+	}
 	if !cfg.Verbose {
-		b.WriteString("\tlog default {\n")
-		b.WriteString("\t\toutput stderr\n")
-		b.WriteString("\t\tlevel PANIC\n")
-		b.WriteString("\t}\n")
+		config.Logging = &caddy.Logging{
+			Logs: map[string]*caddy.CustomLog{
+				"default": {BaseLog: caddy.BaseLog{Level: "PANIC"}},
+			},
+		}
 	}
-	fmt.Fprintf(&b, "\thttp_port %d\n", cfg.HTTPPort)
-	fmt.Fprintf(&b, "\thttps_port %d\n", cfg.HTTPSPort)
-	if cfg.SkipInstallTrust {
-		b.WriteString("\tskip_install_trust\n")
+	data, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("marshal caddy config: %w", err)
 	}
-	b.WriteString("}\n\n")
+	if len(warnings) > 0 {
+		return nil, fmt.Errorf("build caddy config: %s", warnings[0].Message)
+	}
+	return data, nil
+}
+
+func proxyRoutes(cfg Config, warnings *[]caddyconfig.Warning) caddyhttp.RouteList {
 	apiHost := resolvedHost(cfg.APIHost, cfg.Workspace, "api")
 	consoleHost := resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console")
 	mcpHost := resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp")
 	frontendHost := resolvedHost(cfg.FrontendHost, cfg.Workspace, "pulse")
-	writeProxyBlock(&b, apiHost, cfg.APIUpstream, false)
+
+	var routes caddyhttp.RouteList
+	appendRoute := func(host, upstream string, rewriteHost bool, path string) {
+		if route := proxyRoute(host, upstream, rewriteHost, path, warnings); route != nil {
+			routes = append(routes, *route)
+		}
+	}
+
+	appendRoute(apiHost, cfg.APIUpstream, false, "")
 	if cfg.DashboardUpstream != "" {
-		writeProxyBlock(&b, consoleHost, cfg.DashboardUpstream, false)
-		writeProxyBlock(&b, mcpHost, cfg.DashboardUpstream, false)
+		appendRoute(consoleHost, cfg.DashboardUpstream, false, "")
+		appendRoute(mcpHost, cfg.DashboardUpstream, false, "")
 	}
 	if cfg.FrontendUpstream != "" {
-		writeFrontendProxyBlock(&b, frontendHost, cfg.FrontendUpstream, cfg.APIUpstream)
+		if cfg.APIUpstream != "" {
+			appendRoute(frontendHost, cfg.APIUpstream, false, "/__pulse/config")
+		}
+		appendRoute(frontendHost, cfg.FrontendUpstream, true, "")
 	}
-	return b.String()
+	return routes
 }
 
-func writeProxyBlock(b *strings.Builder, host, upstream string, rewriteHost bool) {
+func proxyRoute(host, upstream string, rewriteHost bool, path string, warnings *[]caddyconfig.Warning) *caddyhttp.Route {
 	if host == "" || upstream == "" {
-		return
+		return nil
 	}
-	fmt.Fprintf(b, "%s {\n", host)
-	fmt.Fprintf(b, "\treverse_proxy %s {\n", upstream)
+	match := caddy.ModuleMap{
+		"host": caddyconfig.JSON(caddyhttp.MatchHost{host}, warnings),
+	}
+	if path != "" {
+		match["path"] = caddyconfig.JSON(caddyhttp.MatchPath{path}, warnings)
+	}
+
+	handler := reverseproxy.Handler{
+		Upstreams: reverseproxy.UpstreamPool{{Dial: upstream}},
+	}
 	if rewriteHost {
-		b.WriteString("\t\theader_up Host {upstream_hostport}\n")
+		handler.Headers = &headers.Handler{
+			Request: &headers.HeaderOps{
+				Set: http.Header{
+					"Host": []string{"{http.reverse_proxy.upstream.hostport}"},
+				},
+			},
+		}
 	}
-	b.WriteString("\t}\n")
-	b.WriteString("}\n\n")
+
+	return &caddyhttp.Route{
+		MatcherSetsRaw: caddyhttp.RawMatcherSets{match},
+		HandlersRaw: []json.RawMessage{
+			caddyconfig.JSONModuleObject(handler, "handler", "reverse_proxy", warnings),
+		},
+		Terminal: true,
+	}
 }
 
-func writeFrontendProxyBlock(b *strings.Builder, host, frontendUpstream, apiUpstream string) {
-	if host == "" || frontendUpstream == "" {
-		return
+func routeSubjects(cfg Config) []string {
+	subjects := []string{}
+	add := func(host string) {
+		if host == "" {
+			return
+		}
+		for _, existing := range subjects {
+			if existing == host {
+				return
+			}
+		}
+		subjects = append(subjects, host)
 	}
-	fmt.Fprintf(b, "%s {\n", host)
-	if apiUpstream != "" {
-		b.WriteString("\t@pulse_config path /__pulse/config\n")
-		fmt.Fprintf(b, "\treverse_proxy @pulse_config %s\n", apiUpstream)
+	add(resolvedHost(cfg.APIHost, cfg.Workspace, "api"))
+	if cfg.DashboardUpstream != "" {
+		add(resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console"))
+		add(resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp"))
 	}
-	fmt.Fprintf(b, "\treverse_proxy %s {\n", frontendUpstream)
-	b.WriteString("\t\theader_up Host {upstream_hostport}\n")
-	b.WriteString("\t}\n")
-	b.WriteString("}\n\n")
+	if cfg.FrontendUpstream != "" {
+		add(resolvedHost(cfg.FrontendHost, cfg.Workspace, "pulse"))
+	}
+	return subjects
 }
 
 func hostURL(host string, httpsPort int) string {

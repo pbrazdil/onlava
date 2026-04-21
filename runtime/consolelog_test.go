@@ -76,3 +76,22 @@ func TestPulseConsoleHandlerColorsTraceWhenForced(t *testing.T) {
 		t.Fatalf("output %q does not contain blue TRC label", got)
 	}
 }
+
+func TestPulseConsoleHandlerRedactsSensitiveAttrValues(t *testing.T) {
+	var out bytes.Buffer
+	handler := newPulseConsoleHandler(&out)
+	record := slog.NewRecord(time.Now(), slog.LevelInfo, "auth request", 0)
+	record.AddAttrs(slog.String("authorization", "Bearer secret"))
+
+	if err := handler.Handle(context.Background(), record); err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+
+	got := out.String()
+	if strings.Contains(got, "Bearer secret") {
+		t.Fatalf("output %q contains unredacted secret", got)
+	}
+	if !strings.Contains(got, "authorization=[redacted]") {
+		t.Fatalf("output %q does not contain redacted placeholder", got)
+	}
+}

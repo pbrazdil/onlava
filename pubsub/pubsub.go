@@ -11,10 +11,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	nserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
+	pulseruntime "pulse.dev/runtime"
 )
 
 const (
@@ -116,6 +118,9 @@ type localRuntime struct {
 	conn       *nats.Conn
 	js         nats.JetStreamContext
 	topics     map[*topicDecl]runtimeTopic
+	stats      map[string]*subscriptionStats
+	published  map[string]*atomic.Int64
+	dlqStream  string
 	dlqSubject string
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
@@ -124,6 +129,20 @@ type localRuntime struct {
 type runtimeTopic struct {
 	stream  string
 	subject string
+}
+
+type subscriptionStats struct {
+	topic        string
+	subscription string
+	stream       string
+	durable      string
+	workers      int
+	pickedUp     atomic.Int64
+	completed    atomic.Int64
+	failed       atomic.Int64
+	deadLettered atomic.Int64
+	inFlight     atomic.Int64
+	totalNanos   atomic.Int64
 }
 
 type registry struct {
@@ -363,6 +382,9 @@ func StartLocalRuntime(ctx context.Context, cfg LocalRuntimeConfig) (func(contex
 		conn:       conn,
 		js:         js,
 		topics:     make(map[*topicDecl]runtimeTopic, len(topics)),
+		stats:      make(map[string]*subscriptionStats, len(subs)),
+		published:  make(map[string]*atomic.Int64, len(topics)),
+		dlqStream:  "PULSE_DLQ_" + sanitizeName(cfg.AppID),
 		dlqSubject: "pulse." + sanitizeSubjectPart(cfg.AppID) + ".dlq.>",
 		cancel:     cancel,
 	}
@@ -381,6 +403,13 @@ func StartLocalRuntime(ctx context.Context, cfg LocalRuntimeConfig) (func(contex
 			return nil, err
 		}
 		rt.topics[topic] = rTopic
+		rt.published[topic.name] = &atomic.Int64{}
+	}
+	if _, err := rt.clearAll(runCtx); err != nil {
+		cancel()
+		conn.Close()
+		srv.Shutdown()
+		return nil, err
 	}
 	for _, sub := range subs {
 		if err := rt.startSubscription(runCtx, sub); err != nil {
@@ -395,6 +424,9 @@ func StartLocalRuntime(ctx context.Context, cfg LocalRuntimeConfig) (func(contex
 	global.mu.Lock()
 	global.runtime = rt
 	global.mu.Unlock()
+	rt.reportPubSubSnapshot()
+	rt.wg.Add(1)
+	go rt.reportPubSubSnapshots(runCtx)
 
 	return func(stopCtx context.Context) error {
 		global.mu.Lock()
@@ -487,9 +519,8 @@ func (rt *localRuntime) ensureTopic(topic *topicDecl, subs []*subscriptionDecl) 
 }
 
 func (rt *localRuntime) ensureDLQStream() error {
-	name := "PULSE_DLQ_" + sanitizeName(rt.appID)
 	_, err := rt.js.AddStream(&nats.StreamConfig{
-		Name:      name,
+		Name:      rt.dlqStream,
 		Subjects:  []string{rt.dlqSubject},
 		Storage:   nats.FileStorage,
 		Retention: nats.LimitsPolicy,
@@ -503,7 +534,7 @@ func (rt *localRuntime) ensureDLQStream() error {
 		return nil
 	}
 	_, err = rt.js.UpdateStream(&nats.StreamConfig{
-		Name:      name,
+		Name:      rt.dlqStream,
 		Subjects:  []string{rt.dlqSubject},
 		Storage:   nats.FileStorage,
 		Retention: nats.LimitsPolicy,
@@ -529,7 +560,43 @@ func (rt *localRuntime) publish(ctx context.Context, topic *topicDecl, msg any) 
 	if err != nil {
 		return "", err
 	}
+	if counter := rt.published[topic.name]; counter != nil {
+		counter.Add(1)
+	}
+	rt.reportPubSubSnapshot()
 	return fmt.Sprintf("%s:%d", ack.Stream, ack.Sequence), nil
+}
+
+func ClearLocalRuntime(ctx context.Context) ([]map[string]any, error) {
+	global.mu.RLock()
+	rt := global.runtime
+	global.mu.RUnlock()
+	if rt == nil {
+		return []map[string]any{}, nil
+	}
+	return rt.clearAll(ctx)
+}
+
+func (rt *localRuntime) clearAll(ctx context.Context) ([]map[string]any, error) {
+	streams := make(map[string]struct{}, len(rt.topics))
+	for _, topic := range rt.topics {
+		streams[topic.stream] = struct{}{}
+	}
+	if rt.dlqStream != "" {
+		streams[rt.dlqStream] = struct{}{}
+	}
+	names := make([]string, 0, len(streams))
+	for stream := range streams {
+		names = append(names, stream)
+	}
+	sort.Strings(names)
+	for _, stream := range names {
+		if err := rt.js.PurgeStream(stream, nats.Context(ctx)); err != nil {
+			return nil, fmt.Errorf("pubsub: clear stream %s: %w", stream, err)
+		}
+	}
+	rt.reportPubSubSnapshot()
+	return rt.pubSubSnapshot(), nil
 }
 
 func (rt *localRuntime) startSubscription(ctx context.Context, sub *subscriptionDecl) error {
@@ -541,6 +608,9 @@ func (rt *localRuntime) startSubscription(ctx context.Context, sub *subscription
 	maxAckPending := 1024
 	if sub.maxConc > 0 {
 		maxAckPending = sub.maxConc
+	}
+	if err := rt.ensureConsumerConfig(rTopic.stream, durable, sub, maxAckPending); err != nil {
+		return err
 	}
 	msgCh := make(chan *nats.Msg, max(maxAckPending, 64))
 	jsSub, err := rt.js.ChanSubscribe(
@@ -557,6 +627,7 @@ func (rt *localRuntime) startSubscription(ctx context.Context, sub *subscription
 	if err != nil {
 		return err
 	}
+	stats := rt.subscriptionStats(sub, rTopic.stream, durable, sub.maxConc)
 
 	var sem chan struct{}
 	if sub.maxConc > 0 {
@@ -594,7 +665,7 @@ func (rt *localRuntime) startSubscription(ctx context.Context, sub *subscription
 							<-sem
 						}
 					}()
-					rt.handleMessage(ctx, sub, msg)
+					rt.handleMessage(ctx, sub, msg, stats)
 				}(msg)
 			}
 		}
@@ -602,25 +673,72 @@ func (rt *localRuntime) startSubscription(ctx context.Context, sub *subscription
 	return nil
 }
 
-func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionDecl, msg *nats.Msg) {
+func (rt *localRuntime) ensureConsumerConfig(stream, durable string, sub *subscriptionDecl, maxAckPending int) error {
+	info, err := rt.js.ConsumerInfo(stream, durable)
+	if err != nil {
+		if isNotFoundError(err) {
+			return nil
+		}
+		return err
+	}
+	if info == nil {
+		return nil
+	}
+	cfg := info.Config
+	if cfg.MaxAckPending == maxAckPending && cfg.AckWait == sub.ackDeadline && cfg.MaxDeliver == -1 {
+		return nil
+	}
+	cfg.MaxAckPending = maxAckPending
+	cfg.AckWait = sub.ackDeadline
+	cfg.MaxDeliver = -1
+	if _, err := rt.js.UpdateConsumer(stream, &cfg); err != nil {
+		return fmt.Errorf("pubsub: update consumer %s/%s after config change: %w", stream, durable, err)
+	}
+	return nil
+}
+
+func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionDecl, msg *nats.Msg, stats *subscriptionStats) {
 	meta, _ := msg.Metadata()
 	handlerCtx, cancel := context.WithTimeout(parent, sub.ackDeadline)
 	defer cancel()
+	started := time.Now()
+	if stats != nil {
+		stats.pickedUp.Add(1)
+		stats.inFlight.Add(1)
+		defer func() {
+			stats.inFlight.Add(-1)
+			stats.totalNanos.Add(time.Since(started).Nanoseconds())
+			rt.reportPubSubSnapshot()
+		}()
+	}
 	var payload any
 	if err := decodeMessage(msg.Data, sub.msgType, &payload); err != nil {
 		_ = rt.publishDLQ(sub, msg.Data, metaDeliveries(meta), err)
 		_ = msg.Ack()
+		if stats != nil {
+			stats.failed.Add(1)
+			stats.deadLettered.Add(1)
+		}
 		return
 	}
 	err := invokeHandler(handlerCtx, sub.handler, payload)
 	if err == nil {
 		_ = msg.Ack()
+		if stats != nil {
+			stats.completed.Add(1)
+		}
 		return
+	}
+	if stats != nil {
+		stats.failed.Add(1)
 	}
 	deliveries := metaDeliveries(meta)
 	if shouldDeadLetter(sub.retry.MaxRetries, deliveries) {
 		_ = rt.publishDLQ(sub, msg.Data, deliveries, err)
 		_ = msg.Ack()
+		if stats != nil {
+			stats.deadLettered.Add(1)
+		}
 		return
 	}
 	delay := retryDelay(sub.retry, deliveries)
@@ -650,6 +768,134 @@ func (rt *localRuntime) publishDLQ(sub *subscriptionDecl, payload []byte, delive
 
 func (rt *localRuntime) wait() {
 	rt.wg.Wait()
+}
+
+func (rt *localRuntime) subscriptionStats(sub *subscriptionDecl, stream, durable string, workers int) *subscriptionStats {
+	key := sub.topic.name + ":" + sub.name
+	if existing := rt.stats[key]; existing != nil {
+		return existing
+	}
+	stats := &subscriptionStats{
+		topic:        sub.topic.name,
+		subscription: sub.name,
+		stream:       stream,
+		durable:      durable,
+		workers:      workers,
+	}
+	rt.stats[key] = stats
+	return stats
+}
+
+func (rt *localRuntime) reportPubSubSnapshots(ctx context.Context) {
+	defer rt.wg.Done()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rt.reportPubSubSnapshot()
+		}
+	}
+}
+
+func (rt *localRuntime) reportPubSubSnapshot() {
+	if rt == nil {
+		return
+	}
+	topics := rt.pubSubSnapshot()
+	if len(topics) == 0 {
+		return
+	}
+	pulseruntime.ReportPubSubSnapshot(topics)
+}
+
+func (rt *localRuntime) pubSubSnapshot() []map[string]any {
+	topics, subs, err := snapshotDeclarations()
+	if err != nil {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(topics))
+	for _, topic := range topics {
+		rTopic := rt.topics[topic]
+		pending := int64(0)
+		var subItems []map[string]any
+		for _, sub := range subs {
+			if sub.topic != topic {
+				continue
+			}
+			stats := rt.stats[sub.topic.name+":"+sub.name]
+			subItem := map[string]any{
+				"name":                sub.name,
+				"service_name":        sub.serviceName,
+				"max_workers":         sub.maxConc,
+				"max_ack_pending":     1024,
+				"ack_deadline_ms":     sub.ackDeadline.Milliseconds(),
+				"message_retention_s": int64(sub.retention.Seconds()),
+				"pending":             int64(0),
+				"ack_pending":         int64(0),
+				"redelivered":         int64(0),
+				"picked_up":           int64(0),
+				"completed":           int64(0),
+				"failed":              int64(0),
+				"dead_lettered":       int64(0),
+				"in_flight":           int64(0),
+				"avg_duration_ms":     float64(0),
+			}
+			if stats != nil {
+				pickedUp := stats.pickedUp.Load()
+				totalNanos := stats.totalNanos.Load()
+				avg := float64(0)
+				if pickedUp > 0 {
+					avg = float64(totalNanos) / float64(pickedUp) / float64(time.Millisecond)
+				}
+				subItem["max_workers"] = stats.workers
+				if stats.workers > 0 {
+					subItem["max_ack_pending"] = stats.workers
+				}
+				subItem["picked_up"] = pickedUp
+				subItem["completed"] = stats.completed.Load()
+				subItem["failed"] = stats.failed.Load()
+				subItem["dead_lettered"] = stats.deadLettered.Load()
+				subItem["in_flight"] = stats.inFlight.Load()
+				subItem["avg_duration_ms"] = avg
+				if info, err := rt.js.ConsumerInfo(stats.stream, stats.durable); err == nil && info != nil {
+					subItem["pending"] = int64(info.NumPending)
+					subItem["ack_pending"] = int64(info.NumAckPending)
+					subItem["redelivered"] = int64(info.NumRedelivered)
+					pending += int64(info.NumPending)
+				}
+			}
+			subItems = append(subItems, subItem)
+		}
+		published := int64(0)
+		if counter := rt.published[topic.name]; counter != nil {
+			published = counter.Load()
+		}
+		items = append(items, map[string]any{
+			"name":          topic.name,
+			"stream":        rTopic.stream,
+			"subject":       rTopic.subject,
+			"delivery":      deliveryGuaranteeName(topic.cfg.DeliveryGuarantee),
+			"ordering_key":  topic.cfg.OrderingAttribute,
+			"published":     published,
+			"pending":       pending,
+			"subscriptions": subItems,
+		})
+	}
+	return items
+}
+
+func deliveryGuaranteeName(value DeliveryGuarantee) string {
+	switch value {
+	case AtLeastOnce:
+		return "at_least_once"
+	case ExactlyOnce:
+		return "exactly_once"
+	default:
+		return "unknown"
+	}
 }
 
 func decodeMessage(data []byte, targetType reflect.Type, out *any) error {
@@ -856,6 +1102,14 @@ func handlerServiceName(handler any) string {
 
 func isAlreadyExistsError(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already in use")
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "not found")
 }
 
 func filepathJoin(parts ...string) string {

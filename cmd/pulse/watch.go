@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
+
 	"pulse.dev/internal/app"
 )
 
@@ -41,10 +43,20 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		stopSignals()
+		cancel()
+	}()
+	go func() {
+		select {
+		case <-sigCtx.Done():
+			stopSignals()
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	stopParentMonitor := startParentMonitor(ctx, cancel)
 	defer stopParentMonitor()
 
@@ -66,8 +78,18 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 		supervisor.console.InitialBuildFailed(err)
 	}
 
+	watcher, err := newFileChangeWatcher(root)
+	if err != nil {
+		if verbose {
+			supervisor.console.printf(supervisor.console.err, "  %s\n\n", err.Error())
+		}
+	}
+	if watcher != nil {
+		defer watcher.Close()
+	}
+
 	for {
-		nextSnapshot, err := waitForStableChange(ctx, root, snapshot)
+		nextSnapshot, err := waitForStableChange(ctx, root, snapshot, watcher)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return nil
@@ -83,7 +105,14 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 	}
 }
 
-func waitForStableChange(ctx context.Context, root string, current fileSnapshot) (fileSnapshot, error) {
+func waitForStableChange(ctx context.Context, root string, current fileSnapshot, watcher *fileChangeWatcher) (fileSnapshot, error) {
+	if watcher != nil {
+		return waitForStableChangeEvents(ctx, root, current, watcher.Events())
+	}
+	return waitForStableChangePolling(ctx, root, current)
+}
+
+func waitForStableChangePolling(ctx context.Context, root string, current fileSnapshot) (fileSnapshot, error) {
 	ticker := time.NewTicker(watchPollInterval)
 	defer ticker.Stop()
 
@@ -101,11 +130,33 @@ func waitForStableChange(ctx context.Context, root string, current fileSnapshot)
 		if snapshotsEqual(current, next) {
 			continue
 		}
-		return waitForSnapshotToSettle(ctx, root, next)
+		return waitForSnapshotToSettlePolling(ctx, root, next)
 	}
 }
 
-func waitForSnapshotToSettle(ctx context.Context, root string, current fileSnapshot) (fileSnapshot, error) {
+func waitForStableChangeEvents(ctx context.Context, root string, current fileSnapshot, events <-chan struct{}) (fileSnapshot, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case _, ok := <-events:
+			if !ok {
+				return waitForStableChangePolling(ctx, root, current)
+			}
+		}
+
+		next, err := waitForSnapshotToSettleEvents(ctx, root, events)
+		if err != nil {
+			return nil, err
+		}
+		if snapshotsEqual(current, next) {
+			continue
+		}
+		return next, nil
+	}
+}
+
+func waitForSnapshotToSettlePolling(ctx context.Context, root string, current fileSnapshot) (fileSnapshot, error) {
 	timer := time.NewTimer(watchSettleDelay)
 	defer timer.Stop()
 	ticker := time.NewTicker(watchPollInterval)
@@ -126,6 +177,31 @@ func waitForSnapshotToSettle(ctx context.Context, root string, current fileSnaps
 				continue
 			}
 			current = next
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(watchSettleDelay)
+		}
+	}
+}
+
+func waitForSnapshotToSettleEvents(ctx context.Context, root string, events <-chan struct{}) (fileSnapshot, error) {
+	timer := time.NewTimer(watchSettleDelay)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+			return scanWatchedFiles(root)
+		case _, ok := <-events:
+			if !ok {
+				return scanWatchedFiles(root)
+			}
 			if !timer.Stop() {
 				select {
 				case <-timer.C:
@@ -200,7 +276,30 @@ func shouldSkipWatchDir(rel string) bool {
 	}
 }
 
+func shouldIgnoreWatchPath(rel string) bool {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "." || rel == "" {
+		return false
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if part == "" || part == "." {
+			continue
+		}
+		if strings.HasPrefix(part, ".") {
+			return true
+		}
+		switch part {
+		case "node_modules", "pulse_internal_main":
+			return true
+		}
+	}
+	return false
+}
+
 func isWatchedFile(rel string) bool {
+	if filepath.Base(rel) == "pulse.app" {
+		return true
+	}
 	if filepath.Base(rel) == "encore.gen.go" {
 		return false
 	}
@@ -260,4 +359,116 @@ func snapshotFingerprint(snapshot fileSnapshot) string {
 		_, _ = h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+type fileChangeWatcher struct {
+	events  chan struct{}
+	watcher *fsnotify.Watcher
+	root    string
+	done    chan struct{}
+}
+
+func newFileChangeWatcher(root string) (*fileChangeWatcher, error) {
+	underlying, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+	fw := &fileChangeWatcher{
+		events:  make(chan struct{}, 1),
+		watcher: underlying,
+		root:    root,
+		done:    make(chan struct{}),
+	}
+	if err := fw.addTree(root); err != nil {
+		_ = underlying.Close()
+		return nil, err
+	}
+	go fw.run()
+	return fw, nil
+}
+
+func (fw *fileChangeWatcher) Events() <-chan struct{} {
+	if fw == nil {
+		return nil
+	}
+	return fw.events
+}
+
+func (fw *fileChangeWatcher) Close() error {
+	if fw == nil {
+		return nil
+	}
+	err := fw.watcher.Close()
+	<-fw.done
+	return err
+}
+
+func (fw *fileChangeWatcher) run() {
+	defer close(fw.done)
+	defer close(fw.events)
+	for {
+		select {
+		case event, ok := <-fw.watcher.Events:
+			if !ok {
+				return
+			}
+			fw.handleEvent(event)
+		case _, ok := <-fw.watcher.Errors:
+			if !ok {
+				return
+			}
+			fw.signal()
+		}
+	}
+}
+
+func (fw *fileChangeWatcher) handleEvent(event fsnotify.Event) {
+	path := filepath.Clean(event.Name)
+	rel, err := filepath.Rel(fw.root, path)
+	if err != nil {
+		fw.signal()
+		return
+	}
+	if rel == "." {
+		return
+	}
+	if shouldIgnoreWatchPath(rel) {
+		return
+	}
+	if event.Has(fsnotify.Create) {
+		info, err := os.Stat(path)
+		if err == nil && info.IsDir() {
+			_ = fw.addTree(path)
+		}
+	}
+	fw.signal()
+}
+
+func (fw *fileChangeWatcher) signal() {
+	select {
+	case fw.events <- struct{}{}:
+	default:
+	}
+}
+
+func (fw *fileChangeWatcher) addTree(root string) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(fw.root, path)
+		if err != nil {
+			return err
+		}
+		if rel != "." && shouldIgnoreWatchPath(rel) {
+			return filepath.SkipDir
+		}
+		return fw.watcher.Add(path)
+	})
 }

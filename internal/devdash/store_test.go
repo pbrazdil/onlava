@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestStoreStoredRequestsCRUD(t *testing.T) {
@@ -91,5 +92,53 @@ func TestStoreStoredRequestsCRUD(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Fatalf("expected 0 stored requests after delete, got %d", len(list))
+	}
+}
+
+func TestStorePubSubSnapshot(t *testing.T) {
+	t.Parallel()
+
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	ctx := context.Background()
+	empty, err := store.GetPubSubSnapshot(ctx, "app-test")
+	if err != nil {
+		t.Fatalf("get empty pubsub snapshot: %v", err)
+	}
+	if got := string(empty.Topics); got != `[]` {
+		t.Fatalf("empty topics = %s, want []", got)
+	}
+
+	if err := store.UpsertPubSubSnapshot(ctx, PubSubSnapshot{
+		AppID:  "app-test",
+		Topics: json.RawMessage(`[{"name":"events","pending":2}]`),
+	}); err != nil {
+		t.Fatalf("upsert pubsub snapshot: %v", err)
+	}
+	got, err := store.GetPubSubSnapshot(ctx, "app-test")
+	if err != nil {
+		t.Fatalf("get pubsub snapshot: %v", err)
+	}
+	if string(got.Topics) != `[{"name":"events","pending":2}]` {
+		t.Fatalf("topics = %s", got.Topics)
+	}
+	if got.UpdatedAt.IsZero() {
+		t.Fatal("expected updated timestamp")
+	}
+	history, err := store.ListPubSubSnapshots(ctx, "app-test", time.Now().UTC().Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("list pubsub history: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("history length = %d, want 1", len(history))
+	}
+	if string(history[0].Topics) != `[{"name":"events","pending":2}]` {
+		t.Fatalf("history topics = %s", history[0].Topics)
 	}
 }

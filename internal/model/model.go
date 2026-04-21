@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	pulseruntime "pulse.dev/runtime"
+	"pulse.dev/internal/runtimeapi"
 )
 
 type App struct {
@@ -61,7 +61,7 @@ type Field struct {
 
 type Param struct {
 	Name string
-	Kind pulseruntime.ParamKind
+	Kind runtimeapi.ParamKind
 }
 
 type Endpoint struct {
@@ -70,7 +70,7 @@ type Endpoint struct {
 	File         *File
 	Name         string
 	ImplName     string
-	Access       pulseruntime.Access
+	Access       runtimeapi.Access
 	Raw          bool
 	Path         string
 	PathExplicit bool
@@ -133,6 +133,7 @@ type ServiceStruct struct {
 	TypeExpr    string
 	Receiver    Receiver
 	InitFunc    string
+	Shutdown    string
 	Decl        *ast.GenDecl
 	TypeSpec    *ast.TypeSpec
 	GetterName  string

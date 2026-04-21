@@ -41,6 +41,7 @@ type Result struct {
 }
 
 type buildState struct {
+	Version               string   `json:"version,omitempty"`
 	DependencyFingerprint string   `json:"dependency_fingerprint"`
 	GraphFingerprint      string   `json:"graph_fingerprint,omitempty"`
 	Metadata              []byte   `json:"metadata,omitempty"`
@@ -49,7 +50,10 @@ type buildState struct {
 	GeneratedFiles        []string `json:"generated_files,omitempty"`
 }
 
-const buildStateFile = ".pulse-build-state.json"
+const (
+	buildStateFile    = ".pulse-build-state.json"
+	buildStateVersion = "2"
+)
 
 type PrepareOptions struct {
 	ChangedPaths []string
@@ -127,7 +131,11 @@ func Compile(result *Result) error {
 	return CompileContext(context.Background(), result)
 }
 
-func CompileContext(ctx context.Context, result *Result) error {
+func PrimeWorkspace(result *Result) error {
+	return PrimeWorkspaceContext(context.Background(), result)
+}
+
+func PrimeWorkspaceContext(ctx context.Context, result *Result) error {
 	if result == nil {
 		return fmt.Errorf("nil build result")
 	}
@@ -140,11 +148,10 @@ func CompileContext(ctx context.Context, result *Result) error {
 			return err
 		}
 		result.DependencyFingerprint = fingerprint
-	}
-	if err := runGoContext(ctx, result.Dir, "build", "-o", result.Binary, "./pulse_internal_main"); err != nil {
-		return err
+		result.NeedsTidy = false
 	}
 	if err := saveBuildState(result.Dir, buildState{
+		Version:               buildStateVersion,
 		DependencyFingerprint: result.DependencyFingerprint,
 		GraphFingerprint:      result.GraphFingerprint,
 		Metadata:              append([]byte(nil), result.Metadata...),
@@ -152,6 +159,19 @@ func CompileContext(ctx context.Context, result *Result) error {
 		SourceFiles:           append([]string(nil), result.SourceFiles...),
 		GeneratedFiles:        append([]string(nil), result.GeneratedFiles...),
 	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func CompileContext(ctx context.Context, result *Result) error {
+	if result == nil {
+		return fmt.Errorf("nil build result")
+	}
+	if err := PrimeWorkspaceContext(ctx, result); err != nil {
+		return err
+	}
+	if err := runGoContext(ctx, result.Dir, "build", "-o", result.Binary, "./pulse_internal_main"); err != nil {
 		return err
 	}
 	return nil
@@ -609,6 +629,9 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 	state, err := loadBuildState(root)
 	if err != nil {
 		return nil, false, err
+	}
+	if state.Version != buildStateVersion {
+		return nil, false, nil
 	}
 	if state.GraphFingerprint == "" || state.GraphFingerprint != graphFingerprint {
 		return nil, false, nil

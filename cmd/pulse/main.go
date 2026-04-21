@@ -32,13 +32,21 @@ func run(args []string) error {
 		return runCommand(args[1:])
 	case "build":
 		return buildCommand(args[1:])
+	case "check":
+		return checkCommand(args[1:])
+	case "logs":
+		return logsCommand(args[1:])
+	case "test":
+		return testCommand(args[1:])
+	case "gen":
+		return genCommand(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 }
 
 func usageError() error {
-	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]")
+	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]\n  pulse check [--app-root <path>]\n  pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow]\n  pulse test [--app-root <path>] [go test flags/packages...]\n  pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
 }
 
 func runCommand(args []string) error {

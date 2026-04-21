@@ -7,6 +7,7 @@ import { ApiPage } from "./routes/api";
 import { ServicesPage } from "./routes/services";
 import { DatabasePage } from "./routes/db";
 import { CronPage } from "./routes/cron";
+import { PubSubPage } from "./routes/pubsub";
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -102,6 +103,12 @@ const cronRoute = createRoute({
   component: CronPage,
 });
 
+const pubsubRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "pubsub",
+  component: PubSubPage,
+});
+
 const legacyTracesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "traces",
@@ -151,6 +158,7 @@ const routeTree = rootRoute.addChildren([
     traceSpanDetailRoute,
     dbRoute,
     dbDetailRoute,
+    pubsubRoute,
     cronRoute,
     legacyTracesRoute,
     legacyTraceDetailRoute,

@@ -16,6 +16,15 @@ var pulseInternalServiceService struct {
 }
 
 func pulseInternalGetService() (*Service, error) {
+	if mock, ok, err := pulseruntime.LookupServiceMock(pulseruntime.TypeOf[*Service]()); ok || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		if mock == nil {
+			return (*Service)(nil), nil
+		}
+		return mock.(*Service), nil
+	}
 	pulseInternalServiceService.once.Do(func() {
 		started := time.Now()
 		pulseInternalServiceService.svc, pulseInternalServiceService.err = initService()
@@ -149,6 +158,7 @@ func init() {
 	pulsepubsub.RegisterServiceAccessorFor[*Service](func() (any, error) {
 		return pulseInternalGetService()
 	})
+	pulseruntime.RegisterEndpointFunc(AuthEcho, "service", "AuthEcho")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",
 		Name:         "AuthEcho",
@@ -171,6 +181,7 @@ func init() {
 			return resp, nil
 		},
 	})
+	pulseruntime.RegisterEndpointFunc(CallPrivate, "service", "CallPrivate")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",
 		Name:         "CallPrivate",
@@ -193,6 +204,7 @@ func init() {
 			return resp, nil
 		},
 	})
+	pulseruntime.RegisterEndpointFunc(CustomStatus, "service", "CustomStatus")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",
 		Name:         "CustomStatus",
@@ -215,6 +227,7 @@ func init() {
 			return resp, nil
 		},
 	})
+	pulseruntime.RegisterEndpointFunc(Echo, "service", "Echo")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",
 		Name:         "Echo",
@@ -237,6 +250,7 @@ func init() {
 			return resp, nil
 		},
 	})
+	pulseruntime.RegisterEndpointFunc(Raw, "service", "Raw")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",
 		Name:         "Raw",
@@ -255,6 +269,7 @@ func init() {
 			svc.pulseInternalImplRaw(w, req)
 		},
 	})
+	pulseruntime.RegisterEndpointFunc(Secret, "service", "Secret")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
 		Service:      "service",
 		Name:         "Secret",

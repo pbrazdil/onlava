@@ -3,12 +3,14 @@ package runtime
 import (
 	"context"
 	"os"
+	"strconv"
 	"time"
 )
 
 var (
 	supervisorParentCheckInterval = time.Second
 	supervisorParentPID           = os.Getppid
+	supervisorProcessExists       = processExists
 )
 
 func startSupervisorParentMonitor(cancel context.CancelFunc) func() {
@@ -16,8 +18,9 @@ func startSupervisorParentMonitor(cancel context.CancelFunc) func() {
 		return func() {}
 	}
 
+	supervisorPID := supervisorPIDFromEnv()
 	initial := supervisorParentPID()
-	if initial <= 1 {
+	if supervisorPID <= 1 && initial <= 1 {
 		return func() {}
 	}
 
@@ -30,7 +33,7 @@ func startSupervisorParentMonitor(cancel context.CancelFunc) func() {
 			case <-done:
 				return
 			case <-ticker.C:
-				if supervisorParentMonitorShouldCancel(initial, supervisorParentPID()) {
+				if supervisorParentMonitorShouldCancel(supervisorPID, supervisorProcessExists(supervisorPID), initial, supervisorParentPID()) {
 					cancel()
 					return
 				}
@@ -42,6 +45,21 @@ func startSupervisorParentMonitor(cancel context.CancelFunc) func() {
 	}
 }
 
-func supervisorParentMonitorShouldCancel(initial, current int) bool {
+func supervisorPIDFromEnv() int {
+	value := os.Getenv("PULSE_DEV_SUPERVISOR_PID")
+	if value == "" {
+		return 0
+	}
+	pid, err := strconv.Atoi(value)
+	if err != nil || pid <= 0 {
+		return 0
+	}
+	return pid
+}
+
+func supervisorParentMonitorShouldCancel(supervisorPID int, supervisorAlive bool, initial, current int) bool {
+	if supervisorPID > 1 {
+		return !supervisorAlive
+	}
 	return initial > 1 && current > 0 && current != initial
 }

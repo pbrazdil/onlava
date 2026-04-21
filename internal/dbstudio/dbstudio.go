@@ -43,6 +43,44 @@ type Instance struct {
 	url       string
 }
 
+func (i *Instance) Interrupt() error {
+	if i == nil || i.cmd == nil || i.cmd.Process == nil {
+		return nil
+	}
+	return interruptProcessTree(i.cmd)
+}
+
+func (i *Instance) Kill() error {
+	if i == nil || i.cmd == nil || i.cmd.Process == nil {
+		return nil
+	}
+	return killProcessTree(i.cmd)
+}
+
+func (i *Instance) WaitOrKill(grace time.Duration) error {
+	if i == nil {
+		return nil
+	}
+	select {
+	case waitErr := <-i.done:
+		if waitErr == nil || isExpectedExit(waitErr) {
+			return nil
+		}
+		return waitErr
+	case <-time.After(grace):
+		_ = i.Kill()
+		select {
+		case waitErr := <-i.done:
+			if waitErr == nil || isExpectedExit(waitErr) {
+				return nil
+			}
+			return waitErr
+		case <-time.After(time.Second):
+			return fmt.Errorf("db studio did not exit after SIGKILL")
+		}
+	}
+}
+
 func Discover(appRoot string) (Config, bool, error) {
 	for _, key := range []string{"DATABASE_URL", "DatabaseURL"} {
 		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
@@ -121,8 +159,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return nil, err
 	}
 
-	cmd := exec.CommandContext(ctx, bunPath, studioArgs(configPath, opts)...)
-	configureChildProcess(cmd)
+	cmd := commandTreeContext(ctx, bunPath, studioArgs(configPath, opts)...)
 	cmd.Dir = workspace
 	if opts.Verbose {
 		cmd.Stdout = opts.Stdout
@@ -166,17 +203,10 @@ func (i *Instance) Close() error {
 	}
 	var err error
 	if i.cmd != nil && i.cmd.Process != nil {
-		_ = interruptProcessTree(i.cmd)
-		select {
-		case waitErr := <-i.done:
-			if waitErr != nil && !isExpectedExit(waitErr) {
-				err = waitErr
-			}
-		case <-time.After(5 * time.Second):
-			_ = killProcessTree(i.cmd)
-			if waitErr := <-i.done; waitErr != nil && !isExpectedExit(waitErr) {
-				err = waitErr
-			}
+		if interruptErr := i.Interrupt(); interruptErr != nil {
+			err = interruptErr
+		} else if waitErr := i.WaitOrKill(5 * time.Second); waitErr != nil {
+			err = waitErr
 		}
 	}
 	if removeErr := os.RemoveAll(i.workspace); removeErr != nil && err == nil {
@@ -193,8 +223,7 @@ func DefaultURL(port int) string {
 }
 
 func runPull(ctx context.Context, bunPath, workspace, configPath string, opts Options) error {
-	cmd := exec.CommandContext(ctx, bunPath, pullArgs(configPath, opts)...)
-	configureChildProcess(cmd)
+	cmd := commandTreeContext(ctx, bunPath, pullArgs(configPath, opts)...)
 	cmd.Dir = workspace
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -246,8 +275,7 @@ func ensureWorkspaceDeps(ctx context.Context, workspace string, opts Options) er
 	if err != nil {
 		return fmt.Errorf("db studio requires bun: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, bunPath, "install", "--cwd", workspace)
-	configureChildProcess(cmd)
+	cmd := commandTreeContext(ctx, bunPath, "install", "--cwd", workspace)
 	cmd.Dir = workspace
 	output, err := cmd.CombinedOutput()
 	if err != nil {

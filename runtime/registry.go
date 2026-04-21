@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,39 +13,37 @@ import (
 	"time"
 
 	"pulse.dev/errs"
+	"pulse.dev/internal/runtimeapi"
 	pulsemiddleware "pulse.dev/middleware"
 	"pulse.dev/runtime/shared"
 )
 
-type Access string
+type Access = runtimeapi.Access
 
 const (
-	Public  Access = "public"
-	Auth    Access = "auth"
-	Private Access = "private"
+	Public  = runtimeapi.Public
+	Auth    = runtimeapi.Auth
+	Private = runtimeapi.Private
 )
 
-type ParamKind string
+type ParamKind = runtimeapi.ParamKind
 
 const (
-	ParamString ParamKind = "string"
-	ParamBool   ParamKind = "bool"
-	ParamInt    ParamKind = "int"
-	ParamInt8   ParamKind = "int8"
-	ParamInt16  ParamKind = "int16"
-	ParamInt32  ParamKind = "int32"
-	ParamInt64  ParamKind = "int64"
-	ParamUint   ParamKind = "uint"
-	ParamUint8  ParamKind = "uint8"
-	ParamUint16 ParamKind = "uint16"
-	ParamUint32 ParamKind = "uint32"
-	ParamUint64 ParamKind = "uint64"
+	ParamString = runtimeapi.ParamString
+	ParamBool   = runtimeapi.ParamBool
+	ParamInt    = runtimeapi.ParamInt
+	ParamInt8   = runtimeapi.ParamInt8
+	ParamInt16  = runtimeapi.ParamInt16
+	ParamInt32  = runtimeapi.ParamInt32
+	ParamInt64  = runtimeapi.ParamInt64
+	ParamUint   = runtimeapi.ParamUint
+	ParamUint8  = runtimeapi.ParamUint8
+	ParamUint16 = runtimeapi.ParamUint16
+	ParamUint32 = runtimeapi.ParamUint32
+	ParamUint64 = runtimeapi.ParamUint64
 )
 
-type ParamSpec struct {
-	Name string
-	Kind ParamKind
-}
+type ParamSpec = runtimeapi.ParamSpec
 
 type AuthInfo struct {
 	UID  string
@@ -98,6 +97,13 @@ type AppConfig struct {
 	ProxyConsoleHost  string
 	ProxyMCPHost      string
 	ProxyFrontendHost string
+	Observability     ObservabilityConfig
+}
+
+type serviceShutdown struct {
+	service  string
+	order    int
+	shutdown func(context.Context)
 }
 
 type registry struct {
@@ -108,6 +114,9 @@ type registry struct {
 	authHandler         *AuthHandler
 	cronJobs            map[string]*CronJob
 	serviceInitializers map[string]func() error
+	serviceInitOrder    map[string]int
+	serviceShutdowns    map[string]serviceShutdown
+	observability       ObservabilityConfig
 }
 
 var global = &registry{
@@ -115,12 +124,10 @@ var global = &registry{
 	middlewares:         make(map[string]*Middleware),
 	cronJobs:            make(map[string]*CronJob),
 	serviceInitializers: make(map[string]func() error),
+	serviceInitOrder:    make(map[string]int),
+	serviceShutdowns:    make(map[string]serviceShutdown),
 	meta: shared.AppMetadata{
-		Environment: shared.Environment{
-			Name:  "local",
-			Type:  shared.EnvDevelopment,
-			Cloud: shared.CloudLocal,
-		},
+		Environment: defaultEnvironment(),
 	},
 }
 
@@ -128,6 +135,8 @@ func SetAppConfig(cfg AppConfig) {
 	global.mu.Lock()
 	defer global.mu.Unlock()
 	global.meta.AppID = cfg.Name
+	global.meta.Environment = defaultEnvironment()
+	global.observability = cfg.Observability
 	if publicBaseURL := strings.TrimSpace(os.Getenv("PULSE_PUBLIC_BASE_URL")); publicBaseURL != "" {
 		global.meta.APIBaseURL = publicBaseURL
 		return
@@ -146,6 +155,21 @@ func Meta() *shared.AppMetadata {
 	defer global.mu.RUnlock()
 	meta := global.meta
 	return &meta
+}
+
+func defaultEnvironment() shared.Environment {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("PULSE_RUNTIME_ENV")), "test") {
+		return shared.Environment{
+			Name:  "test",
+			Type:  shared.EnvTest,
+			Cloud: shared.CloudLocal,
+		}
+	}
+	return shared.Environment{
+		Name:  "local",
+		Type:  shared.EnvDevelopment,
+		Cloud: shared.CloudLocal,
+	}
 }
 
 func RegisterEndpoint(ep *Endpoint) {
@@ -204,6 +228,19 @@ func RegisterServiceInitializer(service string, init func() error) {
 		panic(fmt.Sprintf("runtime: duplicate service initializer for %s", service))
 	}
 	global.serviceInitializers[service] = init
+}
+
+func MarkServiceInitialized(service string, shutdown func(context.Context)) {
+	if strings.TrimSpace(service) == "" {
+		panic("runtime: service shutdown missing service name")
+	}
+	global.mu.Lock()
+	defer global.mu.Unlock()
+	global.serviceShutdowns[service] = serviceShutdown{
+		service:  service,
+		order:    global.serviceInitOrder[service],
+		shutdown: shutdown,
+	}
 }
 
 func LookupEndpoint(service, name string) (*Endpoint, bool) {
@@ -283,6 +320,13 @@ func InitializeServices() error {
 		return compare(a.service, b.service)
 	})
 
+	global.mu.Lock()
+	global.serviceInitOrder = make(map[string]int, len(initializers))
+	for i, initializer := range initializers {
+		global.serviceInitOrder[initializer.service] = i + 1
+	}
+	global.mu.Unlock()
+
 	results := make(chan error, len(initializers))
 	for _, initializer := range initializers {
 		initializer := initializer
@@ -300,6 +344,45 @@ func InitializeServices() error {
 		}
 	}
 	return nil
+}
+
+func ShutdownServices(ctx context.Context) error {
+	global.mu.RLock()
+	hooks := make([]serviceShutdown, 0, len(global.serviceShutdowns))
+	for _, hook := range global.serviceShutdowns {
+		if hook.shutdown != nil {
+			hooks = append(hooks, hook)
+		}
+	}
+	global.mu.RUnlock()
+
+	slices.SortFunc(hooks, func(a, b serviceShutdown) int {
+		switch {
+		case a.order > b.order:
+			return -1
+		case a.order < b.order:
+			return 1
+		default:
+			return compare(b.service, a.service)
+		}
+	})
+
+	var errsList []error
+	for _, hook := range hooks {
+		if ctx != nil && ctx.Err() != nil {
+			errsList = append(errsList, ctx.Err())
+			break
+		}
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					errsList = append(errsList, fmt.Errorf("shutdown service %s: panic: %v", hook.service, recovered))
+				}
+			}()
+			hook.shutdown(ctx)
+		}()
+	}
+	return errorsJoin(errsList...)
 }
 
 func endpointKey(service, name string) string {
@@ -361,8 +444,12 @@ func CallEndpoint(ctx context.Context, service, name string, pathArgs []any, pay
 			},
 		},
 	}
+	reqState.logsEnabled = logsEnabledForRequest(reqState.request)
+	reqState.traceEnabled = traceEnabledForRequest(reqState.request)
 	if state != nil {
 		reqState.auth = state.auth
+		reqState.logsEnabled = state.logsEnabled && reqState.logsEnabled
+		reqState.traceEnabled = state.traceEnabled && reqState.traceEnabled
 		if state.request.CronIdempotencyKey != "" {
 			reqState.request.Method = "CRON"
 		}
@@ -387,6 +474,16 @@ func TypeOf[T any]() reflect.Type {
 
 func RecordServiceInit(service string, duration time.Duration, err error) {
 	recordServiceInit(service, duration, err)
+}
+
+func errorsJoin(errs ...error) error {
+	var filtered []error
+	for _, err := range errs {
+		if err != nil {
+			filtered = append(filtered, err)
+		}
+	}
+	return errors.Join(filtered...)
 }
 
 func encodePathParams(specs []ParamSpec, values []any) shared.PathParams {

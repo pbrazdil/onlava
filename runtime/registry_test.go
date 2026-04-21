@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -68,6 +69,74 @@ func TestInitializeServicesPropagatesErrors(t *testing.T) {
 	}
 }
 
+func TestShutdownServicesRunsInReverseInitializerOrder(t *testing.T) {
+	restore := replaceGlobalRegistryForTest()
+	defer restore()
+
+	RegisterServiceInitializer("alpha", func() error { return nil })
+	RegisterServiceInitializer("zeta", func() error { return nil })
+	if err := InitializeServices(); err != nil {
+		t.Fatalf("InitializeServices() error = %v", err)
+	}
+
+	var mu sync.Mutex
+	var calls []string
+	MarkServiceInitialized("alpha", func(context.Context) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls = append(calls, "alpha")
+	})
+	MarkServiceInitialized("zeta", func(context.Context) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls = append(calls, "zeta")
+	})
+
+	if err := ShutdownServices(context.Background()); err != nil {
+		t.Fatalf("ShutdownServices() error = %v", err)
+	}
+
+	got := append([]string(nil), calls...)
+	want := []string{"zeta", "alpha"}
+	if len(got) != len(want) {
+		t.Fatalf("ShutdownServices() calls = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ShutdownServices() calls = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestDefaultEnvironmentUsesTestMode(t *testing.T) {
+	t.Setenv("PULSE_RUNTIME_ENV", "test")
+	env := defaultEnvironment()
+	if env.Name != "test" {
+		t.Fatalf("defaultEnvironment().Name = %q, want %q", env.Name, "test")
+	}
+	if env.Type != shared.EnvTest {
+		t.Fatalf("defaultEnvironment().Type = %q, want %q", env.Type, shared.EnvTest)
+	}
+	if env.Cloud != shared.CloudLocal {
+		t.Fatalf("defaultEnvironment().Cloud = %q, want %q", env.Cloud, shared.CloudLocal)
+	}
+}
+
+func TestSetAppConfigUsesTestEnvironment(t *testing.T) {
+	restore := replaceGlobalRegistryForTest()
+	defer restore()
+
+	t.Setenv("PULSE_RUNTIME_ENV", "test")
+	SetAppConfig(AppConfig{Name: "testapp", ListenAddr: "127.0.0.1:4000"})
+	meta := Meta()
+	if meta.Environment.Type != shared.EnvTest {
+		t.Fatalf("Meta().Environment.Type = %q, want %q", meta.Environment.Type, shared.EnvTest)
+	}
+	if meta.Environment.Name != "test" {
+		t.Fatalf("Meta().Environment.Name = %q, want %q", meta.Environment.Name, "test")
+	}
+}
+
 func replaceGlobalRegistryForTest() func() {
 	prev := global
 	global = &registry{
@@ -75,12 +144,10 @@ func replaceGlobalRegistryForTest() func() {
 		middlewares:         make(map[string]*Middleware),
 		cronJobs:            make(map[string]*CronJob),
 		serviceInitializers: make(map[string]func() error),
+		serviceInitOrder:    make(map[string]int),
+		serviceShutdowns:    make(map[string]serviceShutdown),
 		meta: shared.AppMetadata{
-			Environment: shared.Environment{
-				Name:  "local",
-				Type:  shared.EnvDevelopment,
-				Cloud: shared.CloudLocal,
-			},
+			Environment: defaultEnvironment(),
 		},
 	}
 	return func() {

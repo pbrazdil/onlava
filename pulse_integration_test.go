@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -22,19 +23,28 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var (
+	buildPulseBinaryOnce sync.Once
+	buildPulseBinaryPath string
+	buildPulseBinaryErr  error
+)
+
 func TestPulseRunBasicApp(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
-	appDir := filepath.Join(repo, "testdata", "apps", "basic")
+	appDir := copyFixtureApp(t, repo, "basic")
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(dashAddr)
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -69,6 +79,8 @@ func TestPulseRunBasicApp(t *testing.T) {
 }
 
 func TestPulseRunReloadsOnGoChanges(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
 	sourceAppDir := filepath.Join(repo, "testdata", "apps", "basic")
 	appDir := filepath.Join(t.TempDir(), "basic")
@@ -78,13 +90,14 @@ func TestPulseRunReloadsOnGoChanges(t *testing.T) {
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(dashAddr)
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -115,18 +128,21 @@ func TestPulseRunReloadsOnGoChanges(t *testing.T) {
 }
 
 func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
-	appDir := filepath.Join(repo, "testdata", "apps", "secrets")
+	appDir := copyFixtureApp(t, repo, "secrets")
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(dashAddr)
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -144,7 +160,96 @@ func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
 	})
 }
 
+func TestPulseRunPopulatesSecretsBeforePubSubPackageDeclarations(t *testing.T) {
+	t.Parallel()
+
+	repo := repoRoot(t)
+	appDir := filepath.Join(t.TempDir(), "pubsubsecrets")
+	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/pubsubsecrets\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repo+"\n")
+	writeFile(t, filepath.Join(appDir, "pulse.app"), `{"name":"pubsubsecrets"}`)
+	writeFile(t, filepath.Join(appDir, ".env"), "TestQueueConcurrency=10\n")
+	writeFile(t, filepath.Join(appDir, "queue", "api.go"), `package queue
+
+import (
+	"context"
+	"strconv"
+	"strings"
+
+	"pulse.dev/pubsub"
+)
+
+var secrets struct {
+	TestQueueConcurrency string
+}
+
+type Event struct {
+	ID string `+"`json:\"id\"`"+`
+}
+
+type Response struct {
+	MaxConcurrency int    `+"`json:\"max_concurrency\"`"+`
+	Secret         string `+"`json:\"secret\"`"+`
+}
+
+var topic = pubsub.NewTopic[*Event]("events", pubsub.TopicConfig{
+	DeliveryGuarantee: pubsub.AtLeastOnce,
+})
+
+var maxConcurrency = parseConcurrency(secrets.TestQueueConcurrency, 1)
+
+var sub = pubsub.NewSubscription(topic, "sub", pubsub.SubscriptionConfig[*Event]{
+	Handler: func(ctx context.Context, msg *Event) error { return nil },
+	MaxConcurrency: maxConcurrency,
+})
+
+func parseConcurrency(value string, fallback int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+//pulse:api public path=/concurrency method=GET
+func Concurrency(ctx context.Context) (*Response, error) {
+	return &Response{
+		MaxConcurrency: sub.Config().MaxConcurrency,
+		Secret: secrets.TestQueueConcurrency,
+	}, nil
+}
+`)
+
+	port := freePort(t)
+	addr := "127.0.0.1:" + port
+	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	binary := buildPulseBinary(t, repo)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cmd.Stdin = nil
+	cmd.Dir = appDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start pulse run: %v", err)
+	}
+	defer stopPulseProcess(t, cancel, cmd)
+
+	waitForHTTP(t, "http://"+addr+"/concurrency")
+	getJSON(t, "http://"+addr+"/concurrency", nil, http.StatusOK, map[string]any{
+		"max_concurrency": 10,
+		"secret":          "10",
+	})
+}
+
 func TestPulseRunInitializesServiceStructsAtStartup(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
 	appDir := filepath.Join(t.TempDir(), "serviceinit")
 	markerPath := filepath.Join(t.TempDir(), "init.marker")
@@ -176,13 +281,14 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = append(pulseRunEnv(dashAddr), "PULSE_INIT_MARKER="+markerPath)
+	cmd.Env = append(pulseRunEnv(repo, dashAddr, cacheDir), "PULSE_INIT_MARKER="+markerPath)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -197,18 +303,21 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 }
 
 func TestPulseRunMiddlewareApp(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
-	appDir := filepath.Join(repo, "testdata", "apps", "middleware")
+	appDir := copyFixtureApp(t, repo, "middleware")
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(dashAddr)
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -231,18 +340,21 @@ func TestPulseRunMiddlewareApp(t *testing.T) {
 }
 
 func TestPulseRunExecutesCronJobs(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
-	appDir := filepath.Join(repo, "testdata", "apps", "cron")
+	appDir := copyFixtureApp(t, repo, "cron")
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(dashAddr)
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -258,13 +370,17 @@ func TestPulseRunExecutesCronJobs(t *testing.T) {
 }
 
 func TestPulseBuildProducesRunnableBinary(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
-	appDir := filepath.Join(repo, "testdata", "apps", "basic")
+	appDir := copyFixtureApp(t, repo, "basic")
 	pulseBinary := buildPulseBinary(t, repo)
 	outputPath := filepath.Join(t.TempDir(), "basic-app")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 
 	buildCmd := exec.Command(pulseBinary, "build", "-o", outputPath)
 	buildCmd.Dir = appDir
+	buildCmd.Env = append(os.Environ(), "PULSE_DEV_CACHE_DIR="+cacheDir)
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("pulse build failed: %v\n%s", err, buildOutput)
@@ -279,7 +395,7 @@ func TestPulseBuildProducesRunnableBinary(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, outputPath)
-	cmd.Env = append(os.Environ(), "PULSE_LISTEN_ADDR="+addr, "PULSE_LOCAL_PROXY=0")
+	cmd.Env = append(os.Environ(), "PULSE_LISTEN_ADDR="+addr, "PULSE_LOCAL_PROXY=0", "PULSE_DEV_CACHE_DIR="+cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -295,6 +411,8 @@ func TestPulseBuildProducesRunnableBinary(t *testing.T) {
 }
 
 func TestPulseRunServesHTTPSHostnames(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
 	sourceAppDir := filepath.Join(repo, "testdata", "apps", "basic")
 	appDir := filepath.Join(t.TempDir(), "basic")
@@ -307,6 +425,7 @@ func TestPulseRunServesHTTPSHostnames(t *testing.T) {
 	httpPort := freePort(t)
 	httpsPort := freePort(t)
 	frontendPort := freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	frontendLn, err := net.Listen("tcp", "127.0.0.1:"+frontendPort)
@@ -326,7 +445,7 @@ func TestPulseRunServesHTTPSHostnames(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunProxyEnv(dashAddr, httpPort, httpsPort, "127.0.0.1:"+frontendPort)
+	cmd.Env = pulseRunProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, "127.0.0.1:"+frontendPort)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -379,6 +498,8 @@ func TestPulseRunServesHTTPSHostnames(t *testing.T) {
 }
 
 func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
 	sourceAppDir := filepath.Join(repo, "testdata", "apps", "basic")
 	appDir := filepath.Join(t.TempDir(), "basic")
@@ -387,9 +508,11 @@ func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
 	writePulseApp(t, appDir, `{"name":"basicapp","proxy":{"api_host":"api.onlv.localhost","console_host":"console.onlv.localhost","mcp_host":"mcp.onlv.localhost","frontend_host":"pulse.onlv.localhost"}}`)
 	pulseBinary := buildPulseBinary(t, repo)
 	outputPath := filepath.Join(t.TempDir(), "basic-app")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 
 	buildCmd := exec.Command(pulseBinary, "build", "-o", outputPath)
 	buildCmd.Dir = appDir
+	buildCmd.Env = append(os.Environ(), "PULSE_DEV_CACHE_DIR="+cacheDir)
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("pulse build failed: %v\n%s", err, buildOutput)
@@ -409,6 +532,7 @@ func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
 		"PULSE_LOCAL_PROXY_HTTP_PORT="+httpPort,
 		"PULSE_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
 		"PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
+		"PULSE_DEV_CACHE_DIR="+cacheDir,
 	)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -422,10 +546,13 @@ func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
 	client := insecureHTTPSClient()
+	waitForURL(t, client, "https://api.onlv.localhost:"+httpsPort+"/service.CallPrivate")
 	getJSONWithClient(t, client, "https://api.onlv.localhost:"+httpsPort+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
 }
 
 func TestPulseRunDashboardNotificationsAndMCP(t *testing.T) {
+	t.Parallel()
+
 	repo := repoRoot(t)
 	sourceAppDir := filepath.Join(repo, "testdata", "apps", "basic")
 	appDir := filepath.Join(t.TempDir(), "basic")
@@ -435,13 +562,14 @@ func TestPulseRunDashboardNotificationsAndMCP(t *testing.T) {
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	binary := buildPulseBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(dashAddr)
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -524,29 +652,44 @@ func TestPulseRunDashboardNotificationsAndMCP(t *testing.T) {
 
 func buildPulseBinary(t *testing.T, repo string) string {
 	t.Helper()
-	binDir := t.TempDir()
-	binPath := filepath.Join(binDir, "pulse")
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/pulse")
-	cmd.Dir = repo
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("build pulse binary: %v\n%s", err, output)
+	buildPulseBinaryOnce.Do(func() {
+		binDir, err := os.MkdirTemp("", "pulse-test-bin-*")
+		if err != nil {
+			buildPulseBinaryErr = err
+			return
+		}
+		binPath := filepath.Join(binDir, "pulse")
+		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/pulse")
+		cmd.Dir = repo
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			buildPulseBinaryErr = fmt.Errorf("build pulse binary: %w\n%s", err, output)
+			return
+		}
+		buildPulseBinaryPath = binPath
+	})
+	if buildPulseBinaryErr != nil {
+		t.Fatal(buildPulseBinaryErr)
 	}
-	return binPath
+	return buildPulseBinaryPath
 }
 
-func pulseRunEnv(dashboardAddr string) []string {
+func pulseRunEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
 		"PULSE_DEV_DASHBOARD_ADDR="+dashboardAddr,
+		"PULSE_DEV_CACHE_DIR="+cacheDir,
+		"PULSE_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
 		"PULSE_LOCAL_PROXY=0",
 	)
 }
 
-func pulseRunProxyEnv(dashboardAddr, httpPort, httpsPort, frontendAddr string) []string {
+func pulseRunProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
 	env := append(
 		os.Environ(),
 		"PULSE_DEV_DASHBOARD_ADDR="+dashboardAddr,
+		"PULSE_DEV_CACHE_DIR="+cacheDir,
+		"PULSE_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
 		"PULSE_LOCAL_PROXY_HTTP_PORT="+httpPort,
 		"PULSE_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
 		"PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
@@ -797,7 +940,7 @@ func waitForHTTP(t *testing.T, url string) {
 
 func waitForURL(t *testing.T, client *http.Client, url string) {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(40 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
@@ -811,7 +954,7 @@ func waitForURL(t *testing.T, client *http.Client, url string) {
 
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(40 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(path); err == nil {
 			return
@@ -824,7 +967,7 @@ func waitForFile(t *testing.T, path string) {
 func waitForJSONResponse(t *testing.T, url string, wantStatus int, want map[string]any) {
 	t.Helper()
 	client := &http.Client{Timeout: time.Second}
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(40 * time.Second)
 	for time.Now().Before(deadline) {
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
@@ -1166,6 +1309,15 @@ func rewriteFixtureReplace(t *testing.T, goModPath, repo string) {
 	if err := os.WriteFile(goModPath, []byte(updated), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func copyFixtureApp(t *testing.T, repo, name string) string {
+	t.Helper()
+	src := filepath.Join(repo, "testdata", "apps", name)
+	dst := filepath.Join(t.TempDir(), name)
+	copyDir(t, src, dst)
+	rewriteFixtureReplace(t, filepath.Join(dst, "go.mod"), repo)
+	return dst
 }
 
 func writePulseApp(t *testing.T, appDir, contents string) {

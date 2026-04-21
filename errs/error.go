@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	"pulse.dev/internal/redact"
 )
 
 type ErrCode string
@@ -279,11 +281,16 @@ func HTTPErrorWithCode(w http.ResponseWriter, err error, status int) {
 	if err == nil {
 		err = &Error{Code: OK}
 	}
-	payload := &Error{
+	payload := struct {
+		Code    ErrCode  `json:"code"`
+		Message string   `json:"message"`
+		Details any      `json:"details,omitempty"`
+		Meta    Metadata `json:"meta,omitempty"`
+	}{
 		Code:    Code(err),
 		Message: err.Error(),
-		Details: Details(err),
-		Meta:    Meta(err),
+		Details: redact.Value(Details(err)),
+		Meta:    Metadata(redact.Metadata(map[string]any(Meta(err)))),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

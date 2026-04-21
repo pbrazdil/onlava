@@ -23,6 +23,7 @@ import type {
   DashboardMeta,
   DashboardNotification,
   ProcessOutput,
+  PubSubSnapshot,
   TraceSummary,
 } from "./types";
 
@@ -35,6 +36,7 @@ interface DashboardContextValue {
   apiEncoding: APIEncoding | null;
   traces: TraceSummary[];
   outputs: ProcessOutput[];
+  pubsub: PubSubSnapshot | null;
   rpc: DashboardRpcClient | null;
   refreshAll: () => Promise<void>;
   callAPI: (request: {
@@ -67,17 +69,19 @@ export function DashboardProvider({
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [traces, setTraces] = useState<TraceSummary[]>([]);
   const [outputs, setOutputs] = useState<ProcessOutput[]>([]);
+  const [pubsub, setPubSub] = useState<PubSubSnapshot | null>(null);
 
   const refreshAll = useCallback(async () => {
     const rpc = clientRef.current;
     if (!rpc) {
       return;
     }
-    const [nextApps, nextStatus, nextTraces, nextOutputs] = await Promise.all([
+    const [nextApps, nextStatus, nextTraces, nextOutputs, nextPubSub] = await Promise.all([
       rpc.request<AppSummary[]>("list-apps"),
       rpc.request<AppStatus>("status", { app_id: appId }),
       rpc.request<TraceSummary[]>("traces/list", { app_id: appId }),
       rpc.request<ProcessOutput[]>("process/output/list", { app_id: appId, limit: 300 }),
+      rpc.request<PubSubSnapshot>("pubsub/status", { app_id: appId }),
     ]);
     setApps(nextApps);
     setStatus(nextStatus);
@@ -86,6 +90,7 @@ export function DashboardProvider({
       ...item,
       output: processOutputText(item),
     })));
+    setPubSub(nextPubSub ?? null);
   }, [appId]);
 
   useEffect(() => {
@@ -127,6 +132,14 @@ export function DashboardProvider({
           }
           break;
         }
+        case "pubsub/update": {
+          const params = notification.params as PubSubSnapshot;
+          if (params.app_id && params.app_id !== appId) {
+            break;
+          }
+          setPubSub(params);
+          break;
+        }
         default:
           break;
       }
@@ -162,6 +175,7 @@ export function DashboardProvider({
     apiEncoding: status?.apiEncoding ?? null,
     traces,
     outputs,
+    pubsub,
     rpc: clientRef.current,
     refreshAll,
     callAPI: async ({ service, endpoint, path, method, payload, authToken, correlationID }) => {
@@ -184,7 +198,7 @@ export function DashboardProvider({
         body: bodyTextFromApiCall(result.body),
       };
     },
-  }), [appId, apps, connected, outputs, refreshAll, status, traces]);
+  }), [appId, apps, connected, outputs, pubsub, refreshAll, status, traces]);
 
   return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>;
 }

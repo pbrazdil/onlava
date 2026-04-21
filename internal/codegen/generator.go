@@ -14,7 +14,7 @@ import (
 
 	appcfg "pulse.dev/internal/app"
 	"pulse.dev/internal/model"
-	pulseruntime "pulse.dev/runtime"
+	"pulse.dev/internal/runtimeapi"
 )
 
 type Output struct {
@@ -50,6 +50,20 @@ func GenerateWithConfig(appModel *model.App, cfg appcfg.Config) (*Output, error)
 	}
 
 	for _, pkg := range appModel.Packages {
+		hasSecrets := hasSecretsVar(pkg)
+		if hasSecrets || hasPubSub(pkg) {
+			data, err := generateEarlyConfigFile(pkg, hasSecrets)
+			if err != nil {
+				return nil, err
+			}
+			if len(data) > 0 {
+				rel := filepath.ToSlash(filepath.Join(pkg.RelDir, "00_pulse_config.gen.go"))
+				if pkg.RelDir == "." {
+					rel = "00_pulse_config.gen.go"
+				}
+				out.Generated[rel] = data
+			}
+		}
 		data, err := generatePackageFile(pkg)
 		if err != nil {
 			return nil, err
@@ -69,6 +83,21 @@ func GenerateWithConfig(appModel *model.App, cfg appcfg.Config) (*Output, error)
 	}
 	out.Generated["pulse_internal_main/main.go"] = mainFile
 	return out, nil
+}
+
+func generateEarlyConfigFile(pkg *model.Package, hasSecrets bool) ([]byte, error) {
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "package %s\n\n", pkg.Name)
+	buf.WriteString("import pulseruntime \"pulse.dev/runtime\"\n\n")
+	buf.WriteString("var pulseInternalDotEnvInitialized = pulseruntime.MustLoadDotEnvIntoEnv()\n")
+	if hasSecrets {
+		buf.WriteString("\n")
+		buf.WriteString("var pulseInternalSecretsInitialized = func() bool {\n")
+		buf.WriteString("\tpulseruntime.MustPopulateSecrets(&secrets)\n")
+		buf.WriteString("\treturn true\n")
+		buf.WriteString("}()\n")
+	}
+	return format.Source([]byte(buf.String()))
 }
 
 func rewriteEndpointDecls(app *model.App) {
@@ -123,7 +152,7 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 
 	im := newImports(pkg.ImportPath)
 	im.use("pulseruntime", "pulse.dev/runtime")
-	if needsContextImport(pkgEndpoints, authHandler) {
+	if needsContextImport(pkgEndpoints, authHandler, serviceStruct) {
 		im.use("context", "context")
 	}
 	if len(pkgMiddleware) > 0 {
@@ -160,6 +189,7 @@ func generateMain(appModel *model.App, cfg appcfg.Config) ([]byte, error) {
 	buf.WriteString("\t\"fmt\"\n")
 	buf.WriteString("\t\"os\"\n")
 	buf.WriteString("\tpulseruntime \"pulse.dev/runtime\"\n")
+	buf.WriteString("\t_ \"pulse.dev/runtimeapp\"\n")
 	for _, pkg := range appModel.Packages {
 		if hasResources(pkg) {
 			fmt.Fprintf(&buf, "\t_ %q\n", pkg.ImportPath)
@@ -200,7 +230,46 @@ func appConfigLiteral(appModel *model.App, cfg appcfg.Config) string {
 	if cfg.Proxy.FrontendHost != "" {
 		fields = append(fields, fmt.Sprintf("ProxyFrontendHost: %q", cfg.Proxy.FrontendHost))
 	}
+	if literal := observabilityConfigLiteral(cfg.Observability); literal != "" {
+		fields = append(fields, "Observability: "+literal)
+	}
 	return "pulseruntime.AppConfig{" + strings.Join(fields, ", ") + "}"
+}
+
+func observabilityConfigLiteral(cfg appcfg.ObservabilityConfig) string {
+	fields := make([]string, 0, 2)
+	if literal := endpointFilterConfigLiteral(cfg.Logs); literal != "" {
+		fields = append(fields, "Logs: "+literal)
+	}
+	if literal := endpointFilterConfigLiteral(cfg.Tracing); literal != "" {
+		fields = append(fields, "Tracing: "+literal)
+	}
+	if len(fields) == 0 {
+		return ""
+	}
+	return "pulseruntime.ObservabilityConfig{" + strings.Join(fields, ", ") + "}"
+}
+
+func endpointFilterConfigLiteral(cfg appcfg.EndpointFilterConfig) string {
+	fields := make([]string, 0, 2)
+	if len(cfg.IncludeEndpoints) > 0 {
+		fields = append(fields, "IncludeEndpoints: "+stringSliceLiteral(cfg.IncludeEndpoints))
+	}
+	if len(cfg.ExcludeEndpoints) > 0 {
+		fields = append(fields, "ExcludeEndpoints: "+stringSliceLiteral(cfg.ExcludeEndpoints))
+	}
+	if len(fields) == 0 {
+		return ""
+	}
+	return "pulseruntime.EndpointFilterConfig{" + strings.Join(fields, ", ") + "}"
+}
+
+func stringSliceLiteral(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		quoted = append(quoted, fmt.Sprintf("%q", value))
+	}
+	return "[]string{" + strings.Join(quoted, ", ") + "}"
 }
 
 func hasResources(pkg *model.Package) bool {
@@ -348,7 +417,10 @@ func packageMiddleware(pkg *model.Package) []*model.Middleware {
 	return middlewares
 }
 
-func needsContextImport(endpoints []*model.Endpoint, authHandler *model.AuthHandler) bool {
+func needsContextImport(endpoints []*model.Endpoint, authHandler *model.AuthHandler, ss *model.ServiceStruct) bool {
+	if ss != nil && ss.Shutdown != "" {
+		return true
+	}
 	if authHandler != nil {
 		return true
 	}
@@ -387,12 +459,24 @@ func writeImports(buf *strings.Builder, im *imports) {
 func writeServiceStruct(buf *strings.Builder, im *imports, ss *model.ServiceStruct) {
 	fmt.Fprintf(buf, "var %s struct {\n\tonce sync.Once\n\tsvc *%s\n\terr error\n}\n\n", ss.InstanceVar, ss.TypeName)
 	fmt.Fprintf(buf, "func %s() (*%s, error) {\n", ss.GetterName, ss.TypeName)
+	fmt.Fprintf(buf, "\tif mock, ok, err := pulseruntime.LookupServiceMock(pulseruntime.TypeOf[*%s]()); ok || err != nil {\n", ss.TypeName)
+	buf.WriteString("\t\tif err != nil {\n")
+	buf.WriteString("\t\t\treturn nil, err\n")
+	buf.WriteString("\t\t}\n")
+	fmt.Fprintf(buf, "\t\tif mock == nil {\n\t\t\treturn (*%s)(nil), nil\n\t\t}\n", ss.TypeName)
+	fmt.Fprintf(buf, "\t\treturn mock.(*%s), nil\n", ss.TypeName)
+	buf.WriteString("\t}\n")
 	fmt.Fprintf(buf, "\t%s.once.Do(func() {\n", ss.InstanceVar)
 	buf.WriteString("\t\tstarted := time.Now()\n")
 	if ss.InitFunc != "" {
 		fmt.Fprintf(buf, "\t\t%s.svc, %s.err = %s()\n", ss.InstanceVar, ss.InstanceVar, ss.InitFunc)
 	} else {
 		fmt.Fprintf(buf, "\t\t%s.svc = &%s{}\n", ss.InstanceVar, ss.TypeName)
+	}
+	if ss.Shutdown != "" {
+		fmt.Fprintf(buf, "\t\tif %s.err == nil && %s.svc != nil {\n", ss.InstanceVar, ss.InstanceVar)
+		fmt.Fprintf(buf, "\t\t\tpulseruntime.MarkServiceInitialized(%q, func(force context.Context) { %s.svc.%s(force) })\n", ss.Service.Name, ss.InstanceVar, ss.Shutdown)
+		buf.WriteString("\t\t}\n")
 	}
 	fmt.Fprintf(buf, "\t\tpulseruntime.RecordServiceInit(%q, time.Since(started), %s.err)\n", ss.Service.Name, ss.InstanceVar)
 	buf.WriteString("\t})\n")
@@ -492,6 +576,7 @@ func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.En
 		writeMiddlewareRegistration(buf, im, mw, ss)
 	}
 	for _, ep := range endpoints {
+		fmt.Fprintf(buf, "\tpulseruntime.RegisterEndpointFunc(%s, %q, %q)\n", ep.Name, ep.Service.Name, ep.Name)
 		writeEndpointRegistration(buf, im, ep, ss)
 	}
 	if authHandler != nil {
@@ -686,11 +771,11 @@ func generatedFieldName(field model.Field, index int) string {
 	return field.Name
 }
 
-func exportAccess(access pulseruntime.Access) string {
+func exportAccess(access runtimeapi.Access) string {
 	switch access {
-	case pulseruntime.Public:
+	case runtimeapi.Public:
 		return "Public"
-	case pulseruntime.Auth:
+	case runtimeapi.Auth:
 		return "Auth"
 	default:
 		return "Private"
@@ -734,31 +819,31 @@ func renderParamSpecs(params []model.Param) string {
 	return "[]pulseruntime.ParamSpec{" + strings.Join(parts, ", ") + "}"
 }
 
-func exportParamKind(kind pulseruntime.ParamKind) string {
+func exportParamKind(kind runtimeapi.ParamKind) string {
 	switch kind {
-	case pulseruntime.ParamString:
+	case runtimeapi.ParamString:
 		return "ParamString"
-	case pulseruntime.ParamBool:
+	case runtimeapi.ParamBool:
 		return "ParamBool"
-	case pulseruntime.ParamInt:
+	case runtimeapi.ParamInt:
 		return "ParamInt"
-	case pulseruntime.ParamInt8:
+	case runtimeapi.ParamInt8:
 		return "ParamInt8"
-	case pulseruntime.ParamInt16:
+	case runtimeapi.ParamInt16:
 		return "ParamInt16"
-	case pulseruntime.ParamInt32:
+	case runtimeapi.ParamInt32:
 		return "ParamInt32"
-	case pulseruntime.ParamInt64:
+	case runtimeapi.ParamInt64:
 		return "ParamInt64"
-	case pulseruntime.ParamUint:
+	case runtimeapi.ParamUint:
 		return "ParamUint"
-	case pulseruntime.ParamUint8:
+	case runtimeapi.ParamUint8:
 		return "ParamUint8"
-	case pulseruntime.ParamUint16:
+	case runtimeapi.ParamUint16:
 		return "ParamUint16"
-	case pulseruntime.ParamUint32:
+	case runtimeapi.ParamUint32:
 		return "ParamUint32"
-	case pulseruntime.ParamUint64:
+	case runtimeapi.ParamUint64:
 		return "ParamUint64"
 	default:
 		return "ParamString"

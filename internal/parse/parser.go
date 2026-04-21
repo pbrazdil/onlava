@@ -16,7 +16,7 @@ import (
 
 	"pulse.dev/auth"
 	"pulse.dev/internal/model"
-	pulseruntime "pulse.dev/runtime"
+	"pulse.dev/internal/runtimeapi"
 )
 
 type directive struct {
@@ -333,7 +333,7 @@ func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *
 		ImplName:     "pulseInternalImpl" + fn.Name.Name,
 		Decl:         fn,
 		Object:       sigObj,
-		Access:       pulseruntime.Private,
+		Access:       runtimeapi.Private,
 		Raw:          dir.options["raw"],
 		Path:         dir.fields["path"],
 		PathExplicit: dir.fields["path"] != "",
@@ -342,10 +342,10 @@ func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *
 		TokenPos:     fn.Pos(),
 	}
 	if dir.options["public"] {
-		ep.Access = pulseruntime.Public
+		ep.Access = runtimeapi.Public
 	}
 	if dir.options["auth"] {
-		ep.Access = pulseruntime.Auth
+		ep.Access = runtimeapi.Auth
 	}
 
 	if fn.Recv != nil {
@@ -361,7 +361,7 @@ func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *
 		if len(ep.Results) > 0 {
 			return nil, fmt.Errorf("raw endpoint %s cannot return values", ep.Name)
 		}
-		if ep.Access == pulseruntime.Private {
+		if ep.Access == runtimeapi.Private {
 			return nil, fmt.Errorf("raw endpoint %s cannot be private", ep.Name)
 		}
 		if len(ep.Methods) == 0 {
@@ -530,6 +530,23 @@ func parseServiceStruct(pkg *model.Package, file *model.File, decl *ast.GenDecl)
 		if sig, ok := initObj.Type().(*types.Signature); ok && sig.Params().Len() == 0 && sig.Results().Len() == 2 {
 			if ptr, ok := sig.Results().At(0).Type().(*types.Pointer); ok && isNamedType(ptr, pkg.ImportPath, typeName) && isErrorType(sig.Results().At(1).Type()) {
 				ss.InitFunc = initObj.Name()
+			}
+		}
+	}
+	if namedObj := pkg.GoPkg.Types.Scope().Lookup(typeName); namedObj != nil {
+		if named, ok := namedObj.Type().(*types.Named); ok {
+			methods := types.NewMethodSet(types.NewPointer(named))
+			for i := 0; i < methods.Len(); i++ {
+				sel := methods.At(i)
+				if sel.Obj().Name() != "Shutdown" {
+					continue
+				}
+				sig, ok := sel.Obj().Type().(*types.Signature)
+				if !ok || sig.Params().Len() != 1 || sig.Results().Len() != 0 || !isNamedType(sig.Params().At(0).Type(), "context", "Context") {
+					return nil, fmt.Errorf("service %s Shutdown method must have signature func(context.Context)", typeName)
+				}
+				ss.Shutdown = sel.Obj().Name()
+				break
 			}
 		}
 	}
@@ -837,38 +854,38 @@ func middlewareMatchesEndpoint(mw *model.Middleware, ep *model.Endpoint) bool {
 	return false
 }
 
-func paramKind(t types.Type) (pulseruntime.ParamKind, bool) {
+func paramKind(t types.Type) (runtimeapi.ParamKind, bool) {
 	switch u := types.Unalias(t).(type) {
 	case *types.Basic:
 		switch u.Kind() {
 		case types.String:
-			return pulseruntime.ParamString, true
+			return runtimeapi.ParamString, true
 		case types.Bool:
-			return pulseruntime.ParamBool, true
+			return runtimeapi.ParamBool, true
 		case types.Int:
-			return pulseruntime.ParamInt, true
+			return runtimeapi.ParamInt, true
 		case types.Int8:
-			return pulseruntime.ParamInt8, true
+			return runtimeapi.ParamInt8, true
 		case types.Int16:
-			return pulseruntime.ParamInt16, true
+			return runtimeapi.ParamInt16, true
 		case types.Int32:
-			return pulseruntime.ParamInt32, true
+			return runtimeapi.ParamInt32, true
 		case types.Int64:
-			return pulseruntime.ParamInt64, true
+			return runtimeapi.ParamInt64, true
 		case types.Uint:
-			return pulseruntime.ParamUint, true
+			return runtimeapi.ParamUint, true
 		case types.Uint8:
-			return pulseruntime.ParamUint8, true
+			return runtimeapi.ParamUint8, true
 		case types.Uint16:
-			return pulseruntime.ParamUint16, true
+			return runtimeapi.ParamUint16, true
 		case types.Uint32:
-			return pulseruntime.ParamUint32, true
+			return runtimeapi.ParamUint32, true
 		case types.Uint64:
-			return pulseruntime.ParamUint64, true
+			return runtimeapi.ParamUint64, true
 		}
 	case *types.Named:
 		if isAuthUIDType(u) {
-			return pulseruntime.ParamString, true
+			return runtimeapi.ParamString, true
 		}
 	}
 	return "", false

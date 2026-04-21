@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"pulse.dev/errs"
+	"pulse.dev/internal/redact"
 	"pulse.dev/internal/stdlog"
 	"pulse.dev/internal/termstyle"
 )
@@ -53,6 +54,9 @@ func (h *pulseConsoleHandler) Enabled(_ context.Context, level slog.Level) bool 
 }
 
 func (h *pulseConsoleHandler) Handle(_ context.Context, record slog.Record) error {
+	if state := currentState(); state != nil && !state.logsEnabled {
+		return nil
+	}
 	attrs := h.collectAttrs(record)
 	line := h.formatRecord(record, attrs)
 	if line == "" {
@@ -117,9 +121,10 @@ func (h *pulseConsoleHandler) appendAttr(dst *[]consoleAttr, groups []string, at
 	if key == "err" {
 		key = "error"
 	}
+	value := redactedSlogValue(key, attr.Value)
 	*dst = append(*dst, consoleAttr{
 		key:   key,
-		value: consoleValueString(attr.Value),
+		value: consoleValueString(value),
 	})
 }
 
@@ -237,6 +242,28 @@ func consoleValueString(value slog.Value) string {
 	}
 }
 
+func redactedSlogValue(key string, value slog.Value) slog.Value {
+	switch value.Kind() {
+	case slog.KindGroup:
+		items := value.Group()
+		redacted := make([]any, 0, len(items))
+		for _, item := range items {
+			redacted = append(redacted, slog.Attr{
+				Key:   item.Key,
+				Value: redactedSlogValue(item.Key, item.Value),
+			})
+		}
+		return slog.AnyValue(redacted)
+	case slog.KindAny:
+		return slog.AnyValue(redact.Value(value.Any()))
+	default:
+		if redact.SensitiveKey(key) {
+			return slog.StringValue(redact.Placeholder)
+		}
+		return value
+	}
+}
+
 func splitConsoleList(value string) []string {
 	if value == "" {
 		return nil
@@ -259,7 +286,7 @@ func logTrace(ctx context.Context, msg string, args ...any) {
 }
 
 func logRequestStart(state *requestState) {
-	if state == nil || state.trace == nil || !state.trace.isRoot || state.startLogged {
+	if state == nil || !state.logsEnabled || state.trace == nil || !state.trace.isRoot || state.startLogged {
 		return
 	}
 	state.startLogged = true
@@ -275,7 +302,7 @@ func logRequestStart(state *requestState) {
 }
 
 func logRequestFailure(state *requestState, err error) {
-	if state == nil || state.trace == nil || !state.trace.isRoot || err == nil {
+	if state == nil || !state.logsEnabled || state.trace == nil || !state.trace.isRoot || err == nil {
 		return
 	}
 	args := []any{
@@ -292,7 +319,7 @@ func logRequestFailure(state *requestState, err error) {
 }
 
 func logRequestCompleted(state *requestState, duration time.Duration, err error) {
-	if state == nil || state.trace == nil || !state.trace.isRoot {
+	if state == nil || !state.logsEnabled || state.trace == nil || !state.trace.isRoot {
 		return
 	}
 	args := []any{
@@ -309,7 +336,7 @@ func logRequestCompleted(state *requestState, duration time.Duration, err error)
 }
 
 func logAuthHandlerStart(state *requestState, handler *AuthHandler) {
-	if state == nil || state.trace == nil || handler == nil {
+	if state == nil || !state.logsEnabled || state.trace == nil || handler == nil {
 		return
 	}
 	logTrace(context.Background(), "running auth handler",
@@ -320,7 +347,7 @@ func logAuthHandlerStart(state *requestState, handler *AuthHandler) {
 }
 
 func logAuthHandlerCompleted(state *requestState, handler *AuthHandler, info AuthInfo, err error, duration time.Duration) {
-	if state == nil || state.trace == nil || handler == nil {
+	if state == nil || !state.logsEnabled || state.trace == nil || handler == nil {
 		return
 	}
 	args := []any{

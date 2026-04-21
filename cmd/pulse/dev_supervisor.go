@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -38,9 +39,11 @@ type runningApp struct {
 }
 
 type devSupervisor struct {
-	root string
-	cfg  app.Config
-	addr string
+	ctx    context.Context
+	cancel context.CancelFunc
+	root   string
+	cfg    app.Config
+	addr   string
 
 	store       *devdash.Store
 	dashboard   *dashboardServer
@@ -51,25 +54,31 @@ type devSupervisor struct {
 	reportToken string
 	console     *runConsole
 
-	mu      sync.RWMutex
-	current *runningApp
-	status  devdash.AppRecord
+	closeOnce sync.Once
+	mu        sync.RWMutex
+	current   *runningApp
+	status    devdash.AppRecord
 }
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr string, verbose bool) (*devSupervisor, error) {
+	supervisorCtx, cancel := context.WithCancel(ctx)
 	store, err := devdash.OpenStore(os.Getenv("PULSE_DEV_CACHE_DIR"))
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	token, err := randomToken()
 	if err != nil {
+		cancel()
 		_ = store.Close()
 		return nil, err
 	}
 
 	s := &devSupervisor{
+		ctx:         supervisorCtx,
+		cancel:      cancel,
 		root:        root,
 		cfg:         cfg,
 		addr:        addr,
@@ -85,8 +94,9 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr str
 			UpdatedAt:  time.Now().UTC(),
 		},
 	}
-	uiDir, err := prepareDashboardUIDir(ctx, s.console)
+	uiDir, err := prepareDashboardUIDir(supervisorCtx, s.console)
 	if err != nil {
+		cancel()
 		_ = store.Close()
 		return nil, err
 	}
@@ -95,36 +105,89 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr str
 }
 
 func (s *devSupervisor) Close() error {
-	var errs []error
-	if s.proxy != nil {
-		if err := s.proxy.Close(); err != nil {
-			errs = append(errs, err)
+	var closeErr error
+	s.closeOnce.Do(func() {
+		if s.cancel != nil {
+			s.cancel()
 		}
-	}
-	if s.dashboard != nil {
-		if err := s.dashboard.Close(); err != nil {
-			errs = append(errs, err)
+
+		app := s.detachCurrentApp()
+		dbStudio := s.currentDBStudio()
+
+		var errs []error
+		if app != nil {
+			if err := app.interrupt(); err != nil {
+				errs = append(errs, err)
+			}
 		}
-	}
-	if s.dbStudio != nil {
-		if err := s.dbStudio.Close(); err != nil {
-			errs = append(errs, err)
+		if dbStudio != nil {
+			if err := dbStudio.Interrupt(); err != nil {
+				errs = append(errs, err)
+			}
 		}
-	}
-	if s.dbStudioUI != nil {
-		if err := s.dbStudioUI.Close(); err != nil {
-			errs = append(errs, err)
+
+		type closer struct {
+			name string
+			fn   func() error
 		}
-	}
-	if err := s.stopCurrent(); err != nil {
-		errs = append(errs, err)
-	}
-	if s.store != nil {
-		if err := s.store.Close(); err != nil {
-			errs = append(errs, err)
+		closers := []closer{}
+		if s.dashboard != nil {
+			closers = append(closers, closer{name: "dashboard", fn: s.dashboard.Close})
 		}
-	}
-	return errors.Join(errs...)
+		if s.proxy != nil {
+			closers = append(closers, closer{name: "proxy", fn: s.proxy.Close})
+		}
+		if s.dbStudioUI != nil {
+			closers = append(closers, closer{name: "dbstudio-ui", fn: s.dbStudioUI.Close})
+		}
+
+		if len(closers) > 0 {
+			errCh := make(chan error, len(closers))
+			var wg sync.WaitGroup
+			for _, item := range closers {
+				wg.Add(1)
+				go func(fn func() error) {
+					defer wg.Done()
+					if err := fn(); err != nil {
+						errCh <- err
+					}
+				}(item.fn)
+			}
+			done := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				errs = append(errs, fmt.Errorf("timed out closing in-process dev services"))
+			}
+			close(errCh)
+			for err := range errCh {
+				errs = append(errs, err)
+			}
+		}
+
+		if app != nil {
+			if err := app.waitOrKill(stopTimeout); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if dbStudio != nil {
+			if err := dbStudio.WaitOrKill(5 * time.Second); err != nil {
+				errs = append(errs, err)
+			}
+		}
+
+		if s.store != nil {
+			if err := s.store.Close(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		closeErr = errors.Join(errs...)
+	})
+	return closeErr
 }
 
 func (s *devSupervisor) Start(ctx context.Context) error {
@@ -134,7 +197,7 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 	if err := s.dashboard.Start(ctx); err != nil {
 		return err
 	}
-	if err := s.startDBStudio(ctx); err != nil {
+	if err := s.startDBStudio(s.ctx); err != nil {
 		slog.Warn("db studio unavailable", "err", err)
 	}
 	if err := s.startLocalProxy(); err != nil {
@@ -144,6 +207,11 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 }
 
 func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, snapshot fileSnapshot, changedPaths []string) error {
+	if cfg, err := s.reloadConfig(); err != nil {
+		return s.handleCompileError(ctx, nil, nil, err)
+	} else {
+		s.cfg = cfg
+	}
 	s.setCompiling(true, "")
 	if err := s.persistStatus(ctx); err != nil {
 		return err
@@ -283,17 +351,34 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	return nil
 }
 
+func (s *devSupervisor) reloadConfig() (app.Config, error) {
+	root, cfg, err := app.DiscoverRoot(s.root)
+	if err != nil {
+		return app.Config{}, err
+	}
+	if filepath.Clean(root) != filepath.Clean(s.root) {
+		return app.Config{}, fmt.Errorf("pulse.app moved from %s to %s", s.root, root)
+	}
+	return cfg, nil
+}
+
 func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, metadata, apiEncoding json.RawMessage) (*runningApp, error) {
 	cmd := exec.Command(result.Binary)
 	configureChildProcess(cmd)
+	cmd.WaitDelay = stopTimeout + time.Second
 	cmd.Dir = s.root
+	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root)
+	if err != nil {
+		return nil, err
+	}
 	cmd.Env = appChildEnv(
-		os.Environ(),
+		baseEnv,
 		s.console != nil && s.console.palette.Enabled(),
 		"PULSE_LISTEN_ADDR="+s.addr,
 		"PULSE_APP_ID="+s.cfg.Name,
 		"PULSE_APP_ROOT="+s.root,
 		"PULSE_DEV_SUPERVISOR=1",
+		fmt.Sprintf("PULSE_DEV_SUPERVISOR_PID=%d", os.Getpid()),
 		"PULSE_LOCAL_PROXY=0",
 		"PULSE_DEV_REPORT_URL=http://"+devdash.ListenAddr()+devdash.ReportPath,
 		"PULSE_DEV_REPORT_TOKEN="+s.reportToken,
@@ -301,7 +386,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	if s.proxy != nil {
 		cmd.Env = append(cmd.Env, "PULSE_PUBLIC_BASE_URL="+s.proxy.Routes().APIURL)
 	}
-	cmd.Stdin = os.Stdin
+	cmd.Stdin = nil
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -379,6 +464,33 @@ func appChildEnv(base []string, forceColor bool, vars ...string) []string {
 	return env
 }
 
+func appEnvWithDotEnv(base []string, root string) ([]string, error) {
+	env := append([]string(nil), base...)
+	existing := make(map[string]bool, len(env))
+	for _, item := range env {
+		key, _, ok := strings.Cut(item, "=")
+		if ok {
+			existing[key] = true
+		}
+	}
+	values, err := parseDotEnvFile(filepath.Join(root, ".env"))
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if existing[key] {
+			continue
+		}
+		env = append(env, key+"="+values[key])
+	}
+	return env, nil
+}
+
 func stripANSI(data []byte) []byte {
 	if len(data) == 0 {
 		return nil
@@ -422,28 +534,49 @@ func (s *devSupervisor) stopCurrent() error {
 	return current.stop()
 }
 
-func (s *runningApp) stop() error {
-	if s == nil {
+func (a *runningApp) interrupt() error {
+	if a == nil || a.cmd == nil || a.cmd.Process == nil {
 		return nil
 	}
-	if s.cmd == nil || s.cmd.Process == nil {
+	return interruptProcessTree(a.cmd)
+}
+
+func (a *runningApp) kill() error {
+	if a == nil || a.cmd == nil || a.cmd.Process == nil {
 		return nil
 	}
-	_ = interruptProcessTree(s.cmd)
+	return killProcessTree(a.cmd)
+}
+
+func (a *runningApp) waitOrKill(grace time.Duration) error {
+	if a == nil {
+		return nil
+	}
 	select {
-	case err := <-s.done:
+	case err := <-a.done:
 		if err == nil || isExpectedExit(err) {
 			return nil
 		}
 		return err
-	case <-time.After(stopTimeout):
-		_ = killProcessTree(s.cmd)
-		err := <-s.done
-		if err == nil || isExpectedExit(err) {
-			return nil
+	case <-time.After(grace):
+		_ = a.kill()
+		select {
+		case err := <-a.done:
+			if err == nil || isExpectedExit(err) {
+				return nil
+			}
+			return err
+		case <-time.After(time.Second):
+			return fmt.Errorf("app did not exit after SIGKILL")
 		}
+	}
+}
+
+func (a *runningApp) stop() error {
+	if err := a.interrupt(); err != nil {
 		return err
 	}
+	return a.waitOrKill(stopTimeout)
 }
 
 func isExpectedExit(err error) bool {
@@ -504,6 +637,20 @@ func (s *devSupervisor) currentApp() *runningApp {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.current
+}
+
+func (s *devSupervisor) detachCurrentApp() *runningApp {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.current
+	s.current = nil
+	return current
+}
+
+func (s *devSupervisor) currentDBStudio() *dbstudio.Instance {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dbStudio
 }
 
 func (s *devSupervisor) announceRebuild(paths []string) {

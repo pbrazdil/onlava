@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	Name           string      `json:"name"`
-	ID             string      `json:"id"`
-	Proxy          ProxyConfig `json:"proxy"`
-	EnableDBStudio bool        `json:"-"`
+	Name           string              `json:"name"`
+	ID             string              `json:"id"`
+	Proxy          ProxyConfig         `json:"proxy"`
+	Observability  ObservabilityConfig `json:"observability"`
+	EnableDBStudio bool                `json:"-"`
 }
 
 type ProxyConfig struct {
@@ -21,6 +22,16 @@ type ProxyConfig struct {
 	ConsoleHost  string `json:"console_host"`
 	MCPHost      string `json:"mcp_host"`
 	FrontendHost string `json:"frontend_host"`
+}
+
+type ObservabilityConfig struct {
+	Logs    EndpointFilterConfig `json:"logs"`
+	Tracing EndpointFilterConfig `json:"tracing"`
+}
+
+type EndpointFilterConfig struct {
+	IncludeEndpoints []string `json:"include_endpoints"`
+	ExcludeEndpoints []string `json:"exclude_endpoints"`
 }
 
 func DiscoverRoot(start string) (string, Config, error) {

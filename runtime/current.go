@@ -15,11 +15,13 @@ import (
 type requestStateKey struct{}
 
 type requestState struct {
-	started     time.Time
-	request     shared.Request
-	auth        AuthInfo
-	trace       *traceSpan
-	startLogged bool
+	started      time.Time
+	request      shared.Request
+	auth         AuthInfo
+	trace        *traceSpan
+	startLogged  bool
+	logsEnabled  bool
+	traceEnabled bool
 }
 
 var stateStore sync.Map
@@ -57,7 +59,9 @@ func WithAuthContext(ctx context.Context, auth AuthInfo) context.Context {
 			Type:    shared.InternalCall,
 			Headers: make(http.Header),
 		},
-		auth: auth,
+		auth:         auth,
+		logsEnabled:  true,
+		traceEnabled: true,
 	})
 }
 
@@ -110,26 +114,29 @@ func newExternalState(ep *Endpoint, req *http.Request, path shared.PathParams, p
 		requestType = shared.RawAPICall
 	}
 	started := time.Now()
-	return &requestState{
-		started: started,
-		request: shared.Request{
-			Type:       requestType,
-			Started:    started,
-			Service:    ep.Service,
-			Endpoint:   ep.Name,
-			Method:     req.Method,
-			Path:       req.URL.Path,
-			PathParams: path,
-			Headers:    req.Header.Clone(),
-			Payload:    payload,
-			API: &shared.APIDesc{
-				RequestType:  ep.PayloadType,
-				ResponseType: ep.ResponseType,
-				Raw:          ep.Raw,
-				Exposed:      ep.Access != Private,
-				AuthRequired: ep.Access == Auth,
-			},
+	request := shared.Request{
+		Type:       requestType,
+		Started:    started,
+		Service:    ep.Service,
+		Endpoint:   ep.Name,
+		Method:     req.Method,
+		Path:       req.URL.Path,
+		PathParams: path,
+		Headers:    req.Header.Clone(),
+		Payload:    payload,
+		API: &shared.APIDesc{
+			RequestType:  ep.PayloadType,
+			ResponseType: ep.ResponseType,
+			Raw:          ep.Raw,
+			Exposed:      ep.Access != Private,
+			AuthRequired: ep.Access == Auth,
 		},
-		auth: auth,
+	}
+	return &requestState{
+		started:      started,
+		request:      request,
+		auth:         auth,
+		logsEnabled:  logsEnabledForRequest(request),
+		traceEnabled: traceEnabledForRequest(request),
 	}
 }

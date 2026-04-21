@@ -30,6 +30,29 @@ func MustPopulateSecrets(target any) {
 	}
 }
 
+func MustLoadDotEnvIntoEnv() bool {
+	if err := LoadDotEnvIntoEnv(); err != nil {
+		panic(err)
+	}
+	return true
+}
+
+func LoadDotEnvIntoEnv() error {
+	env, err := loadSecretsEnv()
+	if err != nil {
+		return err
+	}
+	for key, value := range env {
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		if err := os.Setenv(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func PopulateSecrets(target any) error {
 	value := reflect.ValueOf(target)
 	if !value.IsValid() || value.Kind() != reflect.Ptr || value.IsNil() {
