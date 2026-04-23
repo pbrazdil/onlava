@@ -926,6 +926,8 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 		return nil, false, nil
 	}
 	result := &Result{
+		AppRoot:               appRoot,
+		AppName:               appName,
 		Dir:                   root,
 		Binary:                filepath.Join(root, "pulse-app"),
 		NeedsTidy:             false,

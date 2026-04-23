@@ -524,6 +524,54 @@ func TestLoadCachedGraph(t *testing.T) {
 	if cached.Result == nil || cached.Result.Dir == "" {
 		t.Fatal("expected cached result to include workspace")
 	}
+	if cached.Result.AppRoot != appDir || cached.Result.AppName != "buildtest" {
+		t.Fatalf("cached result identity = %+v", cached.Result)
+	}
+}
+
+func TestCompileCachedGraphWritesLatestBuildManifest(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	result.GraphFingerprint = "graph-1"
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() error = %v", err)
+	}
+	if !ok || cached == nil || cached.Result == nil {
+		t.Fatal("expected cached graph to load")
+	}
+
+	if err := Compile(cached.Result); err != nil {
+		t.Fatalf("compile cached result: %v", err)
+	}
+
+	manifest, ok, err := ReadLatestBuildManifest(appDir)
+	if err != nil {
+		t.Fatalf("ReadLatestBuildManifest after cached compile: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected latest build manifest after cached compile")
+	}
+	if manifest.App.Root != appDir || manifest.App.Name != "buildtest" {
+		t.Fatalf("manifest app = %+v", manifest.App)
+	}
+	if manifest.Build.Phase != "compiled" {
+		t.Fatalf("phase after cached compile = %q", manifest.Build.Phase)
+	}
 }
 
 func TestLoadCachedGraphRejectsOldBuildStateVersion(t *testing.T) {
