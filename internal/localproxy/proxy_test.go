@@ -133,7 +133,8 @@ func TestConfigJSONSuppressesLogsWhenNotVerbose(t *testing.T) {
 	}
 	quiet := string(quietData)
 	for _, want := range []string{
-		`"logs":{"default":{"level":"PANIC"}}`,
+		`"logs":{"default":{"level":"PANIC","exclude":["http.log.error"]}}`,
+		`"exclude":["http.log.error"]`,
 	} {
 		if !contains(quiet, want) {
 			t.Fatalf("quiet config missing %q:\n%s", want, quiet)
@@ -149,7 +150,12 @@ func TestConfigJSONSuppressesLogsWhenNotVerbose(t *testing.T) {
 		t.Fatalf("configJSON verbose error = %v", err)
 	}
 	verbose := string(verboseData)
-	for _, unwanted := range []string{`"logs":`, `"level":"PANIC"`} {
+	for _, want := range []string{`"logs":`, `"exclude":["http.log.error"]`} {
+		if !contains(verbose, want) {
+			t.Fatalf("verbose config missing %q:\n%s", want, verbose)
+		}
+	}
+	for _, unwanted := range []string{`"level":"PANIC"`} {
 		if contains(verbose, unwanted) {
 			t.Fatalf("verbose config should not include %q:\n%s", unwanted, verbose)
 		}

@@ -62,7 +62,7 @@ type devSupervisor struct {
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr string, verbose bool) (*devSupervisor, error) {
+func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr string, verbose, jsonMode bool) (*devSupervisor, error) {
 	supervisorCtx, cancel := context.WithCancel(ctx)
 	store, err := devdash.OpenStore(os.Getenv("PULSE_DEV_CACHE_DIR"))
 	if err != nil {
@@ -84,7 +84,7 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr str
 		addr:        addr,
 		store:       store,
 		reportToken: token,
-		console:     newRunConsole(os.Stdout, os.Stderr, verbose),
+		console:     newRunConsole(os.Stdout, os.Stderr, verbose, jsonMode, cfg.Name, root),
 		status: devdash.AppRecord{
 			ID:         cfg.Name,
 			Name:       cfg.Name,
@@ -191,6 +191,11 @@ func (s *devSupervisor) Close() error {
 }
 
 func (s *devSupervisor) Start(ctx context.Context) error {
+	if s.console != nil {
+		s.console.Event("run.start", map[string]any{
+			"listen_addr": s.addr,
+		})
+	}
 	if err := s.persistStatus(ctx); err != nil {
 		return err
 	}
@@ -221,6 +226,11 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		Params: s.appStatus(),
 	})
 	_ = s.store.WriteProcessEvent(ctx, s.cfg.Name, "compile-start", s.appStatus())
+	if s.console != nil {
+		s.console.Event("process.compile-start", map[string]any{
+			"initial": initial,
+		})
+	}
 
 	var (
 		model       *model.App
@@ -339,6 +349,13 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		Params: s.appStatus(),
 	})
 	_ = s.store.WriteProcessEvent(ctx, s.cfg.Name, method, s.appStatus())
+	if s.console != nil {
+		s.console.Event(method, map[string]any{
+			"pid":         current.pid,
+			"listen_addr": s.addr,
+			"initial":     initial,
+		})
+	}
 	if initial {
 		s.console.Banner(runURLs{
 			API:       s.apiURL(),
@@ -422,7 +439,9 @@ func (s *devSupervisor) captureOutput(ctx context.Context, pid, stream string, s
 	for {
 		chunk, err := reader.ReadBytes('\n')
 		if len(chunk) > 0 {
-			_, _ = dst.Write(chunk)
+			if s.console == nil || !s.console.json {
+				_, _ = dst.Write(chunk)
+			}
 			plain := stripANSI(chunk)
 			output := devdash.ProcessOutput{
 				AppID:     s.cfg.Name,
@@ -442,6 +461,14 @@ func (s *devSupervisor) captureOutput(ctx context.Context, pid, stream string, s
 					"created_at": output.CreatedAt.Format(time.RFC3339Nano),
 				},
 			})
+			if s.console != nil {
+				s.console.Event("process.output", map[string]any{
+					"pid":        pid,
+					"stream":     stream,
+					"output":     string(output.Output),
+					"created_at": output.CreatedAt.Format(time.RFC3339Nano),
+				})
+			}
 		}
 		if err != nil {
 			if !isExpectedOutputReadError(err) {
@@ -521,6 +548,11 @@ func (s *devSupervisor) handleExit(ctx context.Context, app *runningApp) {
 		Params: s.appStatus(),
 	})
 	_ = s.store.WriteProcessEvent(ctx, s.cfg.Name, "process-stop", s.appStatus())
+	if s.console != nil {
+		s.console.Event("process.stop", map[string]any{
+			"pid": app.pid,
+		})
+	}
 }
 
 func (s *devSupervisor) stopCurrent() error {
@@ -773,6 +805,11 @@ func (s *devSupervisor) handleCompileError(ctx context.Context, metadata, apiEnc
 		Params: s.appStatus(),
 	})
 	_ = s.store.WriteProcessEvent(ctx, s.cfg.Name, "compile-error", map[string]any{"error": err.Error()})
+	if s.console != nil {
+		s.console.Event("process.compile-error", map[string]any{
+			"error": err.Error(),
+		})
+	}
 	return err
 }
 

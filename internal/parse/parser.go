@@ -265,6 +265,8 @@ func App(root, name string) (*model.App, error) {
 		}
 	}
 
+	app.Services = pruneEmptyServices(app.Services)
+
 	rawSet := make(map[types.Object]*model.Endpoint)
 	for _, ep := range rawEndpoints {
 		rawSet[ep.Object] = ep
@@ -314,6 +316,20 @@ func syntaxFilePaths(pkg *packages.Package) []string {
 	default:
 		return pkg.GoFiles
 	}
+}
+
+func pruneEmptyServices(services []*model.Service) []*model.Service {
+	if len(services) == 0 {
+		return nil
+	}
+	pruned := make([]*model.Service, 0, len(services))
+	for _, svc := range services {
+		if svc == nil || len(svc.Endpoints) == 0 {
+			continue
+		}
+		pruned = append(pruned, svc)
+	}
+	return pruned
 }
 
 func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *directive) (*model.Endpoint, error) {

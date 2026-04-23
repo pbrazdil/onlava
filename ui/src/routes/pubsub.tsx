@@ -153,7 +153,6 @@ interface ChartPoint {
   time: number;
   queued: number;
   active: number;
-  done: number;
 }
 
 function queueID(topicName: string, subscriptionName: string) {
@@ -190,19 +189,18 @@ function QueueSparkline({
   const start = now - periodToMs(period);
   const end = now;
   const domain = normalizeChartDomain(points, start, end);
-  const maxValue = Math.max(1, ...domain.flatMap((point) => [point.done, point.queued]));
+  const maxValue = Math.max(1, ...domain.map((point) => point.queued));
   const activeMax = Math.max(1, ...domain.map((point) => point.active));
   const span = Math.max(1, end - start);
   const x = (time: number) => padding.left + ((time - start) / span) * plotWidth;
   const y = (value: number) => padding.top + plotHeight - (value / maxValue) * plotHeight;
   const yActive = (value: number) => padding.top + plotHeight - (value / activeMax) * plotHeight;
-  const completedPath = linePath(domain, (point) => x(point.time), (point) => y(point.done));
   const queuedPath = linePath(domain, (point) => x(point.time), (point) => y(point.queued));
   const activePath = linePath(domain, (point) => x(point.time), (point) => yActive(point.active));
   const latestPoint = domain.at(-1) ?? null;
   const legendPoint = hover ?? latestPoint;
   const tooltipX = hover ? Math.min(width - 170, Math.max(12, x(hover.time) + 12)) : 0;
-  const tooltipY = hover ? Math.max(12, y(hover.done) - 82) : 0;
+  const tooltipY = hover ? Math.max(12, y(hover.queued) - 66) : 0;
 
   if (domain.length === 0) {
     return (
@@ -229,15 +227,14 @@ function QueueSparkline({
       >
         <defs>
           <linearGradient id={`pulse-${safeID(label)}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#ff2b12" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#ff2b12" stopOpacity="0" />
+            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path
-          d={`${completedPath} L ${x(end).toFixed(2)} ${height - padding.bottom} L ${x(start).toFixed(2)} ${height - padding.bottom} Z`}
+          d={`${queuedPath} L ${x(end).toFixed(2)} ${height - padding.bottom} L ${x(start).toFixed(2)} ${height - padding.bottom} Z`}
           fill={`url(#pulse-${safeID(label)})`}
         />
-        <path d={completedPath} fill="none" stroke="#ff2b12" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
         <path d={queuedPath} fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         <path d={activePath} fill="none" stroke="#bef264" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         <line
@@ -255,9 +252,8 @@ function QueueSparkline({
           0
         </text>
         <g transform="translate(10 14)">
-          <LegendItem x={0} color="#ff2b12" label="Done" value={formatNumber(legendPoint?.done ?? 0)} />
-          <LegendItem x={118} color="#fbbf24" label="Queued" value={formatNumber(legendPoint?.queued ?? 0)} />
-          <LegendItem x={222} color="#bef264" label="Active" value={formatNumber(legendPoint?.active ?? 0)} />
+          <LegendItem x={0} color="#fbbf24" label="Queued" value={formatNumber(legendPoint?.queued ?? 0)} />
+          <LegendItem x={118} color="#bef264" label="Active" value={formatNumber(legendPoint?.active ?? 0)} />
         </g>
         <text x={padding.left} y={height - 2} fill="#fff" className="text-[10px]">
           {formatTime(start)}
@@ -276,18 +272,16 @@ function QueueSparkline({
               strokeOpacity="0.18"
               strokeDasharray="4 5"
             />
-            <circle cx={x(hover.time)} cy={y(hover.done)} r="7" fill="#ff2b12" />
-            <circle cx={x(hover.time)} cy={y(hover.done)} r="12" fill="#ff2b12" opacity="0.18" />
             <circle cx={x(hover.time)} cy={y(hover.queued)} r="5" fill="#fbbf24" />
+            <circle cx={x(hover.time)} cy={y(hover.queued)} r="10" fill="#fbbf24" opacity="0.16" />
             <circle cx={x(hover.time)} cy={yActive(hover.active)} r="5" fill="#bef264" />
             <g transform={`translate(${tooltipX} ${tooltipY})`}>
-              <rect width="158" height="76" rx="8" fill="#111" stroke="#333" />
+              <rect width="158" height="60" rx="8" fill="#111" stroke="#333" />
               <text x="10" y="18" fill="#f5f5f5" className="text-[11px] font-medium">
                 {formatTime(hover.time)}
               </text>
-              <TooltipRow y={36} color="#ff2b12" label="Done" value={formatNumber(hover.done)} />
-              <TooltipRow y={52} color="#fbbf24" label="Queued" value={formatNumber(hover.queued)} />
-              <TooltipRow y={68} color="#bef264" label="Active" value={formatNumber(hover.active)} />
+              <TooltipRow y={36} color="#fbbf24" label="Queued" value={formatNumber(hover.queued)} />
+              <TooltipRow y={52} color="#bef264" label="Active" value={formatNumber(hover.active)} />
             </g>
           </>
         ) : null}
@@ -335,7 +329,6 @@ function TopicCard({
   latest: PubSubSnapshot | null;
   period: (typeof chartPeriods)[number]["value"];
 }) {
-  const completed = topic.subscriptions.reduce((sum, item) => sum + item.completed, 0);
   const failed = topic.subscriptions.reduce((sum, item) => sum + item.failed, 0);
   const inFlight = topic.subscriptions.reduce((sum, item) => sum + item.in_flight, 0);
 
@@ -351,11 +344,10 @@ function TopicCard({
             {topic.ordering_key ? <span>ordering: {topic.ordering_key}</span> : null}
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-3 text-right">
-          <MiniStat label="Published" value={formatNumber(topic.published)} />
+        <div className="grid grid-cols-3 gap-3 text-right">
           <MiniStat label="Queued" value={formatNumber(topic.pending)} />
-          <MiniStat label="Done" value={formatNumber(completed)} />
           <MiniStat label="Active" value={formatNumber(inFlight)} tone={inFlight > 0 ? "live" : undefined} />
+          <MiniStat label="Failures" value={formatNumber(failed)} tone={failed > 0 ? "error" : undefined} />
         </div>
       </div>
 
@@ -445,11 +437,19 @@ function InlineStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MiniStat({ label, value, tone }: { label: string; value: string; tone?: "live" }) {
+function MiniStat({ label, value, tone }: { label: string; value: string; tone?: "live" | "error" }) {
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={tone === "live" ? "mt-1 font-medium text-lime-300 tabular-nums" : "mt-1 font-medium tabular-nums"}>
+      <div
+        className={
+          tone === "live"
+            ? "mt-1 font-medium text-lime-300 tabular-nums"
+            : tone === "error"
+              ? "mt-1 font-medium text-red-400 tabular-nums"
+              : "mt-1 font-medium tabular-nums"
+        }
+      >
         {value}
       </div>
     </div>
@@ -505,12 +505,10 @@ function buildChartPoints(
   return sorted.map((point) => {
     const time = new Date(point.updated_at ?? 0).getTime();
     const sub = findSubscription(point.topics ?? [], queue);
-    const completed = sub?.completed ?? 0;
     return {
       time,
       queued: sub?.pending ?? 0,
       active: sub?.in_flight ?? 0,
-      done: completed,
     };
   });
 }

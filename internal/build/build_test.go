@@ -234,6 +234,160 @@ func Open(conn string) (*pgxpool.Pool, error) {
 	}
 }
 
+func TestPrepareWritesInspectArtifacts(t *testing.T) {
+	appDir := t.TempDir()
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+
+	writeBuildTestFile(t, appDir, "pulse.app", `{"name":"inspectartifacts","id":"inspect-id"}`)
+	writeBuildTestFile(t, appDir, "go.mod", "module example.com/inspectartifacts\n\ngo 1.26.0\n")
+	writeBuildTestFile(t, appDir, "users/api.go", `package users
+
+import "context"
+
+//pulse:service
+type Service struct{}
+
+//pulse:api public
+func (*Service) Profile(context.Context) error { return nil }
+`)
+	writeBuildTestFile(t, appDir, "tenants/api.go", `package tenants
+
+import "context"
+
+//pulse:api private path=/tenants/config method=GET
+func Config(context.Context) error { return nil }
+`)
+
+	model, err := parse.App(appDir, "inspectartifacts")
+	if err != nil {
+		t.Fatalf("parse.App() error = %v", err)
+	}
+	if _, err := Prepare(appDir, model, appcfg.Config{Name: "inspectartifacts", ID: "inspect-id"}, PrepareOptions{}); err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	for rel, schema := range map[string]string{
+		".pulse/gen/app.json":      `"schema_version": "pulse.inspect.app.v1"`,
+		".pulse/gen/routes.json":   `"schema_version": "pulse.inspect.routes.v1"`,
+		".pulse/gen/services.json": `"schema_version": "pulse.inspect.services.v1"`,
+		".pulse/gen/manifest.json": `"schema_version": "pulse.gen.manifest.v1"`,
+	} {
+		data, err := os.ReadFile(filepath.Join(appDir, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("ReadFile(%s): %v", rel, err)
+		}
+		if !strings.Contains(string(data), schema) {
+			t.Fatalf("%s missing %s:\n%s", rel, schema, data)
+		}
+	}
+
+	appJSON, err := os.ReadFile(filepath.Join(appDir, ".pulse", "gen", "app.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		App struct {
+			Name string `json:"name"`
+			ID   string `json:"id"`
+		} `json:"app"`
+	}
+	if err := json.Unmarshal(appJSON, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(app.json): %v", err)
+	}
+	if payload.App.Name != "inspectartifacts" || payload.App.ID != "inspect-id" {
+		t.Fatalf("app payload = %+v", payload.App)
+	}
+
+	manifestJSON, err := os.ReadFile(filepath.Join(appDir, ".pulse", "gen", "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Artifacts struct {
+			App         string `json:"app"`
+			Routes      string `json:"routes"`
+			Services    string `json:"services"`
+			BuildLatest string `json:"build_latest"`
+		} `json:"artifacts"`
+		Schemas struct {
+			App         string `json:"app"`
+			Routes      string `json:"routes"`
+			Services    string `json:"services"`
+			BuildLatest string `json:"build_latest"`
+		} `json:"schemas"`
+		Hashes struct {
+			App      string `json:"app"`
+			Routes   string `json:"routes"`
+			Services string `json:"services"`
+		} `json:"hashes"`
+	}
+	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
+		t.Fatalf("json.Unmarshal(manifest.json): %v", err)
+	}
+	if manifest.Artifacts.App != ".pulse/gen/app.json" || manifest.Artifacts.BuildLatest != ".pulse/build/latest.json" {
+		t.Fatalf("manifest artifacts = %+v", manifest.Artifacts)
+	}
+	if manifest.Schemas.App != "pulse.inspect.app.v1" || manifest.Schemas.BuildLatest != "pulse.build.latest.v1" {
+		t.Fatalf("manifest schemas = %+v", manifest.Schemas)
+	}
+	if manifest.Hashes.App == "" || manifest.Hashes.Routes == "" || manifest.Hashes.Services == "" {
+		t.Fatalf("manifest hashes = %+v", manifest.Hashes)
+	}
+}
+
+func TestPrepareAndCompileWriteLatestBuildManifest(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	manifest, ok, err := ReadLatestBuildManifest(appDir)
+	if err != nil {
+		t.Fatalf("ReadLatestBuildManifest after prepare: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected latest build manifest after prepare")
+	}
+	if manifest.SchemaVersion != "pulse.build.latest.v1" {
+		t.Fatalf("schema_version = %q", manifest.SchemaVersion)
+	}
+	if manifest.Build.Phase != "prepared" {
+		t.Fatalf("phase after prepare = %q", manifest.Build.Phase)
+	}
+	if manifest.Build.BuildStateExists {
+		t.Fatal("did not expect build state after prepare")
+	}
+
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	manifest, ok, err = ReadLatestBuildManifest(appDir)
+	if err != nil {
+		t.Fatalf("ReadLatestBuildManifest after compile: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected latest build manifest after compile")
+	}
+	if manifest.Build.Phase != "compiled" {
+		t.Fatalf("phase after compile = %q", manifest.Build.Phase)
+	}
+	if !manifest.Build.BinaryExists {
+		t.Fatal("expected binary to exist after compile")
+	}
+	if !manifest.Build.BuildStateExists {
+		t.Fatal("expected build state to exist after compile")
+	}
+}
+
 func TestPrepareReusesPersistentWorkspace(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)

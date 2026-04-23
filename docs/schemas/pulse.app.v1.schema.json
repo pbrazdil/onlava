@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pulse.dev/schemas/pulse.app.v1.schema.json",
+  "title": "pulse.app.v1",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "proxy": {
+      "type": "object",
+      "properties": {
+        "workspace": { "type": "string" },
+        "api_host": { "type": "string" },
+        "console_host": { "type": "string" },
+        "mcp_host": { "type": "string" },
+        "frontend_host": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "observability": {
+      "type": "object",
+      "properties": {
+        "logs": { "$ref": "#/$defs/endpointFilter" },
+        "tracing": { "$ref": "#/$defs/endpointFilter" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "anyOf": [
+    { "required": ["name"] },
+    { "required": ["id"] }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "endpointFilter": {
+      "type": "object",
+      "properties": {
+        "include_endpoints": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exclude_endpoints": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

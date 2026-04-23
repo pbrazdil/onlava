@@ -33,7 +33,7 @@ type fileStamp struct {
 
 type fileSnapshot map[string]fileStamp
 
-func runWithWatch(addr string, verbose bool, appRoot string) error {
+func runWithWatch(addr string, verbose, jsonMode bool, appRoot string) error {
 	start, err := resolveAppRoot(appRoot)
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func runWithWatch(addr string, verbose bool, appRoot string) error {
 		return err
 	}
 
-	supervisor, err := newDevSupervisor(ctx, root, cfg, addr, verbose)
+	supervisor, err := newDevSupervisor(ctx, root, cfg, addr, verbose, jsonMode)
 	if err != nil {
 		return err
 	}

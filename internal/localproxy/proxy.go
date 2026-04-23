@@ -284,12 +284,16 @@ func configJSON(cfg Config) ([]byte, error) {
 			}, &warnings),
 		},
 	}
+	defaultLog := &caddy.CustomLog{
+		Exclude: []string{"http.log.error"},
+	}
 	if !cfg.Verbose {
-		config.Logging = &caddy.Logging{
-			Logs: map[string]*caddy.CustomLog{
-				"default": {BaseLog: caddy.BaseLog{Level: "PANIC"}},
-			},
-		}
+		defaultLog.BaseLog.Level = "PANIC"
+	}
+	config.Logging = &caddy.Logging{
+		Logs: map[string]*caddy.CustomLog{
+			"default": defaultLog,
+		},
 	}
 	data, err := json.Marshal(config)
 	if err != nil {

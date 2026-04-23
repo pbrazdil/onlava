@@ -23,11 +23,15 @@ import (
 
 	"pulse.dev/internal/app"
 	"pulse.dev/internal/codegen"
+	inspectdata "pulse.dev/internal/inspect"
 	"pulse.dev/internal/model"
 	"pulse.dev/internal/parse"
 )
 
 type Result struct {
+	AppRoot               string
+	AppName               string
+	AppID                 string
 	Dir                   string
 	Binary                string
 	NeedsTidy             bool
@@ -65,6 +69,74 @@ type CachedGraph struct {
 	APIEncoding json.RawMessage
 }
 
+type GeneratedManifest struct {
+	SchemaVersion string                  `json:"schema_version"`
+	App           inspectdata.AppRef      `json:"app"`
+	Counts        inspectdata.AppCounts   `json:"counts"`
+	Artifacts     GeneratedManifestPaths  `json:"artifacts"`
+	Schemas       GeneratedManifestSchema `json:"schemas"`
+	Hashes        GeneratedManifestHashes `json:"hashes"`
+}
+
+type GeneratedManifestPaths struct {
+	App         string `json:"app"`
+	Routes      string `json:"routes"`
+	Services    string `json:"services"`
+	BuildLatest string `json:"build_latest"`
+}
+
+type GeneratedManifestSchema struct {
+	App         string `json:"app"`
+	Routes      string `json:"routes"`
+	Services    string `json:"services"`
+	BuildLatest string `json:"build_latest"`
+}
+
+type GeneratedManifestHashes struct {
+	App      string `json:"app"`
+	Routes   string `json:"routes"`
+	Services string `json:"services"`
+}
+
+type generatedInspectArtifacts struct {
+	App          inspectdata.AppResponse
+	Routes       inspectdata.RoutesResponse
+	Services     inspectdata.ServicesResponse
+	AppJSON      []byte
+	RoutesJSON   []byte
+	ServicesJSON []byte
+}
+
+type LatestBuildManifest struct {
+	SchemaVersion string                    `json:"schema_version"`
+	App           LatestBuildManifestApp    `json:"app"`
+	Build         LatestBuildManifestRecord `json:"build"`
+}
+
+type LatestBuildManifestApp struct {
+	Name       string `json:"name"`
+	ID         string `json:"id,omitempty"`
+	Root       string `json:"root"`
+	ConfigPath string `json:"config_path"`
+}
+
+type LatestBuildManifestRecord struct {
+	Phase                 string `json:"phase"`
+	WorkspaceDir          string `json:"workspace_dir"`
+	BinaryPath            string `json:"binary_path"`
+	WorkspaceExists       bool   `json:"workspace_exists"`
+	BinaryExists          bool   `json:"binary_exists"`
+	BuildStatePath        string `json:"build_state_path"`
+	BuildStateExists      bool   `json:"build_state_exists"`
+	BuildStateVersion     string `json:"build_state_version,omitempty"`
+	DependencyFingerprint string `json:"dependency_fingerprint,omitempty"`
+	GraphFingerprint      string `json:"graph_fingerprint,omitempty"`
+	MetadataPresent       bool   `json:"metadata_present"`
+	APIEncodingPresent    bool   `json:"api_encoding_present"`
+	SourceFileCount       int    `json:"source_file_count"`
+	GeneratedFileCount    int    `json:"generated_file_count"`
+}
+
 func App(appRoot string, cfg app.Config) (*Result, error) {
 	model, err := parse.App(appRoot, cfg.Name)
 	if err != nil {
@@ -84,6 +156,10 @@ func App(appRoot string, cfg app.Config) (*Result, error) {
 }
 
 func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptions) (*Result, error) {
+	artifacts, err := writeGeneratedInspectArtifacts(appRoot, cfg, model)
+	if err != nil {
+		return nil, err
+	}
 	gen, err := codegen.GenerateWithConfig(model, cfg)
 	if err != nil {
 		return nil, err
@@ -117,14 +193,89 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 	}
 	needsTidy := state.DependencyFingerprint != depFingerprint
 	binary := filepath.Join(workspaceDir, "pulse-app")
-	return &Result{
+	result := &Result{
+		AppRoot:               appRoot,
+		AppName:               cfg.Name,
+		AppID:                 cfg.ID,
 		Dir:                   workspaceDir,
 		Binary:                binary,
 		NeedsTidy:             needsTidy,
 		DependencyFingerprint: depFingerprint,
 		SourceFiles:           sourceFiles,
 		GeneratedFiles:        generatedFiles,
-	}, nil
+	}
+	if err := WriteLatestBuildManifest(result, "prepared"); err != nil {
+		return nil, err
+	}
+	if err := writeGeneratedManifest(appRoot, artifacts); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func writeGeneratedInspectArtifacts(appRoot string, cfg app.Config, appModel *model.App) (*generatedInspectArtifacts, error) {
+	artifacts := &generatedInspectArtifacts{
+		App:      inspectdata.BuildAppResponse(appRoot, cfg, appModel),
+		Routes:   inspectdata.BuildRoutesResponse(appRoot, cfg, appModel),
+		Services: inspectdata.BuildServicesResponse(appRoot, cfg, appModel),
+	}
+	genDir := filepath.Join(appRoot, ".pulse", "gen")
+	files := map[string]*[]byte{
+		"app.json":      &artifacts.AppJSON,
+		"routes.json":   &artifacts.RoutesJSON,
+		"services.json": &artifacts.ServicesJSON,
+	}
+	payloads := map[string]any{
+		"app.json":      artifacts.App,
+		"routes.json":   artifacts.Routes,
+		"services.json": artifacts.Services,
+	}
+	for name, target := range files {
+		data, err := json.MarshalIndent(payloads[name], "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, '\n')
+		if err := writeFileIfChanged(genDir, name, data); err != nil {
+			return nil, err
+		}
+		*target = data
+	}
+	return artifacts, nil
+}
+
+func writeGeneratedManifest(appRoot string, artifacts *generatedInspectArtifacts) error {
+	if artifacts == nil {
+		return fmt.Errorf("nil generated inspect artifacts")
+	}
+	manifest := GeneratedManifest{
+		SchemaVersion: "pulse.gen.manifest.v1",
+		App:           artifacts.App.App,
+		Counts:        artifacts.App.Counts,
+		Artifacts: GeneratedManifestPaths{
+			App:         ".pulse/gen/app.json",
+			Routes:      ".pulse/gen/routes.json",
+			Services:    ".pulse/gen/services.json",
+			BuildLatest: ".pulse/build/latest.json",
+		},
+		Schemas: GeneratedManifestSchema{
+			App:         artifacts.App.SchemaVersion,
+			Routes:      artifacts.Routes.SchemaVersion,
+			Services:    artifacts.Services.SchemaVersion,
+			BuildLatest: "pulse.build.latest.v1",
+		},
+		Hashes: GeneratedManifestHashes{
+			App:      sha256Hex(artifacts.AppJSON),
+			Routes:   sha256Hex(artifacts.RoutesJSON),
+			Services: sha256Hex(artifacts.ServicesJSON),
+		},
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return writeFileIfChanged(filepath.Join(appRoot, ".pulse", "gen"), "manifest.json", data)
 }
 
 func Compile(result *Result) error {
@@ -161,6 +312,9 @@ func PrimeWorkspaceContext(ctx context.Context, result *Result) error {
 	}); err != nil {
 		return err
 	}
+	if err := WriteLatestBuildManifest(result, "primed"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -172,6 +326,9 @@ func CompileContext(ctx context.Context, result *Result) error {
 		return err
 	}
 	if err := runGoContext(ctx, result.Dir, "build", "-o", result.Binary, "./pulse_internal_main"); err != nil {
+		return err
+	}
+	if err := WriteLatestBuildManifest(result, "compiled"); err != nil {
 		return err
 	}
 	return nil
@@ -440,6 +597,135 @@ func pulseCacheRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "pulse"), nil
+}
+
+func CacheRoot() (string, error) {
+	return pulseCacheRoot()
+}
+
+func WorkspaceDir(appRoot, appName string) (string, error) {
+	return workspaceDir(appRoot, appName)
+}
+
+func BuildStatePath(appRoot, appName string) (string, error) {
+	root, err := workspaceDir(appRoot, appName)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, buildStateFile), nil
+}
+
+func LatestBuildPath(appRoot string) string {
+	return filepath.Join(appRoot, ".pulse", "build", "latest.json")
+}
+
+type StateInfo struct {
+	Path                  string
+	Exists                bool
+	Version               string
+	DependencyFingerprint string
+	GraphFingerprint      string
+	MetadataPresent       bool
+	APIEncodingPresent    bool
+	SourceFiles           []string
+	GeneratedFiles        []string
+}
+
+func ReadStateInfo(appRoot, appName string) (*StateInfo, error) {
+	statePath, err := BuildStatePath(appRoot, appName)
+	if err != nil {
+		return nil, err
+	}
+	info := &StateInfo{Path: statePath}
+	if _, err := os.Stat(statePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return info, nil
+		}
+		return nil, err
+	}
+	state, err := loadBuildState(filepath.Dir(statePath))
+	if err != nil {
+		return nil, err
+	}
+	info.Exists = true
+	info.Version = state.Version
+	info.DependencyFingerprint = state.DependencyFingerprint
+	info.GraphFingerprint = state.GraphFingerprint
+	info.MetadataPresent = len(state.Metadata) > 0
+	info.APIEncodingPresent = len(state.APIEncoding) > 0
+	info.SourceFiles = append([]string(nil), state.SourceFiles...)
+	info.GeneratedFiles = append([]string(nil), state.GeneratedFiles...)
+	return info, nil
+}
+
+func ReadLatestBuildManifest(appRoot string) (*LatestBuildManifest, bool, error) {
+	path := LatestBuildPath(appRoot)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	var manifest LatestBuildManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, false, err
+	}
+	return &manifest, true, nil
+}
+
+func WriteLatestBuildManifest(result *Result, phase string) error {
+	if result == nil {
+		return fmt.Errorf("nil build result")
+	}
+	if result.AppRoot == "" {
+		return fmt.Errorf("missing app root for latest build manifest")
+	}
+	state, err := ReadStateInfo(result.AppRoot, result.AppName)
+	if err != nil {
+		return err
+	}
+	manifest := LatestBuildManifest{
+		SchemaVersion: "pulse.build.latest.v1",
+		App: LatestBuildManifestApp{
+			Name:       result.AppName,
+			ID:         result.AppID,
+			Root:       result.AppRoot,
+			ConfigPath: filepath.Join(result.AppRoot, "pulse.app"),
+		},
+		Build: LatestBuildManifestRecord{
+			Phase:                 phase,
+			WorkspaceDir:          result.Dir,
+			BinaryPath:            result.Binary,
+			WorkspaceExists:       pathExists(result.Dir),
+			BinaryExists:          pathExists(result.Binary),
+			BuildStatePath:        state.Path,
+			BuildStateExists:      state.Exists,
+			BuildStateVersion:     state.Version,
+			DependencyFingerprint: state.DependencyFingerprint,
+			GraphFingerprint:      state.GraphFingerprint,
+			MetadataPresent:       state.MetadataPresent,
+			APIEncodingPresent:    state.APIEncodingPresent,
+			SourceFileCount:       len(state.SourceFiles),
+			GeneratedFileCount:    len(state.GeneratedFiles),
+		},
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return writeFileIfChanged(filepath.Dir(LatestBuildPath(result.AppRoot)), filepath.Base(LatestBuildPath(result.AppRoot)), data)
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func sanitizeWorkspaceLabel(value string) string {
