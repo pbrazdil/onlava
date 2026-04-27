@@ -128,6 +128,29 @@ func TestPopulateSecretsLogsMissingFields(t *testing.T) {
 	}
 }
 
+func TestPopulateSecretsFailsForMissingProductionSecrets(t *testing.T) {
+	dir := t.TempDir()
+
+	prevDir, restoreDir := chdirRuntimeTest(t, dir)
+	defer restoreDir(prevDir)
+	t.Setenv("PULSE_RUNTIME_ENV", "production")
+	resetSecretsEnvCache()
+
+	var secrets struct {
+		MissingSecret string
+	}
+	err := PopulateSecrets(&secrets)
+	if err == nil {
+		t.Fatal("PopulateSecrets returned nil error for missing production secret")
+	}
+	got := err.Error()
+	for _, want := range []string{"missing required secrets for production", "MissingSecret", "MISSING_SECRET"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error %q does not contain %q", got, want)
+		}
+	}
+}
+
 func TestFlushMissingSecretsWarningsCombinesFields(t *testing.T) {
 	dir := t.TempDir()
 

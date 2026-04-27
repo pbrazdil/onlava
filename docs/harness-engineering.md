@@ -40,6 +40,11 @@ The command runs:
 - `pulse inspect metrics --json`
 - `pulse inspect docs --json`
 
+`pulse inspect traces --json` and `pulse inspect metrics --json` are included
+as beta diagnostic inputs for agents. Their schema versions are useful for
+automation, but their rollup and backend-selection semantics are not stable v0
+API yet; see [local-contract.md](local-contract.md).
+
 ## Output
 
 JSON output conforms to:

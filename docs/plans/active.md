@@ -9,6 +9,7 @@ reuse IDs; this list can still be ordered by current priority.
 
 1. [0001 Split `pulse dev` From Headless `pulse run`](0001-devrun-command-split.md): turn the PRD-4 command split into an executable implementation plan.
 2. [0002 Pulse v0 Release Readiness](0002-v0-release-readiness.md): convert the release-readiness audit into a staged hardening plan for a narrow, boring v0.
+3. [0004 Pulse-Native Local HTTPS Proxy](0004-pulse-native-localproxy.md): replace the embedded Caddy-based local proxy with a small Pulse-native Go implementation.
 
 ## Agent-Friendly Local Runtime
 

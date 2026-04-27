@@ -2,6 +2,10 @@
 
 This file records completed milestones so agents can distinguish shipped behavior from future intent.
 
+Completed means implemented or shipped at least once. It does not imply stable
+v0 support. Use [../local-contract.md](../local-contract.md) as the source of
+truth for stable, beta, dev-only, and compatibility-mode classification.
+
 ## Pulse Go Runner Phase 1
 
 - Status: completed
@@ -11,7 +15,7 @@ This file records completed milestones so agents can distinguish shipped behavio
 
 Shipped:
 
-- `pulse run`, `pulse build`, `pulse test`, `pulse check`, `pulse logs`, `pulse psql`
+- `pulse run`, `pulse build`, `pulse test`, `pulse check`, `pulse logs`, and beta `pulse psql`
 - Pulse API parser/codegen/runtime for common Go service behavior
 - Secrets from `.env`
 - local HTTPS proxy support
@@ -27,7 +31,8 @@ Shipped:
 Shipped:
 
 - `pulse inspect app|routes|services|endpoints|wire|build|paths --json`
-- `pulse inspect traces|metrics|docs --json`
+- beta `pulse inspect traces|metrics --json`
+- `pulse inspect docs --json`
 - `.pulse/gen/*` and `.pulse/build/latest.json`
 - `pulse harness --json --write`
 - `pulse harness self --json --write`

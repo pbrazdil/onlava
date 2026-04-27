@@ -25,11 +25,12 @@ The outcome should be observable from a clean checkout. A contributor should be 
 - [x] (2026-04-27 17:36Z) Restricted build workspace copying so `.env`, `.env.*`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, `__MACOSX`, `coverage`, and `encore.gen.go` are not persisted in build caches.
 - [x] (2026-04-27 17:36Z) Added response JSON semantics tests for `json:"-"`, `omitempty`, embedded structs, headers, `pulse:"httpstatus"`, and custom marshalers.
 - [x] (2026-04-27 17:36Z) Aligned CLI usage, docs, schemas, and implementation for the release-hardening slice.
+- [x] (2026-04-27 18:38Z) Made missing declared secrets warn in local development but fail before serving under `pulse run --env production`.
+- [x] (2026-04-27 18:48Z) Reclassified reachable-but-not-frozen surfaces so `pulse psql`, Victoria sidecars/downloads, Pub/Sub/Cron admin affordances, and trace/metric inspect semantics do not accidentally become stable v0 API.
+- [x] (2026-04-27 19:06Z) Added `scripts/release-gate.sh` as the single pre-release gate for full tests, race, lint, UI builds, self-harness, clean install, fixture and ONLV smoke, router safety, secrets, and artifact hygiene.
 - [x] (2026-04-27 15:48Z) Ran the release validation sequence and recorded the results.
 
 ## Surprises & Discoveries
-
-No implementation discoveries yet.
 
 Known audit findings from the PRD:
 
@@ -48,6 +49,9 @@ Implementation discoveries:
 - Local proxy startup could be made opt-in without changing Caddy configuration internals by changing defaults and adding `pulse dev --proxy` / `--trust` environment wiring.
 - Full integration tests exposed older assumptions that `pulse run` reflected arbitrary CORS origins by default and that `pulse dev` always started the local HTTPS proxy. The tests were updated to assert the new release contract: explicit CORS allowlist for headless run and `pulse dev --proxy` for hostname routing.
 - The shared `.env` loader can preserve package-init ergonomics by passing `.env` and `.env.local` values into the development child process before Go package initialization. This avoids requiring app code to manually parse local env files.
+- Generated package init already runs secret population before the app server starts, so strict production secret validation can live in the runtime secret loader and still fail before serving.
+- The implemented CLI surface is broader than the stable support surface. `pulse psql`, Victoria sidecars/downloads, local admin clear commands, and trace/metric inspect subjects are useful, but their semantics are still too implementation-shaped to freeze as stable v0.
+- The release gate should be executable as one script so human and agent release checks do not drift into overlapping hand-run recipes.
 
 ## Decision Log
 
@@ -79,6 +83,18 @@ Implementation discoveries:
   Rationale: Runtime secrets, dev child startup, DB discovery, and dashboard code were parsing `.env` independently. One parser reduces drift, and process env precedence keeps shells/CI explicit.
   Date/Author: 2026-04-27 / Codex
 
+- Decision: Missing declared secrets are warnings outside production and startup errors in production.
+  Rationale: Local development should stay forgiving, but `pulse run --env production` must fail before serving if an app declares secrets that are not present in process env or `.env`.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Classify implemented local helpers separately from stable v0 API.
+  Rationale: Being reachable from the CLI should not imply a long-term support promise. `pulse psql`, Victoria supervision/download behavior, Pub/Sub/Cron admin affordances, and trace/metric inspection semantics remain beta/dev-only until their contracts are intentionally frozen.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Keep the release gate strict and explicit.
+  Rationale: It is acceptable for `scripts/release-gate.sh` to be slower and stricter than normal development validation because it is the pre-release confidence check. Artifact hygiene failures should stop the gate instead of being silently cleaned up.
+  Date/Author: 2026-04-27 / Codex
+
 ## Outcomes & Retrospective
 
 Completed validation on 2026-04-27:
@@ -93,7 +109,7 @@ Completed validation on 2026-04-27:
 - `pulse inspect docs --json --repo-root /Users/petrbrazdil/Repos/pulse` passed with `missing_count=0`, `review_due_count=0`, and `stale_count=0`.
 - `pulse harness self --json --write` passed and wrote `.pulse/harness/self-latest.json`.
 
-The v0 release-hardening slice now has explicit docs for stable/dev/beta/compatibility surfaces, gated dev/admin endpoints, opt-in proxy/trust behavior, safe build workspace filtering, centralized local env parsing, response encoding semantics tests, and a passing release gate.
+The v0 release-hardening slice now has explicit docs for stable/dev/beta/compatibility surfaces, including reachable helpers that are deliberately not stable yet. It also has gated dev/admin endpoints, opt-in proxy/trust behavior, safe build workspace filtering, centralized local env parsing, response encoding semantics tests, and a scriptified release gate.
 
 ## Context and Orientation
 
@@ -206,15 +222,9 @@ Add or update tests for the release blockers:
 
 Run the full validation gate:
 
-    go test ./...
-    go install ./cmd/pulse
-    pulse inspect docs --json --repo-root /Users/petrbrazdil/Repos/pulse
-    pulse harness self --json --write
+    scripts/release-gate.sh
 
-If `/Users/petrbrazdil/Repos/onlv` is used, keep it read-only:
-
-    go -C /Users/petrbrazdil/Repos/pulse run ./cmd/pulse inspect app --json --app-root /Users/petrbrazdil/Repos/onlv
-    go -C /Users/petrbrazdil/Repos/pulse run ./cmd/pulse check --json --app-root /Users/petrbrazdil/Repos/onlv
+The script also runs `go install ./cmd/pulse`, `pulse harness self --json --write`, dashboard UI and DB Studio builds, a clean source-copy install, fixture smoke, read-only ONLV smoke, public-router safety checks, production secrets checks, and artifact hygiene checks. If `/Users/petrbrazdil/Repos/onlv` is used, keep it read-only; set `ONLV_ROOT` to override that app path.
 
 Record exact command results in `Outcomes & Retrospective` before marking this plan complete.
 
@@ -237,6 +247,7 @@ Release readiness is accepted when all of these are true:
 - `.env`, `.env.local`, `.git`, `.pulse` runtime state, `node_modules`, `.DS_Store`, and `__MACOSX` are not copied into build workspaces or release archives.
 - Response encoding tests cover `json:"-"`, `omitempty`, embedded structs, pointer fields, header fields, `pulse:"httpstatus"`, and custom marshalers.
 - The release validation sequence is documented in `Outcomes & Retrospective`.
+- `scripts/release-gate.sh` passes before release artifacts are cut.
 
 ## Idempotence and Recovery
 

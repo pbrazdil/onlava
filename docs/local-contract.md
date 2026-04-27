@@ -12,12 +12,15 @@ If implementation and this document disagree, treat that as a bug.
 
 ## Status
 
-Implemented now:
+Implemented now. This list describes what the CLI can do today; it is not the
+same as the stable v0 support surface.
+
 - `pulse.app`
 - `pulse dev --json`
 - `pulse run`
 - `pulse version --json`
 - `pulse check --json`
+- `pulse psql`
 - `pulse harness --json`
 - `pulse harness self --json`
 - `pulse admin traces clear --json`
@@ -53,7 +56,7 @@ Stable v0 surface:
 - `pulse build`
 - `pulse version --json`
 - `pulse check --json`
-- `pulse inspect ... --json`
+- `pulse inspect app|routes|services|endpoints|wire|build|paths|docs --json`
 - `pulse logs --jsonl`
 - `pulse test`
 - `pulse gen client`
@@ -62,15 +65,21 @@ Stable v0 surface:
 - service struct initialization and shutdown
 - private/internal calls
 - secrets from process env and local `.env`
-- basic traces and logs
+- basic runtime logs and trace emission
 
 Dev-only or beta surface:
 - `pulse dev`
+- `pulse psql`
+- `pulse inspect traces|metrics --json`
+- `pulse admin traces clear --json`
+- `pulse admin pubsub clear --json`
 - dashboard and API Explorer
 - DB Studio
 - MCP server
 - local HTTPS/frontend proxy
 - trust-store installation
+- Victoria sidecars, automatic Victoria binary downloads, and Victoria-backed local observability reads
+- Pub/Sub and cron runtime/admin affordances until their lifecycle, retry, scheduling, and clear/delete semantics are frozen
 - Pub/Sub UI and queue controls
 - cron UI
 - Encore migration compatibility
@@ -140,11 +149,19 @@ pulse test [--app-root <path>] [go test flags/packages...]
 pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 ```
 
-Frozen `inspect` rules:
+Implemented beta/dev helper grammar:
+
+```text
+pulse psql [--app-root <path>] [psql args...]
+```
+
+Inspect rules:
 - `pulse inspect` requires a subject.
 - `pulse inspect` currently requires `--json`.
 - `--app-root` is optional. When omitted, Pulse walks upward from the current working directory to find `pulse.app`.
-- `traces` and `metrics` prefer local VictoriaTraces reads when those sidecars are available, and fall back to the Pulse dashboard SQLite store. If no local state exists, they return valid JSON with a warning and empty result sets.
+- Stable inspect subjects for v0 are `app`, `routes`, `services`, `endpoints`, `wire`, `build`, `paths`, and `docs`.
+- `traces` and `metrics` are beta diagnostic subjects. They prefer local VictoriaTraces reads when those sidecars are available, and fall back to the Pulse dashboard SQLite store. If no local state exists, they return valid JSON with a warning and empty result sets.
+- The `pulse.inspect.traces.v1` and `pulse.inspect.metrics.v1` schemas are useful for agents, but their source-selection, retention, rollup, percentile, and clear/delete semantics are not stable v0 API yet.
 - `--since` accepts Go duration strings such as `15m`, `1h`, or `24h`.
 - `--min-duration-ms` filters root traces by duration in milliseconds.
 - `--status` accepts `ok` or `error`.
@@ -154,7 +171,7 @@ Frozen `inspect` rules:
 Command split:
 
 - `pulse dev` starts the local development platform: app process, dashboard, MCP endpoint, DB Studio when configured, file watching, and rebuild/restart supervision.
-- `pulse dev` also starts local VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default when their binaries can be found or downloaded. SQLite dashboard storage remains active for parity and fallback.
+- `pulse dev` also starts local VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default when their binaries can be found or downloaded. SQLite dashboard storage remains active for parity and fallback. This is a dev-only beta implementation detail, not a stable production API.
 - `pulse dev --proxy` enables the local HTTPS/frontend proxy.
 - `pulse dev --proxy --trust` allows local trust-store installation. Without `--trust`, the proxy skips trust installation.
 - `pulse run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, DB Studio, frontend proxy, or file watcher.
@@ -178,6 +195,7 @@ Local observability:
 - Dashboard trace reads and `pulse inspect traces|metrics --json` prefer Victoria data and fall back to SQLite data.
 - Victoria sidecars are supervised by `pulse dev`, store data under `.pulse/victoria/` by default, and are stopped with the dev supervisor.
 - `PULSE_DEV_VICTORIA=0` disables Victoria sidecars. `PULSE_DEV_VICTORIA_DOWNLOAD=0` disables automatic binary downloads.
+- Victoria binary names, versions, ports, storage layout, download behavior, and Victoria query semantics are beta. They are documented so local development is debuggable, but they are not part of the stable v0 runtime contract.
 
 Secrets and environment:
 
@@ -185,6 +203,8 @@ Secrets and environment:
 - The stable runtime path reads `.env` from the app root for local secret population when a value is not already present in the process environment.
 - `pulse dev` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
 - `pulse dev` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
+- Missing declared secrets warn in local development mode.
+- `pulse run --env production` fails before serving if any declared secret is missing from the process environment or `.env`.
 - `.env`, `.env.*`, and secret-bearing local files are not copied into build workspaces.
 
 Implemented `dev --json` rules:
@@ -239,6 +259,18 @@ pulse harness self --json --write
 - architecture checks warn on non-generated source files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
 - `--write` persists the same result to `.pulse/harness/self-latest.json`
 
+Release gate:
+
+```text
+scripts/release-gate.sh
+```
+
+- this is the high-signal pre-release gate, not the normal inner-loop developer check
+- it runs full Go tests, race tests, `golangci-lint`, dashboard UI and DB Studio typecheck/build, installed self-harness, clean source-copy install, fixture smoke, read-only ONLV smoke, public-router safety checks, production secrets checks, and artifact hygiene checks
+- `ONLV_ROOT` may override the default `/Users/petrbrazdil/Repos/onlv` app used by the ONLV smoke
+- `PULSE_RELEASE_GATE_LOG_DIR` may override the log directory; otherwise logs are written under `.pulse/release-gate/`
+- artifact hygiene is intentionally strict and fails on local release artifacts such as `.DS_Store` and `__MACOSX`
+
 Implemented `logs --jsonl` rules:
 
 ```text
@@ -262,6 +294,7 @@ Implemented `admin --json` rules:
 - current supported commands are `traces clear` and `pubsub clear`
 - output conforms to `pulse.admin.result.v1`
 - `pubsub clear` requires a running Pulse dashboard/supervisor because it tunnels through the supervisor RPC surface
+- admin commands are dev/admin beta for v0; their existence does not make Pub/Sub, cron, trace clearing, or queue deletion semantics stable
 
 Any additional admin subcommands are reserved contract surfaces and should produce versioned JSON when implemented.
 
@@ -474,7 +507,10 @@ Schema rules:
 
 ### `pulse inspect traces --json`
 
-Use this when an agent needs concrete local traces without scraping the dashboard UI.
+Beta diagnostic subject. Use this when an agent needs concrete local traces
+without scraping the dashboard UI. The JSON shape is versioned, but retention,
+backend preference, span reconstruction, and clear semantics may change before
+this is promoted to stable v0.
 
 Example:
 
@@ -519,7 +555,10 @@ Example output:
 
 ### `pulse inspect metrics --json`
 
-Use this when an agent needs a metrics-style rollup over locally captured traces and logs.
+Beta diagnostic subject. Use this when an agent needs a metrics-style rollup
+over locally captured traces and logs. The JSON shape is versioned, but rollup
+definitions, percentile calculations, default limits, and Victoria/SQLite source
+selection may change before this is promoted to stable v0.
 
 Example:
 

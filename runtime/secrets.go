@@ -86,6 +86,9 @@ func PopulateSecrets(target any) error {
 		}
 		field.SetString(value)
 	}
+	if len(missing) > 0 && strictSecretsRequired() {
+		return fmt.Errorf("runtime: missing required secrets for production: %s", formatMissingSecrets(missing))
+	}
 	logMissingSecrets(missing)
 	return nil
 }
@@ -104,6 +107,24 @@ func logMissingSecrets(missing []missingSecret) {
 		return
 	}
 	slog.Warn("pulse secrets missing", "fields", fields, "env_keys", keys, "source", ".env")
+}
+
+func strictSecretsRequired() bool {
+	for _, key := range []string{"PULSE_RUNTIME_ENV", "PULSE_ENV"} {
+		if strings.EqualFold(strings.TrimSpace(os.Getenv(key)), "production") {
+			return true
+		}
+	}
+	return false
+}
+
+func formatMissingSecrets(missing []missingSecret) string {
+	items := make([]string, 0, len(missing))
+	for _, secret := range missing {
+		items = append(items, fmt.Sprintf("%s (%s)", secret.Field, strings.Join(secret.Keys, ", ")))
+	}
+	slices.Sort(items)
+	return strings.Join(items, "; ")
 }
 
 func rememberMissingSecrets(missing []missingSecret) (fields []string, keys []string, emitNow bool) {

@@ -155,6 +155,45 @@ func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
 	})
 }
 
+func TestPulseRunProductionFailsForMissingSecrets(t *testing.T) {
+	t.Parallel()
+
+	repo := repoRoot(t)
+	appDir := copyFixtureApp(t, repo, "secrets")
+	if err := os.Remove(filepath.Join(appDir, ".env")); err != nil {
+		t.Fatal(err)
+	}
+	port := freePort(t)
+	addr := "127.0.0.1:" + port
+	dashAddr := "127.0.0.1:" + freePort(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	binary := buildPulseBinary(t, repo)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr, "--env", "production")
+	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Dir = appDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("pulse run --env production succeeded with missing secrets; output:\n%s", output)
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("pulse run --env production timed out; output:\n%s", output)
+	}
+	got := string(output)
+	for _, want := range []string{"missing required secrets for production"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output %q does not contain %q", got, want)
+		}
+	}
+	if !strings.Contains(got, "ServiceSecret") && !strings.Contains(got, "HelperSecret") {
+		t.Fatalf("output %q does not name a missing declared secret", got)
+	}
+}
+
 func TestPulseRunPopulatesSecretsBeforePubSubPackageDeclarations(t *testing.T) {
 	t.Parallel()
 
