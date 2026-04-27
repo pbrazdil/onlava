@@ -48,13 +48,125 @@ func TestDevCommandUsesWatcherPath(t *testing.T) {
 		if got := getenvForTest("PULSE_LOCAL_PROXY"); got != "1" {
 			t.Fatalf("PULSE_LOCAL_PROXY = %q, want 1", got)
 		}
+		if got := getenvForTest("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
+			t.Fatalf("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app", "--proxy"}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestDevCommandEnablesProxyByDefault(t *testing.T) {
+	prev := runWithWatchFunc
+	defer func() { runWithWatchFunc = prev }()
+
+	called := false
+	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+		called = true
+		if got := getenvForTest("PULSE_LOCAL_PROXY"); got != "1" {
+			t.Fatalf("PULSE_LOCAL_PROXY = %q, want 1", got)
+		}
+		if got := getenvForTest("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
+			t.Fatalf("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestDevCommandRespectsProxyDisableEnv(t *testing.T) {
+	prev := runWithWatchFunc
+	defer func() { runWithWatchFunc = prev }()
+	t.Setenv("PULSE_LOCAL_PROXY", "0")
+
+	called := false
+	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+		called = true
+		if got := getenvForTest("PULSE_LOCAL_PROXY"); got != "0" {
+			t.Fatalf("PULSE_LOCAL_PROXY = %q, want 0", got)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestDevCommandProxyFlagOverridesDisableEnv(t *testing.T) {
+	prev := runWithWatchFunc
+	defer func() { runWithWatchFunc = prev }()
+	t.Setenv("PULSE_LOCAL_PROXY", "0")
+
+	called := false
+	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+		called = true
+		if got := getenvForTest("PULSE_LOCAL_PROXY"); got != "1" {
+			t.Fatalf("PULSE_LOCAL_PROXY = %q, want 1", got)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{"--proxy"}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestDevCommandPreservesTrustSkipEnv(t *testing.T) {
+	prev := runWithWatchFunc
+	defer func() { runWithWatchFunc = prev }()
+	t.Setenv("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", "1")
+
+	called := false
+	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+		called = true
 		if got := getenvForTest("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "1" {
 			t.Fatalf("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 1", got)
 		}
 		return nil
 	}
 
-	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app", "--proxy"}); err != nil {
+	if err := devCommand([]string{}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestDevCommandTrustFlagOverridesTrustSkipEnv(t *testing.T) {
+	prev := runWithWatchFunc
+	defer func() { runWithWatchFunc = prev }()
+	t.Setenv("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", "1")
+
+	called := false
+	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+		called = true
+		if got := getenvForTest("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
+			t.Fatalf("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{"--trust"}); err != nil {
 		t.Fatalf("devCommand returned error: %v", err)
 	}
 	if !called {

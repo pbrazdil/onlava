@@ -112,7 +112,7 @@ func standaloneDevEnabled() bool {
 }
 
 func startLocalHTTPSProxy(cfg runtime.AppConfig) (*localproxy.Proxy, error) {
-	if os.Getenv("PULSE_LOCAL_PROXY") == "0" {
+	if standaloneLocalProxyDisabled() {
 		return nil, nil
 	}
 	workspace := cfg.Workspace
@@ -133,6 +133,15 @@ func startLocalHTTPSProxy(cfg runtime.AppConfig) (*localproxy.Proxy, error) {
 		return nil, nil
 	}
 	return localproxy.Start(proxyCfg)
+}
+
+func standaloneLocalProxyDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("PULSE_LOCAL_PROXY"))) {
+	case "0", "false", "no", "off":
+		return true
+	default:
+		return false
+	}
 }
 
 func mustGetwd() string {

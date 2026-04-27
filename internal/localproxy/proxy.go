@@ -1,9 +1,12 @@
 package localproxy
 
 import (
-	"encoding/json"
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,17 +15,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/caddyconfig"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/headers"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
-	"github.com/caddyserver/caddy/v2/modules/caddypki"
-	"github.com/caddyserver/caddy/v2/modules/caddytls"
-
-	"pulse.dev/internal/stdlog"
 )
 
 const (
@@ -58,6 +52,16 @@ type Routes struct {
 
 type Proxy struct {
 	routes Routes
+
+	httpsServer *http.Server
+	httpServer  *http.Server
+	httpsLn     net.Listener
+	httpLn      net.Listener
+
+	closeOnce sync.Once
+	wg        sync.WaitGroup
+	mu        sync.Mutex
+	serveErrs []error
 }
 
 func Enabled() bool {
@@ -148,29 +152,111 @@ func Start(cfg Config) (*Proxy, error) {
 	if cfg.FrontendUpstream != "" && routes.FrontendHost == "" {
 		return nil, fmt.Errorf("local proxy requires a frontend host when frontend routing is enabled")
 	}
-	configJSON, err := configJSON(cfg)
+
+	routeTable, err := proxyRoutes(cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err := caddy.Load(configJSON, true); err != nil {
-		return nil, fmt.Errorf("start local HTTPS proxy: %w", err)
+	certs, err := prepareLocalCertificates(routeSubjects(cfg))
+	if err != nil {
+		return nil, fmt.Errorf("prepare local HTTPS certificates: %w", err)
 	}
-	// Caddy redirects the process standard logger while loading its apps.
-	// Restore Pulse's filtered writer so net/http idle-channel noise is
-	// suppressed even when Caddy verbose logging is enabled.
-	stdlog.Install(os.Stderr)
-	return &Proxy{routes: routes}, nil
+	if !cfg.SkipInstallTrust {
+		if err := installLocalCATrust(certs.CAPath); err != nil {
+			log.Printf("local HTTPS proxy trust install skipped: %v", err)
+		}
+	}
+
+	httpsLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.HTTPSPort))
+	if err != nil {
+		return nil, fmt.Errorf("listen local HTTPS proxy: %w", err)
+	}
+	var httpLn net.Listener
+	if cfg.HTTPPort != cfg.HTTPSPort {
+		httpLn, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.HTTPPort))
+		if err != nil {
+			log.Printf("local HTTPS proxy HTTP redirect unavailable: %v", err)
+		}
+	}
+
+	httpsServer := &http.Server{
+		Handler: routeTable,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{certs.Leaf},
+			MinVersion:   tls.VersionTLS12,
+		},
+		ErrorLog: serverErrorLog(cfg.Verbose),
+	}
+	var httpServer *http.Server
+	if httpLn != nil {
+		httpServer = &http.Server{
+			Handler:  redirectHandler{routes: routeTable, httpsPort: cfg.HTTPSPort},
+			ErrorLog: serverErrorLog(cfg.Verbose),
+		}
+	}
+
+	p := &Proxy{
+		routes:      routes,
+		httpsServer: httpsServer,
+		httpServer:  httpServer,
+		httpsLn:     httpsLn,
+		httpLn:      httpLn,
+	}
+	p.serve("https", httpsServer, tls.NewListener(httpsLn, httpsServer.TLSConfig))
+	if httpServer != nil {
+		p.serve("http", httpServer, httpLn)
+	}
+	return p, nil
 }
 
 func (p *Proxy) Close() error {
 	if p == nil {
 		return nil
 	}
-	err := caddy.Stop()
-	if err != nil && !errors.Is(err, caddy.ErrNotConfigured) {
-		return err
-	}
-	return nil
+	var closeErr error
+	p.closeOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		var errs []error
+		if p.httpServer != nil {
+			if err := p.httpServer.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errs = append(errs, err)
+			}
+		}
+		if p.httpsServer != nil {
+			if err := p.httpsServer.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errs = append(errs, err)
+			}
+		}
+		if p.httpLn != nil {
+			if err := p.httpLn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, err)
+			}
+		}
+		if p.httpsLn != nil {
+			if err := p.httpsLn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, err)
+			}
+		}
+
+		done := make(chan struct{})
+		go func() {
+			p.wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			errs = append(errs, fmt.Errorf("timed out closing local HTTPS proxy"))
+		}
+
+		p.mu.Lock()
+		errs = append(errs, p.serveErrs...)
+		p.mu.Unlock()
+		closeErr = errors.Join(errs...)
+	})
+	return closeErr
 }
 
 func (p *Proxy) Routes() Routes {
@@ -178,6 +264,18 @@ func (p *Proxy) Routes() Routes {
 		return Routes{}
 	}
 	return p.routes
+}
+
+func (p *Proxy) serve(name string, server *http.Server, ln net.Listener) {
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+			p.mu.Lock()
+			p.serveErrs = append(p.serveErrs, fmt.Errorf("%s local proxy server: %w", name, err))
+			p.mu.Unlock()
+		}
+	}()
 }
 
 func ConsoleAppURL(routes Routes, appID string) string {
@@ -242,153 +340,6 @@ func routesFor(cfg Config) Routes {
 	return routes
 }
 
-func configJSON(cfg Config) ([]byte, error) {
-	warnings := []caddyconfig.Warning{}
-	routes := proxyRoutes(cfg, &warnings)
-	subjects := routeSubjects(cfg)
-
-	persist := false
-	installTrust := !cfg.SkipInstallTrust
-	config := &caddy.Config{
-		Admin: &caddy.AdminConfig{
-			Disabled: true,
-			Config:   &caddy.ConfigSettings{Persist: &persist},
-		},
-		AppsRaw: caddy.ModuleMap{
-			"http": caddyconfig.JSON(&caddyhttp.App{
-				HTTPPort:  cfg.HTTPPort,
-				HTTPSPort: cfg.HTTPSPort,
-				Servers: map[string]*caddyhttp.Server{
-					"pulse": {
-						Listen: []string{fmt.Sprintf(":%d", cfg.HTTPSPort)},
-						Routes: routes,
-					},
-				},
-			}, &warnings),
-			"tls": caddyconfig.JSON(&caddytls.TLS{
-				Automation: &caddytls.AutomationConfig{
-					Policies: []*caddytls.AutomationPolicy{
-						{
-							SubjectsRaw: subjects,
-							IssuersRaw: []json.RawMessage{
-								caddyconfig.JSONModuleObject(caddytls.InternalIssuer{}, "module", "internal", &warnings),
-							},
-						},
-					},
-				},
-			}, &warnings),
-			"pki": caddyconfig.JSON(&caddypki.PKI{
-				CAs: map[string]*caddypki.CA{
-					"local": {InstallTrust: &installTrust},
-				},
-			}, &warnings),
-		},
-	}
-	defaultLog := &caddy.CustomLog{
-		Exclude: []string{"http.log.error"},
-	}
-	if !cfg.Verbose {
-		defaultLog.BaseLog.Level = "PANIC"
-	}
-	config.Logging = &caddy.Logging{
-		Logs: map[string]*caddy.CustomLog{
-			"default": defaultLog,
-		},
-	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		return nil, fmt.Errorf("marshal caddy config: %w", err)
-	}
-	if len(warnings) > 0 {
-		return nil, fmt.Errorf("build caddy config: %s", warnings[0].Message)
-	}
-	return data, nil
-}
-
-func proxyRoutes(cfg Config, warnings *[]caddyconfig.Warning) caddyhttp.RouteList {
-	apiHost := resolvedHost(cfg.APIHost, cfg.Workspace, "api")
-	consoleHost := resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console")
-	mcpHost := resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp")
-	frontendHost := resolvedHost(cfg.FrontendHost, cfg.Workspace, "pulse")
-
-	var routes caddyhttp.RouteList
-	appendRoute := func(host, upstream string, rewriteHost bool, path string) {
-		if route := proxyRoute(host, upstream, rewriteHost, path, warnings); route != nil {
-			routes = append(routes, *route)
-		}
-	}
-
-	appendRoute(apiHost, cfg.APIUpstream, false, "")
-	if cfg.DashboardUpstream != "" {
-		appendRoute(consoleHost, cfg.DashboardUpstream, false, "")
-		appendRoute(mcpHost, cfg.DashboardUpstream, false, "")
-	}
-	if cfg.FrontendUpstream != "" {
-		if cfg.APIUpstream != "" {
-			appendRoute(frontendHost, cfg.APIUpstream, false, "/__pulse/config")
-		}
-		appendRoute(frontendHost, cfg.FrontendUpstream, true, "")
-	}
-	return routes
-}
-
-func proxyRoute(host, upstream string, rewriteHost bool, path string, warnings *[]caddyconfig.Warning) *caddyhttp.Route {
-	if host == "" || upstream == "" {
-		return nil
-	}
-	match := caddy.ModuleMap{
-		"host": caddyconfig.JSON(caddyhttp.MatchHost{host}, warnings),
-	}
-	if path != "" {
-		match["path"] = caddyconfig.JSON(caddyhttp.MatchPath{path}, warnings)
-	}
-
-	handler := reverseproxy.Handler{
-		Upstreams: reverseproxy.UpstreamPool{{Dial: upstream}},
-	}
-	if rewriteHost {
-		handler.Headers = &headers.Handler{
-			Request: &headers.HeaderOps{
-				Set: http.Header{
-					"Host": []string{"{http.reverse_proxy.upstream.hostport}"},
-				},
-			},
-		}
-	}
-
-	return &caddyhttp.Route{
-		MatcherSetsRaw: caddyhttp.RawMatcherSets{match},
-		HandlersRaw: []json.RawMessage{
-			caddyconfig.JSONModuleObject(handler, "handler", "reverse_proxy", warnings),
-		},
-		Terminal: true,
-	}
-}
-
-func routeSubjects(cfg Config) []string {
-	subjects := []string{}
-	add := func(host string) {
-		if host == "" {
-			return
-		}
-		for _, existing := range subjects {
-			if existing == host {
-				return
-			}
-		}
-		subjects = append(subjects, host)
-	}
-	add(resolvedHost(cfg.APIHost, cfg.Workspace, "api"))
-	if cfg.DashboardUpstream != "" {
-		add(resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console"))
-		add(resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp"))
-	}
-	if cfg.FrontendUpstream != "" {
-		add(resolvedHost(cfg.FrontendHost, cfg.Workspace, "pulse"))
-	}
-	return subjects
-}
-
 func hostURL(host string, httpsPort int) string {
 	if httpsPort == defaultHTTPSPort {
 		return "https://" + host
@@ -404,7 +355,7 @@ func normalizeUpstream(value string) string {
 	if strings.Contains(value, "://") {
 		u, err := url.Parse(value)
 		if err == nil && u.Host != "" {
-			return u.Host
+			return normalizeUpstream(u.Host)
 		}
 	}
 	host, port, err := net.SplitHostPort(value)
@@ -517,4 +468,11 @@ func envBool(key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+func serverErrorLog(verbose bool) *log.Logger {
+	if verbose {
+		return nil
+	}
+	return log.New(io.Discard, "", 0)
 }

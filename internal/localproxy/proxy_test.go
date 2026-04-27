@@ -1,10 +1,19 @@
 package localproxy
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -39,11 +48,51 @@ func TestProxyAndTrustDefaultsAreOptIn(t *testing.T) {
 	}
 }
 
+func TestEnvironmentParsing(t *testing.T) {
+	for _, value := range []string{"0", "false", "no", "off"} {
+		t.Setenv("PULSE_LOCAL_PROXY", value)
+		if Enabled() {
+			t.Fatalf("Enabled() = true for %q", value)
+		}
+		t.Setenv("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", value)
+		if SkipInstallTrust() {
+			t.Fatalf("SkipInstallTrust() = true for %q", value)
+		}
+	}
+	for _, value := range []string{"1", "true", "yes", "on"} {
+		t.Setenv("PULSE_LOCAL_PROXY", value)
+		if !Enabled() {
+			t.Fatalf("Enabled() = false for %q", value)
+		}
+		t.Setenv("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", value)
+		if !SkipInstallTrust() {
+			t.Fatalf("SkipInstallTrust() = false for %q", value)
+		}
+	}
+	t.Setenv("PULSE_LOCAL_PROXY_HTTP_PORT", "9080")
+	t.Setenv("PULSE_LOCAL_PROXY_HTTPS_PORT", "9443")
+	if HTTPPort() != 9080 {
+		t.Fatalf("HTTPPort() = %d", HTTPPort())
+	}
+	if HTTPSPort() != 9443 {
+		t.Fatalf("HTTPSPort() = %d", HTTPSPort())
+	}
+	t.Setenv("PULSE_FRONTEND_ADDR", "http://0.0.0.0:5178")
+	if got := FrontendOverride(); got != "127.0.0.1:5178" {
+		t.Fatalf("FrontendOverride() = %q", got)
+	}
+	t.Setenv("PULSE_DISABLE_FRONTEND_PROXY", "1")
+	if got := DiscoverFrontendUpstream(t.TempDir()); got != "" {
+		t.Fatalf("DiscoverFrontendUpstream disabled = %q", got)
+	}
+}
+
 func TestNormalizeUpstream(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
 	}{
+		{input: "", want: ""},
 		{input: "0.0.0.0:4000", want: "127.0.0.1:4000"},
 		{input: ":4000", want: "127.0.0.1:4000"},
 		{input: "127.0.0.1:5178", want: "127.0.0.1:5178"},
@@ -109,75 +158,86 @@ func TestRoutesForExplicitHosts(t *testing.T) {
 	}
 }
 
-func TestConfigJSONIncludesExpectedHosts(t *testing.T) {
-	cfg := Config{
+func TestRouteTableIncludesExpectedHosts(t *testing.T) {
+	table, err := proxyRoutes(Config{
 		Workspace:         "onlv",
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
 		FrontendUpstream:  "127.0.0.1:5178",
-		HTTPPort:          9080,
-		HTTPSPort:         9443,
-		SkipInstallTrust:  true,
-	}
-	data, err := configJSON(cfg)
+	})
 	if err != nil {
-		t.Fatalf("configJSON() error = %v", err)
+		t.Fatalf("proxyRoutes() error = %v", err)
 	}
-	got := string(data)
-	for _, want := range []string{
-		`"http_port":9080`,
-		`"https_port":9443`,
-		`"install_trust":false`,
-		"api.onlv.localhost",
-		"console.onlv.localhost",
-		"mcp.onlv.localhost",
-		"pulse.onlv.localhost",
-		"/__pulse/config",
-		"127.0.0.1:4000",
-		"{http.reverse_proxy.upstream.hostport}",
-	} {
-		if !contains(got, want) {
-			t.Fatalf("configJSON missing %q in:\n%s", want, got)
+	want := []proxyRoute{
+		{host: "api.onlv.localhost", upstream: "127.0.0.1:4000"},
+		{host: "console.onlv.localhost", upstream: "127.0.0.1:9401"},
+		{host: "mcp.onlv.localhost", upstream: "127.0.0.1:9401"},
+		{host: "pulse.onlv.localhost", path: "/__pulse/config", upstream: "127.0.0.1:4000"},
+		{host: "pulse.onlv.localhost", upstream: "127.0.0.1:5178", rewriteHost: true},
+	}
+	if len(table) != len(want) {
+		t.Fatalf("route count = %d, want %d", len(table), len(want))
+	}
+	for i := range want {
+		got := table[i]
+		if got.host != want[i].host || got.path != want[i].path || got.upstream != want[i].upstream || got.rewriteHost != want[i].rewriteHost {
+			t.Fatalf("route %d = %+v, want %+v", i, got, want[i])
 		}
 	}
 }
 
-func TestConfigJSONSuppressesLogsWhenNotVerbose(t *testing.T) {
-	quietData, err := configJSON(Config{
-		Workspace:   "onlv",
-		APIUpstream: "127.0.0.1:4000",
+func TestCertificateSubjects(t *testing.T) {
+	subjects := routeSubjects(Config{
+		Workspace:         "onlv",
+		APIUpstream:       "127.0.0.1:4000",
+		DashboardUpstream: "127.0.0.1:9401",
+		FrontendUpstream:  "127.0.0.1:5178",
 	})
-	if err != nil {
-		t.Fatalf("configJSON quiet error = %v", err)
+	want := []string{
+		"api.onlv.localhost",
+		"console.onlv.localhost",
+		"mcp.onlv.localhost",
+		"pulse.onlv.localhost",
 	}
-	quiet := string(quietData)
-	for _, want := range []string{
-		`"logs":{"default":{"level":"PANIC","exclude":["http.log.error"]}}`,
-		`"exclude":["http.log.error"]`,
-	} {
-		if !contains(quiet, want) {
-			t.Fatalf("quiet config missing %q:\n%s", want, quiet)
-		}
+	if strings.Join(subjects, ",") != strings.Join(want, ",") {
+		t.Fatalf("routeSubjects() = %#v, want %#v", subjects, want)
 	}
+}
 
-	verboseData, err := configJSON(Config{
-		Workspace:   "onlv",
-		APIUpstream: "127.0.0.1:4000",
-		Verbose:     true,
-	})
-	if err != nil {
-		t.Fatalf("configJSON verbose error = %v", err)
+func TestStartRejectsInvalidConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want string
+	}{
+		{
+			name: "missing api upstream",
+			cfg:  Config{Workspace: "onlv"},
+			want: "local proxy requires an API upstream",
+		},
+		{
+			name: "missing api host",
+			cfg:  Config{APIUpstream: "127.0.0.1:4000"},
+			want: "local proxy requires an API host or workspace label",
+		},
+		{
+			name: "missing dashboard hosts",
+			cfg:  Config{APIHost: "api.custom.localhost", APIUpstream: "127.0.0.1:4000", DashboardUpstream: "127.0.0.1:9401"},
+			want: "local proxy requires console and mcp hosts when dashboard routing is enabled",
+		},
+		{
+			name: "missing frontend host",
+			cfg:  Config{APIHost: "api.custom.localhost", APIUpstream: "127.0.0.1:4000", FrontendUpstream: "127.0.0.1:5178"},
+			want: "local proxy requires a frontend host when frontend routing is enabled",
+		},
 	}
-	verbose := string(verboseData)
-	for _, want := range []string{`"logs":`, `"exclude":["http.log.error"]`} {
-		if !contains(verbose, want) {
-			t.Fatalf("verbose config missing %q:\n%s", want, verbose)
-		}
-	}
-	for _, unwanted := range []string{`"level":"PANIC"`} {
-		if contains(verbose, unwanted) {
-			t.Fatalf("verbose config should not include %q:\n%s", unwanted, verbose)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Start(tt.cfg)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Start() error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
 
@@ -267,6 +327,336 @@ func TestDiscoverReachableLoopbackUpstream(t *testing.T) {
 	}
 }
 
-func contains(s, want string) bool {
-	return strings.Contains(s, want)
+func TestProxyRoutesAndRedirects(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+
+	api := newEchoServer(t, "api")
+	dashboard := newEchoServer(t, "dashboard")
+	frontend := newEchoServer(t, "frontend")
+	defer api.Close()
+	defer dashboard.Close()
+	defer frontend.Close()
+
+	httpPort := freeTCPPort(t)
+	httpsPort := freeTCPPort(t)
+	proxy, err := Start(Config{
+		Workspace:         "onlv",
+		APIUpstream:       api.URL,
+		DashboardUpstream: dashboard.URL,
+		FrontendUpstream:  frontend.URL,
+		HTTPPort:          httpPort,
+		HTTPSPort:         httpsPort,
+		SkipInstallTrust:  true,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer proxy.Close()
+
+	client := newProxyClient(t, cacheDir)
+	apiEcho := getEcho(t, client, fmt.Sprintf("https://api.onlv.localhost:%d/v1?x=1", httpsPort))
+	if apiEcho.Server != "api" || apiEcho.Host != fmt.Sprintf("api.onlv.localhost:%d", httpsPort) || apiEcho.Path != "/v1" || apiEcho.RawQuery != "x=1" {
+		t.Fatalf("api echo = %+v", apiEcho)
+	}
+	if apiEcho.ForwardedHost != fmt.Sprintf("api.onlv.localhost:%d", httpsPort) || apiEcho.ForwardedProto != "https" {
+		t.Fatalf("api forwarded headers = %+v", apiEcho)
+	}
+
+	consoleEcho := getEcho(t, client, fmt.Sprintf("https://console.onlv.localhost:%d/dashboard", httpsPort))
+	if consoleEcho.Server != "dashboard" || consoleEcho.Host != fmt.Sprintf("console.onlv.localhost:%d", httpsPort) {
+		t.Fatalf("console echo = %+v", consoleEcho)
+	}
+	mcpEcho := getEcho(t, client, fmt.Sprintf("https://mcp.onlv.localhost:%d/sse", httpsPort))
+	if mcpEcho.Server != "dashboard" || mcpEcho.Host != fmt.Sprintf("mcp.onlv.localhost:%d", httpsPort) {
+		t.Fatalf("mcp echo = %+v", mcpEcho)
+	}
+
+	configEcho := getEcho(t, client, fmt.Sprintf("https://pulse.onlv.localhost:%d/__pulse/config", httpsPort))
+	if configEcho.Server != "api" || configEcho.Host != fmt.Sprintf("pulse.onlv.localhost:%d", httpsPort) {
+		t.Fatalf("frontend config echo = %+v", configEcho)
+	}
+	frontendEcho := getEcho(t, client, fmt.Sprintf("https://pulse.onlv.localhost:%d/app", httpsPort))
+	if frontendEcho.Server != "frontend" || frontendEcho.Host != normalizeUpstream(frontend.URL) {
+		t.Fatalf("frontend echo = %+v", frontendEcho)
+	}
+	if frontendEcho.ForwardedHost != fmt.Sprintf("pulse.onlv.localhost:%d", httpsPort) {
+		t.Fatalf("frontend forwarded host = %q", frontendEcho.ForwardedHost)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://api.onlv.localhost:%d/nope", httpsPort), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = fmt.Sprintf("unknown.onlv.localhost:%d", httpsPort)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unknown host request error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown host status = %d", resp.StatusCode)
+	}
+
+	resp, err = client.Get(fmt.Sprintf("http://api.onlv.localhost:%d/v1?x=1", httpPort))
+	if err != nil {
+		t.Fatalf("http redirect request error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusPermanentRedirect {
+		t.Fatalf("redirect status = %d", resp.StatusCode)
+	}
+	wantLocation := fmt.Sprintf("https://api.onlv.localhost:%d/v1?x=1", httpsPort)
+	if got := resp.Header.Get("Location"); got != wantLocation {
+		t.Fatalf("redirect Location = %q, want %q", got, wantLocation)
+	}
+}
+
+func TestCloseIsIdempotentAndReleasesPorts(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	api := newEchoServer(t, "api")
+	defer api.Close()
+
+	httpPort := freeTCPPort(t)
+	httpsPort := freeTCPPort(t)
+	proxy, err := Start(Config{
+		Workspace:        "onlv",
+		APIUpstream:      api.URL,
+		HTTPPort:         httpPort,
+		HTTPSPort:        httpsPort,
+		SkipInstallTrust: true,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if err := proxy.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := proxy.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+	for _, port := range []int{httpPort, httpsPort} {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			t.Fatalf("port %d was not released: %v", port, err)
+		}
+		_ = ln.Close()
+	}
+}
+
+func TestStartContinuesWhenHTTPRedirectPortUnavailable(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	api := newEchoServer(t, "api")
+	defer api.Close()
+
+	blocker, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on blocker port: %v", err)
+	}
+	defer blocker.Close()
+	httpPort := blocker.Addr().(*net.TCPAddr).Port
+	httpsPort := freeTCPPort(t)
+
+	proxy, err := Start(Config{
+		Workspace:        "onlv",
+		APIUpstream:      api.URL,
+		HTTPPort:         httpPort,
+		HTTPSPort:        httpsPort,
+		SkipInstallTrust: true,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer proxy.Close()
+
+	client := newProxyClient(t, cacheDir)
+	echo := getEcho(t, client, fmt.Sprintf("https://api.onlv.localhost:%d/v1", httpsPort))
+	if echo.Server != "api" {
+		t.Fatalf("echo server = %q, want api", echo.Server)
+	}
+}
+
+func TestStartInstallsTrustWhenNotSkipped(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	api := newEchoServer(t, "api")
+	defer api.Close()
+
+	oldInstaller := installLocalCATrust
+	var calledPath string
+	installLocalCATrust = func(certPath string) error {
+		calledPath = certPath
+		if _, err := os.Stat(certPath); err != nil {
+			t.Fatalf("trust cert path does not exist: %v", err)
+		}
+		return nil
+	}
+	t.Cleanup(func() { installLocalCATrust = oldInstaller })
+
+	proxy, err := Start(Config{
+		Workspace:        "onlv",
+		APIUpstream:      api.URL,
+		HTTPPort:         freeTCPPort(t),
+		HTTPSPort:        freeTCPPort(t),
+		SkipInstallTrust: false,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer proxy.Close()
+	if calledPath == "" {
+		t.Fatal("trust installer was not called")
+	}
+}
+
+func TestLocalCertificatesIncludeExpectedSANsAndReuseCA(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+
+	first, err := prepareLocalCertificates([]string{"api.onlv.localhost", "console.onlv.localhost"})
+	if err != nil {
+		t.Fatalf("prepareLocalCertificates() error = %v", err)
+	}
+	if err := first.Leaf.Leaf.VerifyHostname("api.onlv.localhost"); err != nil {
+		t.Fatalf("leaf does not cover api host: %v", err)
+	}
+	if err := first.Leaf.Leaf.VerifyHostname("console.onlv.localhost"); err != nil {
+		t.Fatalf("leaf does not cover console host: %v", err)
+	}
+	caSerial := first.CACert.SerialNumber.String()
+	leafSerial := first.Leaf.Leaf.SerialNumber.String()
+
+	second, err := prepareLocalCertificates([]string{"console.onlv.localhost", "api.onlv.localhost"})
+	if err != nil {
+		t.Fatalf("second prepareLocalCertificates() error = %v", err)
+	}
+	if second.CACert.SerialNumber.String() != caSerial {
+		t.Fatalf("CA serial changed on reuse")
+	}
+	if second.Leaf.Leaf.SerialNumber.String() != leafSerial {
+		t.Fatalf("leaf serial changed despite same subjects")
+	}
+
+	third, err := prepareLocalCertificates([]string{"api.onlv.localhost", "pulse.onlv.localhost"})
+	if err != nil {
+		t.Fatalf("third prepareLocalCertificates() error = %v", err)
+	}
+	if third.CACert.SerialNumber.String() != caSerial {
+		t.Fatalf("CA serial changed when regenerating leaf")
+	}
+	if third.Leaf.Leaf.SerialNumber.String() == leafSerial {
+		t.Fatalf("leaf serial did not change after SAN set changed")
+	}
+	if err := third.Leaf.Leaf.VerifyHostname("pulse.onlv.localhost"); err != nil {
+		t.Fatalf("regenerated leaf does not cover frontend host: %v", err)
+	}
+
+	if runtime.GOOS != "windows" {
+		dir, err := localProxyCacheDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode := fileMode(t, dir); mode != 0o700 {
+			t.Fatalf("cache dir mode = %#o, want 0700", mode)
+		}
+		for _, name := range []string{localProxyCACertFile, localProxyCAKeyFile, localProxyLeafCertFile, localProxyLeafKeyFile} {
+			if mode := fileMode(t, filepath.Join(dir, name)); mode != 0o600 {
+				t.Fatalf("%s mode = %#o, want 0600", name, mode)
+			}
+		}
+	}
+}
+
+type requestEcho struct {
+	Server         string `json:"server"`
+	Host           string `json:"host"`
+	Path           string `json:"path"`
+	RawQuery       string `json:"raw_query"`
+	ForwardedHost  string `json:"forwarded_host"`
+	ForwardedProto string `json:"forwarded_proto"`
+}
+
+func newEchoServer(t *testing.T, name string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(requestEcho{
+			Server:         name,
+			Host:           r.Host,
+			Path:           r.URL.Path,
+			RawQuery:       r.URL.RawQuery,
+			ForwardedHost:  r.Header.Get("X-Forwarded-Host"),
+			ForwardedProto: r.Header.Get("X-Forwarded-Proto"),
+		})
+	}))
+}
+
+func newProxyClient(t *testing.T, cacheDir string) *http.Client {
+	t.Helper()
+	caPEM, err := os.ReadFile(filepath.Join(cacheDir, "pulse", "localproxy", localProxyCACertFile))
+	if err != nil {
+		t.Fatalf("read local CA: %v", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		t.Fatal("append local CA")
+	}
+	transport := &http.Transport{
+		Proxy: nil,
+		TLSClientConfig: &tls.Config{
+			RootCAs: roots,
+		},
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(address)
+			if err != nil {
+				return nil, err
+			}
+			return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort("127.0.0.1", port))
+		},
+	}
+	return &http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+func getEcho(t *testing.T, client *http.Client, url string) requestEcho {
+	t.Helper()
+	resp, err := client.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET %s status = %d: %s", url, resp.StatusCode, body)
+	}
+	var echo requestEcho
+	if err := json.NewDecoder(resp.Body).Decode(&echo); err != nil {
+		t.Fatalf("decode echo: %v", err)
+	}
+	return echo
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on random port: %v", err)
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func fileMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
 }

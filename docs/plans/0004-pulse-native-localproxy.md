@@ -11,18 +11,28 @@ When this plan is complete, `pulse dev` and standalone runtime development mode 
 ## Progress
 
 - [x] (2026-04-27 17:06Z) Created this ExecPlan and assigned historical ID 0004.
-- [ ] Replace Caddy-backed route/config generation with a Pulse-native route table.
-- [ ] Implement Pulse local CA, leaf certificate generation, and SAN validation.
-- [ ] Implement injectable OS trust installation without Caddy or global process mutation.
-- [ ] Implement HTTPS reverse proxy serving and optional HTTP-to-HTTPS redirect serving.
-- [ ] Update call sites and tests while preserving public `internal/localproxy` API names and URL behavior.
-- [ ] Remove `internal/localproxy/caddyimports.go` and Caddy dependencies, then run full validation.
+- [x] (2026-04-27 17:19Z) Replaced Caddy-backed route/config generation with a Pulse-native route table.
+- [x] (2026-04-27 17:19Z) Implemented Pulse local CA, leaf certificate generation, and SAN validation.
+- [x] (2026-04-27 17:19Z) Implemented injectable OS trust installation without Caddy or global process mutation.
+- [x] (2026-04-27 17:19Z) Implemented HTTPS reverse proxy serving and optional HTTP-to-HTTPS redirect serving.
+- [x] (2026-04-27 17:19Z) Updated call sites and tests while preserving public `internal/localproxy` API names and URL behavior.
+- [x] (2026-04-27 17:19Z) Removed `internal/localproxy/caddyimports.go` and Caddy dependencies with `go mod tidy`.
+- [x] (2026-04-27 17:22Z) Ran full validation: `go test ./...`, `go install ./cmd/pulse`, Caddy dependency checks, and `pulse harness self --json --write`.
+- [x] (2026-04-27 18:11Z) Corrected `pulse dev` startup so local HTTPS domains are enabled by default, with `PULSE_LOCAL_PROXY=0|false|no|off` as the opt-out.
+- [x] (2026-04-27 18:11Z) Made the optional HTTP redirect listener fail soft so an unavailable port 80 does not suppress the HTTPS domain banner.
+- [x] (2026-04-27 18:27Z) Corrected `pulse dev` trust setup so the generated local CA is installed by default, with `PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1` as the opt-out.
+- [x] (2026-04-27 18:31Z) Corrected the Darwin trust installer to write user trust settings for SSL and basic X.509 trust instead of importing without effective user trust.
 
 ## Surprises & Discoveries
 
 - Current `internal/localproxy/proxy_test.go` names local proxy and trust defaults as opt-in: `Enabled()` currently defaults to `false`, and `SkipInstallTrust()` currently defaults to `true`. The requested target behavior says `PULSE_LOCAL_PROXY` should default to enabled and `PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL` should default to false. Implementation must decide whether to update behavior to the requested target and adjust tests, or preserve actual current behavior if callers rely on it. Record the final decision in the Decision Log.
 - Current `runtimeapp/app.go` only disables standalone proxy startup when `PULSE_LOCAL_PROXY == "0"`. The requested behavior allows replacing this with `localproxy.Enabled()` only if tests cover `"0"`, `"false"`, `"no"`, and `"off"`.
 - Current Caddy setup passes both `HTTPPort` and `HTTPSPort` into the Caddy HTTP app but configures only the `pulse` server with `Listen: :<HTTPSPort>`. The replacement should implement an HTTP redirect listener unless implementation investigation proves Caddy did not bind HTTP in this configuration.
+- The native proxy returns application-level `404` for unknown Host headers after TLS negotiation. A client that uses an SNI name not present in the generated SAN set can still fail certificate verification before HTTP routing, which is expected for a strict local CA leaf.
+- After the first native-proxy pass, `pulse dev` without `--proxy` still printed loopback URLs because the CLI only enabled `PULSE_LOCAL_PROXY` from the explicit flag. `pulse dev` now enables the proxy by default while preserving an environment opt-out.
+- Binding the HTTP redirect port can fail on machines where port 80 is occupied or restricted. The native proxy now treats redirect startup as optional and still starts the HTTPS server so the primary local domains appear.
+- After domains appeared in the banner, Chromium still showed `ERR_CERT_AUTHORITY_INVALID` because `pulse dev` was setting `PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1` by default. The CLI now defaults that env var to `0` for `pulse dev`.
+- The Darwin `security add-trusted-cert` invocation imported the CA into the login keychain, but `security dump-trust-settings` showed no Pulse CA user trust settings. Removing `-d` and adding explicit `-p ssl -p basic` records user trust and makes system certificate verification accept the local domains.
 
 ## Decision Log
 
@@ -34,9 +44,39 @@ When this plan is complete, `pulse dev` and standalone runtime development mode 
   Rationale: `net/http`, `net/http/httputil`, `crypto/x509`, `crypto/ecdsa`, `tls`, `os/exec`, and `net` are sufficient for the required local-only behavior, and the repository explicitly prefers minimal dependencies.
   Date/Author: 2026-04-27 / Codex
 
+- Decision: Preserve the existing `internal/localproxy` library environment defaults: `Enabled()` remains opt-in and `SkipInstallTrust()` still defaults to true.
+  Rationale: The CLI sets dev-specific defaults, and changing the package default would make standalone callers start a privileged local HTTPS proxy unexpectedly.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Keep standalone runtime proxy startup enabled by default inside `PULSE_STANDALONE_DEV`, but treat `PULSE_LOCAL_PROXY=0`, `false`, `no`, and `off` as disabled.
+  Rationale: This preserves the prior standalone behavior while fixing the narrower disable parsing gap called out in the plan.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Implement an HTTP redirect listener when `HTTPPort != HTTPSPort`.
+  Rationale: The previous Caddy config supplied both HTTP and HTTPS ports, and the target behavior explicitly includes HTTP-to-HTTPS redirects; the native implementation starts redirects when the configured HTTP port is available.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Enable the local HTTPS proxy by default for `pulse dev`, while keeping `internal/localproxy.Enabled()` opt-in for library callers and respecting `PULSE_LOCAL_PROXY=0`, `false`, `no`, or `off` as a dev opt-out.
+  Rationale: `pulse dev` is the full local development platform and should surface the Pulse local domains without requiring `--proxy`; the package-level default remains conservative for non-CLI callers.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Install local CA trust by default for `pulse dev`, while respecting `PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1` as an opt-out and keeping `--trust` as an explicit force-on flag.
+  Rationale: Local HTTPS domains are only useful in the browser when the generated Pulse CA is trusted. The package-level default remains conservative, but `pulse dev` should provide the complete local development platform.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: On Darwin, install Pulse's local CA as a user trust root with explicit SSL and basic X.509 policies.
+  Rationale: Importing the certificate alone is not enough for Chromium or system verification; user trust settings must be recorded for the CA.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Treat the HTTP redirect listener as optional after HTTPS has bound successfully.
+  Rationale: Port 80 availability varies by host and should not prevent the HTTPS proxy domains from being advertised or used.
+  Date/Author: 2026-04-27 / Codex
+
 ## Outcomes & Retrospective
 
-Not yet completed.
+Completed on 2026-04-27. Pulse local HTTPS proxying now uses a small standard-library implementation for route matching, TLS certificate generation, trust installation hooks, reverse proxying, redirects, and lifecycle cleanup. Caddy, CertMagic, and ZeroSSL are no longer present in `go.mod`, `go.sum`, `go list -m all`, or `internal/localproxy` imports.
+
+Validation passed with `go test ./internal/localproxy`, `go test ./runtimeapp ./cmd/pulse`, `go test ./...`, `go install ./cmd/pulse`, and `pulse harness self --json --write`. The self harness still reports the pre-existing `.DS_Store` warning, but no errors.
 
 ## Context and Orientation
 

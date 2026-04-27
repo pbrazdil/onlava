@@ -64,3 +64,18 @@ Shipped:
 - Sidecars use loopback ports, `.pulse/victoria/` storage, automatic binary resolution/download, and graceful shutdown with the dev supervisor.
 - Pulse exports built-in trace, log, and request-duration metric reports to Victoria over OTLP protobuf.
 - Dashboard and inspect trace reads prefer VictoriaTraces with SQLite fallback.
+
+## Pulse-Native Local HTTPS Proxy
+
+- Status: completed
+- Owner: Pulse runtime
+- Completed: 2026-04-27
+- Quality: B
+- ExecPlan: [0004 Pulse-Native Local HTTPS Proxy](0004-pulse-native-localproxy.md)
+
+Shipped:
+
+- Replaced embedded Caddy local HTTPS proxying with a standard-library route table, TLS certificate cache, trust installer hooks, HTTPS reverse proxy, and optional HTTP redirect listener.
+- Preserved `internal/localproxy` public API names and the existing Pulse local URL shape.
+- Removed `internal/localproxy/caddyimports.go` plus Caddy, CertMagic, and ZeroSSL module dependencies.
+- Added behavior tests for routing, frontend config/catch-all handling, Host rewriting, redirects, certificate SANs and reuse, trust installer injection, and lifecycle cleanup.

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"pulse.dev/internal/stdlog"
 )
@@ -141,15 +142,24 @@ func parseDevArgs(args []string) (devOptions, error) {
 
 func configureDevProcessEnv(opts devOptions) func() {
 	changes := map[string]string{}
-	if opts.Proxy {
+	if opts.Proxy || !devProxyDisabledByEnv() {
 		changes["PULSE_LOCAL_PROXY"] = "1"
 		if opts.Trust {
 			changes["PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
-		} else {
-			changes["PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "1"
+		} else if _, ok := os.LookupEnv("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
+			changes["PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
 		}
 	}
 	return applyTemporaryEnv(changes)
+}
+
+func devProxyDisabledByEnv() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("PULSE_LOCAL_PROXY"))) {
+	case "0", "false", "no", "off":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyTemporaryEnv(values map[string]string) func() {

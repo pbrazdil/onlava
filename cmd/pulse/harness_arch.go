@@ -20,12 +20,15 @@ const (
 )
 
 var allowedDirectGoDeps = map[string]string{
-	"github.com/caddyserver/caddy/v2": "local HTTPS reverse proxy with automatic localhost certificates",
-	"github.com/gorilla/websocket":    "dashboard JSON-RPC websocket transport",
-	"github.com/lib/pq":               "Postgres database explorer and psql URL handling",
-	"golang.org/x/mod":                "Go module parsing for self-harness dependency checks",
-	"golang.org/x/tools":              "Go package loading/parser pipeline",
-	"modernc.org/sqlite":              "CGO-free local dashboard state store",
+	"github.com/fsnotify/fsnotify":      "file watching for pulse dev live rebuilds",
+	"github.com/gorilla/websocket":      "dashboard JSON-RPC websocket transport",
+	"github.com/jackc/pgx/v5":           "Postgres pgxpool compatibility wrapper for Pulse apps",
+	"github.com/lib/pq":                 "Postgres database explorer and psql URL handling",
+	"github.com/nats-io/nats-server/v2": "embedded local NATS server for the Pub/Sub runtime",
+	"github.com/nats-io/nats.go":        "NATS client for the Pub/Sub runtime",
+	"golang.org/x/mod":                  "Go module parsing for self-harness dependency checks",
+	"golang.org/x/tools":                "Go package loading/parser pipeline",
+	"modernc.org/sqlite":                "CGO-free local dashboard state store",
 }
 
 var forbiddenSourceImports = map[string]string{
