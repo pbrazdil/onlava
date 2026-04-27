@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pulse.dev/schemas/pulse.inspect.docs.v1.schema.json",
+  "title": "pulse.inspect.docs.v1",
+  "type": "object",
+  "required": ["schema_version", "repo", "summary", "documents", "plans", "tech_debt"],
+  "properties": {
+    "schema_version": { "const": "pulse.inspect.docs.v1" },
+    "repo": {
+      "type": "object",
+      "required": ["root", "module_path", "go_mod_path"],
+      "properties": {
+        "root": { "type": "string" },
+        "module_path": { "const": "pulse.dev" },
+        "go_mod_path": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["document_count", "missing_count", "review_due_count", "stale_count", "quality"],
+      "properties": {
+        "document_count": { "type": "integer" },
+        "missing_count": { "type": "integer" },
+        "review_due_count": { "type": "integer" },
+        "stale_count": { "type": "integer" },
+        "quality": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "documents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/document" }
+    },
+    "plans": {
+      "type": "object",
+      "required": ["active", "completed"],
+      "properties": {
+        "active": { "$ref": "#/$defs/artifact" },
+        "completed": { "$ref": "#/$defs/artifact" }
+      },
+      "additionalProperties": false
+    },
+    "tech_debt": { "$ref": "#/$defs/artifact" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "exists"],
+      "properties": {
+        "path": { "type": "string" },
+        "exists": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "document": {
+      "type": "object",
+      "required": ["path", "title", "owner", "status", "quality", "freshness", "last_reviewed", "review_after", "summary", "tags", "exists", "review_due", "stale"],
+      "properties": {
+        "path": { "type": "string" },
+        "title": { "type": "string" },
+        "owner": { "type": "string" },
+        "status": { "type": "string" },
+        "quality": { "type": "string" },
+        "freshness": { "type": "string" },
+        "last_reviewed": { "type": "string" },
+        "review_after": { "type": "string" },
+        "summary": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "schema_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exists": { "type": "boolean" },
+        "size_bytes": { "type": "integer" },
+        "modified_at": { "type": "string" },
+        "review_due": { "type": "boolean" },
+        "stale": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

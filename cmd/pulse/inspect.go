@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,9 +17,11 @@ import (
 )
 
 type inspectOptions struct {
-	Subject string
-	AppRoot string
-	JSON    bool
+	Subject  string
+	AppRoot  string
+	RepoRoot string
+	JSON     bool
+	Trace    inspectTraceQueryOptions
 }
 
 type inspectBuildResponse struct {
@@ -70,6 +73,18 @@ func runPulseInspect(args []string, stdout io.Writer) error {
 	}
 	if !opts.JSON {
 		return fmt.Errorf("pulse inspect currently requires --json")
+	}
+
+	if opts.Subject == "docs" {
+		repoRoot, err := discoverPulseRepoRoot(opts.RepoRoot)
+		if err != nil {
+			return err
+		}
+		resp, err := buildInspectDocsResponse(repoRoot)
+		if err != nil {
+			return err
+		}
+		return writeInspectJSON(stdout, resp)
 	}
 
 	start, err := resolveAppRoot(opts.AppRoot)
@@ -149,6 +164,18 @@ func runPulseInspect(args []string, stdout io.Writer) error {
 			return err
 		}
 		return writeInspectJSON(stdout, resp)
+	case "traces":
+		resp, err := buildInspectTracesResponse(context.Background(), appRoot, cfg, opts.Trace)
+		if err != nil {
+			return err
+		}
+		return writeInspectJSON(stdout, resp)
+	case "metrics":
+		resp, err := buildInspectMetricsResponse(context.Background(), appRoot, cfg, opts.Trace)
+		if err != nil {
+			return err
+		}
+		return writeInspectJSON(stdout, resp)
 	default:
 		return fmt.Errorf("unknown inspect subject %q", opts.Subject)
 	}
@@ -169,6 +196,31 @@ func parseInspectArgs(args []string) (inspectOptions, error) {
 				return inspectOptions{}, fmt.Errorf("missing value for --app-root")
 			}
 			opts.AppRoot = args[i]
+		case "--repo-root":
+			i++
+			if i >= len(args) {
+				return inspectOptions{}, fmt.Errorf("missing value for --repo-root")
+			}
+			if opts.Subject != "docs" {
+				return inspectOptions{}, fmt.Errorf("--repo-root is only supported for inspect docs")
+			}
+			opts.RepoRoot = args[i]
+		case "--limit", "-n", "--since", "--service", "--endpoint", "--trace-id", "--status", "--min-duration-ms":
+			i++
+			if i >= len(args) {
+				return inspectOptions{}, fmt.Errorf("missing value for %s", args[i-1])
+			}
+			if opts.Subject != "traces" && opts.Subject != "metrics" {
+				return inspectOptions{}, fmt.Errorf("%s is only supported for inspect traces and metrics", args[i-1])
+			}
+			if err := parseInspectTraceFlags(&opts, args[i-1], args[i]); err != nil {
+				return inspectOptions{}, err
+			}
+		case "--slowest":
+			if opts.Subject != "traces" && opts.Subject != "metrics" {
+				return inspectOptions{}, fmt.Errorf("%s is only supported for inspect traces and metrics", args[i])
+			}
+			opts.Trace.Slowest = true
 		default:
 			return inspectOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}

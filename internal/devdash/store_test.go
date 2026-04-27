@@ -273,3 +273,69 @@ func TestStorePubSubMessages(t *testing.T) {
 		t.Fatalf("completed message status after clear = %q, want completed", items[1].Status)
 	}
 }
+
+func TestStoreQueryTraceSummariesAndMetrics(t *testing.T) {
+	t.Parallel()
+
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	ctx := context.Background()
+	endpoint := "Search"
+	now := time.Now().UTC()
+	for _, item := range []struct {
+		traceID  string
+		service  string
+		duration time.Duration
+		err      bool
+	}{
+		{traceID: "trace-1", service: "jobs", duration: 100 * time.Millisecond},
+		{traceID: "trace-2", service: "jobs", duration: 2500 * time.Millisecond, err: true},
+		{traceID: "trace-3", service: "users", duration: 3 * time.Second},
+	} {
+		if err := store.AppendTraceSummary(ctx, &TraceSummary{
+			AppID:         "app-test",
+			TraceID:       item.traceID,
+			SpanID:        item.traceID + "-span",
+			Type:          "RPC",
+			IsRoot:        true,
+			IsError:       item.err,
+			StartedAt:     now.Add(-time.Minute),
+			DurationNanos: uint64(item.duration),
+			ServiceName:   item.service,
+			EndpointName:  &endpoint,
+		}); err != nil {
+			t.Fatalf("append trace %s: %v", item.traceID, err)
+		}
+	}
+
+	items, err := store.QueryTraceSummaries(ctx, TraceQuery{
+		AppID:            "app-test",
+		ServiceName:      "jobs",
+		MinDurationNanos: uint64(2 * time.Second),
+		Limit:            10,
+	})
+	if err != nil {
+		t.Fatalf("query traces: %v", err)
+	}
+	if len(items) != 1 || items[0].TraceID != "trace-2" {
+		t.Fatalf("items = %+v", items)
+	}
+
+	metrics, err := store.QueryTraceMetrics(ctx, TraceQuery{
+		AppID: "app-test",
+		Since: now.Add(-time.Hour),
+		Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("query metrics: %v", err)
+	}
+	if len(metrics) != 3 {
+		t.Fatalf("metrics count = %d, want 3", len(metrics))
+	}
+}

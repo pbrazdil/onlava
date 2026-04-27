@@ -16,6 +16,8 @@ Implemented now:
 - `pulse.app`
 - `pulse run --json`
 - `pulse check --json`
+- `pulse harness --json`
+- `pulse harness self --json`
 - `pulse admin traces clear --json`
 - `pulse admin pubsub clear --json`
 - `pulse inspect app --json`
@@ -25,6 +27,9 @@ Implemented now:
 - `pulse inspect wire --json`
 - `pulse inspect build --json`
 - `pulse inspect paths --json`
+- `pulse inspect traces --json`
+- `pulse inspect metrics --json`
+- `pulse inspect docs --json`
 - `pulse logs --jsonl`
 - `.pulse/gen/app.json`
 - `.pulse/gen/routes.json`
@@ -33,15 +38,17 @@ Implemented now:
 - `.pulse/gen/wire/capabilities.json`
 - `.pulse/gen/manifest.json`
 - `.pulse/build/latest.json`
+- `.pulse/harness/latest.json`
+- `.pulse/harness/self-latest.json`
 
 Reserved by contract, implementation pending:
 - other `pulse admin ... --json` commands beyond `traces clear` and `pubsub clear`
-- repo-local runtime and state manifests beyond `.pulse/build/latest.json` and `.pulse/gen/*`
+- repo-local runtime and state manifests beyond `.pulse/build/latest.json`, `.pulse/gen/*`, and `.pulse/harness/latest.json`
 
 ## `pulse.app`
 
 Schema:
-- [pulse.app.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.app.v1.schema.json)
+- [pulse.app.v1.schema.json](schemas/pulse.app.v1.schema.json)
 
 Current shape:
 
@@ -84,7 +91,12 @@ Current implemented grammar:
 pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]
 pulse build [--app-root <path>] [-o <path>] [--db-studio]
 pulse check [--app-root <path>] [--json]
-pulse inspect app|routes|services|endpoints|wire|build|paths --json [--app-root <path>]
+pulse harness [--app-root <path>] [--json] [--write]
+pulse harness self [--repo-root <path>] [--json] [--write]
+pulse inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]
+pulse inspect docs --json [--repo-root <path>]
+pulse inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
+pulse inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
 pulse admin traces clear --json [--app-root <path>]
 pulse admin pubsub clear --json [--app-root <path>]
 pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
@@ -96,6 +108,12 @@ Frozen `inspect` rules:
 - `pulse inspect` requires a subject.
 - `pulse inspect` currently requires `--json`.
 - `--app-root` is optional. When omitted, Pulse walks upward from the current working directory to find `pulse.app`.
+- `traces` and `metrics` read the local Pulse dashboard SQLite store. If no local state exists, they return valid JSON with a warning and empty result sets.
+- `--since` accepts Go duration strings such as `15m`, `1h`, or `24h`.
+- `--min-duration-ms` filters root traces by duration in milliseconds.
+- `--status` accepts `ok` or `error`.
+- `metrics` defaults to `--since 24h` and `--limit 10000` so agents get useful local summaries without scanning unbounded history.
+- `docs` inspects the Pulse repo knowledge base, not a target Pulse app. It accepts `--repo-root` and otherwise walks upward to the `module pulse.dev` repo root.
 
 Implemented `run --json` rules:
 
@@ -119,6 +137,35 @@ pulse check --json
 - success returns `ok: true` and an empty `diagnostics` array
 - failure returns `ok: false` and structured diagnostics
 - diagnostics may include `stage`, `file`, `line`, `column`, `severity`, `message`, and `suggested_action`
+
+Implemented `harness --json` rules:
+
+```text
+pulse harness --json
+pulse harness --json --write
+```
+
+- output is a single JSON document
+- output conforms to `pulse.harness.result.v1`
+- it composes `pulse check --json` and the stable `pulse inspect ... --json` surfaces
+- success returns `ok: true`
+- failure returns `ok: false`, per-step errors, diagnostics, and `next_actions`
+- `--write` persists the same result to `.pulse/harness/latest.json`
+
+Implemented `harness self --json` rules:
+
+```text
+pulse harness self --json
+pulse harness self --json --write
+```
+
+- output is a single JSON document
+- output conforms to `pulse.harness.self.v1`
+- it validates the Pulse repo itself instead of a target app
+- it runs docs knowledge validation, `pulse inspect docs --json`, architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, DB Studio UI typecheck/build, UI freshness checks, `go install ./cmd/pulse`, and installed binary freshness checks
+- architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, non-fixture `encore.gen.go`, and non-generated source files over 2500 lines
+- architecture checks warn on non-generated source files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
+- `--write` persists the same result to `.pulse/harness/self-latest.json`
 
 Implemented `logs --jsonl` rules:
 
@@ -177,6 +224,9 @@ Implemented now:
     manifest.json
   build/
     latest.json
+  harness/
+    latest.json
+    self-latest.json
 ```
 
 Reserved for upcoming work:
@@ -192,25 +242,33 @@ Rules:
 - `wire/capabilities.json` mirrors `pulse inspect wire --json` and the runtime `GET /_wire/capabilities` response
 - `manifest.json` ties the generated inspect artifacts to schema versions, stable artifact paths, and deterministic content hashes
 - `build/latest.json` is the stable repo-local pointer to the latest prepared or compiled build workspace
+- `harness/latest.json` is the stable repo-local pointer to the latest agent validation run
+- `harness/self-latest.json` is the stable repo-local pointer to the latest Pulse repo validation run
 - agents can use either `pulse inspect ... --json` or the corresponding `.pulse/gen/*.json` files
 - future implementation should conform to these locations instead of inventing a different layout
 
 ## JSON Schemas
 
 Implemented now:
-- [pulse.inspect.app.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.app.v1.schema.json)
-- [pulse.inspect.routes.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.routes.v1.schema.json)
-- [pulse.inspect.services.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.services.v1.schema.json)
-- [pulse.inspect.endpoints.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.endpoints.v1.schema.json)
-- [pulse.wire.capabilities.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.wire.capabilities.v1.schema.json)
-- [pulse.inspect.build.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.build.v1.schema.json)
-- [pulse.inspect.paths.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.paths.v1.schema.json)
-- [pulse.gen.manifest.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.gen.manifest.v1.schema.json)
-- [pulse.build.latest.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.build.latest.v1.schema.json)
-- [pulse.run.event.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.run.event.v1.schema.json)
-- [pulse.check.result.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.check.result.v1.schema.json)
-- [pulse.logs.event.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.logs.event.v1.schema.json)
-- [pulse.admin.result.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.admin.result.v1.schema.json)
+- [pulse.inspect.app.v1.schema.json](schemas/pulse.inspect.app.v1.schema.json)
+- [pulse.inspect.routes.v1.schema.json](schemas/pulse.inspect.routes.v1.schema.json)
+- [pulse.inspect.services.v1.schema.json](schemas/pulse.inspect.services.v1.schema.json)
+- [pulse.inspect.endpoints.v1.schema.json](schemas/pulse.inspect.endpoints.v1.schema.json)
+- [pulse.inspect.traces.v1.schema.json](schemas/pulse.inspect.traces.v1.schema.json)
+- [pulse.inspect.metrics.v1.schema.json](schemas/pulse.inspect.metrics.v1.schema.json)
+- [pulse.inspect.docs.v1.schema.json](schemas/pulse.inspect.docs.v1.schema.json)
+- [pulse.docs.index.v1.schema.json](schemas/pulse.docs.index.v1.schema.json)
+- [pulse.wire.capabilities.v1.schema.json](schemas/pulse.wire.capabilities.v1.schema.json)
+- [pulse.inspect.build.v1.schema.json](schemas/pulse.inspect.build.v1.schema.json)
+- [pulse.inspect.paths.v1.schema.json](schemas/pulse.inspect.paths.v1.schema.json)
+- [pulse.gen.manifest.v1.schema.json](schemas/pulse.gen.manifest.v1.schema.json)
+- [pulse.build.latest.v1.schema.json](schemas/pulse.build.latest.v1.schema.json)
+- [pulse.run.event.v1.schema.json](schemas/pulse.run.event.v1.schema.json)
+- [pulse.check.result.v1.schema.json](schemas/pulse.check.result.v1.schema.json)
+- [pulse.harness.result.v1.schema.json](schemas/pulse.harness.result.v1.schema.json)
+- [pulse.harness.self.v1.schema.json](schemas/pulse.harness.self.v1.schema.json)
+- [pulse.logs.event.v1.schema.json](schemas/pulse.logs.event.v1.schema.json)
+- [pulse.admin.result.v1.schema.json](schemas/pulse.admin.result.v1.schema.json)
 
 Reserved now:
 - future command-specific admin schemas if `pulse.admin.result.v1` becomes too generic
@@ -340,3 +398,169 @@ Schema rules:
 ### `pulse inspect wire --json`
 
 `pulse inspect wire --json` returns the same hidden generated-client capability document served at `GET /_wire/capabilities`. It is intended for generated clients and agents that need to know whether the JSON transport or binary transport will be used for each logical endpoint.
+
+### `pulse inspect traces --json`
+
+Use this when an agent needs concrete local traces without scraping the dashboard UI.
+
+Example:
+
+```text
+pulse inspect traces --json --endpoint SyncGet --min-duration-ms 2000 --since 1h --slowest
+```
+
+Example output:
+
+```json
+{
+  "schema_version": "pulse.inspect.traces.v1",
+  "app": {
+    "name": "billing",
+    "root": "/repo/billing",
+    "config_path": "/repo/billing/pulse.app"
+  },
+  "query": {
+    "app_id": "billing",
+    "limit": 100,
+    "since": "1h0m0s",
+    "endpoint": "SyncGet",
+    "min_duration_ms": 2000,
+    "sort": "duration_desc",
+    "available_filters": ["--service", "--endpoint", "--trace-id", "--status ok|error", "--min-duration-ms", "--since", "--limit", "--slowest"]
+  },
+  "traces": [
+    {
+      "trace_id": "trace-1",
+      "span_id": "span-1",
+      "kind": "RPC",
+      "status": "ok",
+      "service": "sync",
+      "endpoint": "SyncGet",
+      "started_at": "2026-04-27T13:00:00Z",
+      "duration_ms": 2310,
+      "duration_nanos": 2310000000
+    }
+  ]
+}
+```
+
+### `pulse inspect metrics --json`
+
+Use this when an agent needs a metrics-style rollup over locally captured traces and logs.
+
+Example:
+
+```text
+pulse inspect metrics --json --service sync --since 15m
+```
+
+Example output:
+
+```json
+{
+  "schema_version": "pulse.inspect.metrics.v1",
+  "app": {
+    "name": "billing",
+    "root": "/repo/billing",
+    "config_path": "/repo/billing/pulse.app"
+  },
+  "query": {
+    "app_id": "billing",
+    "limit": 10000,
+    "since": "15m0s",
+    "service": "sync",
+    "sort": "started_at_desc",
+    "available_filters": ["--service", "--endpoint", "--trace-id", "--status ok|error", "--min-duration-ms", "--since", "--limit", "--slowest"]
+  },
+  "summary": {
+    "trace_count": 12,
+    "error_count": 1,
+    "error_rate": 0.08333333333333333,
+    "event_count": 34,
+    "log_count": 9,
+    "avg_duration_ms": 120.4,
+    "min_duration_ms": 3.1,
+    "max_duration_ms": 520.7,
+    "p50_duration_ms": 88.2,
+    "p95_duration_ms": 500.1
+  },
+  "services": [],
+  "endpoints": [],
+  "logs": [],
+  "meta": {
+    "trace_metric_limit": 10000
+  }
+}
+```
+
+### `pulse inspect docs --json`
+
+Use this when an agent needs to understand the repo knowledge base before making changes.
+
+Source files:
+
+- [docs/index.md](index.md)
+- [docs/knowledge.json](knowledge.json)
+- [docs/plans/active.md](plans/active.md)
+- [docs/plans/completed.md](plans/completed.md)
+- [docs/tech-debt.md](tech-debt.md)
+
+Example:
+
+```text
+pulse inspect docs --json
+```
+
+Example output:
+
+```json
+{
+  "schema_version": "pulse.inspect.docs.v1",
+  "repo": {
+    "root": "/repo/pulse",
+    "module_path": "pulse.dev",
+    "go_mod_path": "/repo/pulse/go.mod"
+  },
+  "summary": {
+    "document_count": 9,
+    "missing_count": 0,
+    "review_due_count": 0,
+    "stale_count": 0,
+    "quality": {
+      "A": 4,
+      "B": 5
+    }
+  },
+  "documents": [
+    {
+      "path": "docs/local-contract.md",
+      "title": "Pulse Local Contract",
+      "owner": "Pulse runtime",
+      "status": "active",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "Frozen local developer and agent-facing contract.",
+      "tags": ["contract", "cli", "agents", "schemas"],
+      "exists": true,
+      "review_due": false,
+      "stale": false
+    }
+  ],
+  "plans": {
+    "active": {
+      "path": "docs/plans/active.md",
+      "exists": true
+    },
+    "completed": {
+      "path": "docs/plans/completed.md",
+      "exists": true
+    }
+  },
+  "tech_debt": {
+    "path": "docs/tech-debt.md",
+    "exists": true
+  }
+}
+```

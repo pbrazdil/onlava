@@ -3,6 +3,11 @@ Keep dependencies minimal. Prefer the Go standard library unless an external dep
 
 Workflow
 After every repository change, rebuild any binaries from this repo that are expected to be available in PATH. For Pulse, run `go install ./cmd/pulse` before finishing the task.
+For substantial repo changes, run `pulse harness self --json --write` when practical so agents and humans have one stable validation snapshot at `.pulse/harness/self-latest.json`.
+For substantial target-app changes, run `pulse harness --json --write` from that app root when practical.
+
+Execution Plans
+For complex features, multi-hour tasks, migrations, or significant refactors, create or update an ExecPlan as described in `PLANS.md`. Store active ExecPlans under `docs/plans/<short-slug>.md`, link them from `docs/plans/active.md`, and keep their Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective sections current as you work. `PLAN.md` is the strategic roadmap; do not treat it as an executable task plan.
 
 Summary
 Build a new Pulse-native Go-only local runtime that makes pulse run start a single HTTP server for Pulse services and preserve the most common Encore API behavior, with strict Pulse naming and no compatibility layer for Encore syntax.
