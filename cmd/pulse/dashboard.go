@@ -99,7 +99,7 @@ type procInfo struct {
 
 func looksLikePulseDashboardProcess(info procInfo) bool {
 	lower := strings.ToLower(info.cmd)
-	return strings.Contains(lower, "pulse") && strings.Contains(lower, " run")
+	return strings.Contains(lower, "pulse") && strings.Contains(lower, " dev")
 }
 
 func findListeningPID(addr string) (int, bool) {

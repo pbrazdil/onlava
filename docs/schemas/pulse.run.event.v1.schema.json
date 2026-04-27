@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pulse.dev/schemas/pulse.run.event.v1.schema.json",
   "title": "pulse.run.event.v1",
-  "description": "Reserved schema for future `pulse run --json` JSONL events.",
+  "description": "JSONL event schema emitted by `pulse dev --json`.",
   "type": "object",
   "required": ["schema_version", "type", "time"],
   "properties": {

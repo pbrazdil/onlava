@@ -190,7 +190,9 @@ func generateMain(appModel *model.App, cfg appcfg.Config) ([]byte, error) {
 	buf.WriteString("\t\"fmt\"\n")
 	buf.WriteString("\t\"os\"\n")
 	buf.WriteString("\tpulseruntime \"pulse.dev/runtime\"\n")
-	buf.WriteString("\t_ \"pulse.dev/runtimeapp\"\n")
+	if cfg.EnableDBStudio {
+		buf.WriteString("\t_ \"pulse.dev/runtimeapp\"\n")
+	}
 	for _, pkg := range appModel.Packages {
 		if hasResources(pkg) {
 			fmt.Fprintf(&buf, "\t_ %q\n", pkg.ImportPath)

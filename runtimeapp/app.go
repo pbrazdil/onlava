@@ -63,15 +63,17 @@ func startStandaloneDev(ctx context.Context, cfg runtime.AppConfig) (runtime.Sta
 	session := &standaloneSession{}
 	info := runtime.StandaloneDevInfo{}
 
-	if proxy, err := startLocalHTTPSProxy(cfg); err != nil {
-		slog.Warn("local HTTPS proxy unavailable", "err", err)
-	} else if proxy != nil {
-		session.proxy = proxy
-		routes := proxy.Routes()
-		info.APIURL = routes.APIURL
-		info.ConsoleURL = routes.ConsoleURL
-		info.MCPBaseURL = routes.MCPBaseURL
-		info.FrontendURL = routes.FrontendURL
+	if standaloneDevEnabled() {
+		if proxy, err := startLocalHTTPSProxy(cfg); err != nil {
+			slog.Warn("local HTTPS proxy unavailable", "err", err)
+		} else if proxy != nil {
+			session.proxy = proxy
+			routes := proxy.Routes()
+			info.APIURL = routes.APIURL
+			info.ConsoleURL = routes.ConsoleURL
+			info.MCPBaseURL = routes.MCPBaseURL
+			info.FrontendURL = routes.FrontendURL
+		}
 	}
 
 	if cfg.EnableDBStudio {
@@ -103,6 +105,10 @@ func startStandaloneDev(ctx context.Context, cfg runtime.AppConfig) (runtime.Sta
 	}
 
 	return session, info, nil
+}
+
+func standaloneDevEnabled() bool {
+	return os.Getenv("PULSE_STANDALONE_DEV") == "1"
 }
 
 func startLocalHTTPSProxy(cfg runtime.AppConfig) (*localproxy.Proxy, error) {

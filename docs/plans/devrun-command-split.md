@@ -15,16 +15,18 @@ The result is observable from the command line. Running `pulse dev --app-root /p
 ## Progress
 
 - [x] (2026-04-27 16:12Z) Created this ExecPlan from `docs/PRD-4-devrun.md`.
-- [ ] Inventory current `pulse run` behavior and tests that assume development behavior.
-- [ ] Add the `pulse dev` command as an alias for the current development supervisor path.
-- [ ] Implement a new headless `pulse run` path that builds once and starts the app without dev services.
-- [ ] Update generated app/runtime behavior so built binaries and headless run do not start dev-only services by default.
-- [ ] Update CLI docs, local contract, help text, and tests.
-- [ ] Validate against a fixture app and `/Users/petrbrazdil/Repos/onlv` in read-only mode.
+- [x] (2026-04-27 14:24Z) Inventory current `pulse run` behavior and tests that assume development behavior.
+- [x] (2026-04-27 14:24Z) Add the `pulse dev` command as an alias for the current development supervisor path.
+- [x] (2026-04-27 14:25Z) Implement a new headless `pulse run` path that builds once and starts the app without dev services.
+- [x] (2026-04-27 14:25Z) Update generated app/runtime behavior so built binaries and headless run do not start dev-only services by default.
+- [x] (2026-04-27 14:29Z) Update CLI docs, local contract, help text, and tests.
+- [x] (2026-04-27 14:31Z) Validate against fixture apps and `/Users/petrbrazdil/Repos/onlv` in read-only mode.
 
 ## Surprises & Discoveries
 
-No implementation discoveries yet.
+- Existing generated mains imported `pulse.dev/runtimeapp` unconditionally, so built app binaries could start local proxy/DB Studio behavior outside the CLI. Headless behavior required changing codegen, not only command dispatch.
+- The integration suite had several development-platform expectations under `pulse run`, especially reloads, dashboard/MCP, and HTTPS proxy hostnames. Those tests now belong to `pulse dev`.
+- Headless `pulse run` still needs a parent-death monitor for its app child, otherwise force-killing the CLI can leave an orphaned app process.
 
 ## Decision Log
 
@@ -40,9 +42,20 @@ No implementation discoveries yet.
   Rationale: This avoids breaking the current local workflow while making room for the new runtime contract.
   Date/Author: 2026-04-27 / Codex
 
+- Decision: Headless app children get a parent monitor without being marked as dev-supervisor-launched.
+  Rationale: `pulse run` should still clean up its app child if the CLI parent dies, while preserving headless banners and avoiding dev reporting/proxy behavior.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: `runtimeapp` local proxy startup is gated behind explicit standalone development mode.
+  Rationale: `pulse build --db-studio` may intentionally include runtimeapp for DB Studio, but that should not implicitly bring back the local HTTPS/frontend proxy.
+  Date/Author: 2026-04-27 / Codex
+
 ## Outcomes & Retrospective
 
-Not yet completed.
+- `pulse dev` now owns the previous development supervisor path, including dashboard, MCP, proxy, DB Studio, watching, rebuilds, and JSONL development events.
+- `pulse run` now builds once and starts the app binary headlessly with development-only flags rejected.
+- Generated app mains no longer import `pulse.dev/runtimeapp` by default, so `pulse build` outputs are headless unless DB Studio is explicitly enabled.
+- Validation passed: focused command/codegen/runtime tests, selected fixture integration tests, `go test ./...`, `go install ./cmd/pulse`, `pulse harness self --json --write`, and read-only `pulse inspect app --json --app-root /Users/petrbrazdil/Repos/onlv`.
 
 ## Context and Orientation
 

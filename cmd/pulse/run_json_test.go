@@ -7,12 +7,72 @@ import (
 )
 
 func TestParseRunArgs(t *testing.T) {
-	opts, err := parseRunArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app"})
+	opts, err := parseRunArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--app-root", "/tmp/app", "--env", "production", "--log-format", "json"})
 	if err != nil {
 		t.Fatalf("parseRunArgs returned error: %v", err)
 	}
+	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || opts.AppRoot != "/tmp/app" || opts.Env != "production" || opts.LogFormat != "json" {
+		t.Fatalf("opts = %+v", opts)
+	}
+}
+
+func TestParseRunArgsRejectsDevFlags(t *testing.T) {
+	for _, flag := range []string{"--verbose", "--json", "--watch", "--dashboard", "--db-studio", "--proxy"} {
+		if _, err := parseRunArgs([]string{flag}); err == nil {
+			t.Fatalf("parseRunArgs(%q) returned nil error", flag)
+		}
+	}
+}
+
+func TestParseDevArgs(t *testing.T) {
+	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app"})
+	if err != nil {
+		t.Fatalf("parseDevArgs returned error: %v", err)
+	}
 	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" {
 		t.Fatalf("opts = %+v", opts)
+	}
+}
+
+func TestDevCommandUsesWatcherPath(t *testing.T) {
+	prev := runWithWatchFunc
+	defer func() { runWithWatchFunc = prev }()
+
+	called := false
+	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+		called = true
+		if addr != "127.0.0.1:4444" || !verbose || !jsonMode || appRoot != "/tmp/app" {
+			t.Fatalf("watch args = %q %v %v %q", addr, verbose, jsonMode, appRoot)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app"}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestRunCommandUsesHeadlessPath(t *testing.T) {
+	prev := runHeadlessFunc
+	defer func() { runHeadlessFunc = prev }()
+
+	called := false
+	runHeadlessFunc = func(addr string, opts runOptions) error {
+		called = true
+		if addr != "127.0.0.1:4444" || opts.AppRoot != "/tmp/app" || opts.Env != "production" || opts.LogFormat != "json" {
+			t.Fatalf("headless args = %q %+v", addr, opts)
+		}
+		return nil
+	}
+
+	if err := runCommand([]string{"--port", "4444", "--app-root", "/tmp/app", "--env", "production", "--log-format", "json"}); err != nil {
+		t.Fatalf("runCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected headless path to be called")
 	}
 }
 

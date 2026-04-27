@@ -14,7 +14,8 @@ If implementation and this document disagree, treat that as a bug.
 
 Implemented now:
 - `pulse.app`
-- `pulse run --json`
+- `pulse dev --json`
+- `pulse run`
 - `pulse check --json`
 - `pulse harness --json`
 - `pulse harness self --json`
@@ -88,7 +89,8 @@ Rules:
 Current implemented grammar:
 
 ```text
-pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]
+pulse dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]
+pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 pulse build [--app-root <path>] [-o <path>] [--db-studio]
 pulse check [--app-root <path>] [--json]
 pulse harness [--app-root <path>] [--json] [--write]
@@ -115,10 +117,17 @@ Frozen `inspect` rules:
 - `metrics` defaults to `--since 24h` and `--limit 10000` so agents get useful local summaries without scanning unbounded history.
 - `docs` inspects the Pulse repo knowledge base, not a target Pulse app. It accepts `--repo-root` and otherwise walks upward to the `module pulse.dev` repo root.
 
-Implemented `run --json` rules:
+Command split:
+
+- `pulse dev` starts the local development platform: app process, dashboard, MCP endpoint, local HTTPS/frontend proxy when configured, DB Studio when configured, file watching, and rebuild/restart supervision.
+- `pulse run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, DB Studio, frontend proxy, or file watcher.
+- `pulse build` produces the deployable binary and remains the preferred deployment artifact path.
+- Generated app binaries are headless by default. `pulse build --db-studio` is an explicit opt-in for the DB Studio integration.
+
+Implemented `dev --json` rules:
 
 ```text
-pulse run --json
+pulse dev --json
 ```
 
 - output is JSONL

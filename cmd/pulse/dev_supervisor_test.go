@@ -135,14 +135,19 @@ func TestLooksLikePulseDashboardProcess(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "pulse run process",
-			info: procInfo{pid: 100, ppid: 1, cmd: "/usr/local/bin/pulse run"},
+			name: "pulse dev process",
+			info: procInfo{pid: 100, ppid: 1, cmd: "/usr/local/bin/pulse dev"},
 			want: true,
 		},
 		{
-			name: "non orphaned pulse run process",
-			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/pulse run"},
+			name: "non orphaned pulse dev process",
+			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/pulse dev"},
 			want: true,
+		},
+		{
+			name: "pulse run is headless",
+			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/pulse run"},
+			want: false,
 		},
 		{
 			name: "pulse app binary is not dashboard",

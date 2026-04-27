@@ -78,7 +78,7 @@ func TestPulseRunBasicApp(t *testing.T) {
 	assertCORSActual(t, "http://"+addr+"/service.AuthEcho")
 }
 
-func TestPulseRunReloadsOnGoChanges(t *testing.T) {
+func TestPulseDevReloadsOnGoChanges(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -96,15 +96,15 @@ func TestPulseRunReloadsOnGoChanges(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
+	cmd.Env = pulseDevEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start pulse dev: %v", err)
 	}
 	defer stopPulseProcess(t, cancel, cmd)
 
@@ -410,7 +410,7 @@ func TestPulseBuildProducesRunnableBinary(t *testing.T) {
 	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
 }
 
-func TestPulseRunServesHTTPSHostnames(t *testing.T) {
+func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -444,15 +444,15 @@ func TestPulseRunServesHTTPSHostnames(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, "127.0.0.1:"+frontendPort)
+	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
+	cmd.Env = pulseDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, "127.0.0.1:"+frontendPort)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start pulse dev: %v", err)
 	}
 	defer stopPulseProcess(t, cancel, cmd)
 
@@ -497,7 +497,7 @@ func TestPulseRunServesHTTPSHostnames(t *testing.T) {
 	}
 }
 
-func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
+func TestPulseBuiltBinaryIsHeadlessByDefault(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -520,7 +520,6 @@ func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
 
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
-	httpPort := freePort(t)
 	httpsPort := freePort(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -529,7 +528,6 @@ func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
 	cmd.Env = append(
 		os.Environ(),
 		"PULSE_LISTEN_ADDR="+addr,
-		"PULSE_LOCAL_PROXY_HTTP_PORT="+httpPort,
 		"PULSE_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
 		"PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
 		"PULSE_DEV_CACHE_DIR="+cacheDir,
@@ -545,12 +543,17 @@ func TestPulseBuiltBinaryServesHTTPSHostname(t *testing.T) {
 	defer stopPulseProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
+	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
 	client := insecureHTTPSClient()
-	waitForURL(t, client, "https://api.onlv.localhost:"+httpsPort+"/service.CallPrivate")
-	getJSONWithClient(t, client, "https://api.onlv.localhost:"+httpsPort+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
+	client.Timeout = 300 * time.Millisecond
+	resp, err := client.Get("https://api.onlv.localhost:" + httpsPort + "/service.CallPrivate")
+	if err == nil {
+		resp.Body.Close()
+		t.Fatalf("built binary unexpectedly served local HTTPS proxy on %s", httpsPort)
+	}
 }
 
-func TestPulseRunDashboardNotificationsAndMCP(t *testing.T) {
+func TestPulseDevDashboardNotificationsAndMCP(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -568,15 +571,15 @@ func TestPulseRunDashboardNotificationsAndMCP(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
+	cmd.Env = pulseDevEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start pulse dev: %v", err)
 	}
 	defer stopPulseProcess(t, cancel, cmd)
 
@@ -677,6 +680,14 @@ func buildPulseBinary(t *testing.T, repo string) string {
 func pulseRunEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
+		"PULSE_DEV_CACHE_DIR="+cacheDir,
+		"PULSE_LOCAL_PROXY=0",
+	)
+}
+
+func pulseDevEnv(repo, dashboardAddr, cacheDir string) []string {
+	return append(
+		os.Environ(),
 		"PULSE_DEV_DASHBOARD_ADDR="+dashboardAddr,
 		"PULSE_DEV_CACHE_DIR="+cacheDir,
 		"PULSE_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
@@ -684,7 +695,7 @@ func pulseRunEnv(repo, dashboardAddr, cacheDir string) []string {
 	)
 }
 
-func pulseRunProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
+func pulseDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
 	env := append(
 		os.Environ(),
 		"PULSE_DEV_DASHBOARD_ADDR="+dashboardAddr,

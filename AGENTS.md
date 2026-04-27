@@ -10,12 +10,12 @@ Execution Plans
 For complex features, multi-hour tasks, migrations, or significant refactors, create or update an ExecPlan as described in `PLANS.md`. Store active ExecPlans under `docs/plans/<short-slug>.md`, link them from `docs/plans/active.md`, and keep their Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective sections current as you work. `PLAN.md` is the strategic roadmap; do not treat it as an executable task plan.
 
 Summary
-Build a new Pulse-native Go-only local runtime that makes pulse run start a single HTTP server for Pulse services and preserve the most common Encore API behavior, with strict Pulse naming and no compatibility layer for Encore syntax.
+Build a new Pulse-native Go-only local runtime that makes pulse run start a single HTTP server for Pulse services and preserve the most common Encore API behavior, with strict Pulse naming and no compatibility layer for Encore syntax. Use pulse dev for the full local development platform with dashboard, proxy, DB Studio, and live reload.
 
 Use the existing encore tree only as a reference corpus and fixture source. Do not reuse Encore’s daemon/cloud/infra layers; implement a smaller Pulse-native parser, codegen, and runtime.
 
 Public Surface
-CLI: pulse run [--port <n>] [--listen <addr>], default listen 127.0.0.1:4000.
+CLI: pulse dev [--port <n>] [--listen <addr>] for local development, and pulse run [--port <n>] [--listen <addr>] for headless production-like execution. Default listen is 127.0.0.1:4000.
 App root marker: pulse.app, JSON, required for pulse run. Phase 1 only needs "name"; no cloud/linking fields.
 Source directives:
 //pulse:api public|auth|private [raw] [path=/...] [method=GET,POST]

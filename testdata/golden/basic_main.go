@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	pulseruntime "pulse.dev/runtime"
-	_ "pulse.dev/runtimeapp"
 )
 
 func main() {

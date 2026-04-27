@@ -370,8 +370,38 @@ func Run(ctx context.Context) error { return nil }
 	}
 
 	got := string(out.Generated["pulse_internal_main/main.go"])
+	if !strings.Contains(got, `_ "pulse.dev/runtimeapp"`) {
+		t.Fatalf("expected generated main to import runtimeapp for db studio, got:\n%s", got)
+	}
 	if !strings.Contains(got, "EnableDBStudio: true") {
 		t.Fatalf("expected generated main to enable db studio, got:\n%s", got)
+	}
+}
+
+func TestGenerateMainOmitsRuntimeAppByDefault(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/headlessapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"headlessapp","proxy":{"api_host":"api.onlv.localhost"}}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//pulse:api public
+func Run(ctx context.Context) error { return nil }
+`)
+
+	app, err := parse.App(dir, "headlessapp")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	out, err := codegen.Generate(app)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := string(out.Generated["pulse_internal_main/main.go"])
+	if strings.Contains(got, `pulse.dev/runtimeapp`) {
+		t.Fatalf("generated main imported runtimeapp by default:\n%s", got)
 	}
 }
 

@@ -14,11 +14,11 @@ var (
 )
 
 func startSupervisorParentMonitor(cancel context.CancelFunc) func() {
-	if !launchedBySupervisor() {
+	if !parentMonitorEnabled() {
 		return func() {}
 	}
 
-	supervisorPID := supervisorPIDFromEnv()
+	supervisorPID := parentMonitorPIDFromEnv()
 	initial := supervisorParentPID()
 	if supervisorPID <= 1 && initial <= 1 {
 		return func() {}
@@ -45,8 +45,15 @@ func startSupervisorParentMonitor(cancel context.CancelFunc) func() {
 	}
 }
 
-func supervisorPIDFromEnv() int {
-	value := os.Getenv("PULSE_DEV_SUPERVISOR_PID")
+func parentMonitorEnabled() bool {
+	return launchedBySupervisor() || os.Getenv("PULSE_PARENT_MONITOR") == "1"
+}
+
+func parentMonitorPIDFromEnv() int {
+	value := os.Getenv("PULSE_PARENT_MONITOR_PID")
+	if value == "" {
+		value = os.Getenv("PULSE_DEV_SUPERVISOR_PID")
+	}
 	if value == "" {
 		return 0
 	}
@@ -55,6 +62,10 @@ func supervisorPIDFromEnv() int {
 		return 0
 	}
 	return pid
+}
+
+func supervisorPIDFromEnv() int {
+	return parentMonitorPIDFromEnv()
 }
 
 func supervisorParentMonitorShouldCancel(supervisorPID int, supervisorAlive bool, initial, current int) bool {

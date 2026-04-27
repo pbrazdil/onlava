@@ -32,6 +32,8 @@ func run(args []string) error {
 		return usageError()
 	}
 	switch args[0] {
+	case "dev":
+		return devCommand(args[1:])
 	case "run":
 		return runCommand(args[1:])
 	case "build":
@@ -58,7 +60,7 @@ func run(args []string) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]\n  pulse psql [--app-root <path>] [psql args...]\n  pulse check [--app-root <path>] [--json]\n  pulse harness [--app-root <path>] [--json] [--write]\n  pulse harness self [--repo-root <path>] [--json] [--write]\n  pulse inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]\n  pulse inspect docs --json [--repo-root <path>]\n  pulse inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]\n  pulse inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]\n  pulse admin traces clear --json [--app-root <path>]\n  pulse admin pubsub clear --json [--app-root <path>]\n  pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]\n  pulse test [--app-root <path>] [go test flags/packages...]\n  pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
+	return fmt.Errorf("usage:\n  pulse dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]\n  pulse psql [--app-root <path>] [psql args...]\n  pulse check [--app-root <path>] [--json]\n  pulse harness [--app-root <path>] [--json] [--write]\n  pulse harness self [--repo-root <path>] [--json] [--write]\n  pulse inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]\n  pulse inspect docs --json [--repo-root <path>]\n  pulse inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]\n  pulse inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]\n  pulse admin traces clear --json [--app-root <path>]\n  pulse admin pubsub clear --json [--app-root <path>]\n  pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]\n  pulse test [--app-root <path>] [go test flags/packages...]\n  pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
 }
 
 type silentCLIError struct {
@@ -72,16 +74,16 @@ func (e *silentCLIError) Error() string {
 	return e.err.Error()
 }
 
-func runCommand(args []string) error {
-	opts, err := parseRunArgs(args)
+func devCommand(args []string) error {
+	opts, err := parseDevArgs(args)
 	if err != nil {
 		return err
 	}
 	addr := resolveListenAddr(opts.Listen, opts.Port)
-	return runWithWatch(addr, opts.Verbose, opts.JSON, opts.AppRoot)
+	return runWithWatchFunc(addr, opts.Verbose, opts.JSON, opts.AppRoot)
 }
 
-type runOptions struct {
+type devOptions struct {
 	Listen  string
 	Port    int
 	Verbose bool
@@ -89,24 +91,24 @@ type runOptions struct {
 	AppRoot string
 }
 
-func parseRunArgs(args []string) (runOptions, error) {
-	opts := runOptions{Port: 4000}
+func parseDevArgs(args []string) (devOptions, error) {
+	opts := devOptions{Port: 4000}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--port", "-p":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --port")
+				return devOptions{}, fmt.Errorf("missing value for --port")
 			}
 			value, err := strconv.Atoi(args[i])
 			if err != nil {
-				return runOptions{}, fmt.Errorf("invalid port %q", args[i])
+				return devOptions{}, fmt.Errorf("invalid port %q", args[i])
 			}
 			opts.Port = value
 		case "--listen":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --listen")
+				return devOptions{}, fmt.Errorf("missing value for --listen")
 			}
 			opts.Listen = args[i]
 		case "--verbose", "-v":
@@ -116,11 +118,11 @@ func parseRunArgs(args []string) (runOptions, error) {
 		case "--app-root":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --app-root")
+				return devOptions{}, fmt.Errorf("missing value for --app-root")
 			}
 			opts.AppRoot = args[i]
 		default:
-			return runOptions{}, fmt.Errorf("unknown flag %q", args[i])
+			return devOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	return opts, nil

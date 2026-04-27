@@ -146,9 +146,14 @@ func printRuntimeBanner(out io.Writer, listenAddr string, info StandaloneDevInfo
 		apiURL = info.APIURL
 	}
 
+	title := "Pulse server running!"
+	if info.APIURL != "" || info.ConsoleURL != "" || info.MCPBaseURL != "" || info.FrontendURL != "" || info.DBStudioURL != "" {
+		title = "Pulse development server running!"
+	}
+
 	lines := []string{
 		"",
-		"  Pulse development server running!",
+		"  " + title,
 		"",
 		fmt.Sprintf("  %-26s  %s", "Your API is running at:", apiURL),
 	}
