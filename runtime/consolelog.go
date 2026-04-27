@@ -336,7 +336,7 @@ func logRequestCompleted(state *requestState, duration time.Duration, err error)
 }
 
 func logAuthHandlerStart(state *requestState, handler *AuthHandler) {
-	if state == nil || !state.logsEnabled || state.trace == nil || handler == nil {
+	if state == nil || !state.logsEnabled || state.trace == nil || handler == nil || !logsEnabledForAuthHandler(handler) {
 		return
 	}
 	logTrace(context.Background(), "running auth handler",
@@ -347,7 +347,7 @@ func logAuthHandlerStart(state *requestState, handler *AuthHandler) {
 }
 
 func logAuthHandlerCompleted(state *requestState, handler *AuthHandler, info AuthInfo, err error, duration time.Duration) {
-	if state == nil || !state.logsEnabled || state.trace == nil || handler == nil {
+	if state == nil || !state.logsEnabled || state.trace == nil || handler == nil || !logsEnabledForAuthHandler(handler) {
 		return
 	}
 	args := []any{

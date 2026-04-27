@@ -162,8 +162,14 @@ func Start(cfg Config) (*Proxy, error) {
 		return nil, fmt.Errorf("prepare local HTTPS certificates: %w", err)
 	}
 	if !cfg.SkipInstallTrust {
-		if err := installLocalCATrust(certs.CAPath); err != nil {
-			log.Printf("local HTTPS proxy trust install skipped: %v", err)
+		trusted, err := localCATrusted(certs.CAPath)
+		if err != nil && cfg.Verbose {
+			log.Printf("local HTTPS proxy trust check failed: %v", err)
+		}
+		if !trusted {
+			if err := installLocalCATrust(certs.CAPath); err != nil {
+				log.Printf("local HTTPS proxy trust install skipped: %v", err)
+			}
 		}
 	}
 

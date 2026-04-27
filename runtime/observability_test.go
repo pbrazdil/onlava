@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +81,82 @@ func TestPulseConsoleHandlerSkipsLogsForFilteredEndpoint(t *testing.T) {
 	}
 	if got := out.String(); got != "" {
 		t.Fatalf("output = %q, want empty", got)
+	}
+}
+
+func TestAuthHandlerLogsUseAuthEndpointFilter(t *testing.T) {
+	restore := replaceGlobalRegistryForTest()
+	defer restore()
+
+	SetAppConfig(AppConfig{
+		Name:       "testapp",
+		ListenAddr: "127.0.0.1:4000",
+		Observability: ObservabilityConfig{
+			Logs: EndpointFilterConfig{
+				ExcludeEndpoints: []string{"auth.AuthHandler"},
+			},
+		},
+	})
+
+	var out bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(newPulseConsoleHandler(&out)))
+	defer slog.SetDefault(prevLogger)
+
+	state := &requestState{
+		request: sharedRequest("jobs", "CreateApplicationDocument", "/jobs/applications/documents"),
+		trace: &traceSpan{
+			traceID: "trace-1",
+			spanID:  "span-1",
+			isRoot:  true,
+		},
+		logsEnabled:  true,
+		traceEnabled: true,
+	}
+	restoreState := enterState(state)
+	defer restoreState()
+
+	handler := &AuthHandler{Service: "auth", Name: "AuthHandler"}
+	logAuthHandlerStart(state, handler)
+	logAuthHandlerCompleted(state, handler, AuthInfo{UID: "user-1"}, nil, time.Millisecond)
+
+	if got := out.String(); got != "" {
+		t.Fatalf("output = %q, want empty", got)
+	}
+}
+
+func TestAuthHandlerLogsStillWriteWhenNotFiltered(t *testing.T) {
+	restore := replaceGlobalRegistryForTest()
+	defer restore()
+
+	SetAppConfig(AppConfig{
+		Name:       "testapp",
+		ListenAddr: "127.0.0.1:4000",
+	})
+
+	var out bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(newPulseConsoleHandler(&out)))
+	defer slog.SetDefault(prevLogger)
+
+	state := &requestState{
+		request: sharedRequest("jobs", "CreateApplicationDocument", "/jobs/applications/documents"),
+		trace: &traceSpan{
+			traceID: "trace-1",
+			spanID:  "span-1",
+			isRoot:  true,
+		},
+		logsEnabled:  true,
+		traceEnabled: true,
+	}
+	restoreState := enterState(state)
+	defer restoreState()
+
+	handler := &AuthHandler{Service: "auth", Name: "AuthHandler"}
+	logAuthHandlerStart(state, handler)
+
+	if got := out.String(); !strings.Contains(got, "running auth handler") {
+		t.Fatalf("output = %q, want auth handler log", got)
 	}
 }
 

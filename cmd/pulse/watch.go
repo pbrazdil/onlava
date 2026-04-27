@@ -11,9 +11,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -21,9 +24,10 @@ import (
 )
 
 const (
-	watchPollInterval = 250 * time.Millisecond
-	watchSettleDelay  = 500 * time.Millisecond
-	stopTimeout       = 5 * time.Second
+	watchPollInterval       = 250 * time.Millisecond
+	watchBackupPollInterval = 2 * time.Second
+	watchSettleDelay        = 500 * time.Millisecond
+	stopTimeout             = 5 * time.Second
 )
 
 type fileStamp struct {
@@ -135,6 +139,9 @@ func waitForStableChangePolling(ctx context.Context, root string, current fileSn
 }
 
 func waitForStableChangeEvents(ctx context.Context, root string, current fileSnapshot, events <-chan struct{}) (fileSnapshot, error) {
+	ticker := time.NewTicker(watchBackupPollInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -143,6 +150,15 @@ func waitForStableChangeEvents(ctx context.Context, root string, current fileSna
 			if !ok {
 				return waitForStableChangePolling(ctx, root, current)
 			}
+		case <-ticker.C:
+			next, err := scanWatchedFiles(root)
+			if err != nil {
+				return nil, err
+			}
+			if snapshotsEqual(current, next) {
+				continue
+			}
+			return waitForSnapshotToSettlePolling(ctx, root, next)
 		}
 
 		next, err := waitForSnapshotToSettleEvents(ctx, root, events)
@@ -215,7 +231,11 @@ func waitForSnapshotToSettleEvents(ctx context.Context, root string, events <-ch
 
 func scanWatchedFiles(root string) (fileSnapshot, error) {
 	snapshot := make(fileSnapshot)
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	embeddedFiles, err := discoverEmbeddedWatchFiles(root)
+	if err != nil {
+		return nil, err
+	}
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
@@ -240,8 +260,11 @@ func scanWatchedFiles(root string) (fileSnapshot, error) {
 		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
+		rel = filepath.ToSlash(rel)
 		if !isWatchedFile(rel) {
-			return nil
+			if _, ok := embeddedFiles[rel]; !ok {
+				return nil
+			}
 		}
 
 		info, err := d.Info()
@@ -251,7 +274,7 @@ func scanWatchedFiles(root string) (fileSnapshot, error) {
 		if err != nil {
 			return err
 		}
-		snapshot[filepath.ToSlash(rel)] = fileStamp{
+		snapshot[rel] = fileStamp{
 			modTime: info.ModTime().UTC().Round(0),
 			size:    info.Size(),
 		}
@@ -281,6 +304,9 @@ func shouldIgnoreWatchPath(rel string) bool {
 	if rel == "." || rel == "" {
 		return false
 	}
+	if isWatchedRootDotFile(rel) {
+		return false
+	}
 	for _, part := range strings.Split(rel, "/") {
 		if part == "" || part == "." {
 			continue
@@ -297,18 +323,209 @@ func shouldIgnoreWatchPath(rel string) bool {
 }
 
 func isWatchedFile(rel string) bool {
-	if filepath.Base(rel) == "pulse.app" {
+	rel = filepath.ToSlash(rel)
+	base := filepath.Base(rel)
+	switch base {
+	case "pulse.app", "go.mod", "go.sum", "go.work", "go.work.sum":
 		return true
 	}
-	if filepath.Base(rel) == "encore.gen.go" {
+	if isWatchedRootDotFile(rel) {
+		return true
+	}
+	if base == "encore.gen.go" {
 		return false
 	}
 	switch filepath.Ext(rel) {
-	case ".go", ".cpp", ".h":
+	case ".go", ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".f", ".F", ".for", ".f90", ".m", ".mm", ".s", ".S", ".syso", ".swig", ".swigcxx":
 		return true
 	default:
 		return false
 	}
+}
+
+func isWatchedRootDotFile(rel string) bool {
+	switch filepath.ToSlash(rel) {
+	case ".env", ".env.local":
+		return true
+	default:
+		return false
+	}
+}
+
+func discoverEmbeddedWatchFiles(root string) (map[string]struct{}, error) {
+	files := make(map[string]struct{})
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if d.IsDir() {
+			if shouldSkipWatchDir(rel) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(rel) != ".go" || filepath.Base(rel) == "encore.gen.go" || d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		patterns := parseGoEmbedPatterns(string(data))
+		if len(patterns) == 0 {
+			return nil
+		}
+		pkgDir := filepath.Dir(rel)
+		for _, pattern := range patterns {
+			if err := addEmbeddedPatternFiles(root, pkgDir, pattern, files); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func parseGoEmbedPatterns(src string) []string {
+	var patterns []string
+	for _, line := range strings.Split(src, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "//go:embed") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(line, "//go:embed"))
+		for rest != "" {
+			token, next, ok := nextEmbedToken(rest)
+			if !ok {
+				break
+			}
+			if token != "" {
+				patterns = append(patterns, token)
+			}
+			rest = next
+		}
+	}
+	return patterns
+}
+
+func nextEmbedToken(input string) (string, string, bool) {
+	input = strings.TrimLeftFunc(input, unicode.IsSpace)
+	if input == "" {
+		return "", "", false
+	}
+	if quote, _ := utf8.DecodeRuneInString(input); quote == '"' || quote == '`' {
+		for i := 1; i <= len(input); i++ {
+			token, err := strconv.Unquote(input[:i])
+			if err == nil {
+				return token, input[i:], true
+			}
+		}
+		return "", "", false
+	}
+	i := 0
+	for i < len(input) {
+		r, size := utf8.DecodeRuneInString(input[i:])
+		if unicode.IsSpace(r) {
+			break
+		}
+		i += size
+	}
+	return input[:i], input[i:], true
+}
+
+func addEmbeddedPatternFiles(root, pkgDir, pattern string, files map[string]struct{}) error {
+	includeHidden := false
+	if strings.HasPrefix(pattern, "all:") {
+		includeHidden = true
+		pattern = strings.TrimPrefix(pattern, "all:")
+	}
+	if pattern == "" || filepath.IsAbs(pattern) || strings.HasPrefix(pattern, "../") || strings.Contains(pattern, "/../") {
+		return nil
+	}
+	search := filepath.Join(root, filepath.FromSlash(pkgDir), filepath.FromSlash(pattern))
+	matches, err := filepath.Glob(search)
+	if err != nil {
+		return nil
+	}
+	for _, match := range matches {
+		if err := addEmbeddedPath(root, match, includeHidden, files); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addEmbeddedPath(root, path string, includeHidden bool, files map[string]struct{}) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if includeHidden || !hasHiddenOrUnderscorePart(rel) {
+			files[filepath.ToSlash(rel)] = struct{}{}
+		}
+		return nil
+	}
+	return filepath.WalkDir(path, func(child string, d fs.DirEntry, err error) error {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, child)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if d.IsDir() {
+			if !includeHidden && hasHiddenOrUnderscorePart(rel) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if includeHidden || !hasHiddenOrUnderscorePart(rel) {
+			files[filepath.ToSlash(rel)] = struct{}{}
+		}
+		return nil
+	})
+}
+
+func hasHiddenOrUnderscorePart(rel string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if strings.HasPrefix(part, ".") || strings.HasPrefix(part, "_") {
+			return true
+		}
+	}
+	return false
 }
 
 func snapshotsEqual(a, b fileSnapshot) bool {

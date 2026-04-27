@@ -484,7 +484,14 @@ func TestStartInstallsTrustWhenNotSkipped(t *testing.T) {
 	api := newEchoServer(t, "api")
 	defer api.Close()
 
+	oldTrusted := localCATrusted
 	oldInstaller := installLocalCATrust
+	localCATrusted = func(certPath string) (bool, error) {
+		if _, err := os.Stat(certPath); err != nil {
+			t.Fatalf("trust cert path does not exist: %v", err)
+		}
+		return false, nil
+	}
 	var calledPath string
 	installLocalCATrust = func(certPath string) error {
 		calledPath = certPath
@@ -493,7 +500,10 @@ func TestStartInstallsTrustWhenNotSkipped(t *testing.T) {
 		}
 		return nil
 	}
-	t.Cleanup(func() { installLocalCATrust = oldInstaller })
+	t.Cleanup(func() {
+		localCATrusted = oldTrusted
+		installLocalCATrust = oldInstaller
+	})
 
 	proxy, err := Start(Config{
 		Workspace:        "onlv",
@@ -508,6 +518,47 @@ func TestStartInstallsTrustWhenNotSkipped(t *testing.T) {
 	defer proxy.Close()
 	if calledPath == "" {
 		t.Fatal("trust installer was not called")
+	}
+}
+
+func TestStartSkipsTrustInstallerWhenAlreadyTrusted(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("PULSE_DEV_CACHE_DIR", cacheDir)
+	api := newEchoServer(t, "api")
+	defer api.Close()
+
+	oldTrusted := localCATrusted
+	oldInstaller := installLocalCATrust
+	var checkedPath string
+	localCATrusted = func(certPath string) (bool, error) {
+		checkedPath = certPath
+		if _, err := os.Stat(certPath); err != nil {
+			t.Fatalf("trust cert path does not exist: %v", err)
+		}
+		return true, nil
+	}
+	installLocalCATrust = func(certPath string) error {
+		t.Fatalf("trust installer should not be called for trusted cert %s", certPath)
+		return nil
+	}
+	t.Cleanup(func() {
+		localCATrusted = oldTrusted
+		installLocalCATrust = oldInstaller
+	})
+
+	proxy, err := Start(Config{
+		Workspace:        "onlv",
+		APIUpstream:      api.URL,
+		HTTPPort:         freeTCPPort(t),
+		HTTPSPort:        freeTCPPort(t),
+		SkipInstallTrust: false,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer proxy.Close()
+	if checkedPath == "" {
+		t.Fatal("trust status was not checked")
 	}
 }
 

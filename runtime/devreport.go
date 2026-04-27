@@ -457,7 +457,12 @@ func finishRequestTrace(state *requestState, httpStatus int, payload any, err er
 
 func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(context.Context) (AuthInfo, error)) (AuthInfo, error) {
 	parent := stateFromContext(ctx)
-	if parent == nil || parent.trace == nil || (!parent.logsEnabled && !parent.traceEnabled) {
+	if parent == nil || parent.trace == nil {
+		return invoke(ctx)
+	}
+	authLogsEnabled := logsEnabledForAuthHandler(handler)
+	authTraceEnabled := traceEnabledForAuthHandler(handler)
+	if !authLogsEnabled && !authTraceEnabled {
 		return invoke(ctx)
 	}
 	child := &traceSpan{
@@ -466,19 +471,21 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 		parentSpanID: parent.trace.spanID,
 		spanType:     "AUTH",
 		service:      handler.Service,
-		endpoint:     parent.request.Endpoint,
+		endpoint:     handler.Name,
 		started:      time.Now().UTC(),
 		requestType:  shared.InternalCall,
 	}
 	clone := *parent
 	clone.trace = child
+	clone.logsEnabled = authLogsEnabled
+	clone.traceEnabled = authTraceEnabled
 	callCtx := withState(ctx, &clone)
 	restore := enterState(&clone)
 	defer restore()
 	logAuthHandlerStart(&clone, handler)
 
 	reporter := activeReporter()
-	if reporter != nil && parent.traceEnabled {
+	if reporter != nil && authTraceEnabled {
 		reporter.enqueue(devdash.ReportEnvelope{
 			Type:  "trace-event",
 			AppID: reporter.appID,
@@ -491,7 +498,7 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 					"span_start": map[string]any{
 						"auth": map[string]any{
 							"service_name":  handler.Service,
-							"endpoint_name": parent.request.Endpoint,
+							"endpoint_name": handler.Name,
 						},
 					},
 				},
@@ -501,7 +508,7 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 
 	info, err := invoke(callCtx)
 	logAuthHandlerCompleted(&clone, handler, info, err, time.Since(child.started))
-	if reporter != nil && parent.traceEnabled {
+	if reporter != nil && authTraceEnabled {
 		reporter.enqueue(devdash.ReportEnvelope{
 			Type:  "trace-event",
 			AppID: reporter.appID,
@@ -516,7 +523,7 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 						"status_code":    statusCodeName(err),
 						"auth": map[string]any{
 							"service_name":  handler.Service,
-							"endpoint_name": parent.request.Endpoint,
+							"endpoint_name": handler.Name,
 							"uid":           info.UID,
 						},
 						"error": traceError(err),

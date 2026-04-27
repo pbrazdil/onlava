@@ -196,6 +196,9 @@ func TestVictoriaQueryTraceSummariesFromJaegerAPI(t *testing.T) {
 		if r.URL.Path != "/select/jaeger/api/traces" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
+		if got := r.URL.Query().Get("limit"); got != "10" {
+			t.Fatalf("limit = %q, want 10", got)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []any{
 				map[string]any{
@@ -243,6 +246,46 @@ func TestVictoriaQueryTraceSummariesFromJaegerAPI(t *testing.T) {
 	}
 	if items[0].DurationNanos != uint64(25*time.Millisecond) {
 		t.Fatalf("duration = %d", items[0].DurationNanos)
+	}
+}
+
+func TestVictoriaQueryTraceSummariesClampsJaegerLimit(t *testing.T) {
+	var gotLimit string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLimit = r.URL.Query().Get("limit")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []any{
+				map[string]any{
+					"traceID":   "00000000000000010000000000000002",
+					"processes": map[string]any{"p1": map[string]any{"serviceName": "app"}},
+					"spans": []any{
+						map[string]any{
+							"traceID":       "00000000000000010000000000000002",
+							"spanID":        "0000000000000003",
+							"operationName": "svc.Hello",
+							"startTime":     time.Unix(10, 0).UnixMicro(),
+							"duration":      int64(25_000),
+							"processID":     "p1",
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	stack := &victoriaStack{components: []*victoriaComponent{{
+		spec:    victoriaComponentSpec{Name: "traces"},
+		baseURL: server.URL,
+	}}}
+	if _, err := stack.QueryTraceSummaries(context.Background(), devdash.TraceQuery{
+		AppID: "app",
+		Limit: 10000,
+	}); err != nil {
+		t.Fatalf("QueryTraceSummaries: %v", err)
+	}
+	if gotLimit != "1000" {
+		t.Fatalf("limit = %q, want 1000", gotLimit)
 	}
 }
 

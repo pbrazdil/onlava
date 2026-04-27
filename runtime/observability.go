@@ -31,6 +31,20 @@ func traceEnabledForRequest(req shared.Request) bool {
 	return endpointFilterAllows(cfg, req)
 }
 
+func logsEnabledForAuthHandler(handler *AuthHandler) bool {
+	if handler == nil {
+		return false
+	}
+	return logsEnabledForRequest(authHandlerRequest(handler))
+}
+
+func traceEnabledForAuthHandler(handler *AuthHandler) bool {
+	if handler == nil {
+		return false
+	}
+	return traceEnabledForRequest(authHandlerRequest(handler))
+}
+
 func endpointFilterAllows(cfg EndpointFilterConfig, req shared.Request) bool {
 	if len(cfg.IncludeEndpoints) == 0 && len(cfg.ExcludeEndpoints) == 0 {
 		return true
@@ -82,4 +96,11 @@ func requestFilterCandidates(req shared.Request) []string {
 		items = append(items, req.Path)
 	}
 	return items
+}
+
+func authHandlerRequest(handler *AuthHandler) shared.Request {
+	return shared.Request{
+		Service:  handler.Service,
+		Endpoint: handler.Name,
+	}
 }

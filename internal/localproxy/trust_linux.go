@@ -9,6 +9,10 @@ import (
 	"path/filepath"
 )
 
+func localCATrustedOS(certPath string) (bool, error) {
+	return false, nil
+}
+
 func installLocalCATrustOS(certPath string) error {
 	if path, err := exec.LookPath("trust"); err == nil {
 		cmd := exec.Command(path, "anchor", certPath)

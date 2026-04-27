@@ -7,6 +7,10 @@ import (
 	"os/exec"
 )
 
+func localCATrustedOS(certPath string) (bool, error) {
+	return false, nil
+}
+
 func installLocalCATrustOS(certPath string) error {
 	cmd := exec.Command("certutil", "-user", "-addstore", "Root", certPath)
 	if out, err := cmd.CombinedOutput(); err != nil {

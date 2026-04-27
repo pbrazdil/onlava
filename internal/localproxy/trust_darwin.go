@@ -9,6 +9,14 @@ import (
 	"path/filepath"
 )
 
+func localCATrustedOS(certPath string) (bool, error) {
+	cmd := exec.Command("security", "verify-cert", "-c", certPath, "-p", "ssl")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return false, fmt.Errorf("security verify-cert: %w: %s", err, out)
+	}
+	return true, nil
+}
+
 func installLocalCATrustOS(certPath string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {

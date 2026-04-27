@@ -289,7 +289,7 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("        }\n")
 	buf.WriteString("        let response: Response\n")
 	buf.WriteString("        try {\n")
-	buf.WriteString("            response = await this.fetchAPI(\"POST\", `/_wire/${encodeURIComponent(spec.endpointID)}`, payload, wireParams)\n")
+	buf.WriteString("            response = await this.fetchAPI(\"POST\", `/_wire/${encodeURIComponent(spec.endpointID)}`, payload.buffer as BodyInit, wireParams)\n")
 	buf.WriteString("        } catch (err) {\n")
 	buf.WriteString("            if (err instanceof APIError) {\n")
 	buf.WriteString("                throw err\n")

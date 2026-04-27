@@ -19,6 +19,8 @@ type victoriaJaegerResponse struct {
 	Data []victoriaJaegerTrace `json:"data"`
 }
 
+const victoriaJaegerMaxTraceLimit = 1000
+
 type victoriaJaegerTrace struct {
 	TraceID   string                           `json:"traceID"`
 	Spans     []victoriaJaegerSpan             `json:"spans"`
@@ -164,7 +166,7 @@ func queryVictoriaJaegerTraces(ctx context.Context, baseURL string, query devdas
 	if query.AppID != "" {
 		values.Set("service", query.AppID)
 	}
-	values.Set("limit", strconv.Itoa(query.Limit))
+	values.Set("limit", strconv.Itoa(victoriaJaegerTraceLimit(query.Limit)))
 	if !query.Since.IsZero() {
 		values.Set("start", strconv.FormatInt(query.Since.UTC().UnixMicro(), 10))
 		values.Set("end", strconv.FormatInt(time.Now().UTC().UnixMicro(), 10))
@@ -177,6 +179,16 @@ func queryVictoriaJaegerTraces(ctx context.Context, baseURL string, query devdas
 		endpoint += "?" + encoded
 	}
 	return fetchVictoriaJaeger(ctx, endpoint)
+}
+
+func victoriaJaegerTraceLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+	if limit > victoriaJaegerMaxTraceLimit {
+		return victoriaJaegerMaxTraceLimit
+	}
+	return limit
 }
 
 func getVictoriaJaegerTrace(ctx context.Context, baseURL, traceID string) ([]victoriaJaegerTrace, error) {
