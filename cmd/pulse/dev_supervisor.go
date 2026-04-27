@@ -339,6 +339,17 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	if err := s.persistStatus(ctx); err != nil {
 		return err
 	}
+	clearedAt := time.Now().UTC()
+	if err := s.store.MarkPubSubMessagesCleared(ctx, s.cfg.Name, clearedAt); err != nil {
+		return err
+	}
+	s.dashboard.notify(&devdash.Notification{
+		Method: "pubsub/messages/cleared",
+		Params: map[string]any{
+			"app_id":     s.cfg.Name,
+			"updated_at": clearedAt,
+		},
+	})
 
 	method := "process/start"
 	if previous != nil {

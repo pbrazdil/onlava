@@ -425,7 +425,57 @@ func TestRunPulseInspectUsesGeneratedArtifacts(t *testing.T) {
       "methods": ["GET"],
       "has_payload": false
     }
-  ]
+ ]
+}`)
+	writeTestAppFile(t, root, ".pulse/gen/endpoints.json", `{
+  "schema_version": "pulse.inspect.endpoints.v1",
+  "app": {
+    "name": "genapp",
+    "id": "gen-id",
+    "root": "`+root+`",
+    "config_path": "`+filepath.Join(root, "pulse.app")+`"
+  },
+  "endpoints": [
+    {
+      "id": "alpha.Ping",
+      "service": "alpha",
+      "endpoint": "Ping",
+      "access": "public",
+      "raw": false,
+      "path": "/alpha.Ping",
+      "methods": ["GET"],
+      "has_payload": false,
+      "wire": {
+        "available": true,
+        "schema_hash": "wire-ping",
+        "path": "/_wire/alpha.Ping"
+      }
+    }
+  ],
+  "wire": {
+    "wire_schema_hash": "wire-root",
+    "available": 1,
+    "unsupported": 0
+  }
+}`)
+	writeTestAppFile(t, root, ".pulse/gen/wire/capabilities.json", `{
+  "schema_version": "pulse.wire.capabilities.v1",
+  "wire_schema_hash": "wire-root",
+  "content_type": "application/vnd.pulse.wire+bin",
+  "endpoints": {
+    "alpha.Ping": {
+      "id": "alpha.Ping",
+      "service": "alpha",
+      "endpoint": "Ping",
+      "path": "/alpha.Ping",
+      "methods": ["GET"],
+      "available": true,
+      "schema_hash": "wire-ping",
+      "safe_json_retry": true,
+      "wire_path": "/_wire/alpha.Ping",
+      "recovery_path_pattern": "/_wire/recover/{call_id}"
+    }
+  }
 }`)
 	writeTestAppFile(t, root, ".pulse/gen/services.json", `{
   "schema_version": "pulse.inspect.services.v1",
@@ -529,6 +579,50 @@ func TestRunPulseInspectUsesGeneratedArtifacts(t *testing.T) {
 		}
 		if len(payload.Services) != 1 || payload.Services[0].Name != "alpha" {
 			t.Fatalf("services payload = %+v", payload.Services)
+		}
+	})
+
+	t.Run("endpoints", func(t *testing.T) {
+		var out bytes.Buffer
+		if err := runPulseInspect([]string{"endpoints", "--json"}, &out); err != nil {
+			t.Fatalf("runPulseInspect(endpoints) error = %v", err)
+		}
+		var payload struct {
+			Wire struct {
+				SchemaHash string `json:"wire_schema_hash"`
+			} `json:"wire"`
+			Endpoints []struct {
+				ID   string `json:"id"`
+				Wire struct {
+					Available bool   `json:"available"`
+					Path      string `json:"path"`
+				} `json:"wire"`
+			} `json:"endpoints"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal(endpoints artifact): %v\n%s", err, out.String())
+		}
+		if payload.Wire.SchemaHash != "wire-root" || len(payload.Endpoints) != 1 || payload.Endpoints[0].ID != "alpha.Ping" || !payload.Endpoints[0].Wire.Available {
+			t.Fatalf("endpoints payload = %+v", payload)
+		}
+	})
+
+	t.Run("wire", func(t *testing.T) {
+		var out bytes.Buffer
+		if err := runPulseInspect([]string{"wire", "--json"}, &out); err != nil {
+			t.Fatalf("runPulseInspect(wire) error = %v", err)
+		}
+		var payload struct {
+			SchemaHash string `json:"wire_schema_hash"`
+			Endpoints  map[string]struct {
+				Available bool `json:"available"`
+			} `json:"endpoints"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal(wire artifact): %v\n%s", err, out.String())
+		}
+		if payload.SchemaHash != "wire-root" || !payload.Endpoints["alpha.Ping"].Available {
+			t.Fatalf("wire payload = %+v", payload)
 		}
 	})
 }

@@ -10,6 +10,11 @@ describe("trace helpers", () => {
     expect(normalizeSpanID("0000000000000003")).toBe("3");
   });
 
+  it("normalizes raw hex and compat decimal span ids to the same value", () => {
+    expect(normalizeSpanID("90473d8e12d72970")).toBe("10396345945218820464");
+    expect(normalizeSpanID("10396345945218820464")).toBe("10396345945218820464");
+  });
+
   it("builds a span tree from summaries and compat events", () => {
     const summaries: TraceSummary[] = [
       {
@@ -121,5 +126,42 @@ describe("trace helpers", () => {
     expect(model.spans[1]?.title).toBe("DB SELECT");
     expect(model.spans[1]?.parentRawID).toBe("0000000000000003");
     expect(model.spans[1]?.events[0]?.kind).toBe("http_call_start");
+  });
+
+  it("uses sqlc query names for DB spans with placeholder operations", () => {
+    const summaries: TraceSummary[] = [
+      {
+        trace_id: "00000000000000010000000000000002",
+        span_id: "0000000000000004",
+        type: "DB",
+        is_root: false,
+        is_error: false,
+        started_at: "2026-04-15T10:00:00.001Z",
+        duration_nanos: 1_000_000,
+        service_name: "jobs",
+        endpoint_name: "--",
+      },
+    ];
+
+    const events: TraceCompatEvent[] = [
+      {
+        trace_id: { high: "1", low: "2" },
+        span_id: "4",
+        event_id: "1",
+        event_time: "2026-04-15T10:00:00.001Z",
+        span_start: {
+          db: {
+            service_name: "jobs",
+            operation: "--",
+            query: "-- name: ListLatestJobListings :many\nSELECT * FROM job_listings",
+          },
+        },
+      },
+    ];
+
+    const model = buildTraceModel("00000000000000010000000000000002", summaries, events);
+
+    expect(model.spans[0]?.endpointName).toBe("ListLatestJobListings");
+    expect(model.spans[0]?.title).toBe("DB ListLatestJobListings");
   });
 });

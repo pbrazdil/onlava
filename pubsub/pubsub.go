@@ -549,6 +549,7 @@ func (rt *localRuntime) publish(ctx context.Context, topic *topicDecl, msg any) 
 	if !ok {
 		return "", fmt.Errorf("pubsub: topic %q not initialized", topic.name)
 	}
+	insertedAt := time.Now().UTC()
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return "", err
@@ -563,8 +564,10 @@ func (rt *localRuntime) publish(ctx context.Context, topic *topicDecl, msg any) 
 	if counter := rt.published[topic.name]; counter != nil {
 		counter.Add(1)
 	}
+	messageID := fmt.Sprintf("%s:%d", ack.Stream, ack.Sequence)
+	rt.reportQueuedMessages(topic, messageID, data, insertedAt)
 	rt.reportPubSubSnapshot()
-	return fmt.Sprintf("%s:%d", ack.Stream, ack.Sequence), nil
+	return messageID, nil
 }
 
 func ClearLocalRuntime(ctx context.Context) ([]map[string]any, error) {
@@ -702,6 +705,18 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 	handlerCtx, cancel := context.WithTimeout(parent, sub.ackDeadline)
 	defer cancel()
 	started := time.Now()
+	messageID := messageIDFromMetadata(meta, sub.topic, msg)
+	attempt := max(1, metaDeliveries(meta))
+	insertedAt := started
+	if meta != nil && !meta.Timestamp.IsZero() {
+		insertedAt = meta.Timestamp.UTC()
+	}
+	trace := pulseruntime.StartPubSubMessageTrace(firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, msg.Data)
+	traceID := ""
+	if trace != nil {
+		traceID = trace.TraceID
+	}
+	rt.reportMessage(sub, messageID, msg.Data, "processing", traceID, attempt, started, insertedAt, time.Time{}, 0, nil, metaDeliveries(meta))
 	if stats != nil {
 		stats.pickedUp.Add(1)
 		stats.inFlight.Add(1)
@@ -719,6 +734,9 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 			stats.failed.Add(1)
 			stats.deadLettered.Add(1)
 		}
+		duration := time.Since(started)
+		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+		rt.reportMessage(sub, messageID, msg.Data, "dead_lettered", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, metaDeliveries(meta))
 		return
 	}
 	err := invokeHandler(handlerCtx, sub.handler, payload)
@@ -727,6 +745,9 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 		if stats != nil {
 			stats.completed.Add(1)
 		}
+		duration := time.Since(started)
+		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, nil)
+		rt.reportMessage(sub, messageID, msg.Data, "completed", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, nil, metaDeliveries(meta))
 		return
 	}
 	if stats != nil {
@@ -739,14 +760,23 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 		if stats != nil {
 			stats.deadLettered.Add(1)
 		}
+		duration := time.Since(started)
+		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+		rt.reportMessage(sub, messageID, msg.Data, "dead_lettered", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, deliveries)
 		return
 	}
 	delay := retryDelay(sub.retry, deliveries)
 	if delay > 0 {
 		_ = msg.NakWithDelay(delay)
+		duration := time.Since(started)
+		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+		rt.reportMessage(sub, messageID, msg.Data, "retrying", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, deliveries)
 		return
 	}
 	_ = msg.Nak()
+	duration := time.Since(started)
+	pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+	rt.reportMessage(sub, messageID, msg.Data, "retrying", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, deliveries)
 }
 
 func (rt *localRuntime) publishDLQ(sub *subscriptionDecl, payload []byte, deliveries int, err error) error {
@@ -809,6 +839,88 @@ func (rt *localRuntime) reportPubSubSnapshot() {
 		return
 	}
 	pulseruntime.ReportPubSubSnapshot(topics)
+}
+
+func (rt *localRuntime) reportQueuedMessages(topic *topicDecl, messageID string, payload []byte, insertedAt time.Time) {
+	if rt == nil || topic == nil {
+		return
+	}
+	_, subs, err := snapshotDeclarations()
+	if err != nil {
+		return
+	}
+	for _, sub := range subs {
+		if sub.topic != topic {
+			continue
+		}
+		rt.reportMessage(sub, messageID, payload, "queued", "", 0, time.Time{}, insertedAt, time.Time{}, 0, nil, 0)
+	}
+}
+
+func (rt *localRuntime) reportMessage(
+	sub *subscriptionDecl,
+	messageID string,
+	payload []byte,
+	status string,
+	traceID string,
+	attempt int,
+	pickedUpAt time.Time,
+	insertedAt time.Time,
+	finishedAt time.Time,
+	duration time.Duration,
+	err error,
+	deliveries int,
+) {
+	if rt == nil || sub == nil || messageID == "" {
+		return
+	}
+	var result any
+	if err == nil {
+		result = map[string]any{"status": status}
+	} else {
+		result = map[string]any{"status": status, "error": err.Error()}
+	}
+	pulseruntime.ReportPubSubMessage(map[string]any{
+		"message_id":        messageID,
+		"topic_name":        sub.topic.name,
+		"subscription_name": sub.name,
+		"service_name":      sub.serviceName,
+		"status":            status,
+		"trace_id":          traceID,
+		"attempt":           attempt,
+		"payload":           json.RawMessage(append([]byte(nil), payload...)),
+		"result":            result,
+		"error":             errorString(err),
+		"deliveries":        deliveries,
+		"inserted_at":       insertedAt.UTC(),
+		"picked_up_at":      optionalTimeValue(pickedUpAt),
+		"finished_at":       optionalTimeValue(finishedAt),
+		"duration_ms":       float64(duration) / float64(time.Millisecond),
+	})
+}
+
+func messageIDFromMetadata(meta *nats.MsgMetadata, topic *topicDecl, msg *nats.Msg) string {
+	if meta != nil {
+		return fmt.Sprintf("%s:%d", meta.Stream, meta.Sequence.Stream)
+	}
+	if topic != nil {
+		return sanitizeName(topic.name) + ":" + sanitizeName(msg.Subject)
+	}
+	return sanitizeName(msg.Subject)
+}
+
+func optionalTimeValue(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC()
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func (rt *localRuntime) pubSubSnapshot() []map[string]any {
@@ -1052,6 +1164,15 @@ func sanitizeName(name string) string {
 		return "default"
 	}
 	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func sanitizeSubjectPart(name string) string {

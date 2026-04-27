@@ -12,6 +12,7 @@ import (
 
 	"pulse.dev/internal/model"
 	"pulse.dev/internal/runtimeapi"
+	"pulse.dev/internal/wiremodel"
 )
 
 func BuildMetadataSnapshot(app *model.App) (json.RawMessage, error) {
@@ -103,6 +104,7 @@ func buildServices(app *model.App) []map[string]any {
 	for _, svc := range app.Services {
 		rpcs := make([]map[string]any, 0, len(svc.Endpoints))
 		for _, ep := range svc.Endpoints {
+			wireInfo := wiremodel.Endpoint(ep)
 			rpcs = append(rpcs, map[string]any{
 				"name":            ep.Name,
 				"doc":             "",
@@ -115,6 +117,12 @@ func buildServices(app *model.App) []map[string]any {
 				"request_schema":  buildSchema(ep.Payload),
 				"response_schema": buildSchema(ep.Response),
 				"tags":            buildSelectors(ep.Tags),
+				"wire": map[string]any{
+					"available":          wireInfo.Available,
+					"unsupported_reason": wireInfo.UnsupportedReason,
+					"schema_hash":        wireInfo.SchemaHash,
+					"path":               wireInfo.WirePath,
+				},
 			})
 		}
 		services = append(services, map[string]any{

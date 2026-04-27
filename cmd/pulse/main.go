@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -13,7 +14,10 @@ import (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		var silent *silentCLIError
+		if !errors.As(err, &silent) {
+			fmt.Fprintln(os.Stderr, err)
+		}
 		os.Exit(1)
 	}
 }
@@ -52,7 +56,18 @@ func run(args []string) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]\n  pulse psql [--app-root <path>] [psql args...]\n  pulse check [--app-root <path>]\n  pulse inspect app|routes|services|build|paths --json [--app-root <path>]\n  pulse admin traces clear --json [--app-root <path>]\n  pulse admin pubsub clear --json [--app-root <path>]\n  pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow]\n  pulse test [--app-root <path>] [go test flags/packages...]\n  pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
+	return fmt.Errorf("usage:\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]\n  pulse psql [--app-root <path>] [psql args...]\n  pulse check [--app-root <path>] [--json]\n  pulse inspect app|routes|services|build|paths --json [--app-root <path>]\n  pulse admin traces clear --json [--app-root <path>]\n  pulse admin pubsub clear --json [--app-root <path>]\n  pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]\n  pulse test [--app-root <path>] [go test flags/packages...]\n  pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
+}
+
+type silentCLIError struct {
+	err error
+}
+
+func (e *silentCLIError) Error() string {
+	if e == nil || e.err == nil {
+		return ""
+	}
+	return e.err.Error()
 }
 
 func runCommand(args []string) error {

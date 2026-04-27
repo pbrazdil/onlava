@@ -15,6 +15,7 @@ import (
 	appcfg "pulse.dev/internal/app"
 	"pulse.dev/internal/model"
 	"pulse.dev/internal/runtimeapi"
+	"pulse.dev/internal/wiremodel"
 )
 
 type Output struct {
@@ -586,6 +587,7 @@ func writeRegistrations(buf *strings.Builder, im *imports, endpoints []*model.En
 }
 
 func writeEndpointRegistration(buf *strings.Builder, im *imports, ep *model.Endpoint, ss *model.ServiceStruct) {
+	wireInfo := wiremodel.Endpoint(ep)
 	fmt.Fprintf(buf, "\tpulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{\n")
 	fmt.Fprintf(buf, "\t\tService: %q,\n", ep.Service.Name)
 	fmt.Fprintf(buf, "\t\tName: %q,\n", ep.Name)
@@ -606,6 +608,12 @@ func writeEndpointRegistration(buf *strings.Builder, im *imports, ep *model.Endp
 		fmt.Fprintf(buf, "\t\tResponseType: pulseruntime.TypeOf[%s](),\n", im.typeExpr(ep.Response.Type))
 	} else {
 		buf.WriteString("\t\tResponseType: nil,\n")
+	}
+	fmt.Fprintf(buf, "\t\tWireID: %q,\n", wireInfo.ID)
+	fmt.Fprintf(buf, "\t\tWireSchemaHash: %q,\n", wireInfo.SchemaHash)
+	fmt.Fprintf(buf, "\t\tWireAvailable: %t,\n", wireInfo.Available)
+	if wireInfo.UnsupportedReason != "" {
+		fmt.Fprintf(buf, "\t\tWireUnsupportedReason: %q,\n", wireInfo.UnsupportedReason)
 	}
 	if ep.Raw {
 		fmt.Fprintf(buf, "\t\tRawHandler: func(w http.ResponseWriter, req *http.Request) {\n")

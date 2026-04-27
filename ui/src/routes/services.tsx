@@ -198,10 +198,18 @@ export function ServicesPage() {
                         <span className="text-xs text-muted-foreground uppercase">{endpointSummary.accessType}</span>
                       </div>
                       <div className="mt-4 grid grid-cols-3 gap-4">
-                        <StatCard label="Protocol" value={endpointSummary.proto} />
+                        <StatCard label="JSON" value="available" />
+                        <StatCard
+                          label="Binary"
+                          value={endpointSummary.wireAvailable ? "available" : "unavailable"}
+                        />
                         <StatCard label="Methods" value={endpointSummary.methods.join(", ") || "GET"} />
-                        <StatCard label="Access" value={endpointSummary.accessType} />
                       </div>
+                      {!endpointSummary.wireAvailable && endpointSummary.wireReason ? (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Binary unavailable: {endpointSummary.wireReason}
+                        </p>
+                      ) : null}
                     </div>
 
                     <JSONView title="Request schema" value={endpointSummary.requestSchema ?? { type: "empty" }} />

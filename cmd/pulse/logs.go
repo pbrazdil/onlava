@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,20 @@ type logsOptions struct {
 	Limit   int
 	Follow  bool
 	Stream  string
+	JSONL   bool
+}
+
+type logsEvent struct {
+	SchemaVersion string `json:"schema_version"`
+	App           struct {
+		Name string `json:"name"`
+		Root string `json:"root"`
+	} `json:"app"`
+	ID        int64  `json:"id"`
+	PID       string `json:"pid"`
+	Stream    string `json:"stream"`
+	Output    string `json:"output"`
+	CreatedAt string `json:"created_at"`
 }
 
 func logsCommand(args []string) error {
@@ -63,7 +78,7 @@ func runPulseLogs(ctx context.Context, stdout io.Writer, args []string) error {
 			lastID = item.ID
 		}
 		if streamAllowed(opts.Stream, item.Stream) {
-			if err := writeProcessOutput(stdout, item); err != nil {
+			if err := writeProcessOutput(stdout, cfg.Name, appRoot, item, opts.JSONL); err != nil {
 				return err
 			}
 		}
@@ -90,7 +105,7 @@ func runPulseLogs(ctx context.Context, stdout io.Writer, args []string) error {
 					lastID = item.ID
 				}
 				if streamAllowed(opts.Stream, item.Stream) {
-					if err := writeProcessOutput(stdout, item); err != nil {
+					if err := writeProcessOutput(stdout, cfg.Name, appRoot, item, opts.JSONL); err != nil {
 						return err
 					}
 				}
@@ -124,6 +139,8 @@ func parseLogsArgs(args []string) (logsOptions, error) {
 			opts.Limit = value
 		case "--follow", "-f":
 			opts.Follow = true
+		case "--jsonl", "--json":
+			opts.JSONL = true
 		case "--stream":
 			i++
 			if i >= len(args) {
@@ -157,7 +174,25 @@ func streamAllowed(filter, stream string) bool {
 	return filter == "all" || filter == stream
 }
 
-func writeProcessOutput(w io.Writer, item devdash.ProcessOutput) error {
+func writeProcessOutput(w io.Writer, appName, appRoot string, item devdash.ProcessOutput, jsonl bool) error {
+	if jsonl {
+		return writeLogsJSONL(w, appName, appRoot, item)
+	}
 	_, err := w.Write(item.Output)
 	return err
+}
+
+func writeLogsJSONL(w io.Writer, appName, appRoot string, item devdash.ProcessOutput) error {
+	event := logsEvent{
+		SchemaVersion: "pulse.logs.event.v1",
+		ID:            item.ID,
+		PID:           item.PID,
+		Stream:        item.Stream,
+		Output:        string(item.Output),
+		CreatedAt:     item.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+	event.App.Name = appName
+	event.App.Root = appRoot
+	enc := json.NewEncoder(w)
+	return enc.Encode(event)
 }

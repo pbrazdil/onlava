@@ -10,6 +10,8 @@ import (
 
 	appcfg "pulse.dev/internal/app"
 	"pulse.dev/internal/model"
+	"pulse.dev/internal/wire"
+	"pulse.dev/internal/wiremodel"
 )
 
 type AppRef struct {
@@ -77,6 +79,19 @@ type RoutesResponse struct {
 	Routes        []RouteRecord `json:"routes"`
 }
 
+type EndpointsResponse struct {
+	SchemaVersion string           `json:"schema_version"`
+	App           AppRef           `json:"app"`
+	Endpoints     []EndpointRecord `json:"endpoints"`
+	Wire          WireSummary      `json:"wire"`
+}
+
+type WireSummary struct {
+	SchemaHash  string `json:"wire_schema_hash"`
+	Available   int    `json:"available"`
+	Unsupported int    `json:"unsupported"`
+}
+
 type RouteRecord struct {
 	ID         string   `json:"id"`
 	Service    string   `json:"service"`
@@ -90,6 +105,26 @@ type RouteRecord struct {
 	Tags       []string `json:"tags,omitempty"`
 	Receiver   string   `json:"receiver,omitempty"`
 	HasPayload bool     `json:"has_payload"`
+	Wire       WireInfo `json:"wire"`
+}
+
+type EndpointRecord struct {
+	ID         string   `json:"id"`
+	Service    string   `json:"service"`
+	Endpoint   string   `json:"endpoint"`
+	Access     string   `json:"access"`
+	Raw        bool     `json:"raw"`
+	Path       string   `json:"path"`
+	Methods    []string `json:"methods"`
+	HasPayload bool     `json:"has_payload"`
+	Wire       WireInfo `json:"wire"`
+}
+
+type WireInfo struct {
+	Available         bool   `json:"available"`
+	UnsupportedReason string `json:"unsupported_reason,omitempty"`
+	SchemaHash        string `json:"schema_hash,omitempty"`
+	Path              string `json:"path,omitempty"`
 }
 
 func BuildAppResponse(appRoot string, cfg appcfg.Config, app *model.App) AppResponse {
@@ -178,6 +213,13 @@ func BuildRoutesResponse(appRoot string, cfg appcfg.Config, app *model.App) Rout
 				Methods:    append([]string(nil), ep.Methods...),
 				HasPayload: ep.Payload != nil,
 			}
+			wireInfo := wiremodel.Endpoint(ep)
+			item.Wire = WireInfo{
+				Available:         wireInfo.Available,
+				UnsupportedReason: wireInfo.UnsupportedReason,
+				SchemaHash:        wireInfo.SchemaHash,
+				Path:              wireInfo.WirePath,
+			}
 			if len(ep.Tags) > 0 {
 				item.Tags = slices.Clone(ep.Tags)
 				sort.Strings(item.Tags)
@@ -201,6 +243,55 @@ func BuildRoutesResponse(appRoot string, cfg appcfg.Config, app *model.App) Rout
 		SchemaVersion: "pulse.inspect.routes.v1",
 		App:           appInfo(appRoot, cfg, app),
 		Routes:        routes,
+	}
+}
+
+func BuildEndpointsResponse(appRoot string, cfg appcfg.Config, app *model.App) EndpointsResponse {
+	capabilities := wiremodel.AppCapabilities(app)
+	endpoints := make([]EndpointRecord, 0)
+	var available int
+	var unsupported int
+	for _, svc := range filteredModelServices(app.Services) {
+		for _, ep := range svc.Endpoints {
+			wireInfo := wiremodel.Endpoint(ep)
+			if wireInfo.Available {
+				available++
+			} else {
+				unsupported++
+			}
+			endpoints = append(endpoints, EndpointRecord{
+				ID:         svc.Name + "." + ep.Name,
+				Service:    svc.Name,
+				Endpoint:   ep.Name,
+				Access:     string(ep.Access),
+				Raw:        ep.Raw,
+				Path:       ep.Path,
+				Methods:    append([]string(nil), ep.Methods...),
+				HasPayload: ep.Payload != nil,
+				Wire: WireInfo{
+					Available:         wireInfo.Available,
+					UnsupportedReason: wireInfo.UnsupportedReason,
+					SchemaHash:        wireInfo.SchemaHash,
+					Path:              wireInfo.WirePath,
+				},
+			})
+		}
+	}
+	sort.Slice(endpoints, func(i, j int) bool {
+		if endpoints[i].Service != endpoints[j].Service {
+			return endpoints[i].Service < endpoints[j].Service
+		}
+		return endpoints[i].Endpoint < endpoints[j].Endpoint
+	})
+	return EndpointsResponse{
+		SchemaVersion: "pulse.inspect.endpoints.v1",
+		App:           appInfo(appRoot, cfg, app),
+		Endpoints:     endpoints,
+		Wire: WireSummary{
+			SchemaHash:  capabilities.SchemaHash,
+			Available:   available,
+			Unsupported: unsupported,
+		},
 	}
 }
 
@@ -237,6 +328,14 @@ func GeneratedServicesPath(appRoot string) string {
 	return filepath.Join(appRoot, ".pulse", "gen", "services.json")
 }
 
+func GeneratedEndpointsPath(appRoot string) string {
+	return filepath.Join(appRoot, ".pulse", "gen", "endpoints.json")
+}
+
+func GeneratedWireCapabilitiesPath(appRoot string) string {
+	return filepath.Join(appRoot, ".pulse", "gen", "wire", "capabilities.json")
+}
+
 func ReadGeneratedApp(appRoot string) (*AppResponse, bool, error) {
 	var payload AppResponse
 	ok, err := readJSONFile(GeneratedAppPath(appRoot), &payload)
@@ -269,6 +368,24 @@ func ReadGeneratedServices(appRoot string) (*ServicesResponse, bool, error) {
 		return nil, ok, err
 	}
 	payload.Services = filterServiceDetails(payload.Services)
+	return &payload, true, nil
+}
+
+func ReadGeneratedEndpoints(appRoot string) (*EndpointsResponse, bool, error) {
+	var payload EndpointsResponse
+	ok, err := readJSONFile(GeneratedEndpointsPath(appRoot), &payload)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
+	return &payload, true, nil
+}
+
+func ReadGeneratedWireCapabilities(appRoot string) (*wire.Capabilities, bool, error) {
+	var payload wire.Capabilities
+	ok, err := readJSONFile(GeneratedWireCapabilitiesPath(appRoot), &payload)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
 	return &payload, true, nil
 }
 

@@ -29,7 +29,14 @@ func TestGenerateTypeScriptIncludesStructuredRequestHandling(t *testing.T) {
 		`title: encodeQueryValue(params.Title),`,
 		`"X-Echo": encodeHeaderValue(params.Header),`,
 		`body: encodeQueryValue(params.body),`,
-		"const resp = await this.baseClient.callTypedAPI(\"GET\", `/echo/${encodeURIComponent(String(name))}`, undefined, { query, headers })",
+		`transport?: PulseTransport`,
+		`export type PulseTransport = "auto" | "json" | "binary" | "binary-strict"`,
+		`const PULSE_WIRE_SCHEMA_HASH = `,
+		`const resp = await this.baseClient.callTypedEndpoint({ endpointID: "service.Echo"`,
+		"path: `/echo/${encodeURIComponent(String(name))}`",
+		`payload: params`,
+		`jsonBody: undefined`,
+		`params: { query, headers }`,
 		`public async Raw(rest: string, method: string, body?: RequestInit["body"], options?: CallParameters): Promise<globalThis.Response> {`,
 		"return await this.baseClient.callAPI(method, `/raw/${encodePathWildcard(String(rest))}`, body, options)",
 		`export interface EchoResponse {`,
@@ -37,6 +44,11 @@ func TestGenerateTypeScriptIncludesStructuredRequestHandling(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("generated client missing %q\n%s", want, got)
+		}
+	}
+	for _, forbidden := range []string{"protobuf", "grpc", "connect"} {
+		if strings.Contains(strings.ToLower(got), forbidden) {
+			t.Fatalf("generated client should not expose %q\n%s", forbidden, got)
 		}
 	}
 }

@@ -160,15 +160,18 @@ func init() {
 	})
 	pulseruntime.RegisterEndpointFunc(AuthEcho, "service", "AuthEcho")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
-		Service:      "service",
-		Name:         "AuthEcho",
-		Access:       pulseruntime.Auth,
-		Raw:          false,
-		Path:         "/service.AuthEcho",
-		Methods:      []string{"GET", "POST"},
-		PathParams:   nil,
-		PayloadType:  nil,
-		ResponseType: pulseruntime.TypeOf[*AuthEchoResponse](),
+		Service:        "service",
+		Name:           "AuthEcho",
+		Access:         pulseruntime.Auth,
+		Raw:            false,
+		Path:           "/service.AuthEcho",
+		Methods:        []string{"GET", "POST"},
+		PathParams:     nil,
+		PayloadType:    nil,
+		ResponseType:   pulseruntime.TypeOf[*AuthEchoResponse](),
+		WireID:         "service.AuthEcho",
+		WireSchemaHash: "20fd6ec3879a6e2ac2ab2e049730900cee7f2f72ff19daf06e5af85bf4d5fc88",
+		WireAvailable:  true,
 		Invoke: func(ctx context.Context, pathArgs []any, payload any) (any, error) {
 			svc, err := pulseInternalGetService()
 			if err != nil {
@@ -183,15 +186,18 @@ func init() {
 	})
 	pulseruntime.RegisterEndpointFunc(CallPrivate, "service", "CallPrivate")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
-		Service:      "service",
-		Name:         "CallPrivate",
-		Access:       pulseruntime.Public,
-		Raw:          false,
-		Path:         "/service.CallPrivate",
-		Methods:      []string{"GET", "POST"},
-		PathParams:   nil,
-		PayloadType:  nil,
-		ResponseType: pulseruntime.TypeOf[*EchoResponse](),
+		Service:        "service",
+		Name:           "CallPrivate",
+		Access:         pulseruntime.Public,
+		Raw:            false,
+		Path:           "/service.CallPrivate",
+		Methods:        []string{"GET", "POST"},
+		PathParams:     nil,
+		PayloadType:    nil,
+		ResponseType:   pulseruntime.TypeOf[*EchoResponse](),
+		WireID:         "service.CallPrivate",
+		WireSchemaHash: "5af6529089150ef71d5f99a43495bac787fad6686999186bc00501eee1006811",
+		WireAvailable:  true,
 		Invoke: func(ctx context.Context, pathArgs []any, payload any) (any, error) {
 			svc, err := pulseInternalGetService()
 			if err != nil {
@@ -206,15 +212,18 @@ func init() {
 	})
 	pulseruntime.RegisterEndpointFunc(CustomStatus, "service", "CustomStatus")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
-		Service:      "service",
-		Name:         "CustomStatus",
-		Access:       pulseruntime.Public,
-		Raw:          false,
-		Path:         "/service.CustomStatus",
-		Methods:      []string{"GET", "POST"},
-		PathParams:   nil,
-		PayloadType:  nil,
-		ResponseType: pulseruntime.TypeOf[*StatusResponse](),
+		Service:        "service",
+		Name:           "CustomStatus",
+		Access:         pulseruntime.Public,
+		Raw:            false,
+		Path:           "/service.CustomStatus",
+		Methods:        []string{"GET", "POST"},
+		PathParams:     nil,
+		PayloadType:    nil,
+		ResponseType:   pulseruntime.TypeOf[*StatusResponse](),
+		WireID:         "service.CustomStatus",
+		WireSchemaHash: "d2da063d7230c404b47ec3489e0a2d66a049d6f08409f4f227a67700ae8e68ad",
+		WireAvailable:  true,
 		Invoke: func(ctx context.Context, pathArgs []any, payload any) (any, error) {
 			svc, err := pulseInternalGetService()
 			if err != nil {
@@ -229,15 +238,18 @@ func init() {
 	})
 	pulseruntime.RegisterEndpointFunc(Echo, "service", "Echo")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
-		Service:      "service",
-		Name:         "Echo",
-		Access:       pulseruntime.Public,
-		Raw:          false,
-		Path:         "/echo/:name",
-		Methods:      []string{"GET", "POST"},
-		PathParams:   []pulseruntime.ParamSpec{pulseruntime.ParamSpec{Name: "name", Kind: pulseruntime.ParamString}},
-		PayloadType:  pulseruntime.TypeOf[*EchoRequest](),
-		ResponseType: pulseruntime.TypeOf[*EchoResponse](),
+		Service:        "service",
+		Name:           "Echo",
+		Access:         pulseruntime.Public,
+		Raw:            false,
+		Path:           "/echo/:name",
+		Methods:        []string{"GET", "POST"},
+		PathParams:     []pulseruntime.ParamSpec{pulseruntime.ParamSpec{Name: "name", Kind: pulseruntime.ParamString}},
+		PayloadType:    pulseruntime.TypeOf[*EchoRequest](),
+		ResponseType:   pulseruntime.TypeOf[*EchoResponse](),
+		WireID:         "service.Echo",
+		WireSchemaHash: "37f11f8e50ad4dc2fb4c6a14a2e4c4d56aeb1702705bed8bdeddc8def8d6fbf7",
+		WireAvailable:  true,
 		Invoke: func(ctx context.Context, pathArgs []any, payload any) (any, error) {
 			svc, err := pulseInternalGetService()
 			if err != nil {
@@ -252,15 +264,19 @@ func init() {
 	})
 	pulseruntime.RegisterEndpointFunc(Raw, "service", "Raw")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
-		Service:      "service",
-		Name:         "Raw",
-		Access:       pulseruntime.Public,
-		Raw:          true,
-		Path:         "/raw/*rest",
-		Methods:      []string{"*"},
-		PathParams:   nil,
-		PayloadType:  nil,
-		ResponseType: nil,
+		Service:               "service",
+		Name:                  "Raw",
+		Access:                pulseruntime.Public,
+		Raw:                   true,
+		Path:                  "/raw/*rest",
+		Methods:               []string{"*"},
+		PathParams:            nil,
+		PayloadType:           nil,
+		ResponseType:          nil,
+		WireID:                "service.Raw",
+		WireSchemaHash:        "",
+		WireAvailable:         false,
+		WireUnsupportedReason: "raw endpoint",
 		RawHandler: func(w http.ResponseWriter, req *http.Request) {
 			svc, err := pulseInternalGetService()
 			if err != nil {
@@ -271,15 +287,19 @@ func init() {
 	})
 	pulseruntime.RegisterEndpointFunc(Secret, "service", "Secret")
 	pulseruntime.RegisterEndpoint(&pulseruntime.Endpoint{
-		Service:      "service",
-		Name:         "Secret",
-		Access:       pulseruntime.Private,
-		Raw:          false,
-		Path:         "/service.Secret",
-		Methods:      []string{"GET", "POST"},
-		PathParams:   nil,
-		PayloadType:  nil,
-		ResponseType: pulseruntime.TypeOf[*EchoResponse](),
+		Service:               "service",
+		Name:                  "Secret",
+		Access:                pulseruntime.Private,
+		Raw:                   false,
+		Path:                  "/service.Secret",
+		Methods:               []string{"GET", "POST"},
+		PathParams:            nil,
+		PayloadType:           nil,
+		ResponseType:          pulseruntime.TypeOf[*EchoResponse](),
+		WireID:                "service.Secret",
+		WireSchemaHash:        "",
+		WireAvailable:         false,
+		WireUnsupportedReason: "private endpoint",
 		Invoke: func(ctx context.Context, pathArgs []any, payload any) (any, error) {
 			svc, err := pulseInternalGetService()
 			if err != nil {

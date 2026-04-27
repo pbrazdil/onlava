@@ -394,6 +394,60 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 			"period":     period.String(),
 			"history":    historyItems,
 		}, nil
+	case "pubsub/messages":
+		var params struct {
+			AppID     string `json:"app_id"`
+			Period    string `json:"period"`
+			TopicName string `json:"topic_name"`
+			QueueName string `json:"queue_name"`
+			Status    string `json:"status"`
+			Limit     int    `json:"limit"`
+		}
+		_ = json.Unmarshal(raw, &params)
+		if params.AppID == "" {
+			params.AppID = s.supervisor.activeAppID()
+		}
+		period := pubSubHistoryPeriod(params.Period)
+		messages, err := s.supervisor.store.ListPubSubMessages(
+			ctx,
+			params.AppID,
+			time.Now().UTC().Add(-period),
+			params.TopicName,
+			params.QueueName,
+			params.Status,
+			params.Limit,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"app_id":     params.AppID,
+			"period":     period.String(),
+			"topic_name": params.TopicName,
+			"queue_name": params.QueueName,
+			"status":     params.Status,
+			"messages":   messages,
+		}, nil
+	case "pubsub/message/attempts":
+		var params struct {
+			AppID            string `json:"app_id"`
+			MessageID        string `json:"message_id"`
+			SubscriptionName string `json:"subscription_name"`
+		}
+		_ = json.Unmarshal(raw, &params)
+		if params.AppID == "" {
+			params.AppID = s.supervisor.activeAppID()
+		}
+		attempts, err := s.supervisor.store.ListPubSubMessageAttempts(ctx, params.AppID, params.MessageID, params.SubscriptionName)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"app_id":            params.AppID,
+			"message_id":        params.MessageID,
+			"subscription_name": params.SubscriptionName,
+			"attempts":          attempts,
+		}, nil
 	case "pubsub/clear":
 		var params struct {
 			AppID string `json:"app_id"`
@@ -566,6 +620,36 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 				},
 			})
 		}
+	case "pubsub-message":
+		if len(report.PubSubMessage) > 0 {
+			var message devdash.PubSubMessage
+			if err := json.Unmarshal(report.PubSubMessage, &message); err == nil {
+				message.AppID = firstNonEmpty(message.AppID, report.AppID)
+				_ = s.supervisor.store.UpsertPubSubMessage(req.Context(), message)
+				_ = s.supervisor.store.UpsertPubSubMessageAttempt(req.Context(), devdash.PubSubMessageAttempt{
+					AppID:            message.AppID,
+					MessageID:        message.MessageID,
+					TopicName:        message.TopicName,
+					SubscriptionName: message.SubscriptionName,
+					ServiceName:      message.ServiceName,
+					Status:           message.Status,
+					TraceID:          message.TraceID,
+					Attempt:          message.Attempt,
+					Payload:          message.Payload,
+					Result:           message.Result,
+					Error:            message.Error,
+					Deliveries:       message.Deliveries,
+					InsertedAt:       message.InsertedAt,
+					PickedUpAt:       message.PickedUpAt,
+					FinishedAt:       message.FinishedAt,
+					DurationMS:       message.DurationMS,
+				})
+				s.notify(&devdash.Notification{
+					Method: "pubsub/message",
+					Params: message,
+				})
+			}
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -665,11 +749,21 @@ func (s *dashboardServer) clearPubSub(ctx context.Context, appID string) (map[st
 	if err := s.supervisor.store.UpsertPubSubSnapshot(ctx, snapshot); err != nil {
 		return nil, err
 	}
+	if err := s.supervisor.store.MarkPubSubMessagesCleared(ctx, snapshot.AppID, snapshot.UpdatedAt); err != nil {
+		return nil, err
+	}
 	s.notify(&devdash.Notification{
 		Method: "pubsub/update",
 		Params: map[string]any{
 			"app_id":     snapshot.AppID,
 			"topics":     json.RawMessage(snapshot.Topics),
+			"updated_at": snapshot.UpdatedAt,
+		},
+	})
+	s.notify(&devdash.Notification{
+		Method: "pubsub/messages/cleared",
+		Params: map[string]any{
+			"app_id":     snapshot.AppID,
 			"updated_at": snapshot.UpdatedAt,
 		},
 	})

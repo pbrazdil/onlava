@@ -84,7 +84,16 @@ export function normalizeSpanID(value: string | null | undefined): string {
   if (!value) {
     return "";
   }
-  const parsed = parseBigInt(value, "hex-first");
+  const trimmed = value.trim().replace(/^0[xX]/, "");
+  if (!trimmed) {
+    return "";
+  }
+  const parsed = parseBigInt(
+    trimmed,
+    /^[0-9]+$/.test(trimmed) && !(trimmed.length === 16 && trimmed.startsWith("0"))
+      ? "decimal-first"
+      : "hex-first",
+  );
   return parsed === null ? value : parsed.toString(10);
 }
 
@@ -154,7 +163,7 @@ export function buildTraceModel(
         span.serviceName = stringField(payload.service_name) || span.serviceName;
         span.endpointName =
           kind === "db"
-            ? stringField(payload.operation) || span.endpointName
+            ? dbOperationName(payload) || span.endpointName
             : stringField(payload.endpoint_name) || span.endpointName;
         span.userID = stringField(payload.uid) || span.userID;
         span.startedAt = at || span.startedAt;
@@ -184,7 +193,7 @@ export function buildTraceModel(
         span.serviceName = stringField(payload.service_name) || span.serviceName;
         span.endpointName =
           kind === "db"
-            ? stringField(payload.operation) || span.endpointName
+            ? dbOperationName(payload) || span.endpointName
             : stringField(payload.endpoint_name) || span.endpointName;
         span.title = traceSpanTitle(span);
       }
@@ -349,6 +358,19 @@ function traceSpanTitle(span: Pick<TraceSpanModel, "kind" | "serviceName" | "end
     return `${span.serviceName}.${span.endpointName}`;
   }
   return span.serviceName || span.endpointName || humanizeTraceKind(span.kind || "request");
+}
+
+function dbOperationName(payload: Record<string, unknown>): string {
+  const operation = stringField(payload.operation).trim();
+  if (operation && operation !== "--") {
+    return operation;
+  }
+  return sqlcQueryName(stringField(payload.query));
+}
+
+function sqlcQueryName(query: string): string {
+  const match = query.match(/^\s*--\s*name:\s*([A-Za-z_][A-Za-z0-9_]*)\b/m);
+  return match?.[1] ?? "";
 }
 
 function humanizeTraceKind(value: string): string {

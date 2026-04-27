@@ -1,19 +1,10 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 import { DashboardProvider, useDashboard } from "../lib/dashboard-context";
-import { useResolvedTheme } from "../lib/theme";
 import { cn } from "../lib/utils";
 
-const NAV_ITEMS = [
-  { to: "/$appId/requests", label: "API Explorer" },
-  { to: "/$appId/envs/local/api", label: "Service Catalog" },
-  { to: "/$appId/envs/local/traces", label: "Traces" },
-  { to: "/$appId/db", label: "DB Explorer" },
-  { to: "/$appId/pubsub", label: "Pub/Sub" },
-  { to: "/$appId/cron", label: "Cron" },
-] as const;
-
-const REQUESTS_NAV_ITEMS = [
+const APP_NAV_ITEMS = [
   { kind: "route", to: "/$appId/requests", label: "API Explorer", icon: IconPanelStack },
   { kind: "route", to: "/$appId/envs/local/api", label: "Service Catalog", icon: IconNodes },
   { kind: "ghost", label: "Infra", icon: IconLayers },
@@ -33,13 +24,11 @@ export function DashboardRouteShell({ appId }: { appId: string }) {
 
 function DashboardShell({ appId }: { appId: string }) {
   const { apps, connected, status } = useDashboard();
-  const resolvedTheme = useResolvedTheme();
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const appSummary = apps.find((item) => item.id === appId);
   const appName = appSummary?.name || status?.appID || appId;
-  const requestsMode = pathname.startsWith(`/${appId}/requests`);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -67,73 +56,39 @@ function DashboardShell({ appId }: { appId: string }) {
   }, []);
 
   return (
-    <div className={cn("[--header-height:65px] min-h-screen bg-background text-foreground", requestsMode && "[--header-height:52px]")}>
-      <header className={cn("bg-sidebar text-sidebar-foreground border-sidebar-border fixed top-0 z-50 flex w-full items-center border-b", requestsMode && "bg-topnav text-topnav-foreground border-topnav-border")}>
-        <div className={cn("flex h-(--header-height) w-full items-center gap-2 px-4", requestsMode && "gap-3 px-3")}>
+    <div
+      className="h-screen overflow-hidden bg-background text-foreground"
+      style={{ "--header-height": "52px" } as CSSProperties}
+    >
+      <header className="fixed top-0 z-50 flex w-full items-center border-b border-topnav-border bg-topnav text-topnav-foreground">
+        <div className="flex w-full items-center gap-3 px-3" style={{ height: "var(--header-height)" }}>
           <div className="flex min-w-0 items-center gap-4">
-            <Link
-              to="/"
-              className={cn(
-                "flex items-center rounded-md px-2 py-2 h-8 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
-                requestsMode && "hidden",
-              )}
-            >
-              <img
-                className={cn("h-6 w-auto", requestsMode && "h-4")}
-                src={
-                  resolvedTheme === "dark"
-                    ? "/assets/img/wordmark.svg"
-                    : "/assets/branding/logo/logo-no-padding.svg"
-                }
-                alt="Pulse"
-              />
-            </Link>
             <div className="relative flex min-w-0 text-left" ref={menuRef}>
-              {requestsMode ? (
-                <button
-                  type="button"
-                  className="flex h-8 w-6 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                  title={statusTooltip(status?.compileError, status?.compiling, status?.running, connected)}
-                >
-                  <figure
-                    className={cn(
-                      "h-3 w-3 rounded-full shrink-0",
-                      status?.compileError
-                        ? "bg-red-500"
-                        : status?.compiling
-                          ? "border-2 border-sidebar-foreground border-t-transparent animate-spin"
-                          : status?.running
-                            ? "bg-success"
-                            : "bg-neutral-600 opacity-inactive",
-                    )}
-                  />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="flex h-8 w-6 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                title={statusTooltip(status?.compileError, status?.compiling, status?.running, connected)}
+              >
+                <figure
+                  className={cn(
+                    "h-3 w-3 shrink-0 rounded-full",
+                    status?.compileError
+                      ? "bg-red-500"
+                      : status?.compiling
+                        ? "animate-spin border-2 border-sidebar-foreground border-t-transparent"
+                        : status?.running
+                          ? "bg-success"
+                          : "bg-neutral-600 opacity-inactive",
+                  )}
+                />
+              </button>
               <button
                 type="button"
                 onClick={() => setMenuOpen((value) => !value)}
-                className={cn(
-                  "flex items-center gap-2 text-left px-2 py-2 h-8 rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus:outline-none cursor-pointer overflow-hidden transition-colors",
-                  requestsMode && "gap-0 px-2",
-                )}
+                className="flex h-8 cursor-pointer items-center gap-0 overflow-hidden rounded-md px-2 py-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus:outline-none"
                 title={statusTooltip(status?.compileError, status?.compiling, status?.running, connected)}
               >
-                {!requestsMode ? (
-                  <figure
-                    className={cn(
-                      "h-3 w-3 rounded-full shrink-0",
-                      status?.compileError
-                        ? "bg-red-500"
-                        : status?.compiling
-                          ? "border-2 border-sidebar-foreground border-t-transparent animate-spin"
-                          : status?.running
-                            ? "bg-success"
-                            : "bg-neutral-600 opacity-inactive",
-                    )}
-                  />
-                ) : null}
                 <span className="truncate text-sm font-medium">{appName}</span>
-                {!requestsMode ? <span className="text-xs opacity-60">▾</span> : null}
               </button>
               {menuOpen ? (
                 <div className="absolute left-0 top-10 z-50 w-64 rounded-md border border-border bg-popover text-popover-foreground shadow-lg">
@@ -167,8 +122,8 @@ function DashboardShell({ appId }: { appId: string }) {
                 </div>
               ) : null}
             </div>
-            <nav className={cn("flex items-center gap-3", requestsMode && "gap-0.5")}>
-              {(requestsMode ? REQUESTS_NAV_ITEMS : NAV_ITEMS).map((item) => {
+            <nav className="flex items-center gap-0.5">
+              {APP_NAV_ITEMS.map((item) => {
                 if ("kind" in item && item.kind === "ghost") {
                   const Icon = item.icon;
                   return (
@@ -203,39 +158,22 @@ function DashboardShell({ appId }: { appId: string }) {
             </nav>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            {requestsMode ? (
-              <>
-                <a
-                  href="#"
-                  onClick={(event) => event.preventDefault()}
-                  className="rounded-md px-3 py-2 text-sm h-8 flex items-center gap-2 focus:outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                >
-                  <IconCloud className="h-3.5 w-3.5 text-amber-400" />
-                  <span>Cloud Dashboard</span>
-                </a>
-                <HeaderIconButton label="" icon={<IconSparkles className="h-4 w-4 text-lime-300" />} />
-                <HeaderIconButton label="" icon={<IconLink className="h-4 w-4" />} />
-                <HeaderIconButton label="Toggle theme" icon={<IconSun className="h-4 w-4" />} />
-                <HeaderIconButton label="" icon={<IconSidebar className="h-4 w-4" />} />
-              </>
-            ) : null}
-            {!requestsMode && status?.addr ? (
-              <code className="hidden xl:inline-block rounded-md border border-sidebar-border px-3 py-1.5 text-xs">
-                {window.location.protocol === "https:" ? "https" : "http"}://{status.addr}
-              </code>
-            ) : null}
-            {!requestsMode ? <span className="rounded-md border border-sidebar-border px-3 py-1.5 text-xs">
-              {connected ? "Live WS" : "Reconnecting"}
-            </span> : null}
-            {!requestsMode && status?.pid ? (
-              <span className="hidden xl:inline-block rounded-md border border-sidebar-border px-3 py-1.5 text-xs">
-                pid {status.pid}
-              </span>
-            ) : null}
+            <a
+              href="#"
+              onClick={(event) => event.preventDefault()}
+              className="flex h-8 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus:outline-none"
+            >
+              <IconCloud className="h-3.5 w-3.5 text-amber-400" />
+              <span>Cloud Dashboard</span>
+            </a>
+            <HeaderIconButton label="" icon={<IconSparkles className="h-4 w-4 text-lime-300" />} />
+            <HeaderIconButton label="" icon={<IconLink className="h-4 w-4" />} />
+            <HeaderIconButton label="Toggle theme" icon={<IconSun className="h-4 w-4" />} />
+            <HeaderIconButton label="" icon={<IconSidebar className="h-4 w-4" />} />
           </div>
         </div>
       </header>
-      <div className="pt-[65px]">
+      <div style={{ height: "100vh", overflow: "hidden", paddingTop: "var(--header-height)" }}>
         {status?.compileError ? (
           <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
             <strong>Compile error</strong> {status.compileError}

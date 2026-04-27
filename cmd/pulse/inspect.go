@@ -12,6 +12,7 @@ import (
 	inspectdata "pulse.dev/internal/inspect"
 	"pulse.dev/internal/model"
 	"pulse.dev/internal/parse"
+	"pulse.dev/internal/wiremodel"
 )
 
 type inspectOptions struct {
@@ -114,6 +115,28 @@ func runPulseInspect(args []string, stdout io.Writer) error {
 			return err
 		}
 		return writeInspectJSON(stdout, inspectdata.BuildRoutesResponse(appRoot, cfg, model))
+	case "endpoints":
+		if payload, ok, err := inspectdata.ReadGeneratedEndpoints(appRoot); err != nil {
+			return err
+		} else if ok {
+			return writeInspectJSON(stdout, payload)
+		}
+		model, err := parse.App(appRoot, cfg.Name)
+		if err != nil {
+			return err
+		}
+		return writeInspectJSON(stdout, inspectdata.BuildEndpointsResponse(appRoot, cfg, model))
+	case "wire":
+		if payload, ok, err := inspectdata.ReadGeneratedWireCapabilities(appRoot); err != nil {
+			return err
+		} else if ok {
+			return writeInspectJSON(stdout, payload)
+		}
+		model, err := parse.App(appRoot, cfg.Name)
+		if err != nil {
+			return err
+		}
+		return writeInspectJSON(stdout, wiremodel.AppCapabilities(model))
 	case "build":
 		resp, err := buildInspectBuildResponse(appRoot, cfg)
 		if err != nil {

@@ -133,6 +133,44 @@ func TestTraceDBQueryRedactsInlineLiterals(t *testing.T) {
 	}
 }
 
+func TestTraceDBQueryUsesSQLCQueryNameAsOperation(t *testing.T) {
+	reporter := &devReporter{
+		appID: "app",
+		queue: make(chan devdash.ReportEnvelope, 4),
+	}
+	restoreReporter := setTestReporter(reporter)
+	defer restoreReporter()
+
+	state := &requestState{
+		request: shared.Request{
+			Service:  "jobs",
+			Endpoint: "LatestOffers",
+		},
+		traceEnabled: true,
+		trace: &traceSpan{
+			traceID: "trace-3",
+			spanID:  "parent-3",
+			isRoot:  true,
+		},
+	}
+
+	ctx := TraceDBQueryStart(withState(context.Background(), state), "-- name: ListLatestJobListings :many\nSELECT * FROM job_listings", 0)
+	TraceDBQueryEnd(ctx, "SELECT 30", 30, nil)
+
+	start := <-reporter.queue
+	<-reporter.queue
+	summary := <-reporter.queue
+
+	startPayload, _ := start.TraceEvent.Event["span_start"].(map[string]any)
+	dbStart, _ := startPayload["db"].(map[string]any)
+	if got := dbStart["operation"]; got != "ListLatestJobListings" {
+		t.Fatalf("start operation = %#v, want %q", got, "ListLatestJobListings")
+	}
+	if summary.TraceSummary.EndpointName == nil || *summary.TraceSummary.EndpointName != "ListLatestJobListings" {
+		t.Fatalf("summary endpoint = %#v, want %q", summary.TraceSummary.EndpointName, "ListLatestJobListings")
+	}
+}
+
 func setTestReporter(reporter *devReporter) func() {
 	reporterMu.Lock()
 	prev := globalReporter

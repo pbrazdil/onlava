@@ -55,11 +55,19 @@ export interface ServiceRPC {
   name: string;
   access_type: string;
   proto: string;
+  wire?: WireInfo;
   path: MetadataPath;
   loc?: SourceLoc;
   http_methods: string[];
   request_schema?: unknown;
   response_schema?: unknown;
+}
+
+export interface WireInfo {
+  available: boolean;
+  unsupported_reason?: string;
+  schema_hash?: string;
+  path?: string;
 }
 
 export interface SourceLoc {
@@ -148,9 +156,56 @@ export interface PubSubSnapshot {
   history?: PubSubHistoryPoint[];
 }
 
+export interface PubSubMessagesResponse {
+  app_id: string;
+  period?: string;
+  topic_name?: string;
+  queue_name?: string;
+  status?: string;
+  messages: PubSubMessage[];
+}
+
 export interface PubSubHistoryPoint {
   topics: PubSubTopic[];
   updated_at?: string;
+}
+
+export interface PubSubMessage {
+  app_id: string;
+  message_id: string;
+  topic_name: string;
+  subscription_name: string;
+  service_name?: string;
+  status: string;
+  trace_id?: string;
+  attempt?: number;
+  payload?: unknown;
+  result?: unknown;
+  error?: string;
+  deliveries: number;
+  inserted_at: string;
+  picked_up_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+}
+
+export interface PubSubMessageAttempt {
+  app_id: string;
+  message_id: string;
+  topic_name: string;
+  subscription_name: string;
+  service_name?: string;
+  status: string;
+  trace_id?: string;
+  attempt: number;
+  payload?: unknown;
+  result?: unknown;
+  error?: string;
+  deliveries: number;
+  inserted_at: string;
+  picked_up_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
 }
 
 export interface PubSubTopic {

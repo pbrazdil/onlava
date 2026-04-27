@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -226,6 +227,64 @@ func TestDashboardPubSubStatusRPCAndReport(t *testing.T) {
 	}
 }
 
+func TestDashboardPubSubMessagesRPCAndReport(t *testing.T) {
+	server := newTestDashboardServer(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	body := []byte(fmt.Sprintf(`{"type":"pubsub-message","app_id":"app-test","pubsub_message":{"message_id":"stream:1","topic_name":"events","subscription_name":"events-sub","service_name":"events","status":"completed","trace_id":"trace-1","attempt":1,"payload":{"value":"ok"},"result":{"status":"completed"},"deliveries":1,"inserted_at":"%s","picked_up_at":"%s","finished_at":"%s","duration_ms":1000}}`, now, now, now))
+	req := httptest.NewRequest(http.MethodPost, devdash.ReportPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+server.supervisor.reportToken)
+	rec := httptest.NewRecorder()
+
+	server.handleReport(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("handleReport status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	raw, err := json.Marshal(map[string]any{
+		"app_id":     "app-test",
+		"period":     "15m",
+		"queue_name": "events-sub",
+		"status":     "completed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := server.dispatchRPC(context.Background(), "pubsub/messages", raw)
+	if err != nil {
+		t.Fatalf("pubsub/messages: %v", err)
+	}
+	payload := result.(map[string]any)
+	messages, ok := payload["messages"].([]devdash.PubSubMessage)
+	if !ok {
+		t.Fatalf("messages type = %T", payload["messages"])
+	}
+	if len(messages) != 1 {
+		t.Fatalf("message count = %d, want 1", len(messages))
+	}
+	if messages[0].SubscriptionName != "events-sub" {
+		t.Fatalf("subscription = %q", messages[0].SubscriptionName)
+	}
+	if messages[0].Status != "completed" {
+		t.Fatalf("status = %q", messages[0].Status)
+	}
+	attemptResult, err := server.dispatchRPC(context.Background(), "pubsub/message/attempts", mustJSON(t, map[string]any{
+		"app_id":            "app-test",
+		"message_id":        "stream:1",
+		"subscription_name": "events-sub",
+	}))
+	if err != nil {
+		t.Fatalf("pubsub/message/attempts: %v", err)
+	}
+	attemptPayload := attemptResult.(map[string]any)
+	attempts, ok := attemptPayload["attempts"].([]devdash.PubSubMessageAttempt)
+	if !ok || len(attempts) != 1 {
+		t.Fatalf("attempts = %#v", attemptPayload["attempts"])
+	}
+	if attempts[0].TraceID != "trace-1" {
+		t.Fatalf("attempt trace id = %q", attempts[0].TraceID)
+	}
+}
+
 func newTestDashboardServer(t *testing.T) *dashboardServer {
 	t.Helper()
 
@@ -267,4 +326,13 @@ func postGraphQL(t *testing.T, server *dashboardServer, body map[string]any) map
 		t.Fatalf("decode graphql response: %v", err)
 	}
 	return resp
+}
+
+func mustJSON(t *testing.T, value any) json.RawMessage {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+	return data
 }

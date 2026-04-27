@@ -1,6 +1,16 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "../lib/dashboard-context";
-import type { PubSubHistoryPoint, PubSubSnapshot, PubSubSubscription, PubSubTopic } from "../lib/types";
+import { cn, formatTimestamp } from "../lib/utils";
+import type {
+  PubSubHistoryPoint,
+  PubSubMessage,
+  PubSubMessageAttempt,
+  PubSubMessagesResponse,
+  PubSubSnapshot,
+  PubSubSubscription,
+  PubSubTopic,
+} from "../lib/types";
 
 const chartPeriods = [
   { label: "5m", value: "5m" },
@@ -14,11 +24,42 @@ export function PubSubPage() {
   const { appId, pubsub, rpc } = useDashboard();
   const [period, setPeriod] = useState<(typeof chartPeriods)[number]["value"]>("15m");
   const [periodSnapshot, setPeriodSnapshot] = useState<PubSubSnapshot | null>(null);
+  const [messages, setMessages] = useState<PubSubMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"messages" | "dlq">("messages");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [attemptsByRow, setAttemptsByRow] = useState<Record<string, PubSubMessageAttempt[]>>({});
+  const [topicFilter, setTopicFilter] = useState("");
+  const [queueFilter, setQueueFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   const activeSnapshot = periodSnapshot ?? pubsub;
   const topics = activeSnapshot?.topics ?? [];
   const totals = useMemo(() => summarize(topics), [topics]);
+  const availableTopics = useMemo(
+    () => Array.from(new Set([...topics.map((item) => item.name), ...messages.map((item) => item.topic_name)])).sort(),
+    [messages, topics],
+  );
+  const availableQueues = useMemo(() => {
+    const names = new Set<string>();
+    for (const topic of topics) {
+      if (topicFilter && topic.name !== topicFilter) {
+        continue;
+      }
+      for (const sub of topic.subscriptions) {
+        names.add(sub.name);
+      }
+    }
+    for (const message of messages) {
+      if (topicFilter && message.topic_name !== topicFilter) {
+        continue;
+      }
+      names.add(message.subscription_name);
+    }
+    return Array.from(names).sort();
+  }, [messages, topicFilter, topics]);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,14 +73,103 @@ export function PubSubPage() {
       }
     }
     void refreshPeriod().catch(() => undefined);
-    const timer = window.setInterval(() => {
-      void refreshPeriod().catch(() => undefined);
-    }, 5000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
   }, [appId, period, rpc]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshMessages() {
+      if (!rpc) {
+        return;
+      }
+      setMessagesLoading(true);
+      try {
+        const next = await rpc.request<PubSubMessagesResponse>("pubsub/messages", {
+          app_id: appId,
+          period,
+          topic_name: topicFilter,
+          queue_name: queueFilter,
+          status: viewMode === "dlq" ? "dead_lettered" : statusFilter,
+          limit: 500,
+        });
+        if (!cancelled) {
+          setMessages(next.messages ?? []);
+          setMessagesError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMessagesError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setMessagesLoading(false);
+        }
+      }
+    }
+    void refreshMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, period, queueFilter, rpc, statusFilter, topicFilter, viewMode]);
+
+  useEffect(() => {
+    if (!rpc) {
+      return;
+    }
+    const unsubscribe = rpc.subscribe((notification) => {
+      if (notification.method === "pubsub/update") {
+        const params = notification.params as PubSubSnapshot;
+        if (params.app_id === appId) {
+          setPeriodSnapshot((current) => mergeLiveSnapshot(current, params));
+        }
+      }
+      if (notification.method === "pubsub/message") {
+        const message = notification.params as PubSubMessage;
+        if (message.app_id !== appId) {
+          return;
+        }
+        if (messageWithinFilters(message, period, topicFilter, queueFilter, viewMode === "dlq" ? "dead_lettered" : statusFilter)) {
+          setMessages((current) => upsertMessage(current, message));
+        } else {
+          setMessages((current) => current.filter((item) => messageRowKey(item) !== messageRowKey(message)));
+        }
+        if (message.attempt && message.attempt > 0) {
+          setAttemptsByRow((current) => {
+            const key = messageRowKey(message);
+            const existing = current[key];
+            if (!existing) {
+              return current;
+            }
+            const attempt = messageToAttempt(message);
+            return {
+              ...current,
+              [key]: upsertAttempt(existing, attempt),
+            };
+          });
+        }
+      }
+      if (notification.method === "pubsub/messages/cleared") {
+        const params = notification.params as { app_id?: string };
+        if (params.app_id === appId) {
+          setMessages((current) =>
+            current.map((message) =>
+              message.status === "queued" || message.status === "processing" || message.status === "retrying"
+                ? {
+                    ...message,
+                    status: "cleared",
+                    result: { status: "cleared" },
+                    finished_at: new Date().toISOString(),
+                  }
+                : message,
+            ),
+          );
+        }
+      }
+    });
+    return unsubscribe;
+  }, [appId, period, queueFilter, rpc, statusFilter, topicFilter, viewMode]);
 
   useEffect(() => {
     if (!pubsub) {
@@ -47,6 +177,49 @@ export function PubSubPage() {
     }
     setPeriodSnapshot((current) => mergeLiveSnapshot(current, pubsub));
   }, [pubsub]);
+
+  useEffect(() => {
+    if (topicFilter && !availableTopics.includes(topicFilter)) {
+      setTopicFilter("");
+    }
+  }, [availableTopics, topicFilter]);
+
+  useEffect(() => {
+    if (queueFilter && !availableQueues.includes(queueFilter)) {
+      setQueueFilter("");
+    }
+  }, [availableQueues, queueFilter]);
+
+  useEffect(() => {
+    if (!rpc || !expandedRow) {
+      return;
+    }
+    const rpcClient = rpc;
+    const rowKey = expandedRow;
+    const target = messages.find((item) => messageRowKey(item) === rowKey);
+    if (!target) {
+      return;
+    }
+    const targetMessage = target;
+    let cancelled = false;
+    async function loadAttempts() {
+      const next = await rpcClient.request<{ attempts: PubSubMessageAttempt[] }>("pubsub/message/attempts", {
+        app_id: appId,
+        message_id: targetMessage.message_id,
+        subscription_name: targetMessage.subscription_name,
+      });
+      if (!cancelled) {
+        setAttemptsByRow((current) => ({
+          ...current,
+          [rowKey]: next.attempts ?? [],
+        }));
+      }
+    }
+    void loadAttempts().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, expandedRow, messages, rpc]);
 
   async function clearQueues() {
     if (!rpc || clearing) {
@@ -143,6 +316,150 @@ export function PubSubPage() {
               ))}
             </div>
           )}
+
+          <section className="rounded-md border border-border p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("messages")}
+                    className={
+                      viewMode === "messages"
+                        ? "rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background"
+                        : "rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                    }
+                  >
+                    Messages
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("dlq")}
+                    className={
+                      viewMode === "dlq"
+                        ? "rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background"
+                        : "rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                    }
+                  >
+                    DLQ
+                  </button>
+                </div>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  {viewMode === "dlq"
+                    ? "Dead-lettered jobs for local queues, including failure details and attempt history."
+                    : "Recent jobs submitted to local queues, with per-queue status, timing, payload, and result details."}
+                </p>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                <div>Window</div>
+                <div className="mt-1 text-foreground">{period}</div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-4">
+              <label className="text-xs text-muted-foreground">
+                <span className="mb-2 block uppercase tracking-wide">Queue</span>
+                <select
+                  value={queueFilter}
+                  onChange={(event) => setQueueFilter(event.target.value)}
+                  className="w-full rounded-md border border-border bg-sidebar/40 px-3 py-2 text-sm text-foreground outline-none"
+                >
+                  <option value="">All queues</option>
+                  {availableQueues.map((queue) => (
+                    <option key={queue} value={queue}>
+                      {queue}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs text-muted-foreground">
+                <span className="mb-2 block uppercase tracking-wide">Topic</span>
+                <select
+                  value={topicFilter}
+                  onChange={(event) => setTopicFilter(event.target.value)}
+                  className="w-full rounded-md border border-border bg-sidebar/40 px-3 py-2 text-sm text-foreground outline-none"
+                >
+                  <option value="">All topics</option>
+                  {availableTopics.map((topic) => (
+                    <option key={topic} value={topic}>
+                      {topic}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs text-muted-foreground">
+                <span className="mb-2 block uppercase tracking-wide">Status</span>
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  disabled={viewMode === "dlq"}
+                  className="w-full rounded-md border border-border bg-sidebar/40 px-3 py-2 text-sm text-foreground outline-none"
+                >
+                  <option value="">All statuses</option>
+                  <option value="queued">Queued</option>
+                  <option value="processing">Processing</option>
+                  <option value="retrying">Retrying</option>
+                  <option value="completed">Completed</option>
+                  <option value="dead_lettered">Dead lettered</option>
+                  <option value="cleared">Cleared</option>
+                </select>
+              </label>
+              <div className="flex items-end">
+                <div className="w-full rounded-md border border-border bg-sidebar/20 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Rows</span>
+                  <span className="ml-2 font-medium tabular-nums">{formatNumber(messages.length)}</span>
+                </div>
+              </div>
+            </div>
+
+            {messagesError ? <div className="mt-4 text-sm text-red-400">{messagesError}</div> : null}
+
+            <div className="mt-5 overflow-hidden rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-sidebar/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Queue</th>
+                    <th className="px-4 py-3 text-left font-medium">Status</th>
+                    <th className="px-4 py-3 text-left font-medium">Inserted</th>
+                    <th className="px-4 py-3 text-left font-medium">Picked up</th>
+                    <th className="px-4 py-3 text-left font-medium">Finished</th>
+                    <th className="px-4 py-3 text-right font-medium">Duration</th>
+                    <th className="px-4 py-3 text-left font-medium">Input</th>
+                    <th className="px-4 py-3 text-left font-medium">Output</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {messagesLoading && messages.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                        Loading queue messages…
+                      </td>
+                    </tr>
+                  ) : messages.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                        {viewMode === "dlq"
+                          ? "No dead-lettered queue messages found for the selected filters and timeframe."
+                          : "No queue messages found for the selected filters and timeframe."}
+                      </td>
+                    </tr>
+                  ) : (
+                    messages.map((message) => (
+                      <PubSubMessageRow
+                        key={messageRowKey(message)}
+                        message={message}
+                        open={expandedRow === messageRowKey(message)}
+                        attempts={attemptsByRow[messageRowKey(message)] ?? []}
+                        onToggle={() =>
+                          setExpandedRow((current) => (current === messageRowKey(message) ? null : messageRowKey(message)))
+                        }
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -428,6 +745,152 @@ function SubscriptionRow({ sub }: { sub: PubSubSubscription }) {
   );
 }
 
+function PubSubMessageRow({
+  message,
+  open,
+  attempts,
+  onToggle,
+}: {
+  message: PubSubMessage;
+  open: boolean;
+  attempts: PubSubMessageAttempt[];
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <tr className="border-t border-border align-top">
+        <td className="px-4 py-3">
+          <button type="button" onClick={onToggle} className="w-full text-left">
+            <div className="font-medium">{message.subscription_name}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {message.topic_name}
+              {message.service_name ? ` · ${message.service_name}` : ""}
+            </div>
+            <div className="mt-1 font-mono text-[11px] text-muted-foreground">{message.message_id}</div>
+          </button>
+        </td>
+        <td className="px-4 py-3">
+          <StatusBadge status={message.status} />
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {message.attempt && message.attempt > 0 ? <span>attempt {message.attempt}</span> : null}
+            {message.trace_id ? (
+              <Link
+                to="/$appId/envs/local/traces/$traceId"
+                params={{ appId: message.app_id, traceId: message.trace_id }}
+                className="text-sky-300 hover:text-sky-200"
+              >
+                Trace
+              </Link>
+            ) : null}
+          </div>
+        </td>
+        <td className="px-4 py-3 text-xs text-muted-foreground">{formatTimestamp(message.inserted_at)}</td>
+        <td className="px-4 py-3 text-xs text-muted-foreground">{formatTimestampValue(message.picked_up_at)}</td>
+        <td className="px-4 py-3 text-xs text-muted-foreground">{formatTimestampValue(message.finished_at)}</td>
+        <td className="px-4 py-3 text-right tabular-nums">{formatMillis(message.duration_ms ?? 0)}</td>
+        <td className="px-4 py-3">
+          <JSONPreview value={message.payload} label="Input" />
+        </td>
+        <td className="px-4 py-3">
+          <JSONPreview value={message.result} error={message.error} label="Output" />
+        </td>
+      </tr>
+      {open ? (
+        <tr className="border-t border-border/60 bg-sidebar/20">
+          <td colSpan={8} className="px-4 py-4">
+            <div className="space-y-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Attempt history</div>
+              <div className="overflow-hidden rounded-md border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-sidebar/50 text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Attempt</th>
+                      <th className="px-3 py-2 text-left font-medium">Status</th>
+                      <th className="px-3 py-2 text-left font-medium">Picked up</th>
+                      <th className="px-3 py-2 text-left font-medium">Finished</th>
+                      <th className="px-3 py-2 text-right font-medium">Duration</th>
+                      <th className="px-3 py-2 text-left font-medium">Trace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attempts.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-4 text-muted-foreground">
+                          No attempt history loaded yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      attempts.map((attempt) => (
+                        <tr key={`${attempt.message_id}-${attempt.subscription_name}-${attempt.attempt}`} className="border-t border-border">
+                          <td className="px-3 py-2 tabular-nums">{attempt.attempt}</td>
+                          <td className="px-3 py-2">
+                            <StatusBadge status={attempt.status} />
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{formatTimestampValue(attempt.picked_up_at)}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{formatTimestampValue(attempt.finished_at)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatMillis(attempt.duration_ms ?? 0)}</td>
+                          <td className="px-3 py-2 text-xs">
+                            {attempt.trace_id ? (
+                              <Link
+                                to="/$appId/envs/local/traces/$traceId"
+                                params={{ appId: attempt.app_id, traceId: attempt.trace_id }}
+                                className="text-sky-300 hover:text-sky-200"
+                              >
+                                Open trace
+                              </Link>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full border px-2 py-1 text-[11px] font-medium uppercase tracking-wide",
+        status === "completed" && "border-lime-900 bg-lime-950/40 text-lime-300",
+        status === "queued" && "border-amber-900 bg-amber-950/30 text-amber-300",
+        status === "processing" && "border-sky-900 bg-sky-950/30 text-sky-300",
+        status === "retrying" && "border-orange-900 bg-orange-950/30 text-orange-300",
+        status === "dead_lettered" && "border-red-900 bg-red-950/30 text-red-300",
+        status === "cleared" && "border-border bg-sidebar/50 text-muted-foreground",
+      )}
+    >
+      {statusLabel(status)}
+    </span>
+  );
+}
+
+function JSONPreview({ value, error, label }: { value: unknown; error?: string; label: string }) {
+  const text = previewJSON(value);
+  const hasValue = text !== "null" && text !== "{}" && text !== "[]";
+  const detailsText = hasValue ? text : error || "No data";
+  return (
+    <details className="group max-w-[320px]">
+      <summary className="cursor-pointer list-none text-xs text-muted-foreground hover:text-foreground">
+        <span className="font-medium text-foreground">{label}</span>
+        <span className="ml-2 truncate">{truncateSingleLine(detailsText, 56)}</span>
+      </summary>
+      <pre className="mt-3 max-h-56 overflow-auto rounded-md border border-border bg-background/70 p-3 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap break-all">
+        {detailsText}
+      </pre>
+    </details>
+  );
+}
+
 function InlineStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-2 whitespace-nowrap">
@@ -594,6 +1057,82 @@ function formatNumber(value: number) {
   return Math.round(value || 0).toLocaleString();
 }
 
+function upsertMessage(current: PubSubMessage[], next: PubSubMessage) {
+  const key = messageRowKey(next);
+  const index = current.findIndex((item) => messageRowKey(item) === key);
+  if (index < 0) {
+    return [next, ...current].sort(compareMessages);
+  }
+  const copy = current.slice();
+  copy[index] = next;
+  copy.sort(compareMessages);
+  return copy;
+}
+
+function upsertAttempt(current: PubSubMessageAttempt[], next: PubSubMessageAttempt) {
+  const index = current.findIndex((item) => item.attempt === next.attempt);
+  if (index < 0) {
+    return [next, ...current].sort((a, b) => b.attempt - a.attempt);
+  }
+  const copy = current.slice();
+  copy[index] = next;
+  copy.sort((a, b) => b.attempt - a.attempt);
+  return copy;
+}
+
+function messageToAttempt(message: PubSubMessage): PubSubMessageAttempt {
+  return {
+    app_id: message.app_id,
+    message_id: message.message_id,
+    topic_name: message.topic_name,
+    subscription_name: message.subscription_name,
+    service_name: message.service_name,
+    status: message.status,
+    trace_id: message.trace_id,
+    attempt: message.attempt ?? Math.max(1, message.deliveries || 1),
+    payload: message.payload,
+    result: message.result,
+    error: message.error,
+    deliveries: message.deliveries,
+    inserted_at: message.inserted_at,
+    picked_up_at: message.picked_up_at,
+    finished_at: message.finished_at,
+    duration_ms: message.duration_ms,
+  };
+}
+
+function messageWithinFilters(
+  message: PubSubMessage,
+  period: (typeof chartPeriods)[number]["value"],
+  topicFilter: string,
+  queueFilter: string,
+  statusFilter: string,
+) {
+  const cutoff = Date.now() - periodToMs(period);
+  const inserted = Date.parse(message.inserted_at || "");
+  if (Number.isFinite(inserted) && inserted < cutoff) {
+    return false;
+  }
+  if (topicFilter && message.topic_name !== topicFilter) {
+    return false;
+  }
+  if (queueFilter && message.subscription_name !== queueFilter) {
+    return false;
+  }
+  if (statusFilter && statusFilter !== "all" && message.status !== statusFilter) {
+    return false;
+  }
+  return true;
+}
+
+function compareMessages(a: PubSubMessage, b: PubSubMessage) {
+  return Date.parse(b.inserted_at || "") - Date.parse(a.inserted_at || "");
+}
+
+function messageRowKey(message: PubSubMessage) {
+  return `${message.message_id}\u0000${message.subscription_name}`;
+}
+
 function formatMillis(value: number) {
   if (!value) {
     return "0ms";
@@ -606,6 +1145,10 @@ function formatMillis(value: number) {
 
 function formatTime(value: number) {
   return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatTimestampValue(value?: string) {
+  return value ? formatTimestamp(value) : "—";
 }
 
 function safeID(value: string) {
@@ -628,4 +1171,32 @@ function formatDelivery(value?: string) {
     default:
       return value || "delivery unknown";
   }
+}
+
+function statusLabel(value: string) {
+  switch (value) {
+    case "dead_lettered":
+      return "Dead lettered";
+    default:
+      return value.replace(/_/g, " ");
+  }
+}
+
+function previewJSON(value: unknown) {
+  if (value === undefined) {
+    return "null";
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function truncateSingleLine(value: string, limit: number) {
+  const line = value.replace(/\s+/g, " ").trim();
+  if (line.length <= limit) {
+    return line;
+  }
+  return `${line.slice(0, Math.max(0, limit - 1))}\u2026`;
 }

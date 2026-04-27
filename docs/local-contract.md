@@ -15,16 +15,22 @@ If implementation and this document disagree, treat that as a bug.
 Implemented now:
 - `pulse.app`
 - `pulse run --json`
+- `pulse check --json`
 - `pulse admin traces clear --json`
 - `pulse admin pubsub clear --json`
 - `pulse inspect app --json`
 - `pulse inspect routes --json`
 - `pulse inspect services --json`
+- `pulse inspect endpoints --json`
+- `pulse inspect wire --json`
 - `pulse inspect build --json`
 - `pulse inspect paths --json`
+- `pulse logs --jsonl`
 - `.pulse/gen/app.json`
 - `.pulse/gen/routes.json`
 - `.pulse/gen/services.json`
+- `.pulse/gen/endpoints.json`
+- `.pulse/gen/wire/capabilities.json`
 - `.pulse/gen/manifest.json`
 - `.pulse/build/latest.json`
 
@@ -77,11 +83,11 @@ Current implemented grammar:
 ```text
 pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]
 pulse build [--app-root <path>] [-o <path>] [--db-studio]
-pulse check [--app-root <path>]
-pulse inspect app|routes|services|build|paths --json [--app-root <path>]
+pulse check [--app-root <path>] [--json]
+pulse inspect app|routes|services|endpoints|wire|build|paths --json [--app-root <path>]
 pulse admin traces clear --json [--app-root <path>]
 pulse admin pubsub clear --json [--app-root <path>]
-pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow]
+pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
 pulse test [--app-root <path>] [go test flags/packages...]
 pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 ```
@@ -101,6 +107,31 @@ pulse run --json
 - each line conforms to `pulse.run.event.v1`
 - human-readable console output is suppressed in this mode
 - child stdout/stderr are emitted as structured `process.output` events instead of raw terminal writes
+
+Implemented `check --json` rules:
+
+```text
+pulse check --json
+```
+
+- output is a single JSON document
+- output conforms to `pulse.check.result.v1`
+- success returns `ok: true` and an empty `diagnostics` array
+- failure returns `ok: false` and structured diagnostics
+- diagnostics may include `stage`, `file`, `line`, `column`, `severity`, `message`, and `suggested_action`
+
+Implemented `logs --jsonl` rules:
+
+```text
+pulse logs --jsonl
+pulse logs --json
+```
+
+- `--json` is an alias for `--jsonl`
+- output is JSONL
+- each line conforms to `pulse.logs.event.v1`
+- one JSON object is emitted per stored process-output chunk
+- human-readable raw output remains the default when neither flag is used
 
 Reserved grammar:
 
@@ -140,6 +171,9 @@ Implemented now:
     app.json
     routes.json
     services.json
+    endpoints.json
+    wire/
+      capabilities.json
     manifest.json
   build/
     latest.json
@@ -154,7 +188,8 @@ Reserved for upcoming work:
 ```
 
 Rules:
-- `app.json`, `routes.json`, and `services.json` mirror the current `pulse inspect ... --json` outputs for those subjects
+- `app.json`, `routes.json`, `services.json`, and `endpoints.json` mirror the current `pulse inspect ... --json` outputs for those subjects
+- `wire/capabilities.json` mirrors `pulse inspect wire --json` and the runtime `GET /_wire/capabilities` response
 - `manifest.json` ties the generated inspect artifacts to schema versions, stable artifact paths, and deterministic content hashes
 - `build/latest.json` is the stable repo-local pointer to the latest prepared or compiled build workspace
 - agents can use either `pulse inspect ... --json` or the corresponding `.pulse/gen/*.json` files
@@ -166,11 +201,15 @@ Implemented now:
 - [pulse.inspect.app.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.app.v1.schema.json)
 - [pulse.inspect.routes.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.routes.v1.schema.json)
 - [pulse.inspect.services.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.services.v1.schema.json)
+- [pulse.inspect.endpoints.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.endpoints.v1.schema.json)
+- [pulse.wire.capabilities.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.wire.capabilities.v1.schema.json)
 - [pulse.inspect.build.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.build.v1.schema.json)
 - [pulse.inspect.paths.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.inspect.paths.v1.schema.json)
 - [pulse.gen.manifest.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.gen.manifest.v1.schema.json)
 - [pulse.build.latest.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.build.latest.v1.schema.json)
 - [pulse.run.event.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.run.event.v1.schema.json)
+- [pulse.check.result.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.check.result.v1.schema.json)
+- [pulse.logs.event.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.logs.event.v1.schema.json)
 - [pulse.admin.result.v1.schema.json](/Users/petrbrazdil/Repos/pulse/docs/schemas/pulse.admin.result.v1.schema.json)
 
 Reserved now:
@@ -262,3 +301,42 @@ Schema rules:
   }
 }
 ```
+
+### `pulse inspect endpoints --json`
+
+```json
+{
+  "schema_version": "pulse.inspect.endpoints.v1",
+  "app": {
+    "name": "billing",
+    "root": "/repo/billing",
+    "config_path": "/repo/billing/pulse.app"
+  },
+  "endpoints": [
+    {
+      "id": "users.Get",
+      "service": "users",
+      "endpoint": "Get",
+      "access": "public",
+      "raw": false,
+      "path": "/users/:id",
+      "methods": ["GET"],
+      "has_payload": true,
+      "wire": {
+        "available": true,
+        "schema_hash": "abc123",
+        "path": "/_wire/users.Get"
+      }
+    }
+  ],
+  "wire": {
+    "wire_schema_hash": "def456",
+    "available": 1,
+    "unsupported": 0
+  }
+}
+```
+
+### `pulse inspect wire --json`
+
+`pulse inspect wire --json` returns the same hidden generated-client capability document served at `GET /_wire/capabilities`. It is intended for generated clients and agents that need to know whether the JSON transport or binary transport will be used for each logical endpoint.

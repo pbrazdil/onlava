@@ -268,10 +268,12 @@ func Config(context.Context) error { return nil }
 	}
 
 	for rel, schema := range map[string]string{
-		".pulse/gen/app.json":      `"schema_version": "pulse.inspect.app.v1"`,
-		".pulse/gen/routes.json":   `"schema_version": "pulse.inspect.routes.v1"`,
-		".pulse/gen/services.json": `"schema_version": "pulse.inspect.services.v1"`,
-		".pulse/gen/manifest.json": `"schema_version": "pulse.gen.manifest.v1"`,
+		".pulse/gen/app.json":               `"schema_version": "pulse.inspect.app.v1"`,
+		".pulse/gen/routes.json":            `"schema_version": "pulse.inspect.routes.v1"`,
+		".pulse/gen/services.json":          `"schema_version": "pulse.inspect.services.v1"`,
+		".pulse/gen/endpoints.json":         `"schema_version": "pulse.inspect.endpoints.v1"`,
+		".pulse/gen/wire/capabilities.json": `"schema_version": "pulse.wire.capabilities.v1"`,
+		".pulse/gen/manifest.json":          `"schema_version": "pulse.gen.manifest.v1"`,
 	} {
 		data, err := os.ReadFile(filepath.Join(appDir, filepath.FromSlash(rel)))
 		if err != nil {
@@ -305,33 +307,39 @@ func Config(context.Context) error { return nil }
 	}
 	var manifest struct {
 		Artifacts struct {
-			App         string `json:"app"`
-			Routes      string `json:"routes"`
-			Services    string `json:"services"`
-			BuildLatest string `json:"build_latest"`
+			App              string `json:"app"`
+			Routes           string `json:"routes"`
+			Services         string `json:"services"`
+			Endpoints        string `json:"endpoints"`
+			WireCapabilities string `json:"wire_capabilities"`
+			BuildLatest      string `json:"build_latest"`
 		} `json:"artifacts"`
 		Schemas struct {
-			App         string `json:"app"`
-			Routes      string `json:"routes"`
-			Services    string `json:"services"`
-			BuildLatest string `json:"build_latest"`
+			App              string `json:"app"`
+			Routes           string `json:"routes"`
+			Services         string `json:"services"`
+			Endpoints        string `json:"endpoints"`
+			WireCapabilities string `json:"wire_capabilities"`
+			BuildLatest      string `json:"build_latest"`
 		} `json:"schemas"`
 		Hashes struct {
-			App      string `json:"app"`
-			Routes   string `json:"routes"`
-			Services string `json:"services"`
+			App              string `json:"app"`
+			Routes           string `json:"routes"`
+			Services         string `json:"services"`
+			Endpoints        string `json:"endpoints"`
+			WireCapabilities string `json:"wire_capabilities"`
 		} `json:"hashes"`
 	}
 	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
 		t.Fatalf("json.Unmarshal(manifest.json): %v", err)
 	}
-	if manifest.Artifacts.App != ".pulse/gen/app.json" || manifest.Artifacts.BuildLatest != ".pulse/build/latest.json" {
+	if manifest.Artifacts.App != ".pulse/gen/app.json" || manifest.Artifacts.Endpoints != ".pulse/gen/endpoints.json" || manifest.Artifacts.WireCapabilities != ".pulse/gen/wire/capabilities.json" || manifest.Artifacts.BuildLatest != ".pulse/build/latest.json" {
 		t.Fatalf("manifest artifacts = %+v", manifest.Artifacts)
 	}
-	if manifest.Schemas.App != "pulse.inspect.app.v1" || manifest.Schemas.BuildLatest != "pulse.build.latest.v1" {
+	if manifest.Schemas.App != "pulse.inspect.app.v1" || manifest.Schemas.Endpoints != "pulse.inspect.endpoints.v1" || manifest.Schemas.WireCapabilities != "pulse.wire.capabilities.v1" || manifest.Schemas.BuildLatest != "pulse.build.latest.v1" {
 		t.Fatalf("manifest schemas = %+v", manifest.Schemas)
 	}
-	if manifest.Hashes.App == "" || manifest.Hashes.Routes == "" || manifest.Hashes.Services == "" {
+	if manifest.Hashes.App == "" || manifest.Hashes.Routes == "" || manifest.Hashes.Services == "" || manifest.Hashes.Endpoints == "" || manifest.Hashes.WireCapabilities == "" {
 		t.Fatalf("manifest hashes = %+v", manifest.Hashes)
 	}
 }

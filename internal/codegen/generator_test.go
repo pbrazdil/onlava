@@ -159,7 +159,7 @@ func Apply(req middleware.Request, next middleware.Next) middleware.Response {
 	if !strings.Contains(got, "RegisterMiddleware(&pulseruntime.Middleware") {
 		t.Fatalf("expected middleware registration, got:\n%s", got)
 	}
-	if !strings.Contains(got, `MiddlewareIDs: []string{"example.com/middlewaregen/svc.Apply"}`) {
+	if !strings.Contains(got, `MiddlewareIDs:`) || !strings.Contains(got, `[]string{"example.com/middlewaregen/svc.Apply"}`) {
 		t.Fatalf("expected endpoint middleware ids, got:\n%s", got)
 	}
 }

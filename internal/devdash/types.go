@@ -123,18 +123,57 @@ type StoredRequestData struct {
 type OnboardingState map[string]time.Time
 
 type ReportEnvelope struct {
-	Type         string          `json:"type"`
-	AppID        string          `json:"app_id"`
-	TraceSummary *TraceSummary   `json:"trace_summary,omitempty"`
-	TraceEvent   *TraceEvent     `json:"trace_event,omitempty"`
-	LogEvent     *LogEvent       `json:"log_event,omitempty"`
-	PubSub       json.RawMessage `json:"pubsub,omitempty"`
+	Type          string          `json:"type"`
+	AppID         string          `json:"app_id"`
+	TraceSummary  *TraceSummary   `json:"trace_summary,omitempty"`
+	TraceEvent    *TraceEvent     `json:"trace_event,omitempty"`
+	LogEvent      *LogEvent       `json:"log_event,omitempty"`
+	PubSub        json.RawMessage `json:"pubsub,omitempty"`
+	PubSubMessage json.RawMessage `json:"pubsub_message,omitempty"`
 }
 
 type PubSubSnapshot struct {
 	AppID     string          `json:"app_id"`
 	Topics    json.RawMessage `json:"topics"`
 	UpdatedAt time.Time       `json:"updated_at"`
+}
+
+type PubSubMessage struct {
+	AppID            string          `json:"app_id"`
+	MessageID        string          `json:"message_id"`
+	TopicName        string          `json:"topic_name"`
+	SubscriptionName string          `json:"subscription_name"`
+	ServiceName      string          `json:"service_name,omitempty"`
+	Status           string          `json:"status"`
+	TraceID          string          `json:"trace_id,omitempty"`
+	Attempt          int             `json:"attempt,omitempty"`
+	Payload          json.RawMessage `json:"payload,omitempty"`
+	Result           json.RawMessage `json:"result,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	Deliveries       int             `json:"deliveries"`
+	InsertedAt       time.Time       `json:"inserted_at"`
+	PickedUpAt       time.Time       `json:"picked_up_at,omitempty"`
+	FinishedAt       time.Time       `json:"finished_at,omitempty"`
+	DurationMS       float64         `json:"duration_ms,omitempty"`
+}
+
+type PubSubMessageAttempt struct {
+	AppID            string          `json:"app_id"`
+	MessageID        string          `json:"message_id"`
+	TopicName        string          `json:"topic_name"`
+	SubscriptionName string          `json:"subscription_name"`
+	ServiceName      string          `json:"service_name,omitempty"`
+	Status           string          `json:"status"`
+	TraceID          string          `json:"trace_id,omitempty"`
+	Attempt          int             `json:"attempt"`
+	Payload          json.RawMessage `json:"payload,omitempty"`
+	Result           json.RawMessage `json:"result,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	Deliveries       int             `json:"deliveries"`
+	InsertedAt       time.Time       `json:"inserted_at"`
+	PickedUpAt       time.Time       `json:"picked_up_at,omitempty"`
+	FinishedAt       time.Time       `json:"finished_at,omitempty"`
+	DurationMS       float64         `json:"duration_ms,omitempty"`
 }
 
 type QueryRequest struct {

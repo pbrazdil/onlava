@@ -28,6 +28,7 @@ const maxDBQueryLength = 2048
 var (
 	singleQuotedSQLLiteralRE = regexp.MustCompile(`'([^']|'')*'`)
 	doubleQuotedSQLLiteralRE = regexp.MustCompile(`"([^"]|"")*"`)
+	sqlcQueryNameRE          = regexp.MustCompile(`(?i)^--\s*name:\s*([A-Za-z_][A-Za-z0-9_]*)\b`)
 )
 
 // TraceDBQueryStart starts a child trace for a database query and returns
@@ -226,6 +227,9 @@ func isSQLIdentByte(ch byte) bool {
 func dbQueryOperation(query string) string {
 	if query == "" {
 		return "QUERY"
+	}
+	if match := sqlcQueryNameRE.FindStringSubmatch(query); len(match) == 2 {
+		return match[1]
 	}
 	fields := strings.Fields(query)
 	if len(fields) == 0 {

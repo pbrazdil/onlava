@@ -26,6 +26,7 @@ import (
 	inspectdata "pulse.dev/internal/inspect"
 	"pulse.dev/internal/model"
 	"pulse.dev/internal/parse"
+	"pulse.dev/internal/wiremodel"
 )
 
 type Result struct {
@@ -79,32 +80,42 @@ type GeneratedManifest struct {
 }
 
 type GeneratedManifestPaths struct {
-	App         string `json:"app"`
-	Routes      string `json:"routes"`
-	Services    string `json:"services"`
-	BuildLatest string `json:"build_latest"`
+	App              string `json:"app"`
+	Routes           string `json:"routes"`
+	Services         string `json:"services"`
+	Endpoints        string `json:"endpoints"`
+	WireCapabilities string `json:"wire_capabilities"`
+	BuildLatest      string `json:"build_latest"`
 }
 
 type GeneratedManifestSchema struct {
-	App         string `json:"app"`
-	Routes      string `json:"routes"`
-	Services    string `json:"services"`
-	BuildLatest string `json:"build_latest"`
+	App              string `json:"app"`
+	Routes           string `json:"routes"`
+	Services         string `json:"services"`
+	Endpoints        string `json:"endpoints"`
+	WireCapabilities string `json:"wire_capabilities"`
+	BuildLatest      string `json:"build_latest"`
 }
 
 type GeneratedManifestHashes struct {
-	App      string `json:"app"`
-	Routes   string `json:"routes"`
-	Services string `json:"services"`
+	App              string `json:"app"`
+	Routes           string `json:"routes"`
+	Services         string `json:"services"`
+	Endpoints        string `json:"endpoints"`
+	WireCapabilities string `json:"wire_capabilities"`
 }
 
 type generatedInspectArtifacts struct {
-	App          inspectdata.AppResponse
-	Routes       inspectdata.RoutesResponse
-	Services     inspectdata.ServicesResponse
-	AppJSON      []byte
-	RoutesJSON   []byte
-	ServicesJSON []byte
+	App                  inspectdata.AppResponse
+	Routes               inspectdata.RoutesResponse
+	Services             inspectdata.ServicesResponse
+	Endpoints            inspectdata.EndpointsResponse
+	WireCapabilities     any
+	AppJSON              []byte
+	RoutesJSON           []byte
+	ServicesJSON         []byte
+	EndpointsJSON        []byte
+	WireCapabilitiesJSON []byte
 }
 
 type LatestBuildManifest struct {
@@ -215,20 +226,26 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 
 func writeGeneratedInspectArtifacts(appRoot string, cfg app.Config, appModel *model.App) (*generatedInspectArtifacts, error) {
 	artifacts := &generatedInspectArtifacts{
-		App:      inspectdata.BuildAppResponse(appRoot, cfg, appModel),
-		Routes:   inspectdata.BuildRoutesResponse(appRoot, cfg, appModel),
-		Services: inspectdata.BuildServicesResponse(appRoot, cfg, appModel),
+		App:              inspectdata.BuildAppResponse(appRoot, cfg, appModel),
+		Routes:           inspectdata.BuildRoutesResponse(appRoot, cfg, appModel),
+		Services:         inspectdata.BuildServicesResponse(appRoot, cfg, appModel),
+		Endpoints:        inspectdata.BuildEndpointsResponse(appRoot, cfg, appModel),
+		WireCapabilities: wiremodel.AppCapabilities(appModel),
 	}
 	genDir := filepath.Join(appRoot, ".pulse", "gen")
 	files := map[string]*[]byte{
-		"app.json":      &artifacts.AppJSON,
-		"routes.json":   &artifacts.RoutesJSON,
-		"services.json": &artifacts.ServicesJSON,
+		"app.json":               &artifacts.AppJSON,
+		"routes.json":            &artifacts.RoutesJSON,
+		"services.json":          &artifacts.ServicesJSON,
+		"endpoints.json":         &artifacts.EndpointsJSON,
+		"wire/capabilities.json": &artifacts.WireCapabilitiesJSON,
 	}
 	payloads := map[string]any{
-		"app.json":      artifacts.App,
-		"routes.json":   artifacts.Routes,
-		"services.json": artifacts.Services,
+		"app.json":               artifacts.App,
+		"routes.json":            artifacts.Routes,
+		"services.json":          artifacts.Services,
+		"endpoints.json":         artifacts.Endpoints,
+		"wire/capabilities.json": artifacts.WireCapabilities,
 	}
 	for name, target := range files {
 		data, err := json.MarshalIndent(payloads[name], "", "  ")
@@ -253,21 +270,27 @@ func writeGeneratedManifest(appRoot string, artifacts *generatedInspectArtifacts
 		App:           artifacts.App.App,
 		Counts:        artifacts.App.Counts,
 		Artifacts: GeneratedManifestPaths{
-			App:         ".pulse/gen/app.json",
-			Routes:      ".pulse/gen/routes.json",
-			Services:    ".pulse/gen/services.json",
-			BuildLatest: ".pulse/build/latest.json",
+			App:              ".pulse/gen/app.json",
+			Routes:           ".pulse/gen/routes.json",
+			Services:         ".pulse/gen/services.json",
+			Endpoints:        ".pulse/gen/endpoints.json",
+			WireCapabilities: ".pulse/gen/wire/capabilities.json",
+			BuildLatest:      ".pulse/build/latest.json",
 		},
 		Schemas: GeneratedManifestSchema{
-			App:         artifacts.App.SchemaVersion,
-			Routes:      artifacts.Routes.SchemaVersion,
-			Services:    artifacts.Services.SchemaVersion,
-			BuildLatest: "pulse.build.latest.v1",
+			App:              artifacts.App.SchemaVersion,
+			Routes:           artifacts.Routes.SchemaVersion,
+			Services:         artifacts.Services.SchemaVersion,
+			Endpoints:        artifacts.Endpoints.SchemaVersion,
+			WireCapabilities: "pulse.wire.capabilities.v1",
+			BuildLatest:      "pulse.build.latest.v1",
 		},
 		Hashes: GeneratedManifestHashes{
-			App:      sha256Hex(artifacts.AppJSON),
-			Routes:   sha256Hex(artifacts.RoutesJSON),
-			Services: sha256Hex(artifacts.ServicesJSON),
+			App:              sha256Hex(artifacts.AppJSON),
+			Routes:           sha256Hex(artifacts.RoutesJSON),
+			Services:         sha256Hex(artifacts.ServicesJSON),
+			Endpoints:        sha256Hex(artifacts.EndpointsJSON),
+			WireCapabilities: sha256Hex(artifacts.WireCapabilitiesJSON),
 		},
 	}
 	data, err := json.MarshalIndent(manifest, "", "  ")

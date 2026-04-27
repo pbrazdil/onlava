@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"pulse.dev/errs"
@@ -15,9 +16,11 @@ import (
 )
 
 type server struct {
-	public  *routeTable
-	private *routeTable
-	http    *http.Server
+	public         *routeTable
+	private        *routeTable
+	http           *http.Server
+	wireRecoveryMu sync.Mutex
+	wireRecovery   map[string]wireRecoveryRecord
 }
 
 func newServer(listenAddr string) (*http.Server, error) {
@@ -47,6 +50,7 @@ func newServer(listenAddr string) (*http.Server, error) {
 		s.registerTyped(ep)
 	}
 	s.registerPulseConfig()
+	s.registerWire()
 	s.registerDevPubSubAdmin()
 	s.registerPlatformStats()
 	s.registerPProf()

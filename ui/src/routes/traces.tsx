@@ -112,8 +112,9 @@ export function TracesPage({ traceId, spanId }: { traceId?: string; spanId?: str
       return null;
     }
     const normalized = normalizeSpanID(spanId || "");
+    const legacyNormalized = normalizeLegacyDecimalSpanID(spanId);
     return (
-      model.spans.find((item) => item.id === normalized || item.rawID === spanId) ||
+      model.spans.find((item) => item.id === normalized || item.id === legacyNormalized || item.rawID === spanId) ||
       model.rootSpan ||
       model.spans[0] ||
       null
@@ -125,7 +126,7 @@ export function TracesPage({ traceId, spanId }: { traceId?: string; spanId?: str
     () => (selectedSpan ? countSpanActivity(selectedSpan, childMap) : null),
     [childMap, selectedSpan],
   );
-  const lanes = useMemo(() => (model ? buildTraceLanes(model.spans) : []), [model]);
+  const traceDurationNanos = model ? totalTraceDuration(model, selectedTraceSummary) : 0;
 
   useEffect(() => {
     if (!selectedSpan) {
@@ -190,7 +191,7 @@ export function TracesPage({ traceId, spanId }: { traceId?: string; spanId?: str
                       <tbody>
                         <tr>
                           <th className="text-left text-xs text-foreground font-semibold pr-4 py-1">Duration</th>
-                          <td>{formatDurationNanos(totalTraceDuration(model, selectedTraceSummary))}</td>
+                          <td>{formatDurationNanos(traceDurationNanos)}</td>
                         </tr>
                         <tr>
                           <th className="text-left text-xs text-foreground font-semibold pr-4 py-1">Recorded</th>
@@ -210,20 +211,16 @@ export function TracesPage({ traceId, spanId }: { traceId?: string; spanId?: str
                     </table>
                   </div>
                 </div>
-                <div className="mt-6 w-full flex items-end self-end">
-                  <TraceTimeline lanes={lanes} selectedSpanID={selectedSpan.id} />
-                </div>
               </div>
 
-              <div className="flex flex-col w-full flex-1 min-h-0 min-w-0 overflow-auto">
-                <TraceSpanTree
+              <div className="flex min-h-0 w-full flex-1 flex-col overflow-auto px-4 pb-8 pt-4">
+                <TraceTimeline
                   appId={appId}
                   traceId={model.traceID}
                   spans={model.spans}
                   selectedSpanID={selectedSpan.id}
-                  childMap={childMap}
+                  traceDurationNanos={traceDurationNanos}
                 />
-                <div className="shrink-0 h-20" />
               </div>
             </div>
 
@@ -617,74 +614,105 @@ function BackButton({ appId }: { appId: string }) {
 }
 
 function TraceTimeline({
-  lanes,
+  appId,
+  traceId,
+  spans,
   selectedSpanID,
+  traceDurationNanos,
 }: {
-  lanes: TraceSpanModel[][];
+  appId: string;
+  traceId: string;
+  spans: TraceSpanModel[];
   selectedSpanID: string;
+  traceDurationNanos: number;
 }) {
-  const root = lanes[0]?.[0];
-  const total = traceDurationFromSpan(root);
-  const marks = buildTimelineMarks(total);
+  const domain = buildTraceTimeDomain(spans, traceDurationNanos);
+  const marks = buildTimelineMarks(domain.durationNanos);
 
   return (
-    <div className="w-full relative flex flex-col items-center">
-      <div className="w-full relative mt-4 pb-2">
-        <div className="relative ml-3 mr-2 sm:mr-6 pt-5">
-          <div className="bg-border h-px absolute bottom-0 left-0 right-0" />
-          <div className="text-[10px] sm:text-xs absolute left-0 bottom-0 flex flex-col items-center w-[40px] sm:w-[60px] -ml-[20px] sm:-ml-[30px]">
-            <span className="whitespace-nowrap mb-0.5">0ms</span>
-            <figure className="w-px bg-border h-2" />
-          </div>
+    <div className="relative flex w-full flex-col">
+      <div className="grid grid-cols-[minmax(7rem,10rem)_minmax(0,1fr)] gap-3">
+        <div />
+        <div className="relative h-7">
+          <div className="absolute bottom-0 left-0 right-0 h-px bg-border" />
+          <TimelineMark percent={0} label="0ms" />
           {marks.map((mark) => (
-            <div
-              key={mark.percent}
-              className="text-[10px] sm:text-xs absolute bottom-0 flex flex-col items-center w-[40px] sm:w-[60px] -ml-[20px] sm:-ml-[30px]"
-              style={{ left: `${mark.percent}%` }}
-            >
-              <span className="whitespace-nowrap mb-0.5">{mark.label}</span>
-              <figure className="w-px bg-border h-2" />
-            </div>
+            <TimelineMark key={mark.percent} percent={mark.percent} label={mark.label} />
           ))}
-          <div className="text-[10px] sm:text-xs absolute right-0 bottom-0 flex flex-col items-center w-[40px] sm:w-[60px] -mr-[20px] sm:-mr-[30px]">
-            <span className="whitespace-nowrap mb-0.5">{formatDurationNanos(total)}</span>
-            <figure className="w-px bg-border h-2" />
-          </div>
+          <TimelineMark percent={100} label={formatDurationNanos(domain.durationNanos)} />
         </div>
       </div>
 
-      <div className="w-full mt-4 space-y-2">
-        {lanes.map((lane, index) => (
-          <div key={index} className="relative h-4">
-            {lane.map((span) => {
-              const left = percentageOffset(root, span.startedAt);
-              const width = percentageWidth(root, span);
-              return (
+      <div className="mt-2 space-y-1">
+        {spans.map((span) => {
+          const left = percentageOffset(domain, span);
+          const width = percentageWidth(domain, span);
+          return (
+            <Link
+              key={span.id}
+              to="/$appId/envs/local/traces/$traceId/$spanId"
+              params={{ appId, traceId, spanId: span.rawID || span.id }}
+              className={cn(
+                "grid grid-cols-[minmax(7rem,10rem)_minmax(0,1fr)] items-center gap-3 rounded-sm px-1 py-1 transition-colors hover:bg-foreground/5",
+                selectedSpanID === span.id && "bg-foreground/10",
+              )}
+            >
+              <div className="min-w-0">
+                <div className="truncate text-xs font-medium text-foreground">{span.title}</div>
+                <div className="text-[11px] text-muted-foreground">{formatDurationNanos(traceDurationFromSpan(span))}</div>
+              </div>
+              <div className="relative h-5 overflow-hidden rounded-sm bg-border/25">
                 <div
-                  key={span.id}
                   className={cn(
-                    "absolute top-0 h-4 rounded-sm",
-                    selectedSpanID === span.id
-                      ? "ring-2 ring-background"
-                      : "",
-                    span.isError
-                      ? "bg-red-500"
-                      : span.kind === "db"
-                        ? "bg-yellow-500"
-                        : span.kind === "auth"
-                          ? "bg-green-500"
-                          : "bg-sky-500",
+                    "absolute top-1/2 h-3 -translate-y-1/2 rounded-sm",
+                    selectedSpanID === span.id && "ring-2 ring-background",
                   )}
-                  style={{ left: `${left}%`, width: `${width}%`, minWidth: "2px" }}
-                  title={span.title}
+                  style={{
+                    left: `${left}%`,
+                    width: `${width}%`,
+                    minWidth: "3px",
+                    backgroundColor: traceSpanColor(span),
+                  }}
+                  title={`${span.title} ${formatDurationNanos(traceDurationFromSpan(span))}`}
                 />
-              );
-            })}
-          </div>
-        ))}
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+function TimelineMark({ percent, label }: { percent: number; label: string }) {
+  const isStart = percent === 0;
+  const isEnd = percent === 100;
+  return (
+    <div
+      className={cn(
+        "absolute bottom-0 flex w-[90px] flex-col items-center text-[10px] text-muted-foreground sm:text-xs",
+        isStart ? "left-0 items-start" : isEnd ? "right-0 items-end" : "-translate-x-1/2",
+      )}
+      style={isStart || isEnd ? undefined : { left: `${percent}%` }}
+    >
+      <span className="mb-0.5 whitespace-nowrap">{label}</span>
+      <figure className="h-2 w-px bg-border" />
+    </div>
+  );
+}
+
+function traceSpanColor(span: TraceSpanModel): string {
+  if (span.isError) {
+    return "#ef4444";
+  }
+  switch (span.kind) {
+    case "db":
+      return "#eab308";
+    case "auth":
+      return "#22c55e";
+    default:
+      return "#38bdf8";
+  }
 }
 
 function TraceSpanTree({
@@ -779,24 +807,6 @@ function TraceSpanTreeItem({
         >
           <div className={cn("text-xs truncate mb-1", span.isError ? "text-destructive" : "text-foreground")}>
             {span.title}
-          </div>
-          <div className="mr-2 sm:mr-6 ml-3 w-full self-end mt-1">
-            <div className="relative" style={{ height: "8px" }}>
-              <div className="absolute inset-x-0 bg-border" style={{ height: "1px", top: "3px" }} />
-              <div
-                className={cn(
-                  "absolute inset-y-0 rounded-sm",
-                  span.isError
-                    ? "bg-red-500"
-                    : span.kind === "db"
-                      ? "bg-yellow-500"
-                      : span.kind === "auth"
-                        ? "bg-green-500"
-                        : "bg-sky-500",
-                )}
-                style={{ left: "0%", width: `${Math.max(4, Math.min(100, Math.round((traceDurationFromSpan(span) / 10_000_000) * 100))) / 2}%` }}
-              />
-            </div>
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
             {formatDurationNanos(span.durationNanos)} • {formatTime(span.startedAt)}
@@ -982,8 +992,8 @@ function SpanEventTimeline({ span }: { span: TraceSpanModel }) {
           return (
             <div
               key={event.id}
-              className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500"
-              style={{ left: `${Math.max(0, Math.min(100, offset * 100))}%` }}
+              className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full"
+              style={{ left: `${Math.max(0, Math.min(100, offset * 100))}%`, backgroundColor: "#38bdf8" }}
               title={`${event.title} · ${formatTime(event.at)}`}
             />
           );
@@ -1201,34 +1211,11 @@ function countSpanActivity(
   return { requests, db, httpCalls, logs };
 }
 
-function buildTraceLanes(spans: TraceSpanModel[]): TraceSpanModel[][] {
-  const sorted = [...spans].sort((a, b) => compareDateString(a.startedAt, b.startedAt));
-  const lanes: TraceSpanModel[][] = [];
-
-  for (const span of sorted) {
-    const start = parseTime(span.startedAt) ?? 0;
-    const end = endTime(span);
-    let placed = false;
-    for (const lane of lanes) {
-      const last = lane[lane.length - 1];
-      if (!last) {
-        lane.push(span);
-        placed = true;
-        break;
-      }
-      if ((endTime(last) ?? 0) <= start) {
-        lane.push(span);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) {
-      lanes.push([span]);
-    }
-  }
-
-  return lanes;
-}
+type TraceTimeDomain = {
+  startMs: number;
+  endMs: number;
+  durationNanos: number;
+};
 
 function buildTimelineMarks(totalNanos: number): Array<{ percent: number; label: string }> {
   if (totalNanos <= 0) {
@@ -1263,20 +1250,83 @@ function traceDurationFromSpan(span: TraceSpanModel | undefined): number {
   return start !== null && end !== null ? Math.max(0, (end - start) * 1_000_000) : 0;
 }
 
-function percentageOffset(root: TraceSpanModel | undefined, startedAt?: string): number {
-  const rootStart = parseTime(root?.startedAt);
-  const current = parseTime(startedAt);
-  const totalMs = (traceDurationFromSpan(root) || 1) / 1_000_000;
-  if (rootStart === null || current === null) {
-    return 0;
+function buildTraceTimeDomain(spans: TraceSpanModel[], traceDurationNanos: number): TraceTimeDomain {
+  const starts = spans
+    .map((span) => spanStartTime(span))
+    .filter((value): value is number => value !== null);
+  const ends = spans
+    .map((span) => spanEndTime(span))
+    .filter((value): value is number => value !== null);
+
+  const fallbackDurationMs = Math.max(1, traceDurationNanos / 1_000_000);
+  const fallbackStart = starts[0] ?? 0;
+  let startMs = starts.length > 0 ? Math.min(...starts) : fallbackStart;
+  let endMs = ends.length > 0 ? Math.max(...ends) : startMs + fallbackDurationMs;
+
+  const rootStart = spanStartTime(spans[0]);
+  if (rootStart !== null && traceDurationNanos > 0) {
+    startMs = Math.min(startMs, rootStart);
+    endMs = Math.max(endMs, rootStart + traceDurationNanos / 1_000_000);
   }
-  return Math.max(0, Math.min(100, ((current - rootStart) / totalMs) * 100));
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    startMs = 0;
+    endMs = fallbackDurationMs;
+  }
+
+  return {
+    startMs,
+    endMs,
+    durationNanos: Math.max(1, (endMs - startMs) * 1_000_000),
+  };
 }
 
-function percentageWidth(root: TraceSpanModel | undefined, span: TraceSpanModel): number {
-  const total = traceDurationFromSpan(root) || traceDurationFromSpan(span) || 1;
-  const current = traceDurationFromSpan(span);
-  return Math.max(2, Math.min(100, (current / total) * 100));
+function percentageOffset(domain: TraceTimeDomain, span: TraceSpanModel): number {
+  const current = spanStartTime(span);
+  if (current === null) {
+    return 0;
+  }
+  return clampPercent(((current - domain.startMs) / (domain.endMs - domain.startMs)) * 100);
+}
+
+function percentageWidth(domain: TraceTimeDomain, span: TraceSpanModel): number {
+  const start = spanStartTime(span) ?? domain.startMs;
+  const end = spanEndTime(span) ?? start;
+  const clampedStart = Math.max(domain.startMs, Math.min(domain.endMs, start));
+  const clampedEnd = Math.max(domain.startMs, Math.min(domain.endMs, end));
+  const width = ((Math.max(clampedEnd, clampedStart) - clampedStart) / (domain.endMs - domain.startMs)) * 100;
+  return Math.max(0.35, Math.min(100, width));
+}
+
+function spanStartTime(span: TraceSpanModel | undefined): number | null {
+  const explicit = parseTime(span?.startedAt);
+  if (explicit !== null) {
+    return explicit;
+  }
+  const end = endTime(span);
+  if (end === null || !span?.durationNanos) {
+    return null;
+  }
+  return end - span.durationNanos / 1_000_000;
+}
+
+function spanEndTime(span: TraceSpanModel | undefined): number | null {
+  const explicit = endTime(span);
+  if (explicit !== null) {
+    return explicit;
+  }
+  const start = parseTime(span?.startedAt);
+  if (start === null) {
+    return null;
+  }
+  return start;
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, value));
 }
 
 function endTime(span: TraceSpanModel | undefined): number | null {
@@ -1301,6 +1351,17 @@ function parseTime(value?: string): number | null {
 
 function compareDateString(a?: string, b?: string): number {
   return (parseTime(a) ?? 0) - (parseTime(b) ?? 0);
+}
+
+function normalizeLegacyDecimalSpanID(value: string | undefined): string {
+  if (!value || !/^[0-9]+$/.test(value)) {
+    return "";
+  }
+  try {
+    return normalizeSpanID(BigInt(value).toString(16));
+  } catch {
+    return "";
+  }
 }
 
 function pathParamsObject(pathTemplate: string, rawPathParams: unknown): Record<string, string> {
