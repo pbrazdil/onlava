@@ -703,6 +703,7 @@ func buildHarnessSelfKnowledge(repoRoot string) harnessKnowledge {
 		"docs/schemas/pulse.inspect.traces.v1.schema.json",
 		"docs/schemas/pulse.logs.event.v1.schema.json",
 		"docs/schemas/pulse.run.event.v1.schema.json",
+		"docs/schemas/pulse.version.v1.schema.json",
 		"docs/schemas/pulse.wire.capabilities.v1.schema.json",
 	}
 	return harnessKnowledge{

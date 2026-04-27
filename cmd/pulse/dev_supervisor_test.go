@@ -49,6 +49,29 @@ func TestAppEnvWithDotEnvAddsMissingValuesWithoutOverridingProcessEnv(t *testing
 	}
 }
 
+func TestAppEnvWithDotEnvCanLoadLocalOverride(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("A=from-env\nB=from-env\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".env.local"), []byte("B=from-local\nC=from-local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env, err := appEnvWithDotEnv([]string{"A=from-process"}, root, ".env", ".env.local")
+	if err != nil {
+		t.Fatalf("appEnvWithDotEnv: %v", err)
+	}
+	if !containsString(env, "A=from-process") {
+		t.Fatalf("env missing process value: %v", env)
+	}
+	if !containsString(env, "B=from-local") {
+		t.Fatalf("env missing .env.local override: %v", env)
+	}
+	if !containsString(env, "C=from-local") {
+		t.Fatalf("env missing .env.local value: %v", env)
+	}
+}
+
 func TestStripANSI(t *testing.T) {
 	input := []byte("\x1b[34mTRC\x1b[0m request completed code=ok\n")
 	got := stripANSI(input)

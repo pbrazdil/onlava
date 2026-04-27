@@ -2,10 +2,13 @@
 
 This file tracks active or near-term plans that affect implementation choices.
 
+ExecPlan filenames use permanent four-digit historical IDs. Do not renumber or
+reuse IDs; this list can still be ordered by current priority.
+
 ## Active ExecPlans
 
-- [Split `pulse dev` From Headless `pulse run`](devrun-command-split.md): turn the PRD-4 command split into an executable implementation plan.
-- [Pulse v0 Release Readiness](v0-release-readiness.md): convert the release-readiness audit into a staged hardening plan for a narrow, boring v0.
+1. [0001 Split `pulse dev` From Headless `pulse run`](0001-devrun-command-split.md): turn the PRD-4 command split into an executable implementation plan.
+2. [0002 Pulse v0 Release Readiness](0002-v0-release-readiness.md): convert the release-readiness audit into a staged hardening plan for a narrow, boring v0.
 
 ## Agent-Friendly Local Runtime
 

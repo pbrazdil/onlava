@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +25,7 @@ import (
 	"pulse.dev/internal/dbstudio"
 	"pulse.dev/internal/devdash"
 	"pulse.dev/internal/devmeta"
+	"pulse.dev/internal/envfile"
 	"pulse.dev/internal/localproxy"
 	"pulse.dev/internal/model"
 	"pulse.dev/internal/parse"
@@ -51,6 +51,7 @@ type devSupervisor struct {
 	dbStudioUI  *dbStudioUIServer
 	dbStudioURL string
 	proxy       *localproxy.Proxy
+	victoria    *victoriaStack
 	reportToken string
 	console     *runConsole
 
@@ -113,6 +114,7 @@ func (s *devSupervisor) Close() error {
 
 		app := s.detachCurrentApp()
 		dbStudio := s.currentDBStudio()
+		victoria := s.victoria
 
 		var errs []error
 		if app != nil {
@@ -122,6 +124,11 @@ func (s *devSupervisor) Close() error {
 		}
 		if dbStudio != nil {
 			if err := dbStudio.Interrupt(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if victoria != nil {
+			if err := victoria.Interrupt(); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -179,6 +186,11 @@ func (s *devSupervisor) Close() error {
 				errs = append(errs, err)
 			}
 		}
+		if victoria != nil {
+			if err := victoria.WaitOrKill(5 * time.Second); err != nil {
+				errs = append(errs, err)
+			}
+		}
 
 		if s.store != nil {
 			if err := s.store.Close(); err != nil {
@@ -202,6 +214,7 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 	if err := s.dashboard.Start(ctx); err != nil {
 		return err
 	}
+	s.victoria = startVictoriaStack(s.ctx, s.root, s.console)
 	if err := s.startDBStudio(s.ctx); err != nil {
 		slog.Warn("db studio unavailable", "err", err)
 	}
@@ -374,6 +387,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 			MCP:       s.mcpURL(),
 			Frontend:  s.frontendURL(),
 			DBStudio:  s.dbStudioURL,
+			Victoria:  s.victoria.URLs(),
 		})
 	}
 	return nil
@@ -395,7 +409,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	configureChildProcess(cmd)
 	cmd.WaitDelay = stopTimeout + time.Second
 	cmd.Dir = s.root
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root)
+	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root, ".env", ".env.local")
 	if err != nil {
 		return nil, err
 	}
@@ -406,11 +420,13 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		"PULSE_APP_ID="+s.cfg.Name,
 		"PULSE_APP_ROOT="+s.root,
 		"PULSE_DEV_SUPERVISOR=1",
+		"PULSE_DEV_ENDPOINTS=1",
 		fmt.Sprintf("PULSE_DEV_SUPERVISOR_PID=%d", os.Getpid()),
 		"PULSE_LOCAL_PROXY=0",
 		"PULSE_DEV_REPORT_URL=http://"+devdash.ListenAddr()+devdash.ReportPath,
 		"PULSE_DEV_REPORT_TOKEN="+s.reportToken,
 	)
+	cmd.Env = append(cmd.Env, s.victoria.Env()...)
 	if s.proxy != nil {
 		cmd.Env = append(cmd.Env, "PULSE_PUBLIC_BASE_URL="+s.proxy.Routes().APIURL)
 	}
@@ -502,31 +518,15 @@ func appChildEnv(base []string, forceColor bool, vars ...string) []string {
 	return env
 }
 
-func appEnvWithDotEnv(base []string, root string) ([]string, error) {
-	env := append([]string(nil), base...)
-	existing := make(map[string]bool, len(env))
-	for _, item := range env {
-		key, _, ok := strings.Cut(item, "=")
-		if ok {
-			existing[key] = true
-		}
+func appEnvWithDotEnv(base []string, root string, names ...string) ([]string, error) {
+	if len(names) == 0 {
+		names = []string{".env"}
 	}
-	values, err := parseDotEnvFile(filepath.Join(root, ".env"))
+	values, err := envfile.MergeFiles(root, names...)
 	if err != nil {
 		return nil, err
 	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		if existing[key] {
-			continue
-		}
-		env = append(env, key+"="+values[key])
-	}
-	return env, nil
+	return envfile.AppendMissing(base, values), nil
 }
 
 func stripANSI(data []byte) []byte {
@@ -564,17 +564,6 @@ func (s *devSupervisor) handleExit(ctx context.Context, app *runningApp) {
 			"pid": app.pid,
 		})
 	}
-}
-
-func (s *devSupervisor) stopCurrent() error {
-	s.mu.Lock()
-	current := s.current
-	s.current = nil
-	s.mu.Unlock()
-	if current == nil {
-		return nil
-	}
-	return current.stop()
 }
 
 func (a *runningApp) interrupt() error {
@@ -776,7 +765,7 @@ func (s *devSupervisor) activeAppID() string {
 }
 
 func (s *devSupervisor) startLocalProxy() error {
-	if os.Getenv("PULSE_LOCAL_PROXY") == "0" {
+	if !localproxy.Enabled() {
 		return nil
 	}
 	workspace := s.cfg.Proxy.Workspace

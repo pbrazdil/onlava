@@ -145,9 +145,12 @@ func buildInspectTracesResponse(ctx context.Context, appRoot string, cfg appcfg.
 	resp.Warnings = warnings
 
 	query := inspectTraceQuery(cfg.Name, opts)
-	items, err := store.QueryTraceSummaries(ctx, query)
-	if err != nil {
-		return inspectTracesResponse{}, err
+	items, usingVictoria := queryVictoriaTraceSummaries(ctx, query)
+	if !usingVictoria {
+		items, err = store.QueryTraceSummaries(ctx, query)
+		if err != nil {
+			return inspectTracesResponse{}, err
+		}
 	}
 	if opts.Slowest {
 		devdash.SortTraceSummariesByDuration(items)
@@ -185,9 +188,12 @@ func buildInspectMetricsResponse(ctx context.Context, appRoot string, cfg appcfg
 	resp.Warnings = warnings
 
 	query := inspectTraceQuery(cfg.Name, opts)
-	items, err := store.QueryTraceMetrics(ctx, query)
-	if err != nil {
-		return inspectMetricsResponse{}, err
+	items, usingVictoria := queryVictoriaTraceSummaries(ctx, query)
+	if !usingVictoria {
+		items, err = store.QueryTraceMetrics(ctx, query)
+		if err != nil {
+			return inspectMetricsResponse{}, err
+		}
 	}
 	resp.Summary = buildInspectMetricsSummary(items)
 	resp.Services = buildInspectTraceMetrics(items, "service")
@@ -245,6 +251,18 @@ func inspectTraceQuery(appID string, opts inspectTraceQueryOptions) devdash.Trac
 		query.MinDurationNanos = uint64(opts.MinDurationMS * float64(time.Millisecond))
 	}
 	return query
+}
+
+func queryVictoriaTraceSummaries(ctx context.Context, query devdash.TraceQuery) ([]*devdash.TraceSummary, bool) {
+	stack := defaultVictoriaQueryStack()
+	if stack == nil {
+		return nil, false
+	}
+	items, err := stack.QueryTraceSummaries(ctx, query)
+	if err != nil || len(items) == 0 {
+		return nil, false
+	}
+	return items, true
 }
 
 func buildInspectTraceQueryRecord(appID string, opts inspectTraceQueryOptions) inspectTraceQueryRecord {

@@ -82,12 +82,24 @@ func pulseDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, fronte
 
 func stopPulseProcess(t *testing.T, cancel context.CancelFunc, cmd *exec.Cmd) {
 	t.Helper()
-	cancel()
+	cmd.WaitDelay = 500 * time.Millisecond
 	if cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+		_ = cmd.Process.Signal(os.Interrupt)
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+		cancel()
+		return
+	case <-time.After(5 * time.Second):
+	}
+	cancel()
+	if cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Process.Kill()
+	}
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):

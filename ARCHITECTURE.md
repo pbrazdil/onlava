@@ -271,6 +271,13 @@ Local observability is part of the product surface. Runtime traces, logs,
 metrics, dashboard state, and inspect commands should give enough evidence to
 debug a local app without relying on external services.
 
+`pulse dev` uses a Victoria-plus-SQLite posture for local observability. The
+dashboard report path writes SQLite first for parity and fallback, then exports
+OTLP protobuf to supervised VictoriaMetrics, VictoriaLogs, and VictoriaTraces
+sidecars when available. Dashboard and inspect trace reads prefer Victoria and
+fall back to SQLite. Runtime remains decoupled from Victoria server packages;
+the stable boundary is HTTP/OTLP, not Go library imports.
+
 ### File Size And Placement
 
 Pulse favors code that can be found quickly. Keep related concepts adjacent in

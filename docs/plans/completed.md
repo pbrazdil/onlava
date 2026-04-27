@@ -44,3 +44,18 @@ Shipped:
 - Trace query filters for service, endpoint, trace ID, status, duration, time window, and sort order.
 - Metrics rollups by service and endpoint.
 - Log-level counts and trace event counts from the dashboard SQLite store.
+
+## Victoria Observability Sidecars
+
+- Status: completed
+- Owner: Pulse runtime
+- Completed: 2026-04-27
+- Quality: A
+- ExecPlan: [0003 Victoria Observability Sidecars](0003-victoria-observability-sidecars.md)
+
+Shipped:
+
+- `pulse dev` starts VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default while preserving SQLite observability writes.
+- Sidecars use loopback ports, `.pulse/victoria/` storage, automatic binary resolution/download, and graceful shutdown with the dev supervisor.
+- Pulse exports built-in trace, log, and request-duration metric reports to Victoria over OTLP protobuf.
+- Dashboard and inspect trace reads prefer VictoriaTraces with SQLite fallback.

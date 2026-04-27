@@ -1,17 +1,16 @@
 package runtime
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"unicode"
+
+	"pulse.dev/internal/envfile"
 )
 
 var (
@@ -175,66 +174,9 @@ func collectMissingSecretsLocked() (fields []string, keys []string, ok bool) {
 
 func loadSecretsEnv() (map[string]string, error) {
 	secretsEnvOnce.Do(func() {
-		secretsEnvData, secretsEnvErr = parseDotEnv(".env")
+		secretsEnvData, secretsEnvErr = envfile.ParseFile(".env")
 	})
 	return secretsEnvData, secretsEnvErr
-}
-
-func parseDotEnv(path string) (map[string]string, error) {
-	data := make(map[string]string)
-	file, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return data, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("runtime: read %s: %w", path, err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for lineNo := 1; scanner.Scan(); lineNo++ {
-		line := strings.TrimSpace(scanner.Text())
-		if lineNo == 1 {
-			line = strings.TrimPrefix(line, "\uFEFF")
-		}
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "export ") {
-			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		}
-		key, rawValue, ok := strings.Cut(line, "=")
-		if !ok {
-			return nil, fmt.Errorf("runtime: invalid .env line %d", lineNo)
-		}
-		key = strings.TrimSpace(key)
-		if key == "" {
-			return nil, fmt.Errorf("runtime: invalid empty .env key on line %d", lineNo)
-		}
-		value, err := parseDotEnvValue(strings.TrimSpace(rawValue))
-		if err != nil {
-			return nil, fmt.Errorf("runtime: parse .env line %d: %w", lineNo, err)
-		}
-		data[key] = value
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("runtime: scan %s: %w", path, err)
-	}
-	return data, nil
-}
-
-func parseDotEnvValue(value string) (string, error) {
-	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-		unquoted, err := strconv.Unquote(value)
-		if err != nil {
-			return "", err
-		}
-		return unquoted, nil
-	}
-	if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
-		return value[1 : len(value)-1], nil
-	}
-	return value, nil
 }
 
 func lookupSecretValue(fileEnv map[string]string, keys []string) (string, bool) {

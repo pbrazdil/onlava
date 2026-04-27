@@ -18,6 +18,9 @@ type compatTraceEvent struct {
 }
 
 func (s *dashboardServer) traceEventsFor(ctx context.Context, appID, traceID string) ([]map[string]any, error) {
+	if events, err := s.supervisor.victoria.TraceEventsFor(ctx, appID, traceID, ""); err == nil && len(events) > 0 {
+		return events, nil
+	}
 	summaries, err := s.supervisor.store.GetTraceSummaries(ctx, appID, traceID)
 	if err != nil {
 		return nil, err
@@ -37,6 +40,9 @@ func (s *dashboardServer) traceEventsFor(ctx context.Context, appID, traceID str
 }
 
 func (s *dashboardServer) traceEventsForSpan(ctx context.Context, appID, traceID, spanID string) ([]map[string]any, error) {
+	if events, err := s.supervisor.victoria.TraceEventsFor(ctx, appID, traceID, spanID); err == nil && len(events) > 0 {
+		return events, nil
+	}
 	rawEvents, err := s.supervisor.store.GetTraceEvents(ctx, appID, traceID, spanID)
 	if err != nil {
 		return nil, err
@@ -57,6 +63,45 @@ func (s *dashboardServer) traceEventsForSpan(ctx context.Context, appID, traceID
 	compat := buildCompatTraceEvents(summary, rawEvents)
 	sortCompatTraceEvents(compat)
 	return compatTracePayloads(compat), nil
+}
+
+func (s *dashboardServer) listTraceSummaries(ctx context.Context, appID string, limit int, messageID string) ([]*devdash.TraceSummary, error) {
+	if s != nil && s.supervisor != nil && s.supervisor.victoria != nil {
+		items, err := s.supervisor.victoria.QueryTraceSummaries(ctx, devdash.TraceQuery{
+			AppID: appID,
+			Limit: limit,
+		})
+		if err == nil && len(items) > 0 {
+			if messageID != "" {
+				items = filterTraceSummariesByMessageID(items, messageID)
+			}
+			return items, nil
+		}
+	}
+	return s.supervisor.store.ListTraceSummaries(ctx, appID, limit, messageID)
+}
+
+func (s *dashboardServer) getTraceSummaries(ctx context.Context, appID, traceID string) ([]*devdash.TraceSummary, error) {
+	if s != nil && s.supervisor != nil && s.supervisor.victoria != nil {
+		items, err := s.supervisor.victoria.GetTraceSummaries(ctx, appID, traceID)
+		if err == nil && len(items) > 0 {
+			return items, nil
+		}
+	}
+	return s.supervisor.store.GetTraceSummaries(ctx, appID, traceID)
+}
+
+func filterTraceSummariesByMessageID(items []*devdash.TraceSummary, messageID string) []*devdash.TraceSummary {
+	if messageID == "" {
+		return items
+	}
+	out := items[:0]
+	for _, item := range items {
+		if item.MessageID != nil && strings.Contains(*item.MessageID, messageID) {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func buildCompatTraceEvents(summary *devdash.TraceSummary, events []*devdash.TraceEvent) []compatTraceEvent {

@@ -16,6 +16,7 @@ Implemented now:
 - `pulse.app`
 - `pulse dev --json`
 - `pulse run`
+- `pulse version --json`
 - `pulse check --json`
 - `pulse harness --json`
 - `pulse harness self --json`
@@ -45,6 +46,38 @@ Implemented now:
 Reserved by contract, implementation pending:
 - other `pulse admin ... --json` commands beyond `traces clear` and `pubsub clear`
 - repo-local runtime and state manifests beyond `.pulse/build/latest.json`, `.pulse/gen/*`, and `.pulse/harness/latest.json`
+
+Stable v0 surface:
+- `pulse.app`
+- `pulse run`
+- `pulse build`
+- `pulse version --json`
+- `pulse check --json`
+- `pulse inspect ... --json`
+- `pulse logs --jsonl`
+- `pulse test`
+- `pulse gen client`
+- typed/raw HTTP endpoints
+- auth handler
+- service struct initialization and shutdown
+- private/internal calls
+- secrets from process env and local `.env`
+- basic traces and logs
+
+Dev-only or beta surface:
+- `pulse dev`
+- dashboard and API Explorer
+- DB Studio
+- MCP server
+- local HTTPS/frontend proxy
+- trust-store installation
+- Pub/Sub UI and queue controls
+- cron UI
+- Encore migration compatibility
+
+Compatibility posture:
+- Pulse-native syntax and imports are the stable API.
+- Encore directives/imports may still be accepted for migration, but they are compatibility behavior and not the primary v0 API.
 
 ## `pulse.app`
 
@@ -89,8 +122,9 @@ Rules:
 Current implemented grammar:
 
 ```text
-pulse dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]
+pulse dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]
 pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+pulse version [--json]
 pulse build [--app-root <path>] [-o <path>] [--db-studio]
 pulse check [--app-root <path>] [--json]
 pulse harness [--app-root <path>] [--json] [--write]
@@ -110,7 +144,7 @@ Frozen `inspect` rules:
 - `pulse inspect` requires a subject.
 - `pulse inspect` currently requires `--json`.
 - `--app-root` is optional. When omitted, Pulse walks upward from the current working directory to find `pulse.app`.
-- `traces` and `metrics` read the local Pulse dashboard SQLite store. If no local state exists, they return valid JSON with a warning and empty result sets.
+- `traces` and `metrics` prefer local VictoriaTraces reads when those sidecars are available, and fall back to the Pulse dashboard SQLite store. If no local state exists, they return valid JSON with a warning and empty result sets.
 - `--since` accepts Go duration strings such as `15m`, `1h`, or `24h`.
 - `--min-duration-ms` filters root traces by duration in milliseconds.
 - `--status` accepts `ok` or `error`.
@@ -119,10 +153,39 @@ Frozen `inspect` rules:
 
 Command split:
 
-- `pulse dev` starts the local development platform: app process, dashboard, MCP endpoint, local HTTPS/frontend proxy when configured, DB Studio when configured, file watching, and rebuild/restart supervision.
+- `pulse dev` starts the local development platform: app process, dashboard, MCP endpoint, DB Studio when configured, file watching, and rebuild/restart supervision.
+- `pulse dev` also starts local VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default when their binaries can be found or downloaded. SQLite dashboard storage remains active for parity and fallback.
+- `pulse dev --proxy` enables the local HTTPS/frontend proxy.
+- `pulse dev --proxy --trust` allows local trust-store installation. Without `--trust`, the proxy skips trust installation.
 - `pulse run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, DB Studio, frontend proxy, or file watcher.
 - `pulse build` produces the deployable binary and remains the preferred deployment artifact path.
 - Generated app binaries are headless by default. `pulse build --db-studio` is an explicit opt-in for the DB Studio integration.
+
+Runtime safety:
+
+- `pulse run` and generated binaries do not expose dev/admin endpoints by default.
+- Dev/admin endpoints such as `/__pulse/config`, `/__pulse/pubsub/clear`, `/platform.Stats`, and `/debug/pprof/*` are enabled only for the development child process launched by `pulse dev` or when `PULSE_DEV_ENDPOINTS=1` is set explicitly.
+- Runtime CORS reflection is enabled in dev endpoint mode. Outside dev mode, CORS origins must be explicitly allowlisted with `PULSE_CORS_ALLOW_ORIGINS`.
+- Build workspaces skip local secret and machine artifacts such as `.env`, `.env.*`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage`.
+
+Local observability:
+
+- Pulse keeps SQLite observability writes active in `pulse dev`.
+- When Victoria sidecars are available, Pulse also exports OTLP protobuf to:
+  - VictoriaMetrics: `/opentelemetry/v1/metrics`
+  - VictoriaLogs: `/insert/opentelemetry/v1/logs`
+  - VictoriaTraces: `/insert/opentelemetry/v1/traces`
+- Dashboard trace reads and `pulse inspect traces|metrics --json` prefer Victoria data and fall back to SQLite data.
+- Victoria sidecars are supervised by `pulse dev`, store data under `.pulse/victoria/` by default, and are stopped with the dev supervisor.
+- `PULSE_DEV_VICTORIA=0` disables Victoria sidecars. `PULSE_DEV_VICTORIA_DOWNLOAD=0` disables automatic binary downloads.
+
+Secrets and environment:
+
+- Process environment always wins over values loaded from local files.
+- The stable runtime path reads `.env` from the app root for local secret population when a value is not already present in the process environment.
+- `pulse dev` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
+- `pulse dev` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
+- `.env`, `.env.*`, and secret-bearing local files are not copied into build workspaces.
 
 Implemented `dev --json` rules:
 
@@ -278,6 +341,7 @@ Implemented now:
 - [pulse.harness.self.v1.schema.json](schemas/pulse.harness.self.v1.schema.json)
 - [pulse.logs.event.v1.schema.json](schemas/pulse.logs.event.v1.schema.json)
 - [pulse.admin.result.v1.schema.json](schemas/pulse.admin.result.v1.schema.json)
+- [pulse.version.v1.schema.json](schemas/pulse.version.v1.schema.json)
 
 Reserved now:
 - future command-specific admin schemas if `pulse.admin.result.v1` becomes too generic

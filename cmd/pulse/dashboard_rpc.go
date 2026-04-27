@@ -164,7 +164,11 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		if params.AppID == "" {
 			params.AppID = s.supervisor.activeAppID()
 		}
-		return "ok", s.supervisor.store.ClearTraces(ctx, params.AppID)
+		if err := s.supervisor.store.ClearTraces(ctx, params.AppID); err != nil {
+			return nil, err
+		}
+		s.supervisor.victoria.MarkCleared(params.AppID, time.Now().UTC())
+		return "ok", nil
 	case "traces/list":
 		var params struct {
 			AppID     string `json:"app_id"`
@@ -174,7 +178,7 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		if params.AppID == "" {
 			params.AppID = s.supervisor.activeAppID()
 		}
-		return s.supervisor.store.ListTraceSummaries(ctx, params.AppID, 100, params.MessageID)
+		return s.listTraceSummaries(ctx, params.AppID, 100, params.MessageID)
 	case "traces/get":
 		var params struct {
 			AppID   string `json:"app_id"`
@@ -194,7 +198,7 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		if params.AppID == "" {
 			params.AppID = s.supervisor.activeAppID()
 		}
-		return s.supervisor.store.GetTraceSummaries(ctx, params.AppID, params.TraceID)
+		return s.getTraceSummaries(ctx, params.AppID, params.TraceID)
 	case "traces/spans/events/list":
 		var params struct {
 			AppID   string `json:"app_id"`

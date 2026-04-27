@@ -15,17 +15,17 @@ The outcome should be observable from a clean checkout. A contributor should be 
 ## Progress
 
 - [x] (2026-04-27 16:34Z) Created this ExecPlan from `docs/PRD-3-release.md`.
-- [ ] Define the stable v0 surface and mark everything else dev-only, beta, or compatibility-mode.
-- [ ] Complete or reference the `pulse dev` / headless `pulse run` split from [devrun-command-split.md](devrun-command-split.md).
-- [ ] Fix clean-checkout release reproducibility, including UI embed/build expectations.
-- [ ] Move dev/admin/pprof endpoints off the public app router or gate them behind explicit local-only behavior.
-- [ ] Make local HTTPS proxy and trust-store installation opt-in.
-- [ ] Decide and document Pulse-native versus Encore compatibility behavior.
-- [ ] Centralize secrets and `.env` loading rules.
-- [ ] Restrict build workspace copying so secrets and local artifacts are not persisted in caches.
-- [ ] Add response JSON semantics tests for tags, omitted fields, embedded structs, and custom marshalers.
-- [ ] Align CLI usage, docs, schemas, and implementation.
-- [ ] Run the release validation sequence and record the results.
+- [x] (2026-04-27 17:36Z) Defined the stable v0 surface and marked everything else dev-only, beta, or compatibility-mode in `docs/local-contract.md`.
+- [x] (2026-04-27 17:36Z) Confirmed the `pulse dev` / headless `pulse run` split is implemented and kept [0001-devrun-command-split.md](0001-devrun-command-split.md) as the detailed dependency.
+- [x] (2026-04-27 17:36Z) Confirmed current checkout has `ui/dist` and `dbstudio/dist`, added `pulse version --json`, and added `pulse.version.v1` schema.
+- [x] (2026-04-27 17:36Z) Gated dev/admin/pprof endpoints behind explicit dev endpoint mode instead of registering them on the public app router by default.
+- [x] (2026-04-27 17:36Z) Made local HTTPS proxy and trust-store installation opt-in through `pulse dev --proxy` and `pulse dev --proxy --trust`.
+- [x] (2026-04-27 17:36Z) Documented Pulse-native behavior as stable and Encore behavior as compatibility-mode rather than the primary v0 API.
+- [x] (2026-04-27 15:48Z) Centralized `.env` parsing in `internal/envfile`, wired runtime secrets, dev supervisor child env, dashboard DB discovery, and DB Studio discovery through it, and documented precedence.
+- [x] (2026-04-27 17:36Z) Restricted build workspace copying so `.env`, `.env.*`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, `__MACOSX`, `coverage`, and `encore.gen.go` are not persisted in build caches.
+- [x] (2026-04-27 17:36Z) Added response JSON semantics tests for `json:"-"`, `omitempty`, embedded structs, headers, `pulse:"httpstatus"`, and custom marshalers.
+- [x] (2026-04-27 17:36Z) Aligned CLI usage, docs, schemas, and implementation for the release-hardening slice.
+- [x] (2026-04-27 15:48Z) Ran the release validation sequence and recorded the results.
 
 ## Surprises & Discoveries
 
@@ -41,13 +41,21 @@ Known audit findings from the PRD:
 - The build workspace copied arbitrary app files, which risks copying `.env` and other local files into cache.
 - Response encoding did not fully match normal `encoding/json` semantics for tags such as `json:"-"` and `omitempty`.
 
+Implementation discoveries:
+
+- `pulse dev` and headless `pulse run` were already split before this plan execution started, including tests that reject dev flags on `pulse run`.
+- Runtime dev endpoints could be preserved for `pulse dev` by injecting `PULSE_DEV_ENDPOINTS=1` into the development child process.
+- Local proxy startup could be made opt-in without changing Caddy configuration internals by changing defaults and adding `pulse dev --proxy` / `--trust` environment wiring.
+- Full integration tests exposed older assumptions that `pulse run` reflected arbitrary CORS origins by default and that `pulse dev` always started the local HTTPS proxy. The tests were updated to assert the new release contract: explicit CORS allowlist for headless run and `pulse dev --proxy` for hostname routing.
+- The shared `.env` loader can preserve package-init ergonomics by passing `.env` and `.env.local` values into the development child process before Go package initialization. This avoids requiring app code to manually parse local env files.
+
 ## Decision Log
 
 - Decision: Freeze a narrow stable v0 contract instead of freezing the whole current feature set.
   Rationale: The runtime, dev supervisor, dashboard, proxy, DB Studio, Pub/Sub, cron, MCP, and migration compatibility are interwoven. A smaller stable surface reduces production risk.
   Date/Author: 2026-04-27 / Codex
 
-- Decision: Treat the command split in [devrun-command-split.md](devrun-command-split.md) as a release-readiness dependency, not a duplicate workstream.
+- Decision: Treat the command split in [0001-devrun-command-split.md](0001-devrun-command-split.md) as a release-readiness dependency, not a duplicate workstream.
   Rationale: `pulse dev` versus headless `pulse run` is the highest-leverage boundary and already has its own detailed ExecPlan.
   Date/Author: 2026-04-27 / Codex
 
@@ -59,9 +67,33 @@ Known audit findings from the PRD:
   Rationale: Users may bind apps to `0.0.0.0`; exposing pprof, platform stats, Pub/Sub clear, or dev config endpoints there is unsafe.
   Date/Author: 2026-04-27 / Codex
 
+- Decision: Keep dev endpoints available under explicit dev mode instead of deleting them.
+  Rationale: The dashboard and frontend proxy still need `/__pulse/config`, `/__pulse/pubsub/clear`, platform stats, and pprof during local development, but production-like `pulse run` and generated binaries should not expose them by default.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Make local proxy trust installation a second opt-in after proxy startup.
+  Rationale: Starting a local reverse proxy is less invasive than mutating system trust stores. `pulse dev --proxy` should not imply trust-store mutation.
+  Date/Author: 2026-04-27 / Codex
+
+- Decision: Use one shared local env parser and preserve process environment precedence.
+  Rationale: Runtime secrets, dev child startup, DB discovery, and dashboard code were parsing `.env` independently. One parser reduces drift, and process env precedence keeps shells/CI explicit.
+  Date/Author: 2026-04-27 / Codex
+
 ## Outcomes & Retrospective
 
-Not yet completed.
+Completed validation on 2026-04-27:
+
+- `python3 -m json.tool docs/knowledge.json >/dev/null` passed.
+- `test -f ui/dist/index.html && test -f dbstudio/dist/index.html` passed.
+- `go test ./...` passed.
+- `go test -race ./...` passed.
+- `golangci-lint run ./...` passed.
+- `go install ./cmd/pulse` passed.
+- `pulse version --json` returned `pulse.version.v1`.
+- `pulse inspect docs --json --repo-root /Users/petrbrazdil/Repos/pulse` passed with `missing_count=0`, `review_due_count=0`, and `stale_count=0`.
+- `pulse harness self --json --write` passed and wrote `.pulse/harness/self-latest.json`.
+
+The v0 release-hardening slice now has explicit docs for stable/dev/beta/compatibility surfaces, gated dev/admin endpoints, opt-in proxy/trust behavior, safe build workspace filtering, centralized local env parsing, response encoding semantics tests, and a passing release gate.
 
 ## Context and Orientation
 
@@ -94,7 +126,7 @@ Terms used in this plan:
 
 Milestone 1 defines the release contract. At the end of this milestone, `docs/local-contract.md`, `AGENTS.md`, command usage, and docs index agree on the stable v0 commands, stable runtime features, beta/dev-only features, and compatibility posture.
 
-Milestone 2 completes the runtime/dev boundary. At the end of this milestone, `pulse dev` owns the development platform and headless `pulse run` starts only the app runtime. This milestone is complete when the acceptance criteria in [devrun-command-split.md](devrun-command-split.md) are satisfied.
+Milestone 2 completes the runtime/dev boundary. At the end of this milestone, `pulse dev` owns the development platform and headless `pulse run` starts only the app runtime. This milestone is complete when the acceptance criteria in [0001-devrun-command-split.md](0001-devrun-command-split.md) are satisfied.
 
 Milestone 3 removes release build blockers. At the end of this milestone, a clean checkout can run `go install ./cmd/pulse` without missing embedded assets. Release docs state the required Go version and the Bun/UI build expectations. Release packaging excludes `.DS_Store`, `__MACOSX`, caches, and other local artifacts.
 
@@ -112,7 +144,7 @@ Milestone 8 runs the release gate. At the end of this milestone, the full releas
 
 Start by updating the release contract before changing behavior. The repo should have one canonical local contract that says what is stable, what is beta, what is dev-only, and what is compatibility-mode. Use `docs/local-contract.md` as the canonical document, and keep `cmd/pulse/main.go` usage text aligned with it.
 
-Next, finish the command split work tracked by [devrun-command-split.md](devrun-command-split.md). Do not make other release-hardening work depend on a dev supervisor hidden inside `pulse run`.
+Next, finish the command split work tracked by [0001-devrun-command-split.md](0001-devrun-command-split.md). Do not make other release-hardening work depend on a dev supervisor hidden inside `pulse run`.
 
 Then handle clean-checkout reproducibility. Verify whether `ui/dist` and other embedded assets are required for `go install ./cmd/pulse`. If they are required, choose one explicit release strategy: commit built assets, generate them in release packaging, or move embedding behind a development build boundary. The strategy must be documented and validated from a clean checkout.
 
@@ -150,7 +182,7 @@ Update the canonical contract:
 
 Use the command split plan:
 
-    $EDITOR docs/plans/devrun-command-split.md
+    $EDITOR docs/plans/0001-devrun-command-split.md
 
 Audit public runtime routes:
 
@@ -226,7 +258,7 @@ Primary source:
 
 Related active ExecPlan:
 
-    docs/plans/devrun-command-split.md
+    docs/plans/0001-devrun-command-split.md
 
 Validation artifact:
 

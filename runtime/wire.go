@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"reflect"
-	"slices"
 	"strings"
 	"time"
 
@@ -431,16 +430,4 @@ func objectValue(value any) map[string]any {
 		return obj
 	}
 	return nil
-}
-
-func listWireEndpointIDs() []string {
-	endpoints := listEndpoints()
-	ids := make([]string, 0, len(endpoints))
-	for _, ep := range endpoints {
-		if ep.WireAvailable {
-			ids = append(ids, ep.WireID)
-		}
-	}
-	slices.Sort(ids)
-	return ids
 }

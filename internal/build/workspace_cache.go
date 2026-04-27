@@ -224,7 +224,9 @@ func syncGeneratedFiles(root, appRoot string, gen *codegen.Output, prev, sourceF
 }
 
 func isSourceFile(rel string) bool {
-	return true
+	rel = filepath.ToSlash(rel)
+	base := filepath.Base(rel)
+	return !strings.HasPrefix(base, ".")
 }
 
 func sortedKeys(set map[string]struct{}) []string {

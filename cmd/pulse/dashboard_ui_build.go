@@ -223,10 +223,6 @@ func buildUI(ctx context.Context, uiRoot string) error {
 	return nil
 }
 
-func buildDashboardUI(ctx context.Context, uiRoot string) error {
-	return buildUI(ctx, uiRoot)
-}
-
 func installUIDeps(ctx context.Context, uiRoot string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err != nil {
@@ -243,8 +239,4 @@ func installUIDeps(ctx context.Context, uiRoot string) error {
 		return fmt.Errorf("UI install failed: %w\n%s", err, msg)
 	}
 	return nil
-}
-
-func installDashboardUIDeps(ctx context.Context, uiRoot string) error {
-	return installUIDeps(ctx, uiRoot)
 }

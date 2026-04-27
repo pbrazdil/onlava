@@ -8,7 +8,7 @@ Use an ExecPlan when the work is likely to span multiple hours, touch multiple s
 
 ## Storage
 
-Put active ExecPlans in `docs/plans/<short-slug>.md` and link them from [docs/plans/active.md](docs/plans/active.md). When a plan is complete, update its `Outcomes & Retrospective` section and move or reference it from [docs/plans/completed.md](docs/plans/completed.md).
+Put active ExecPlans in `docs/plans/<0000-short-slug>.md` and link them from [docs/plans/active.md](docs/plans/active.md). The four-digit number is a permanent historical sequence ID: allocate the next number once, do not renumber existing plans, and do not reuse numbers after a plan is completed, abandoned, merged, or superseded. `active.md` may still order plans by current priority rather than historical sequence. When a plan is complete, update its `Outcomes & Retrospective` section and move or reference it from [docs/plans/completed.md](docs/plans/completed.md).
 
 ## Non-Negotiable Rules
 

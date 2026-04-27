@@ -38,9 +38,7 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString(fmt.Sprintf("const PULSE_WIRE_CONTENT_TYPE = %q\n\n", wire.ContentType))
 
 	serviceNames := make([]string, 0, len(g.namespaces))
-	for _, name := range namespaceNamesWithMethods(g.namespaces) {
-		serviceNames = append(serviceNames, name)
-	}
+	serviceNames = append(serviceNames, namespaceNamesWithMethods(g.namespaces)...)
 	sort.Strings(serviceNames)
 
 	buf.WriteString("export default class Client {\n")

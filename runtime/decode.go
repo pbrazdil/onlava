@@ -128,7 +128,11 @@ func decodeTaggedStruct(req *http.Request, typ reflect.Type, authOnly bool) (any
 				}
 			}
 		case useQueryDefaults:
-			if err := setFieldFromStrings(value.Field(i), query[jsonName(field)], jsonName(field)); err != nil {
+			name := jsonName(field)
+			if name == "" {
+				continue
+			}
+			if err := setFieldFromStrings(value.Field(i), query[name], name); err != nil {
 				return nil, err
 			}
 		}
@@ -272,6 +276,9 @@ func jsonName(field reflect.StructField) string {
 		return field.Name
 	}
 	name := strings.Split(tag, ",")[0]
+	if name == "-" {
+		return ""
+	}
 	if name == "" {
 		return field.Name
 	}

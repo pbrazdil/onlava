@@ -495,11 +495,23 @@ func shouldSkipDir(rel string) bool {
 	if strings.HasPrefix(base, ".") {
 		return true
 	}
-	return base == "node_modules" || base == "pulse_internal_main"
+	switch base {
+	case "node_modules", "pulse_internal_main", "__MACOSX", "coverage":
+		return true
+	default:
+		return false
+	}
 }
 
 func shouldSkipFile(rel string) bool {
-	return filepath.Base(rel) == "encore.gen.go"
+	base := filepath.Base(rel)
+	if base == "encore.gen.go" || base == ".DS_Store" {
+		return true
+	}
+	if base == ".env" || strings.HasPrefix(base, ".env.") {
+		return true
+	}
+	return false
 }
 
 func shouldSkipSymlink(path string, d os.DirEntry) bool {

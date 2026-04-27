@@ -20,6 +20,25 @@ func TestDiscoverWorkspace(t *testing.T) {
 	}
 }
 
+func TestProxyAndTrustDefaultsAreOptIn(t *testing.T) {
+	t.Setenv("PULSE_LOCAL_PROXY", "")
+	t.Setenv("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", "")
+	if Enabled() {
+		t.Fatal("local proxy enabled by default")
+	}
+	if !SkipInstallTrust() {
+		t.Fatal("trust installation should be skipped by default")
+	}
+	t.Setenv("PULSE_LOCAL_PROXY", "1")
+	t.Setenv("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", "0")
+	if !Enabled() {
+		t.Fatal("local proxy not enabled by explicit env")
+	}
+	if SkipInstallTrust() {
+		t.Fatal("trust installation should be allowed by explicit env")
+	}
+}
+
 func TestNormalizeUpstream(t *testing.T) {
 	tests := []struct {
 		input string

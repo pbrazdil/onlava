@@ -61,7 +61,7 @@ type Proxy struct {
 }
 
 func Enabled() bool {
-	return envBool("PULSE_LOCAL_PROXY", true)
+	return envBool("PULSE_LOCAL_PROXY", false)
 }
 
 func HTTPPort() int {
@@ -73,7 +73,7 @@ func HTTPSPort() int {
 }
 
 func SkipInstallTrust() bool {
-	return envBool("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", false)
+	return envBool("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL", true)
 }
 
 func FrontendOverride() string {

@@ -28,6 +28,7 @@ type runURLs struct {
 	MCP       string
 	Frontend  string
 	DBStudio  string
+	Victoria  map[string]string
 }
 
 type runEvent struct {
@@ -133,6 +134,7 @@ func (c *runConsole) Banner(urls runURLs) {
 			"mcp_url":       urls.MCP,
 			"frontend_url":  urls.Frontend,
 			"db_studio_url": urls.DBStudio,
+			"victoria_urls": urls.Victoria,
 		})
 		return
 	}
@@ -140,6 +142,9 @@ func (c *runConsole) Banner(urls runURLs) {
 	width := len("Development Dashboard URL:")
 	if len("Pulse App URL:") > width {
 		width = len("Pulse App URL:")
+	}
+	if len("VictoriaMetrics URL:") > width {
+		width = len("VictoriaMetrics URL:")
 	}
 	c.printf(c.out, "  %-*s  %s\n", width, "Your API is running at:", urls.API)
 	c.printf(c.out, "  %-*s  %s\n", width, "Development Dashboard URL:", urls.Dashboard)
@@ -149,6 +154,18 @@ func (c *runConsole) Banner(urls runURLs) {
 	}
 	if urls.DBStudio != "" {
 		c.printf(c.out, "  %-*s  %s\n", width, "Drizzle Studio URL:", urls.DBStudio)
+	}
+	for _, item := range []struct {
+		label string
+		key   string
+	}{
+		{label: "VictoriaMetrics URL:", key: "metrics"},
+		{label: "VictoriaLogs URL:", key: "logs"},
+		{label: "VictoriaTraces URL:", key: "traces"},
+	} {
+		if url := urls.Victoria[item.key]; url != "" {
+			c.printf(c.out, "  %-*s  %s\n", width, item.label, url)
+		}
 	}
 	c.printf(c.out, "\n")
 }

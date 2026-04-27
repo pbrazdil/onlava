@@ -42,3 +42,4 @@ Start with:
 - [pulse.harness.self.v1](schemas/pulse.harness.self.v1.schema.json)
 - [pulse.inspect.docs.v1](schemas/pulse.inspect.docs.v1.schema.json)
 - [pulse.docs.index.v1](schemas/pulse.docs.index.v1.schema.json)
+- [pulse.version.v1](schemas/pulse.version.v1.schema.json)

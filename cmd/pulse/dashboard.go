@@ -24,6 +24,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"pulse.dev/internal/devdash"
+	"pulse.dev/internal/envfile"
 	uidist "pulse.dev/ui"
 )
 
@@ -334,6 +335,7 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 		if report.TraceSummary != nil {
 			report.TraceSummary.AppID = report.AppID
 			_ = s.supervisor.store.AppendTraceSummary(req.Context(), report.TraceSummary)
+			go s.exportVictoriaTraceSummary(context.Background(), report.TraceSummary)
 			s.notify(&devdash.Notification{
 				Method: "trace/new",
 				Params: map[string]any{
@@ -352,6 +354,7 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 		if report.LogEvent != nil {
 			report.LogEvent.AppID = report.AppID
 			_ = s.supervisor.store.WriteLogEvent(req.Context(), report.LogEvent)
+			go s.exportVictoriaLogEvent(report.LogEvent)
 		}
 	case "pubsub":
 		if len(report.PubSub) > 0 {
@@ -376,24 +379,7 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 			if err := json.Unmarshal(report.PubSubMessage, &message); err == nil {
 				message.AppID = firstNonEmpty(message.AppID, report.AppID)
 				_ = s.supervisor.store.UpsertPubSubMessage(req.Context(), message)
-				_ = s.supervisor.store.UpsertPubSubMessageAttempt(req.Context(), devdash.PubSubMessageAttempt{
-					AppID:            message.AppID,
-					MessageID:        message.MessageID,
-					TopicName:        message.TopicName,
-					SubscriptionName: message.SubscriptionName,
-					ServiceName:      message.ServiceName,
-					Status:           message.Status,
-					TraceID:          message.TraceID,
-					Attempt:          message.Attempt,
-					Payload:          message.Payload,
-					Result:           message.Result,
-					Error:            message.Error,
-					Deliveries:       message.Deliveries,
-					InsertedAt:       message.InsertedAt,
-					PickedUpAt:       message.PickedUpAt,
-					FinishedAt:       message.FinishedAt,
-					DurationMS:       message.DurationMS,
-				})
+				_ = s.supervisor.store.UpsertPubSubMessageAttempt(req.Context(), devdash.PubSubMessageAttempt(message))
 				s.notify(&devdash.Notification{
 					Method: "pubsub/message",
 					Params: message,
@@ -733,29 +719,7 @@ func discoverDatabaseURL(root string) (string, string, error) {
 }
 
 func parseDotEnvFile(path string) (map[string]string, error) {
-	data := make(map[string]string)
-	file, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return data, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	for _, line := range strings.Split(string(file), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(strings.TrimPrefix(key, "export "))
-		value = strings.TrimSpace(value)
-		value = strings.Trim(value, `"'`)
-		data[key] = value
-	}
-	return data, nil
+	return envfile.ParseFile(path)
 }
 
 func scanRows(rows *sql.Rows, arrayMode bool) ([]any, error) {

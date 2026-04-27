@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"pulse.dev/internal/envfile"
 )
 
 const DefaultPort = 4002
@@ -88,7 +90,7 @@ func Discover(appRoot string) (Config, bool, error) {
 			return cfg, err == nil, err
 		}
 	}
-	env, err := parseDotEnvFile(filepath.Join(appRoot, ".env"))
+	env, err := envfile.ParseFile(filepath.Join(appRoot, ".env"))
 	if err != nil {
 		return Config{}, false, err
 	}
@@ -341,31 +343,6 @@ func writeConfigFile(workspace string, cfg Config) (string, error) {
 		return "", err
 	}
 	return path, nil
-}
-
-func parseDotEnvFile(path string) (map[string]string, error) {
-	data := make(map[string]string)
-	file, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return data, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	for _, line := range strings.Split(string(file), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(strings.TrimPrefix(key, "export "))
-		value = strings.TrimSpace(strings.Trim(value, `"'`))
-		data[key] = value
-	}
-	return data, nil
 }
 
 func configForURL(rawURL, source string) (Config, error) {

@@ -9,6 +9,7 @@ import (
 )
 
 func TestPulseConfigEndpoint(t *testing.T) {
+	t.Setenv("PULSE_DEV_ENDPOINTS", "1")
 	SetAppConfig(AppConfig{Name: "onlvnext-o5o2", ListenAddr: "127.0.0.1:4000"})
 	SetPublicBaseURL("https://api.onlv.localhost")
 
@@ -46,7 +47,31 @@ func TestPulseConfigEndpoint(t *testing.T) {
 	}
 }
 
+func TestDevEndpointsAreDisabledByDefault(t *testing.T) {
+	server, err := newServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/__pulse/config"},
+		{method: http.MethodGet, path: "/platform.Stats"},
+		{method: http.MethodGet, path: "/debug/pprof/heap"},
+		{method: http.MethodPost, path: "/__pulse/pubsub/clear"},
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(tt.method, tt.path, nil)
+		server.Handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s %s status = %d, want %d", tt.method, tt.path, rec.Code, http.StatusNotFound)
+		}
+	}
+}
+
 func TestPlatformStatsEndpoint(t *testing.T) {
+	t.Setenv("PULSE_DEV_ENDPOINTS", "1")
 	SetAppConfig(AppConfig{Name: "onlvnext-o5o2", ListenAddr: "127.0.0.1:4000"})
 	SetPublicBaseURL("https://api.onlv.localhost")
 
@@ -104,6 +129,9 @@ func TestDevPubSubClearEndpointRequiresTokenAndCallsRuntime(t *testing.T) {
 		localPubSubClearer = prevClearer
 	}()
 	osGetenv = func(key string) string {
+		if key == "PULSE_DEV_ENDPOINTS" {
+			return "1"
+		}
 		if key == "PULSE_DEV_REPORT_TOKEN" {
 			return "secret"
 		}
@@ -144,6 +172,7 @@ func TestDevPubSubClearEndpointRequiresTokenAndCallsRuntime(t *testing.T) {
 }
 
 func TestPProfHeapEndpoint(t *testing.T) {
+	t.Setenv("PULSE_DEV_ENDPOINTS", "1")
 	server, err := newServer("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("newServer() error = %v", err)
@@ -158,5 +187,22 @@ func TestPProfHeapEndpoint(t *testing.T) {
 	}
 	if rec.Body.Len() == 0 {
 		t.Fatal("expected heap profile body")
+	}
+}
+
+func TestCORSRequiresDevModeOrAllowList(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Origin", "https://example.com")
+	headers := http.Header{}
+	applyCORSHeaders(headers, req)
+	if got := headers.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("origin without allowlist = %q, want empty", got)
+	}
+
+	t.Setenv("PULSE_CORS_ALLOW_ORIGINS", "https://example.com")
+	headers = http.Header{}
+	applyCORSHeaders(headers, req)
+	if got := headers.Get("Access-Control-Allow-Origin"); got != "https://example.com" {
+		t.Fatalf("allowlisted origin = %q", got)
 	}
 }

@@ -36,6 +36,8 @@ func run(args []string) error {
 		return devCommand(args[1:])
 	case "run":
 		return runCommand(args[1:])
+	case "version":
+		return versionCommand(args[1:])
 	case "build":
 		return buildCommand(args[1:])
 	case "psql":
@@ -60,7 +62,7 @@ func run(args []string) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage:\n  pulse dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json]\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]\n  pulse psql [--app-root <path>] [psql args...]\n  pulse check [--app-root <path>] [--json]\n  pulse harness [--app-root <path>] [--json] [--write]\n  pulse harness self [--repo-root <path>] [--json] [--write]\n  pulse inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]\n  pulse inspect docs --json [--repo-root <path>]\n  pulse inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]\n  pulse inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]\n  pulse admin traces clear --json [--app-root <path>]\n  pulse admin pubsub clear --json [--app-root <path>]\n  pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]\n  pulse test [--app-root <path>] [go test flags/packages...]\n  pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
+	return fmt.Errorf("usage:\n  pulse dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]\n  pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]\n  pulse version [--json]\n  pulse build [--app-root <path>] [-o <path>] [--db-studio]\n  pulse psql [--app-root <path>] [psql args...]\n  pulse check [--app-root <path>] [--json]\n  pulse harness [--app-root <path>] [--json] [--write]\n  pulse harness self [--repo-root <path>] [--json] [--write]\n  pulse inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]\n  pulse inspect docs --json [--repo-root <path>]\n  pulse inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]\n  pulse inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]\n  pulse admin traces clear --json [--app-root <path>]\n  pulse admin pubsub clear --json [--app-root <path>]\n  pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]\n  pulse test [--app-root <path>] [go test flags/packages...]\n  pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
 }
 
 type silentCLIError struct {
@@ -79,6 +81,8 @@ func devCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	restore := configureDevProcessEnv(opts)
+	defer restore()
 	addr := resolveListenAddr(opts.Listen, opts.Port)
 	return runWithWatchFunc(addr, opts.Verbose, opts.JSON, opts.AppRoot)
 }
@@ -89,6 +93,8 @@ type devOptions struct {
 	Verbose bool
 	JSON    bool
 	AppRoot string
+	Proxy   bool
+	Trust   bool
 }
 
 func parseDevArgs(args []string) (devOptions, error) {
@@ -115,6 +121,11 @@ func parseDevArgs(args []string) (devOptions, error) {
 			opts.Verbose = true
 		case "--json":
 			opts.JSON = true
+		case "--proxy":
+			opts.Proxy = true
+		case "--trust":
+			opts.Trust = true
+			opts.Proxy = true
 		case "--app-root":
 			i++
 			if i >= len(args) {
@@ -126,6 +137,44 @@ func parseDevArgs(args []string) (devOptions, error) {
 		}
 	}
 	return opts, nil
+}
+
+func configureDevProcessEnv(opts devOptions) func() {
+	changes := map[string]string{}
+	if opts.Proxy {
+		changes["PULSE_LOCAL_PROXY"] = "1"
+		if opts.Trust {
+			changes["PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
+		} else {
+			changes["PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "1"
+		}
+	}
+	return applyTemporaryEnv(changes)
+}
+
+func applyTemporaryEnv(values map[string]string) func() {
+	if len(values) == 0 {
+		return func() {}
+	}
+	type previousValue struct {
+		value string
+		ok    bool
+	}
+	previous := make(map[string]previousValue, len(values))
+	for key, value := range values {
+		old, ok := os.LookupEnv(key)
+		previous[key] = previousValue{value: old, ok: ok}
+		_ = os.Setenv(key, value)
+	}
+	return func() {
+		for key, old := range previous {
+			if old.ok {
+				_ = os.Setenv(key, old.value)
+			} else {
+				_ = os.Unsetenv(key)
+			}
+		}
+	}
 }
 
 func resolveListenAddr(listen string, port int) string {

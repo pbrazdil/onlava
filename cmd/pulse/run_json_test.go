@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -25,11 +26,11 @@ func TestParseRunArgsRejectsDevFlags(t *testing.T) {
 }
 
 func TestParseDevArgs(t *testing.T) {
-	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app"})
+	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app", "--proxy", "--trust"})
 	if err != nil {
 		t.Fatalf("parseDevArgs returned error: %v", err)
 	}
-	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" {
+	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" || !opts.Proxy || !opts.Trust {
 		t.Fatalf("opts = %+v", opts)
 	}
 }
@@ -44,15 +45,25 @@ func TestDevCommandUsesWatcherPath(t *testing.T) {
 		if addr != "127.0.0.1:4444" || !verbose || !jsonMode || appRoot != "/tmp/app" {
 			t.Fatalf("watch args = %q %v %v %q", addr, verbose, jsonMode, appRoot)
 		}
+		if got := getenvForTest("PULSE_LOCAL_PROXY"); got != "1" {
+			t.Fatalf("PULSE_LOCAL_PROXY = %q, want 1", got)
+		}
+		if got := getenvForTest("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "1" {
+			t.Fatalf("PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 1", got)
+		}
 		return nil
 	}
 
-	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app"}); err != nil {
+	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app", "--proxy"}); err != nil {
 		t.Fatalf("devCommand returned error: %v", err)
 	}
 	if !called {
 		t.Fatal("expected watcher path to be called")
 	}
+}
+
+func getenvForTest(key string) string {
+	return os.Getenv(key)
 }
 
 func TestRunCommandUsesHeadlessPath(t *testing.T) {

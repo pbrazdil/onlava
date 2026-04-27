@@ -49,11 +49,13 @@ func newServer(listenAddr string) (*http.Server, error) {
 		}
 		s.registerTyped(ep)
 	}
-	s.registerPulseConfig()
 	s.registerWire()
-	s.registerDevPubSubAdmin()
-	s.registerPlatformStats()
-	s.registerPProf()
+	if devEndpointsEnabled() {
+		s.registerPulseConfig()
+		s.registerDevPubSubAdmin()
+		s.registerPlatformStats()
+		s.registerPProf()
+	}
 
 	httpServer := &http.Server{
 		Addr:    listenAddr,
@@ -158,11 +160,43 @@ func applyCORSHeaders(headers http.Header, req *http.Request) {
 	if origin == "" {
 		return
 	}
+	if !corsOriginAllowed(origin) {
+		return
+	}
 	headers.Set("Access-Control-Allow-Origin", origin)
 	headers.Set("Access-Control-Allow-Credentials", "true")
 	addVary(headers, "Origin", "Authorization")
 	if req.Method == http.MethodOptions {
 		addVary(headers, "Access-Control-Request-Method", "Access-Control-Request-Headers")
+	}
+}
+
+func devEndpointsEnabled() bool {
+	return envBool("PULSE_DEV_ENDPOINTS") || envBool("PULSE_DEV_SUPERVISOR")
+}
+
+func corsOriginAllowed(origin string) bool {
+	if devEndpointsEnabled() {
+		return true
+	}
+	for _, item := range strings.Split(osGetenv("PULSE_CORS_ALLOW_ORIGINS"), ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if item == "*" || strings.EqualFold(item, origin) {
+			return true
+		}
+	}
+	return false
+}
+
+func envBool(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(osGetenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 

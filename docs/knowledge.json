@@ -142,7 +142,7 @@
       "tags": ["cli", "runtime", "dev", "production"]
     },
     {
-      "path": "docs/plans/devrun-command-split.md",
+      "path": "docs/plans/0001-devrun-command-split.md",
       "title": "Split pulse dev From Headless pulse run",
       "owner": "Pulse runtime",
       "status": "active",
@@ -154,7 +154,7 @@
       "tags": ["plans", "execplans", "cli", "runtime"]
     },
     {
-      "path": "docs/plans/v0-release-readiness.md",
+      "path": "docs/plans/0002-v0-release-readiness.md",
       "title": "Pulse v0 Release Readiness",
       "owner": "Pulse runtime",
       "status": "active",
@@ -164,6 +164,18 @@
       "review_after": "2026-05-27",
       "summary": "ExecPlan for hardening a narrow production-ready v0 contract.",
       "tags": ["plans", "execplans", "release", "runtime"]
+    },
+    {
+      "path": "docs/plans/0003-victoria-observability-sidecars.md",
+      "title": "Victoria Observability Sidecars",
+      "owner": "Pulse runtime",
+      "status": "completed",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "ExecPlan for supervising local VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars while keeping SQLite observability parity.",
+      "tags": ["plans", "execplans", "observability", "victoria"]
     },
     {
       "path": "docs/plans/active.md",

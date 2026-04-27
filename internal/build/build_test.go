@@ -234,6 +234,43 @@ func Open(conn string) (*pgxpool.Pool, error) {
 	}
 }
 
+func TestListSourceFilesSkipsLocalSecretsAndArtifacts(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{
+		"go.mod",
+		"go.sum",
+		"svc/api.go",
+		"assets/logo.png",
+		".env",
+		".env.local",
+		".DS_Store",
+		"__MACOSX/junk",
+		"node_modules/pkg/index.js",
+		".pulse/state.json",
+		".git/config",
+		"coverage/out.txt",
+		"svc/encore.gen.go",
+	} {
+		writeBuildTestFile(t, root, rel, "x")
+	}
+
+	files, err := listSourceFiles(root)
+	if err != nil {
+		t.Fatalf("listSourceFiles() error = %v", err)
+	}
+	got := strings.Join(files, "\n")
+	for _, want := range []string{"go.mod", "go.sum", "svc/api.go", "assets/logo.png"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("source files missing %s: %v", want, files)
+		}
+	}
+	for _, unwanted := range []string{".env", ".env.local", ".DS_Store", "__MACOSX", "node_modules", ".pulse", ".git", "coverage", "encore.gen.go"} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("source files included %s: %v", unwanted, files)
+		}
+	}
+}
+
 func TestPrepareWritesInspectArtifacts(t *testing.T) {
 	appDir := t.TempDir()
 	cacheDir := t.TempDir()

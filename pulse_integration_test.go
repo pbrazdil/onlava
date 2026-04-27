@@ -39,7 +39,7 @@ func TestPulseRunBasicApp(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Env = append(pulseRunEnv(repo, dashAddr, cacheDir), "PULSE_CORS_ALLOW_ORIGINS=http://localhost:5178")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -439,7 +439,7 @@ func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
+	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr, "--proxy")
 	cmd.Env = pulseDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, "127.0.0.1:"+frontendPort)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
