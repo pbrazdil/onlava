@@ -11,6 +11,7 @@ pulse harness self --json
 
 ## Core Contracts
 
+- [Architecture](../ARCHITECTURE.md): high-level repo map, boundaries, and architectural invariants.
 - [Local Contract](local-contract.md): CLI grammar, stable JSON schemas, generated artifacts, and local runtime contracts.
 - [Harness Engineering](harness-engineering.md): agent validation loop, harness outputs, and self-harness expectations.
 - [Execution Plan Standard](../PLANS.md): required structure for long-running agent-executable implementation plans.
@@ -26,6 +27,7 @@ pulse harness self --json
 
 - [Pub/Sub PRD](PRD-1-pubsub.md): embedded NATS-backed Pub/Sub behavior and developer API.
 - [Proto/Wire PRD](PRD-2-proto.md): binary wire and generated transport plan.
+- [Release Readiness PRD](PRD-3-release.md): audit and recommendations for freezing a smaller production-ready v0.
 - [Dev/Run Command Split PRD](PRD-4-devrun.md): product direction for `pulse dev`, headless `pulse run`, and `pulse build`.
 
 ## Schemas

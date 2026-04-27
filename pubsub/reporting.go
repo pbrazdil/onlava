@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	gruntime "runtime"
 	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	pulseruntime "pulse.dev/runtime"
 )
 
 func (rt *localRuntime) reportPubSubSnapshots(ctx context.Context) {

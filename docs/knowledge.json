@@ -58,6 +58,18 @@
       "tags": ["plans", "execplans", "agents", "contract"]
     },
     {
+      "path": "ARCHITECTURE.md",
+      "title": "Pulse Architecture",
+      "owner": "Pulse maintainers",
+      "status": "active",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "High-level repo map, architectural boundaries, invariants, and cross-cutting concerns.",
+      "tags": ["architecture", "agents", "boundaries", "codemap"]
+    },
+    {
       "path": "docs/local-contract.md",
       "title": "Pulse Local Contract",
       "owner": "Pulse runtime",
@@ -106,6 +118,18 @@
       "tags": ["wire", "proto", "codegen"]
     },
     {
+      "path": "docs/PRD-3-release.md",
+      "title": "Release Readiness PRD",
+      "owner": "Pulse runtime",
+      "status": "reference",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "Audit and recommendations for freezing a smaller production-ready Pulse v0.",
+      "tags": ["release", "runtime", "security", "contract"]
+    },
+    {
       "path": "docs/PRD-4-devrun.md",
       "title": "Dev/Run Command Split PRD",
       "owner": "Pulse runtime",
@@ -128,6 +152,18 @@
       "review_after": "2026-05-27",
       "summary": "ExecPlan for moving the current development supervisor behavior to pulse dev and making pulse run headless.",
       "tags": ["plans", "execplans", "cli", "runtime"]
+    },
+    {
+      "path": "docs/plans/v0-release-readiness.md",
+      "title": "Pulse v0 Release Readiness",
+      "owner": "Pulse runtime",
+      "status": "active",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "ExecPlan for hardening a narrow production-ready v0 contract.",
+      "tags": ["plans", "execplans", "release", "runtime"]
     },
     {
       "path": "docs/plans/active.md",

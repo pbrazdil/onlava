@@ -1,0 +1,286 @@
+# Pulse Architecture
+
+This document is a stable map of the Pulse repository. It should help a new
+contributor answer two questions quickly: where does a change belong, and which
+boundaries should the change preserve?
+
+Keep this file short and architectural. It names important packages, types, and
+invariants, but intentionally avoids file-by-file detail. Use symbol search for
+the names mentioned here.
+
+## Bird's Eye View
+
+Pulse is a Go-native local runtime and toolchain for applications that declare
+services with `//pulse:` directives and a `pulse.app` root marker.
+
+At a high level, Pulse does four things:
+
+- discovers an app root and parses Go packages into an app model
+- generates a transient build workspace and synthetic runtime entrypoint
+- runs one local HTTP server for the app's public, auth, and internal surfaces
+- exposes local development, inspection, harness, and dashboard tools around
+  that server
+
+The central flow is:
+
+```text
+pulse.app + Go source
+        |
+        v
+internal/app + internal/parse
+        |
+        v
+internal/model
+        |
+        v
+internal/codegen + internal/build
+        |
+        v
+generated workspace + pulse.dev/runtime
+        |
+        v
+single local server + dev/inspect/harness tooling
+```
+
+Architecture invariant: the public Pulse surface is Pulse-named. User apps
+should depend on `pulse.dev/...` packages and `//pulse:` directives, not on
+Encore packages, daemon layers, cloud layers, or compatibility syntax.
+
+Architecture invariant: app semantics should be captured as data in
+`internal/model` before code generation or runtime wiring. Avoid duplicating
+parser-derived decisions downstream when the model can represent them once.
+
+## Code Map
+
+### `cmd/pulse`
+
+This is the CLI entrypoint and orchestration layer. `main`, `run`, and the
+command-specific functions parse flags and connect internal packages into user
+commands such as `dev`, `run`, `build`, `check`, `inspect`, `harness`, `logs`,
+`admin`, `test`, and `gen`.
+
+`pulse run` is the headless app execution path. `pulse dev` wraps the same app
+build/run loop with the local development platform: dashboard, proxy, DB Studio,
+live rebuild behavior, logs, traces, metrics, and process supervision.
+
+Architecture invariant: non-CLI packages must not import `cmd/pulse`. Shared
+logic belongs in `internal/` or a public package, depending on whether user apps
+need it.
+
+Architecture invariant: the CLI stays hand-rolled unless a new dependency has a
+clear payoff. The command grammar is part of Pulse's local contract and should
+remain easy to audit.
+
+### `internal/app`
+
+`internal/app` owns repository and app-root discovery. It walks upward to find
+`pulse.app`, decodes app config, and provides repo-root helpers for self-harness
+work.
+
+Architecture invariant: `pulse.app` is the app root marker for Pulse apps. App
+loading should fail clearly when the marker is missing or invalid.
+
+### `internal/parse`
+
+`internal/parse` loads Go packages with `go/packages`, reads `//pulse:`
+directives from AST comments, validates endpoint/service/auth/middleware shapes,
+and builds the app model.
+
+It is responsible for service discovery, route defaults, typed and raw handler
+signature validation, path parameter validation, service struct rules, and
+auth-handler shape validation.
+
+Architecture invariant: parser errors should point at source-level concepts:
+services, endpoints, directives, signatures, paths, and tags. Later stages
+should not need to rediscover invalid source shapes.
+
+Architecture invariant: service names and service roots are model facts. Keep
+nested-service and duplicate-name validation here rather than spreading it into
+runtime or codegen.
+
+### `internal/model`
+
+`internal/model` is the shared vocabulary between parser, inspector, codegen,
+wire modeling, and build. Important types include `App`, `Service`, `Package`,
+`Endpoint`, `Middleware`, `AuthHandler`, and `ServiceStruct`.
+
+Architecture invariant: the model is an in-memory description of a parsed app,
+not a runtime registry and not a JSON schema. Public JSON responses live in
+`internal/inspect`; runtime registration lives in `pulse.dev/runtime`.
+
+### `internal/codegen`
+
+`internal/codegen` turns the model into rewritten source files, per-package
+generated files, endpoint wrappers, service struct wiring, middleware/auth
+registration, wire metadata, and a synthetic `main`.
+
+Architecture invariant: generated code should be boring Go. Prefer explicit
+wrappers and registration over runtime reflection when the parser already knows
+the shape of the app.
+
+Architecture invariant: endpoint-to-endpoint calls should go through generated
+Pulse call helpers when Pulse semantics matter. Direct user function calls must
+not bypass auth context, private access rules, routing metadata, or internal
+transport behavior.
+
+### `internal/build`
+
+`internal/build` owns the transient app build workspace. It writes generated
+inspect artifacts, syncs source and generated files into the workspace, tracks
+build fingerprints, runs `go mod tidy` when needed, compiles the app binary, and
+writes latest-build metadata.
+
+Architecture invariant: build outputs are disposable and reproducible from the
+app root, config, source, and generated model. Do not make the transient
+workspace the source of truth.
+
+Architecture invariant: build metadata should be machine-readable enough for
+agents and humans to diagnose drift without scraping terminal output.
+
+### `pulse.dev/runtime`
+
+`runtime` is linked into generated app binaries. It registers generated
+endpoints, service initializers, middleware, auth handlers, Pub/Sub handlers,
+cron jobs, and wire endpoints, then starts one local HTTP server.
+
+Important runtime concerns include route matching, request decode/encode, auth
+context, current request metadata, structured error responses, middleware,
+observability reports, secrets, DB tracing, Pub/Sub, cron, and graceful shutdown.
+
+Architecture invariant: there is one local app server per generated app process.
+`pulse dev` may run extra development services around it, but app API execution
+stays inside the generated app binary.
+
+Architecture invariant: runtime request state must be scoped to the current
+request or internal call. Public helpers such as `pulse.CurrentRequest()` and
+`auth.UserID()` should not rely on global mutable app state that leaks across
+requests.
+
+### Public API Packages
+
+The public packages at the module root are what user apps import:
+
+- `pulse.dev` exposes `Meta` and `CurrentRequest`
+- `pulse.dev/auth` exposes request auth state helpers
+- `pulse.dev/errs` exposes coded errors and HTTP status mapping
+- `pulse.dev/middleware` exposes middleware types
+- `pulse.dev/pubsub`, `pulse.dev/cron`, `pulse.dev/pgxpool`, and related small
+  packages expose local runtime integrations
+
+Architecture invariant: public packages are boundaries. Keep them small,
+stable, and oriented around user-app concepts. Internal implementation can move;
+public names and behavior are much harder to change.
+
+Architecture invariant: public packages may delegate inward to runtime internals
+when necessary, but they should not pull in CLI, dashboard, parser, build, or
+codegen concerns.
+
+### `internal/inspect`, `internal/wire`, and `internal/wiremodel`
+
+`internal/inspect` renders app, route, service, endpoint, build, path, trace,
+metric, and docs information as stable JSON responses.
+
+`internal/wire` defines the local binary wire format and capability protocol.
+`internal/wiremodel` derives wire endpoint availability and schema hashes from
+the parsed app model.
+
+Architecture invariant: inspect and wire outputs are contracts. If the shape
+changes, update the corresponding schema and tests in the same change.
+
+Architecture invariant: wire compatibility is data-driven. Endpoint IDs, schema
+hashes, fallback behavior, and unsupported reasons should be deterministic.
+
+### `internal/devdash`, `internal/localproxy`, and `internal/dbstudio`
+
+These packages support the local development platform around a running app.
+
+`internal/devdash` stores dashboard-visible state and observability data.
+`internal/localproxy` owns the local proxy layer. `internal/dbstudio` manages DB
+Studio process lifecycle. The dashboard server and UI embedding are orchestrated
+from `cmd/pulse`.
+
+Architecture invariant: development services should be optional around the app
+runtime. They can improve local ergonomics, but `pulse run` must remain a
+headless execution path.
+
+### `ui` and `dbstudio`
+
+`ui` is the Pulse dashboard frontend. `dbstudio` is the DB Studio frontend
+wrapper. Both are TypeScript/React applications that are built and embedded for
+local development use.
+
+Architecture invariant: frontend state should come from CLI/dashboard APIs and
+stable inspect/observability data, not from duplicated guesses about parser or
+runtime behavior.
+
+### `docs`, `PLANS.md`, and `PLAN.md`
+
+`docs` contains local contracts, schemas, PRDs, active plans, completed plans,
+and the agent-readable knowledge index. `PLANS.md` defines the execution-plan
+format. `PLAN.md` is strategic roadmap material, not the place to track
+step-by-step implementation progress.
+
+Architecture invariant: substantial implementation plans live under
+`docs/plans/` and are linked from `docs/plans/active.md` while active.
+
+### `testdata`
+
+`testdata` contains fixture apps and golden generated files. It is the acceptance
+corpus for parser, codegen, runtime, and CLI behavior.
+
+Architecture invariant: fixture apps should speak Pulse syntax directly. Use
+Encore-derived material only as a reference corpus when porting behavior into
+Pulse-native tests.
+
+## Cross-Cutting Concerns
+
+### Dependencies
+
+Pulse prefers the Go standard library. Direct Go dependencies are allowlisted by
+the self-harness with a concrete rationale. New dependencies should be rare and
+should solve a specific maintenance, correctness, or interoperability problem.
+
+Dependency-heavy concerns should stay near the edge that needs them. For
+example, local proxy, package loading, dashboard storage, and websocket support
+are boundary concerns; parser/model/runtime fundamentals should stay as small as
+practical.
+
+### Testing And Harnesses
+
+Prefer tests at stable boundaries: directive parsing, app modeling, generated
+code, CLI JSON contracts, runtime HTTP behavior, and fixture apps. Use helper
+checks to keep tests data-driven and easy to update when internals move.
+
+After repository changes, rebuild the CLI with `go install ./cmd/pulse`. For
+substantial changes, run `pulse harness self --json --write` when practical so
+`.pulse/harness/self-latest.json` captures one stable validation snapshot.
+
+### Generated Artifacts
+
+Generated app files should be deterministic. Golden tests should make generated
+shape changes explicit, and inspect schemas should describe JSON contracts that
+agents and tools consume.
+
+Generated workspaces, dashboard build artifacts, and harness snapshots are
+outputs, not primary source. Keep source-of-truth logic in Go source, schemas,
+fixtures, and docs.
+
+### Observability
+
+Local observability is part of the product surface. Runtime traces, logs,
+metrics, dashboard state, and inspect commands should give enough evidence to
+debug a local app without relying on external services.
+
+### File Size And Placement
+
+Pulse favors code that can be found quickly. Keep related concepts adjacent in
+the tree, split very large files before they become hard to review, and prefer a
+flat package map over deeply nested internal hierarchies unless a boundary earns
+the extra structure.
+
+## Inspiration
+
+This document follows the style suggested by matklad's `ARCHITECTURE.md` essay:
+short overview, codemap, invariants, boundaries, and cross-cutting concerns. It
+also borrows ideas from the linked rust-analyzer architecture document and the
+same series' notes on testing, workspaces, and build-time discipline.
