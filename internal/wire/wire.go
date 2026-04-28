@@ -17,12 +17,15 @@ import (
 
 const (
 	ContentType       = "application/vnd.pulse.wire+bin"
+	JSONContentType   = "application/vnd.pulse.wire+json"
 	CapabilitiesPath  = "/_wire/capabilities"
 	CallPathPrefix    = "/_wire/"
 	RecoverPathPrefix = "/_wire/recover/"
 	CallIDHeader      = "X-Pulse-Call-ID"
 	FallbackHeader    = "X-Pulse-Wire-Fallback"
 	SchemaHashHeader  = "X-Pulse-Wire-Schema-Hash"
+	MethodHeader      = "X-Pulse-Wire-Method"
+	PathParamsHeader  = "X-Pulse-Wire-Path-Params"
 )
 
 type Endpoint struct {
@@ -124,6 +127,23 @@ const (
 )
 
 var magic = []byte{'P', 'W', 'B', '1'}
+var frameMagic = []byte{'P', 'W', 'B', '2'}
+
+const (
+	frameFlagError byte = 1
+)
+
+type RequestFrame struct {
+	SchemaHash     string
+	PathParamsJSON []byte
+	PayloadJSON    []byte
+}
+
+type ResponseFrame struct {
+	Status      int
+	Error       bool
+	PayloadJSON []byte
+}
 
 func Encode(value any) ([]byte, error) {
 	normalized, err := Normalize(value)
@@ -151,6 +171,87 @@ func Decode(data []byte) (any, error) {
 		return nil, fmt.Errorf("trailing pulse wire data")
 	}
 	return value, nil
+}
+
+func EncodeRequestFrame(schemaHash string, pathParamsJSON, payloadJSON []byte) []byte {
+	size := len(frameMagic) + binary.MaxVarintLen64*3 + len(schemaHash) + len(pathParamsJSON) + len(payloadJSON)
+	buf := make([]byte, 0, size)
+	buf = append(buf, frameMagic...)
+	buf = appendSizedBytes(buf, []byte(schemaHash))
+	buf = appendSizedBytes(buf, pathParamsJSON)
+	buf = appendSizedBytes(buf, payloadJSON)
+	return buf
+}
+
+func DecodeRequestFrame(data []byte) (RequestFrame, bool, error) {
+	if len(data) < len(frameMagic) || !bytes.Equal(data[:len(frameMagic)], frameMagic) {
+		return RequestFrame{}, false, nil
+	}
+	dec := decoder{data: data[len(frameMagic):]}
+	schemaHash, err := dec.readBytes()
+	if err != nil {
+		return RequestFrame{}, true, err
+	}
+	pathParamsJSON, err := dec.readBytes()
+	if err != nil {
+		return RequestFrame{}, true, err
+	}
+	payloadJSON, err := dec.readBytes()
+	if err != nil {
+		return RequestFrame{}, true, err
+	}
+	if dec.pos != len(dec.data) {
+		return RequestFrame{}, true, fmt.Errorf("trailing pulse wire frame data")
+	}
+	return RequestFrame{
+		SchemaHash:     string(schemaHash),
+		PathParamsJSON: pathParamsJSON,
+		PayloadJSON:    payloadJSON,
+	}, true, nil
+}
+
+func EncodeResponseFrame(status int, isError bool, payloadJSON []byte) []byte {
+	if status == 0 {
+		status = 200
+	}
+	size := len(frameMagic) + binary.MaxVarintLen64*2 + 1 + len(payloadJSON)
+	buf := make([]byte, 0, size)
+	buf = append(buf, frameMagic...)
+	buf = binary.AppendUvarint(buf, uint64(status))
+	if isError {
+		buf = append(buf, frameFlagError)
+	} else {
+		buf = append(buf, 0)
+	}
+	buf = appendSizedBytes(buf, payloadJSON)
+	return buf
+}
+
+func DecodeResponseFrame(data []byte) (ResponseFrame, bool, error) {
+	if len(data) < len(frameMagic) || !bytes.Equal(data[:len(frameMagic)], frameMagic) {
+		return ResponseFrame{}, false, nil
+	}
+	dec := decoder{data: data[len(frameMagic):]}
+	status, err := dec.readUvarint()
+	if err != nil {
+		return ResponseFrame{}, true, err
+	}
+	flags, err := dec.readByte()
+	if err != nil {
+		return ResponseFrame{}, true, err
+	}
+	payloadJSON, err := dec.readBytes()
+	if err != nil {
+		return ResponseFrame{}, true, err
+	}
+	if dec.pos != len(dec.data) {
+		return ResponseFrame{}, true, fmt.Errorf("trailing pulse wire frame data")
+	}
+	return ResponseFrame{
+		Status:      int(status),
+		Error:       flags&frameFlagError != 0,
+		PayloadJSON: payloadJSON,
+	}, true, nil
 }
 
 func Normalize(value any) (any, error) {
@@ -245,11 +346,190 @@ func writeValue(w io.Writer, value any) error {
 		}
 		return nil
 	default:
+		var buf bytes.Buffer
+		if ok, err := writeReflectValue(&buf, reflect.ValueOf(v)); ok {
+			if err != nil {
+				return err
+			}
+			_, err = w.Write(buf.Bytes())
+			return err
+		}
 		normalized, err := Normalize(v)
 		if err != nil {
 			return err
 		}
 		return writeValue(w, normalized)
+	}
+}
+
+var jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+
+func writeReflectValue(w io.Writer, value reflect.Value) (bool, error) {
+	if !value.IsValid() {
+		return true, writeByte(w, tagNull)
+	}
+	if value.CanInterface() && value.Type().Implements(jsonMarshalerType) {
+		return false, nil
+	}
+	for value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return true, writeByte(w, tagNull)
+		}
+		value = value.Elem()
+		if value.CanInterface() && value.Type().Implements(jsonMarshalerType) {
+			return false, nil
+		}
+	}
+
+	switch value.Kind() {
+	case reflect.Bool:
+		if value.Bool() {
+			return true, writeByte(w, tagTrue)
+		}
+		return true, writeByte(w, tagFalse)
+	case reflect.String:
+		if err := writeByte(w, tagString); err != nil {
+			return true, err
+		}
+		return true, writeBytes(w, []byte(value.String()))
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return true, writeNumber(w, float64(value.Int()))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return true, writeNumber(w, float64(value.Uint()))
+	case reflect.Float32, reflect.Float64:
+		return true, writeNumber(w, value.Convert(reflect.TypeOf(float64(0))).Float())
+	case reflect.Slice:
+		if value.IsNil() {
+			return true, writeByte(w, tagNull)
+		}
+		if value.Type().Elem().Kind() == reflect.Uint8 {
+			return false, nil
+		}
+		fallthrough
+	case reflect.Array:
+		if err := writeByte(w, tagArray); err != nil {
+			return true, err
+		}
+		if err := writeUvarint(w, uint64(value.Len())); err != nil {
+			return true, err
+		}
+		for i := 0; i < value.Len(); i++ {
+			ok, err := writeReflectValue(w, value.Index(i))
+			if !ok || err != nil {
+				return ok, err
+			}
+		}
+		return true, nil
+	case reflect.Map:
+		if value.IsNil() {
+			return true, writeByte(w, tagNull)
+		}
+		if value.Type().Key().Kind() != reflect.String {
+			return false, nil
+		}
+		if err := writeByte(w, tagObject); err != nil {
+			return true, err
+		}
+		if err := writeUvarint(w, uint64(value.Len())); err != nil {
+			return true, err
+		}
+		iter := value.MapRange()
+		for iter.Next() {
+			key := iter.Key().String()
+			if err := writeBytes(w, []byte(key)); err != nil {
+				return true, err
+			}
+			ok, err := writeReflectValue(w, iter.Value())
+			if !ok || err != nil {
+				return ok, err
+			}
+		}
+		return true, nil
+	case reflect.Struct:
+		fields, ok := reflectJSONFields(value)
+		if !ok {
+			return false, nil
+		}
+		if err := writeByte(w, tagObject); err != nil {
+			return true, err
+		}
+		if err := writeUvarint(w, uint64(len(fields))); err != nil {
+			return true, err
+		}
+		for _, field := range fields {
+			if err := writeBytes(w, []byte(field.name)); err != nil {
+				return true, err
+			}
+			ok, err := writeReflectValue(w, field.value)
+			if !ok || err != nil {
+				return ok, err
+			}
+		}
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+type reflectJSONField struct {
+	name  string
+	value reflect.Value
+}
+
+func reflectJSONFields(value reflect.Value) ([]reflectJSONField, bool) {
+	typ := value.Type()
+	fields := make([]reflectJSONField, 0, value.NumField())
+	for i := 0; i < value.NumField(); i++ {
+		field := typ.Field(i)
+		if field.Anonymous {
+			return nil, false
+		}
+		if !field.IsExported() {
+			continue
+		}
+		name, opts := splitJSONTag(field.Tag.Get("json"))
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		fieldValue := value.Field(i)
+		if opts["omitempty"] && isZeroReflectValue(fieldValue) {
+			continue
+		}
+		fields = append(fields, reflectJSONField{name: name, value: fieldValue})
+	}
+	return fields, true
+}
+
+func splitJSONTag(tag string) (string, map[string]bool) {
+	parts := strings.Split(tag, ",")
+	opts := make(map[string]bool)
+	for _, opt := range parts[1:] {
+		if opt != "" {
+			opts[opt] = true
+		}
+	}
+	return parts[0], opts
+}
+
+func isZeroReflectValue(value reflect.Value) bool {
+	switch value.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return value.Len() == 0
+	case reflect.Bool:
+		return !value.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return value.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return value.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return value.Float() == 0
+	case reflect.Interface, reflect.Pointer:
+		return value.IsNil()
+	default:
+		return value.IsZero()
 	}
 }
 
@@ -272,6 +552,11 @@ func writeBytes(w io.Writer, data []byte) error {
 	}
 	_, err := w.Write(data)
 	return err
+}
+
+func appendSizedBytes(dst, data []byte) []byte {
+	dst = binary.AppendUvarint(dst, uint64(len(data)))
+	return append(dst, data...)
 }
 
 func writeUvarint(w io.Writer, value uint64) error {

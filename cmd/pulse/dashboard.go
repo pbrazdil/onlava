@@ -416,6 +416,10 @@ func (s *dashboardServer) notify(notification *devdash.Notification) {
 		clients = append(clients, client)
 	}
 	s.mu.Unlock()
+	go s.broadcastNotification(message, clients)
+}
+
+func (s *dashboardServer) broadcastNotification(message map[string]any, clients []*dashboardClient) {
 	for _, client := range clients {
 		if err := client.writeJSON(message); err != nil {
 			s.removeClient(client)
@@ -424,7 +428,7 @@ func (s *dashboardServer) notify(notification *devdash.Notification) {
 	}
 }
 
-func (s *dashboardServer) addClient(conn *websocket.Conn) *dashboardClient {
+func (s *dashboardServer) addClient(conn dashboardWebSocket) *dashboardClient {
 	client := &dashboardClient{conn: conn}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -880,12 +884,26 @@ var netListen = func(network, address string) (net.Listener, error) {
 }
 
 type dashboardClient struct {
-	conn    *websocket.Conn
+	conn    dashboardWebSocket
 	writeMu sync.Mutex
 }
+
+type dashboardWebSocket interface {
+	WriteJSON(any) error
+	Close() error
+	SetWriteDeadline(time.Time) error
+}
+
+const dashboardClientWriteTimeout = time.Second
 
 func (c *dashboardClient) writeJSON(v any) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	if err := c.conn.SetWriteDeadline(time.Now().Add(dashboardClientWriteTimeout)); err != nil {
+		return err
+	}
+	defer func() {
+		_ = c.conn.SetWriteDeadline(time.Time{})
+	}()
 	return c.conn.WriteJSON(v)
 }

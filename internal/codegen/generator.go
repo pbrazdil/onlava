@@ -632,6 +632,18 @@ func writeEndpointRegistration(buf *strings.Builder, im *imports, ep *model.Endp
 		call := renderInvokeCall(im, ep, ss)
 		buf.WriteString(call)
 		buf.WriteString("\t\t},\n")
+		if ep.Access == runtimeapi.Public && ep.Payload != nil {
+			fmt.Fprintf(buf, "\t\tWireInvoke: func(ctx context.Context, pathArgs []any, payloadJSON []byte) (any, error) {\n")
+			wireCall := renderWireInvokeCall(im, ep, ss)
+			buf.WriteString(wireCall)
+			buf.WriteString("\t\t},\n")
+			if ep.Response != nil {
+				fmt.Fprintf(buf, "\t\tWireInvokeJSON: func(ctx context.Context, pathArgs []any, payloadJSON []byte) ([]byte, error) {\n")
+				wireJSONCall := renderWireInvokeJSONCall(im, ep, ss)
+				buf.WriteString(wireJSONCall)
+				buf.WriteString("\t\t},\n")
+			}
+		}
 	}
 	buf.WriteString("\t})\n")
 }
@@ -741,6 +753,80 @@ func renderInvokeCall(im *imports, ep *model.Endpoint, ss *model.ServiceStruct) 
 		buf.WriteString("\t\t\tif callErr != nil {\n\t\t\t\treturn nil, callErr\n\t\t\t}\n")
 		buf.WriteString("\t\t\treturn nil, nil\n")
 	}
+	return buf.String()
+}
+
+func renderWireInvokeCall(im *imports, ep *model.Endpoint, ss *model.ServiceStruct) string {
+	var buf strings.Builder
+	target := ep.ImplName
+	if ep.Receiver != nil && ss != nil {
+		fmt.Fprintf(&buf, "\t\t\tsvc, err := %s()\n", ss.GetterName)
+		buf.WriteString("\t\t\tif err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
+		target = "svc." + ep.ImplName
+	}
+
+	args := []string{"ctx"}
+	for i, path := range ep.PathParams {
+		_ = path
+		field := ep.Params[i+1]
+		args = append(args, fmt.Sprintf("pathArgs[%d].(%s)", i, im.typeExpr(field.Type)))
+	}
+	if ep.Payload != nil {
+		jsonPkg := im.use("json", "encoding/json")
+		payloadType := im.typeExpr(ep.Payload.Type)
+		buf.WriteString("\t\t\tvar payload " + payloadType + "\n")
+		buf.WriteString("\t\t\tif len(payloadJSON) != 0 {\n")
+		fmt.Fprintf(&buf, "\t\t\t\tif err := %s.Unmarshal(payloadJSON, &payload); err != nil {\n", jsonPkg)
+		buf.WriteString("\t\t\t\t\treturn nil, err\n")
+		buf.WriteString("\t\t\t\t}\n")
+		buf.WriteString("\t\t\t}\n")
+		buf.WriteString("\t\t\tpulseruntime.SetCurrentRequestPayload(ctx, payload)\n")
+		args = append(args, "payload")
+	}
+
+	if ep.Response != nil {
+		fmt.Fprintf(&buf, "\t\t\tresp, err := %s(%s)\n", target, strings.Join(args, ", "))
+		buf.WriteString("\t\t\tif err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
+		buf.WriteString("\t\t\treturn resp, nil\n")
+	} else {
+		fmt.Fprintf(&buf, "\t\t\tcallErr := %s(%s)\n", target, strings.Join(args, ", "))
+		buf.WriteString("\t\t\tif callErr != nil {\n\t\t\t\treturn nil, callErr\n\t\t\t}\n")
+		buf.WriteString("\t\t\treturn nil, nil\n")
+	}
+	return buf.String()
+}
+
+func renderWireInvokeJSONCall(im *imports, ep *model.Endpoint, ss *model.ServiceStruct) string {
+	var buf strings.Builder
+	jsonPkg := im.use("json", "encoding/json")
+	target := ep.ImplName
+	if ep.Receiver != nil && ss != nil {
+		fmt.Fprintf(&buf, "\t\t\tsvc, err := %s()\n", ss.GetterName)
+		buf.WriteString("\t\t\tif err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
+		target = "svc." + ep.ImplName
+	}
+
+	args := []string{"ctx"}
+	for i, path := range ep.PathParams {
+		_ = path
+		field := ep.Params[i+1]
+		args = append(args, fmt.Sprintf("pathArgs[%d].(%s)", i, im.typeExpr(field.Type)))
+	}
+	if ep.Payload != nil {
+		payloadType := im.typeExpr(ep.Payload.Type)
+		buf.WriteString("\t\t\tvar payload " + payloadType + "\n")
+		buf.WriteString("\t\t\tif len(payloadJSON) != 0 {\n")
+		fmt.Fprintf(&buf, "\t\t\t\tif err := %s.Unmarshal(payloadJSON, &payload); err != nil {\n", jsonPkg)
+		buf.WriteString("\t\t\t\t\treturn nil, err\n")
+		buf.WriteString("\t\t\t\t}\n")
+		buf.WriteString("\t\t\t}\n")
+		buf.WriteString("\t\t\tpulseruntime.SetCurrentRequestPayload(ctx, payload)\n")
+		args = append(args, "payload")
+	}
+
+	fmt.Fprintf(&buf, "\t\t\tresp, err := %s(%s)\n", target, strings.Join(args, ", "))
+	buf.WriteString("\t\t\tif err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
+	fmt.Fprintf(&buf, "\t\t\treturn %s.Marshal(resp)\n", jsonPkg)
 	return buf.String()
 }
 

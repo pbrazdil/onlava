@@ -192,7 +192,7 @@ func (g *tsGenerator) renderEndpointMethod(namespace string, ep *model.Endpoint)
 	if responseType == "void" {
 		lines[len(lines)-1] = strings.Replace(lines[len(lines)-1], "const resp = await ", "await ", 1)
 	} else {
-		lines = append(lines, fmt.Sprintf("return await resp.json() as %s", responseType))
+		lines = append(lines, fmt.Sprintf("return await decodeTypedResponse(resp) as %s", responseType))
 	}
 
 	var buf bytes.Buffer
@@ -551,6 +551,7 @@ func renderCallOptions(hasQuery, hasHeaders bool) string {
 func renderTypedEndpointCall(ep *model.Endpoint, methodName, pathExpr, jsonBodyExpr, optionsExpr string, hasPayload bool) string {
 	wireInfo := wiremodel.Endpoint(ep)
 	pathParams := "{}"
+	includePathParams := len(ep.PathParams) > 0
 	if len(ep.PathParams) > 0 {
 		parts := make([]string, 0, len(ep.PathParams))
 		for _, param := range ep.PathParams {
@@ -565,16 +566,24 @@ func renderTypedEndpointCall(ep *model.Endpoint, methodName, pathExpr, jsonBodyE
 	if jsonBodyExpr == "" {
 		jsonBodyExpr = "undefined"
 	}
+	payloadJSONExpr := "undefined"
+	if hasPayload {
+		payloadJSONExpr = "JSON.stringify(params)"
+	}
 	fields := []string{
 		fmt.Sprintf("endpointID: %q", wireInfo.ID),
+		fmt.Sprintf("wirePath: %q", "/_wire/"+wireInfo.ID),
 		fmt.Sprintf("schemaHash: %q", wireInfo.SchemaHash),
 		fmt.Sprintf("binaryAvailable: %t", wireInfo.Available),
 		fmt.Sprintf("safeJSONRetry: %t", wireInfo.SafeJSONRetry),
 		fmt.Sprintf("method: %q", methodName),
 		"path: " + pathExpr,
-		"pathParams: " + pathParams,
 		"payload: " + payloadExpr,
 		"jsonBody: " + jsonBodyExpr,
+		"payloadJSON: " + payloadJSONExpr,
+	}
+	if includePathParams {
+		fields = append(fields, "pathParams: "+pathParams)
 	}
 	if optionsExpr != "" {
 		fields = append(fields, "params: "+optionsExpr)

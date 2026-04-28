@@ -35,7 +35,8 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString(`const BROWSER = typeof globalThis === "object" && ("window" in globalThis)` + "\n\n")
 	capabilities := wiremodel.AppCapabilities(g.app)
 	buf.WriteString(fmt.Sprintf("const PULSE_WIRE_SCHEMA_HASH = %q\n", capabilities.SchemaHash))
-	buf.WriteString(fmt.Sprintf("const PULSE_WIRE_CONTENT_TYPE = %q\n\n", wire.ContentType))
+	buf.WriteString(fmt.Sprintf("const PULSE_WIRE_CONTENT_TYPE = %q\n", wire.ContentType))
+	buf.WriteString(fmt.Sprintf("const PULSE_WIRE_JSON_CONTENT_TYPE = %q\n\n", wire.JSONContentType))
 
 	serviceNames := make([]string, 0, len(g.namespaces))
 	serviceNames = append(serviceNames, namespaceNamesWithMethods(g.namespaces)...)
@@ -77,6 +78,7 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("    auth?: string | AuthDataGenerator\n")
 	buf.WriteString("    transport?: PulseTransport\n")
 	buf.WriteString("    disableCapabilityPreflight?: boolean\n")
+	buf.WriteString("    wireRecovery?: boolean\n")
 	buf.WriteString("}\n\n")
 
 	namespaceNames := make([]string, 0, len(g.namespaces))
@@ -191,7 +193,7 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("    headers?: Record<string, string>\n")
 	buf.WriteString("    query?: Record<string, string | string[]>\n")
 	buf.WriteString("}\n\n")
-	buf.WriteString("export type PulseTransport = \"auto\" | \"json\" | \"binary\" | \"binary-strict\"\n\n")
+	buf.WriteString("export type PulseTransport = \"auto\" | \"json\" | \"binary\" | \"binary-strict\" | \"wire-json\" | \"wire-json-strict\"\n\n")
 	buf.WriteString("export type AuthDataGenerator = () =>\n")
 	buf.WriteString("  | string\n")
 	buf.WriteString("  | Promise<string | undefined>\n")
@@ -206,7 +208,9 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("    readonly authGenerator?: AuthDataGenerator\n\n")
 	buf.WriteString("    readonly transport: PulseTransport\n")
 	buf.WriteString("    readonly disableCapabilityPreflight: boolean\n")
-	buf.WriteString("    private capabilitiesPromise?: Promise<WireCapabilities | null>\n\n")
+	buf.WriteString("    readonly wireRecovery: boolean\n")
+	buf.WriteString("    private capabilitiesPromise?: Promise<WireCapabilities | null>\n")
+	buf.WriteString("    private readonly wireEndpointCache = new Map<string, boolean>()\n\n")
 	buf.WriteString("    constructor(baseURL: string, options: ClientOptions) {\n")
 	buf.WriteString("        this.baseURL = baseURL\n")
 	buf.WriteString("        this.headers = {}\n")
@@ -217,6 +221,7 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("        this.fetcher = options.fetcher ?? boundFetch\n")
 	buf.WriteString("        this.transport = options.transport ?? \"auto\"\n")
 	buf.WriteString("        this.disableCapabilityPreflight = options.disableCapabilityPreflight ?? false\n")
+	buf.WriteString("        this.wireRecovery = options.wireRecovery ?? false\n")
 	buf.WriteString("        if (options.auth !== undefined) {\n")
 	buf.WriteString("            const auth = options.auth\n")
 	buf.WriteString("            if (typeof auth === \"function\") {\n")
@@ -241,21 +246,32 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("        }\n")
 	buf.WriteString("        return { headers: { Authorization: \"Bearer \" + authData } }\n")
 	buf.WriteString("    }\n\n")
-	buf.WriteString("    public async callTypedEndpoint(spec: TypedEndpointCall): Promise<Response> {\n")
+	buf.WriteString("    public async callTypedEndpoint(spec: TypedEndpointCall): Promise<Response | unknown> {\n")
 	buf.WriteString("        if (this.transport === \"json\" || !spec.binaryAvailable) {\n")
 	buf.WriteString("            if (this.transport === \"binary-strict\" && !spec.binaryAvailable) {\n")
 	buf.WriteString("                throw new PulseWireFallbackError(`wire transport unavailable for ${spec.endpointID}`)\n")
 	buf.WriteString("            }\n")
 	buf.WriteString("            return this.callTypedAPI(spec.method, spec.path, spec.jsonBody, spec.params)\n")
 	buf.WriteString("        }\n")
+	buf.WriteString("        if (this.transport === \"wire-json-strict\") {\n")
+	buf.WriteString("            return await this.callWireJSONAPI(spec)\n")
+	buf.WriteString("        }\n")
 	buf.WriteString("        if ((this.transport === \"auto\" || this.transport === \"binary\") && !this.disableCapabilityPreflight) {\n")
-	buf.WriteString("            const capabilities = await this.getWireCapabilities()\n")
-	buf.WriteString("            const endpoint = capabilities?.endpoints?.[spec.endpointID]\n")
-	buf.WriteString("            if (!capabilities || capabilities.wire_schema_hash !== PULSE_WIRE_SCHEMA_HASH || !endpoint?.available || endpoint.schema_hash !== spec.schemaHash) {\n")
+	buf.WriteString("            let endpointAvailable = this.wireEndpointCache.get(spec.endpointID)\n")
+	buf.WriteString("            if (endpointAvailable === undefined) {\n")
+	buf.WriteString("                const capabilities = await this.getWireCapabilities()\n")
+	buf.WriteString("                const endpoint = capabilities?.endpoints?.[spec.endpointID]\n")
+	buf.WriteString("                endpointAvailable = !!capabilities && capabilities.wire_schema_hash === PULSE_WIRE_SCHEMA_HASH && !!endpoint?.available && endpoint.schema_hash === spec.schemaHash\n")
+	buf.WriteString("                this.wireEndpointCache.set(spec.endpointID, endpointAvailable)\n")
+	buf.WriteString("            }\n")
+	buf.WriteString("            if (!endpointAvailable) {\n")
 	buf.WriteString("                return this.callTypedAPI(spec.method, spec.path, spec.jsonBody, spec.params)\n")
 	buf.WriteString("            }\n")
 	buf.WriteString("        }\n")
 	buf.WriteString("        try {\n")
+	buf.WriteString("            if (this.transport === \"wire-json\") {\n")
+	buf.WriteString("                return await this.callWireJSONAPI(spec)\n")
+	buf.WriteString("            }\n")
 	buf.WriteString("            return await this.callWireAPI(spec)\n")
 	buf.WriteString("        } catch (err) {\n")
 	buf.WriteString("            if (err instanceof APIError) {\n")
@@ -270,45 +286,57 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("            throw err\n")
 	buf.WriteString("        }\n")
 	buf.WriteString("    }\n\n")
-	buf.WriteString("    private async callWireAPI(spec: TypedEndpointCall): Promise<Response> {\n")
-	buf.WriteString("        const callID = makePulseCallID()\n")
-	buf.WriteString("        const payload = encodePulseWire({\n")
-	buf.WriteString("            schema_hash: spec.schemaHash,\n")
-	buf.WriteString("            method: spec.method,\n")
-	buf.WriteString("            path_params: spec.pathParams ?? {},\n")
-	buf.WriteString("            payload: spec.payload ?? null,\n")
+	buf.WriteString("    private async callWireJSONAPI(spec: TypedEndpointCall): Promise<unknown> {\n")
+	buf.WriteString("        const body = spec.payloadJSON ?? \"null\"\n")
+	buf.WriteString("        const wireHeaders: Record<string, string> = {\n")
+	buf.WriteString("            ...spec.params?.headers,\n")
+	buf.WriteString("            \"Content-Type\": PULSE_WIRE_JSON_CONTENT_TYPE,\n")
+	buf.WriteString("            \"X-Pulse-Wire-Schema-Hash\": spec.schemaHash,\n")
+	buf.WriteString("        }\n")
+	buf.WriteString("        if (spec.pathParams !== undefined) {\n")
+	buf.WriteString("            wireHeaders[\"X-Pulse-Wire-Path-Params\"] = JSON.stringify(spec.pathParams)\n")
+	buf.WriteString("        }\n")
+	buf.WriteString("        const response = await this.callAPI(\"POST\", spec.wirePath, body, {\n")
+	buf.WriteString("            ...spec.params,\n")
+	buf.WriteString("            headers: wireHeaders,\n")
 	buf.WriteString("        })\n")
+	buf.WriteString("        return await response.json()\n")
+	buf.WriteString("    }\n\n")
+	buf.WriteString("    private async callWireAPI(spec: TypedEndpointCall): Promise<unknown> {\n")
+	buf.WriteString("        const callID = this.wireRecovery ? makePulseCallID() : \"\"\n")
+	buf.WriteString("        const payload = encodePulseWireRequest(spec)\n")
+	buf.WriteString("        const wireHeaders: Record<string, string> = {\n")
+	buf.WriteString("            ...spec.params?.headers,\n")
+	buf.WriteString("            \"Content-Type\": PULSE_WIRE_CONTENT_TYPE,\n")
+	buf.WriteString("            \"X-Pulse-Wire-Schema-Hash\": spec.schemaHash,\n")
+	buf.WriteString("        }\n")
+	buf.WriteString("        if (callID !== \"\") {\n")
+	buf.WriteString("            wireHeaders[\"X-Pulse-Call-ID\"] = callID\n")
+	buf.WriteString("        }\n")
 	buf.WriteString("        const wireParams: CallParameters = {\n")
 	buf.WriteString("            ...spec.params,\n")
-	buf.WriteString("            headers: {\n")
-	buf.WriteString("                ...spec.params?.headers,\n")
-	buf.WriteString("                \"Content-Type\": PULSE_WIRE_CONTENT_TYPE,\n")
-	buf.WriteString("                \"Accept\": PULSE_WIRE_CONTENT_TYPE,\n")
-	buf.WriteString("                \"X-Pulse-Call-ID\": callID,\n")
-	buf.WriteString("            },\n")
+	buf.WriteString("            headers: wireHeaders,\n")
 	buf.WriteString("        }\n")
 	buf.WriteString("        let response: Response\n")
 	buf.WriteString("        try {\n")
-	buf.WriteString("            response = await this.fetchAPI(\"POST\", `/_wire/${encodeURIComponent(spec.endpointID)}`, payload.buffer as BodyInit, wireParams)\n")
+	buf.WriteString("            response = await this.callAPI(\"POST\", spec.wirePath, payload as BodyInit, wireParams)\n")
 	buf.WriteString("        } catch (err) {\n")
 	buf.WriteString("            if (err instanceof APIError) {\n")
 	buf.WriteString("                throw err\n")
 	buf.WriteString("            }\n")
 	buf.WriteString("            throw err\n")
 	buf.WriteString("        }\n")
-	buf.WriteString("        const contentType = response.headers.get(\"Content-Type\") ?? \"\"\n")
-	buf.WriteString("        if (!contentType.includes(PULSE_WIRE_CONTENT_TYPE)) {\n")
-	buf.WriteString("            throw new Error(`unexpected wire response content type: ${contentType}`)\n")
-	buf.WriteString("        }\n")
 	buf.WriteString("        try {\n")
-	buf.WriteString("            return responseFromWireEnvelope(await decodePulseWireResponse(response))\n")
+	buf.WriteString("            return await response.json()\n")
 	buf.WriteString("        } catch (err) {\n")
 	buf.WriteString("            if (err instanceof APIError) {\n")
 	buf.WriteString("                throw err\n")
 	buf.WriteString("            }\n")
-	buf.WriteString("            const recovered = await this.recoverWireCall(callID)\n")
-	buf.WriteString("            if (recovered) {\n")
-	buf.WriteString("                return responseFromRecoveredWire(recovered)\n")
+	buf.WriteString("            if (callID !== \"\") {\n")
+	buf.WriteString("                const recovered = await this.recoverWireCall(callID)\n")
+	buf.WriteString("                if (recovered) {\n")
+	buf.WriteString("                    return resultFromRecoveredWire(recovered)\n")
+	buf.WriteString("                }\n")
 	buf.WriteString("            }\n")
 	buf.WriteString("            if (spec.safeJSONRetry) {\n")
 	buf.WriteString("                throw err\n")
@@ -390,6 +418,7 @@ func (g *tsGenerator) render() ([]byte, error) {
 	buf.WriteString("}\n\n")
 	buf.WriteString(`interface TypedEndpointCall {
     endpointID: string
+    wirePath: string
     schemaHash: string
     binaryAvailable: boolean
     safeJSONRetry: boolean
@@ -398,6 +427,7 @@ func (g *tsGenerator) render() ([]byte, error) {
     pathParams?: Record<string, unknown>
     payload?: unknown
     jsonBody?: RequestInit["body"]
+    payloadJSON?: string
     params?: CallParameters
 }
 
@@ -444,14 +474,21 @@ function makePulseCallID(): string {
     return Array.from(random).map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
-function responseFromRecoveredWire(recovered: RecoveredWireResponse): Response {
+async function decodeTypedResponse(value: Response | unknown): Promise<unknown> {
+    if (value instanceof Response) {
+        return await value.json()
+    }
+    return value
+}
+
+function resultFromRecoveredWire(recovered: RecoveredWireResponse): unknown {
     if (recovered.error) {
         throw new APIError(recovered.status || 500, recovered.error)
     }
-    return jsonResponse(recovered.result ?? null, recovered.status || 200)
+    return recovered.result ?? null
 }
 
-function responseFromWireEnvelope(envelope: any): Response {
+function resultFromWireEnvelope(envelope: any): unknown {
     if (!envelope || typeof envelope !== "object") {
         throw new Error("invalid wire response envelope")
     }
@@ -459,7 +496,22 @@ function responseFromWireEnvelope(envelope: any): Response {
     if (envelope.ok === false) {
         throw new APIError(status, normalizeAPIErrorResponse(envelope.error, status))
     }
-    return jsonResponse(envelope.result ?? null, status)
+    if (typeof envelope.result_json === "string") {
+        return JSON.parse(envelope.result_json)
+    }
+    return envelope.result ?? null
+}
+
+function resultFromWireFrame(value: unknown): unknown {
+    if (!isPulseWireFrameResponse(value)) {
+        return resultFromWireEnvelope(value)
+    }
+    const status = value.status || 200
+    const payload = value.payloadJSON === "" ? null : JSON.parse(value.payloadJSON)
+    if (value.error) {
+        throw new APIError(status, normalizeAPIErrorResponse(payload, status))
+    }
+    return payload
 }
 
 function normalizeAPIErrorResponse(value: any, status: number): APIErrorResponse {
@@ -469,16 +521,39 @@ function normalizeAPIErrorResponse(value: any, status: number): APIErrorResponse
     return { code: ErrCode.Unknown, message: ` + "`request failed: status ${status}`" + ` }
 }
 
-function jsonResponse(value: unknown, status: number): Response {
-    return new Response(JSON.stringify(value), {
-        status,
-        headers: { "Content-Type": "application/json" },
-    })
-}
-
 const pulseWireTextEncoder = new TextEncoder()
 const pulseWireTextDecoder = new TextDecoder()
 const pulseWireMagic = new Uint8Array([80, 87, 66, 49])
+const pulseWireFrameMagic = new Uint8Array([80, 87, 66, 50])
+const pulseWireEmptyBytes = new Uint8Array(0)
+const pulseWireStringCache = new Map<string, Uint8Array>()
+
+void encodePulseWire
+void decodePulseWireResponse
+void resultFromWireFrame
+
+interface PulseWireFrameResponse {
+    __pulseWireFrame: true
+    status: number
+    error: boolean
+    payloadJSON: string
+}
+
+function isPulseWireFrameResponse(value: unknown): value is PulseWireFrameResponse {
+    return !!value && typeof value === "object" && (value as any).__pulseWireFrame === true
+}
+
+function encodePulseWireRequest(spec: TypedEndpointCall): Uint8Array {
+    const schema = pulseWireEmptyBytes
+    const pathParams = spec.pathParams === undefined ? pulseWireEmptyBytes : encodePulseWireString(JSON.stringify(spec.pathParams))
+    const payload = spec.payloadJSON === undefined ? pulseWireEmptyBytes : encodePulseWireString(spec.payloadJSON)
+    const writer = new PulseWireWriter(pulseWireFrameMagic.length + schema.length + pathParams.length + payload.length + 30)
+    writer.bytes(pulseWireFrameMagic)
+    writer.sizedBytes(schema)
+    writer.sizedBytes(pathParams)
+    writer.sizedBytes(payload)
+    return writer.finish()
+}
 
 function encodePulseWire(value: unknown): Uint8Array {
     const writer = new PulseWireWriter()
@@ -488,14 +563,16 @@ function encodePulseWire(value: unknown): Uint8Array {
 }
 
 async function decodePulseWireResponse(response: Response): Promise<unknown> {
-    return decodePulseWire(new Uint8Array(await response.arrayBuffer()))
+    const data = new Uint8Array(await response.arrayBuffer())
+    if (hasPulseWireMagic(data, pulseWireFrameMagic)) {
+        return decodePulseWireFrame(data)
+    }
+    return decodePulseWire(data)
 }
 
 function decodePulseWire(data: Uint8Array): unknown {
-    for (let i = 0; i < pulseWireMagic.length; i++) {
-        if (data[i] !== pulseWireMagic[i]) {
-            throw new Error("invalid wire payload")
-        }
+    if (!hasPulseWireMagic(data, pulseWireMagic)) {
+        throw new Error("invalid wire payload")
     }
     const reader = new PulseWireReader(data.subarray(pulseWireMagic.length))
     const value = reader.value()
@@ -503,6 +580,34 @@ function decodePulseWire(data: Uint8Array): unknown {
         throw new Error("trailing wire payload")
     }
     return value
+}
+
+function decodePulseWireFrame(data: Uint8Array): PulseWireFrameResponse {
+    const reader = new PulseWireReader(data.subarray(pulseWireFrameMagic.length))
+    const status = reader.uvarint()
+    const flags = reader.byte()
+    const payloadJSON = pulseWireTextDecoder.decode(reader.sizedBytes())
+    if (!reader.done()) {
+        throw new Error("trailing wire frame payload")
+    }
+    return {
+        __pulseWireFrame: true,
+        status,
+        error: (flags & 1) !== 0,
+        payloadJSON,
+    }
+}
+
+function hasPulseWireMagic(data: Uint8Array, magic: Uint8Array): boolean {
+    if (data.length < magic.length) {
+        return false
+    }
+    for (let i = 0; i < magic.length; i++) {
+        if (data[i] !== magic[i]) {
+            return false
+        }
+    }
+    return true
 }
 
 function writePulseWireValue(writer: PulseWireWriter, value: unknown): void {
@@ -542,7 +647,7 @@ function writePulseWireValue(writer: PulseWireWriter, value: unknown): void {
     }
     if (typeof value === "object") {
         const record = value as Record<string, unknown>
-        const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort()
+        const keys = Object.keys(record).filter((key) => record[key] !== undefined)
         writer.byte(6)
         writer.uvarint(keys.length)
         for (const key of keys) {
@@ -555,20 +660,28 @@ function writePulseWireValue(writer: PulseWireWriter, value: unknown): void {
 }
 
 class PulseWireWriter {
-    private chunks: number[] = []
+    private data: Uint8Array
+    private view: DataView
+    private offset = 0
+
+    constructor(size = 1024) {
+        this.data = new Uint8Array(size)
+        this.view = new DataView(this.data.buffer)
+    }
 
     byte(value: number): void {
-        this.chunks.push(value & 0xff)
+        this.reserve(1)
+        this.data[this.offset++] = value & 0xff
     }
 
     bytes(value: Uint8Array): void {
-        for (const b of value) {
-            this.byte(b)
-        }
+        this.reserve(value.length)
+        this.data.set(value, this.offset)
+        this.offset += value.length
     }
 
     string(value: string): void {
-        this.sizedBytes(pulseWireTextEncoder.encode(value))
+        this.sizedBytes(encodePulseWireString(value))
     }
 
     sizedBytes(value: Uint8Array): void {
@@ -586,20 +699,53 @@ class PulseWireWriter {
     }
 
     float64(value: number): void {
-        const data = new Uint8Array(8)
-        new DataView(data.buffer).setFloat64(0, value, true)
-        this.bytes(data)
+        this.reserve(8)
+        this.view.setFloat64(this.offset, value, true)
+        this.offset += 8
     }
 
     finish(): Uint8Array {
-        return new Uint8Array(this.chunks)
+        return this.data.subarray(0, this.offset)
     }
+
+    private reserve(extra: number): void {
+        const required = this.offset + extra
+        if (required <= this.data.length) {
+            return
+        }
+        let nextSize = this.data.length
+        while (nextSize < required) {
+            nextSize *= 2
+        }
+        const next = new Uint8Array(nextSize)
+        next.set(this.data)
+        this.data = next
+        this.view = new DataView(this.data.buffer)
+    }
+}
+
+function encodePulseWireString(value: string): Uint8Array {
+    if (value.length <= 8192) {
+        const cached = pulseWireStringCache.get(value)
+        if (cached !== undefined) {
+            return cached
+        }
+        const encoded = pulseWireTextEncoder.encode(value)
+        if (pulseWireStringCache.size < 1024) {
+            pulseWireStringCache.set(value, encoded)
+        }
+        return encoded
+    }
+    return pulseWireTextEncoder.encode(value)
 }
 
 class PulseWireReader {
     private offset = 0
+    private readonly view: DataView
 
-    constructor(private readonly data: Uint8Array) {}
+    constructor(private readonly data: Uint8Array) {
+        this.view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+    }
 
     done(): boolean {
         return this.offset === this.data.length
@@ -681,7 +827,7 @@ class PulseWireReader {
         if (this.offset + 8 > this.data.length) {
             throw new Error("truncated wire number")
         }
-        const value = new DataView(this.data.buffer, this.data.byteOffset + this.offset, 8).getFloat64(0, true)
+        const value = this.view.getFloat64(this.offset, true)
         this.offset += 8
         return value
     }

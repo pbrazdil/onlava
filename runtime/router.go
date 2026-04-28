@@ -12,6 +12,7 @@ type routeHandle func(http.ResponseWriter, *http.Request, routeParams)
 
 type routeTable struct {
 	routes        []*route
+	exact         map[string][]*route
 	NotFound      http.Handler
 	GlobalOPTIONS http.Handler
 }
@@ -26,6 +27,7 @@ type routePattern struct {
 	raw         string
 	segments    []routeSegment
 	literals    int
+	hasParam    bool
 	hasWildcard bool
 }
 
@@ -63,15 +65,35 @@ func newRouteTable() *routeTable {
 }
 
 func (r *routeTable) Handle(methods []string, path string, handler routeHandle) {
-	r.routes = append(r.routes, &route{
+	pattern := parseRoutePattern(path)
+	item := &route{
 		methods: expandMethods(methods),
-		pattern: parseRoutePattern(path),
+		pattern: pattern,
 		handler: handler,
-	})
+	}
+	r.routes = append(r.routes, item)
+	if !pattern.hasParam && !pattern.hasWildcard {
+		if r.exact == nil {
+			r.exact = make(map[string][]*route)
+		}
+		r.exact[pattern.raw] = append(r.exact[pattern.raw], item)
+	}
 	slices.SortStableFunc(r.routes, compareRoutes)
 }
 
 func (r *routeTable) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodOptions {
+		if routes := r.exact[req.URL.Path]; len(routes) > 0 {
+			for _, route := range routes {
+				if routeAllowsMethod(route.methods, req.Method) {
+					w.Header().Set("Allow", strings.Join(expandedAllowedMethods(routes), ", "))
+					route.handler(w, req, nil)
+					return
+				}
+			}
+		}
+	}
+
 	pathMatches := r.matchingRoutes(req.URL.Path)
 	if len(pathMatches) == 0 {
 		r.serveNotFound(w, req)
@@ -125,23 +147,37 @@ func allowedMethods(matches []routeMatch, includeOptions bool) []string {
 	seen := make(map[string]bool)
 	var methods []string
 	for _, match := range matches {
-		for _, method := range match.route.methods {
-			if seen[method] {
-				continue
-			}
-			seen[method] = true
-			methods = append(methods, method)
-			if method == http.MethodGet && !seen[http.MethodHead] {
-				seen[http.MethodHead] = true
-				methods = append(methods, http.MethodHead)
-			}
-		}
+		appendAllowedMethod(&methods, seen, match.route.methods...)
 	}
 	if includeOptions && !seen[http.MethodOptions] {
 		methods = append(methods, http.MethodOptions)
 	}
 	slices.Sort(methods)
 	return methods
+}
+
+func expandedAllowedMethods(routes []*route) []string {
+	seen := make(map[string]bool)
+	var methods []string
+	for _, route := range routes {
+		appendAllowedMethod(&methods, seen, route.methods...)
+	}
+	slices.Sort(methods)
+	return methods
+}
+
+func appendAllowedMethod(methods *[]string, seen map[string]bool, values ...string) {
+	for _, method := range values {
+		if seen[method] {
+			continue
+		}
+		seen[method] = true
+		*methods = append(*methods, method)
+		if method == http.MethodGet && !seen[http.MethodHead] {
+			seen[http.MethodHead] = true
+			*methods = append(*methods, http.MethodHead)
+		}
+	}
 }
 
 func routeAllowsMethod(methods []string, method string) bool {
@@ -180,6 +216,7 @@ func parseRoutePattern(path string) routePattern {
 		switch {
 		case strings.HasPrefix(segment, ":"):
 			pattern.segments = append(pattern.segments, routeSegment{kind: routeParam, value: segment[1:]})
+			pattern.hasParam = true
 		case strings.HasPrefix(segment, "*"):
 			pattern.segments = append(pattern.segments, routeSegment{kind: routeWildcard, value: segment[1:]})
 			pattern.hasWildcard = true

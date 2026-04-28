@@ -65,6 +65,12 @@ func WithAuthContext(ctx context.Context, auth AuthInfo) context.Context {
 	})
 }
 
+func SetCurrentRequestPayload(ctx context.Context, payload any) {
+	if state := stateFromContext(ctx); state != nil {
+		state.request.Payload = payload
+	}
+}
+
 func stateFromContext(ctx context.Context) *requestState {
 	if ctx == nil {
 		return nil

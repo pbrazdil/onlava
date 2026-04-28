@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"pulse.dev/errs"
+	"pulse.dev/internal/wire"
 	"pulse.dev/runtime/shared"
 )
 
@@ -19,14 +20,17 @@ type server struct {
 	public         *routeTable
 	private        *routeTable
 	http           *http.Server
+	wireEndpoints  map[string]*Endpoint
+	wireCaps       wire.Capabilities
 	wireRecoveryMu sync.Mutex
 	wireRecovery   map[string]wireRecoveryRecord
 }
 
 func newServer(listenAddr string) (*http.Server, error) {
 	s := &server{
-		public:  newRouteTable(),
-		private: newRouteTable(),
+		public:        newRouteTable(),
+		private:       newRouteTable(),
+		wireEndpoints: make(map[string]*Endpoint),
 	}
 	s.public.GlobalOPTIONS = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		applyCORSHeaders(w.Header(), req)
@@ -42,13 +46,16 @@ func newServer(listenAddr string) (*http.Server, error) {
 		errs.HTTPError(w, errs.B().Code(errs.NotFound).Msg("endpoint not found").Err())
 	})
 
-	for _, ep := range listEndpoints() {
+	endpoints := listEndpoints()
+	for _, ep := range endpoints {
+		s.wireEndpoints[endpointWireID(ep)] = ep
 		if ep.Raw {
 			s.registerRaw(ep)
 			continue
 		}
 		s.registerTyped(ep)
 	}
+	s.wireCaps = buildWireCapabilities(endpoints)
 	s.registerWire()
 	if devEndpointsEnabled() {
 		s.registerPulseConfig()
@@ -59,7 +66,7 @@ func newServer(listenAddr string) (*http.Server, error) {
 
 	httpServer := &http.Server{
 		Addr:    listenAddr,
-		Handler: withCORS(s.public),
+		Handler: withCORS(withGzip(s.public)),
 	}
 	s.http = httpServer
 	return httpServer, nil
@@ -375,6 +382,9 @@ func authenticateRequest(req *http.Request, ep *Endpoint) (AuthInfo, error) {
 }
 
 func decodePathParams(ep *Endpoint, params routeParams) ([]any, shared.PathParams, error) {
+	if len(ep.PathParams) == 0 {
+		return nil, nil, nil
+	}
 	values := make([]any, 0, len(ep.PathParams))
 	decoded := make(shared.PathParams, 0, len(ep.PathParams))
 	for _, spec := range ep.PathParams {

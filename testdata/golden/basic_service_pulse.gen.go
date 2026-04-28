@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	pulsepubsub "pulse.dev/pubsub"
 	pulseruntime "pulse.dev/runtime"
@@ -260,6 +261,42 @@ func init() {
 				return nil, err
 			}
 			return resp, nil
+		},
+		WireInvoke: func(ctx context.Context, pathArgs []any, payloadJSON []byte) (any, error) {
+			svc, err := pulseInternalGetService()
+			if err != nil {
+				return nil, err
+			}
+			var payload *EchoRequest
+			if len(payloadJSON) != 0 {
+				if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+					return nil, err
+				}
+			}
+			pulseruntime.SetCurrentRequestPayload(ctx, payload)
+			resp, err := svc.pulseInternalImplEcho(ctx, pathArgs[0].(string), payload)
+			if err != nil {
+				return nil, err
+			}
+			return resp, nil
+		},
+		WireInvokeJSON: func(ctx context.Context, pathArgs []any, payloadJSON []byte) ([]byte, error) {
+			svc, err := pulseInternalGetService()
+			if err != nil {
+				return nil, err
+			}
+			var payload *EchoRequest
+			if len(payloadJSON) != 0 {
+				if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+					return nil, err
+				}
+			}
+			pulseruntime.SetCurrentRequestPayload(ctx, payload)
+			resp, err := svc.pulseInternalImplEcho(ctx, pathArgs[0].(string), payload)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(resp)
 		},
 	})
 	pulseruntime.RegisterEndpointFunc(Raw, "service", "Raw")
