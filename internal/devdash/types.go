@@ -7,10 +7,9 @@ import (
 )
 
 const (
-	DashboardAddr       = "127.0.0.1:9401"
-	WebSocketPath       = "/__pulse"
-	EncoreWebSocketPath = "/__encore"
-	ReportPath          = "/__pulse/report"
+	DashboardAddr = "127.0.0.1:9401"
+	WebSocketPath = "/__pulse"
+	ReportPath    = "/__pulse/report"
 )
 
 func ListenAddr() string {

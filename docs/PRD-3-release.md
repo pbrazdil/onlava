@@ -1,4 +1,4 @@
-My verdict: do not freeze the current feature set as-is. Freeze a smaller, boring, reliable v0. Pulse is close to having a strong local-first developer runtime, but right now the “app runtime,” “dev supervisor,” “dashboard,” “local HTTPS proxy,” “DB Studio,” “Pub/Sub,” “cron,” “MCP,” and “Encore migration compatibility” are interwoven. That is the main production-readiness risk.
+My verdict: do not freeze the current feature set as-is. Freeze a smaller, boring, reliable v0. Pulse is close to having a strong local-first developer runtime, but right now the app runtime, dev supervisor, dashboard, local HTTPS proxy, DB Studio, Pub/Sub, cron, and MCP are interwoven. That is the main production-readiness risk.
 
 I could not run the full Go test suite here because go.mod requires Go 1.26.0 and this container has Go 1.23.2; Go attempted to auto-download 1.26.0, but network/DNS is blocked. So the findings below are from static source audit, not a green test run.
 
@@ -35,8 +35,6 @@ Beta / dev-only:
   cron UI
   MCP server
   psql helper
-  Encore migration compatibility
-
 The current docs/local-contract.md already tries to freeze a local contract, which is good. But the implementation is larger than the contract and some docs disagree with code. For example, docs/local-contract.md lists the current CLI grammar without pulse psql, while cmd/pulse/main.go exposes psql in the actual usage text.
 
 2. Split pulse run from pulse dev
@@ -143,35 +141,9 @@ explicit:
 
 Trust-store mutation is especially sensitive. Users should never be surprised by it.
 
-3. Decide whether Pulse is Pulse-native or Encore-compatible
+3. Keep Pulse-native syntax strict
 
-The repo currently says two different things.
-
-AGENTS.md:84-87 says phase 1 should be strict Pulse only:
-
-No encore.app, no encore.dev/..., and no //encore:* support
-
-But the implementation supports Encore compatibility:
-
-* internal/parse/parser.go:608-616 accepts both pulse: and encore: directives.
-* internal/codegen/generator.go:337-352 accepts encore.dev/pubsub.
-* internal/codegen/generator.go:384-399 accepts encore.dev/cron.
-* internal/build/build.go:1042-1085 rewrites Encore imports to Pulse imports.
-* cmd/pulse/dashboard_branding.go rewrites Encore dashboard branding strings.
-* pulse.go:24-28 still exposes CloudEncore.
-
-This is not necessarily wrong, but it cannot be accidental. Pick one:
-
-Option A:
-  v0 is Pulse-native only.
-  Remove Encore directive/import compatibility from stable paths.
-  Offer a separate future migration tool.
-Option B:
-  v0 includes migration compatibility.
-  Document it as compatibility mode.
-  Add explicit tests/docs and make it clear it is not the primary API.
-
-My recommendation: make v0 Pulse-native and move Encore support to an explicit migration command or compatibility flag.
+The repo should expose one app model: `pulse.app`, `pulse.dev/...` imports, and `//pulse:` directives. Migration tooling, if added later, should be explicit and separate from the runtime/parser path.
 
 4. Reconsider source rewriting and direct-call magic
 
@@ -282,7 +254,7 @@ The UI exists, but the shipped tree is inconsistent:
 * ui/embed.go expects ui/dist, but ui/dist is missing.
 * ui/package.json uses Bun, but Bun is not available in this environment.
 * ui/src/components/layout.tsx:16-24 contains “ghost” nav items like Infra, Flow, and Snippets.
-* ui/src/components/layout.tsx:63-65 still adds/removes encore-dark.
+* ui/src/components/layout.tsx owns dashboard theme class wiring.
 * ui/src/components/layout.tsx:208-215 has a “Cloud Dashboard” link placeholder.
 * cmd/pulse/dashboard.go:30-32 accepts all WebSocket origins.
 * cmd/pulse/dashboard.go:56-61 exposes GraphQL, WebSocket, dev report, SSE, and message endpoints from the dashboard server.
@@ -370,7 +342,6 @@ DB Studio
 local HTTPS proxy
 trust-store installation
 MCP
-Encore compatibility
 Pub/Sub unless its lifecycle/backpressure/retry semantics are fully specified
 cron unless scheduling/missed-run semantics are fully specified
 source rewrite/direct-call behavior unless documented as public contract
@@ -402,7 +373,7 @@ Contract:
   one canonical local contract doc
   CLI usage matches docs
   docs match implementation
-  Encore compatibility decision made explicitly
+  Pulse-native syntax and imports documented explicitly
   stable vs beta features labeled clearly
 
 The highest-priority fixes
@@ -413,6 +384,6 @@ If I had to reduce this to the top five:
 2. Split pulse run and pulse dev: make pulse run headless and deterministic.
 3. Move dev/admin/pprof endpoints off the app router.
 4. Make local HTTPS proxy and trust-store installation opt-in.
-5. Decide and document Pulse-native vs Encore-compatible behavior before freezing APIs.
+5. Keep Pulse-native syntax and imports strict before freezing APIs.
 
 The core idea is solid. The risky part is not lack of features; it is that too many features are currently considered normal runtime behavior. Freeze the smallest useful local runtime, mark the rest as dev/beta, and make the release boring, buildable, testable, and inspectable.

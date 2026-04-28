@@ -346,22 +346,22 @@ func (s *dashboardServer) mcpToolDefinitions() []mcpToolDefinition {
 		},
 		{
 			Name:        "get_storage_buckets",
-			Description: "Encore-compatible stub for unsupported object storage inspection.",
+			Description: "Unsupported object storage inspection stub.",
 			Call:        unsupported("get_storage_buckets"),
 		},
 		{
 			Name:        "get_objects",
-			Description: "Encore-compatible stub for unsupported object storage inspection.",
+			Description: "Unsupported object storage inspection stub.",
 			Call:        unsupported("get_objects"),
 		},
 		{
 			Name:        "get_cache_keyspaces",
-			Description: "Encore-compatible stub for unsupported cache inspection.",
+			Description: "Unsupported cache inspection stub.",
 			Call:        unsupported("get_cache_keyspaces"),
 		},
 		{
 			Name:        "get_metrics",
-			Description: "Encore-compatible stub for unsupported metrics inspection.",
+			Description: "Unsupported metrics inspection stub.",
 			Call:        unsupported("get_metrics"),
 		},
 		{
@@ -376,12 +376,12 @@ func (s *dashboardServer) mcpToolDefinitions() []mcpToolDefinition {
 		},
 		{
 			Name:        "search_docs",
-			Description: "Encore-compatible stub for documentation search.",
+			Description: "Unsupported documentation search stub.",
 			Call:        unsupported("search_docs"),
 		},
 		{
 			Name:        "get_docs",
-			Description: "Encore-compatible stub for documentation retrieval.",
+			Description: "Unsupported documentation retrieval stub.",
 			Call:        unsupported("get_docs"),
 		},
 	}

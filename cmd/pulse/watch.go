@@ -332,9 +332,6 @@ func isWatchedFile(rel string) bool {
 	if isWatchedRootDotFile(rel) {
 		return true
 	}
-	if base == "encore.gen.go" {
-		return false
-	}
 	switch filepath.Ext(rel) {
 	case ".go", ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".f", ".F", ".for", ".f90", ".m", ".mm", ".s", ".S", ".syso", ".swig", ".swigcxx":
 		return true
@@ -374,7 +371,7 @@ func discoverEmbeddedWatchFiles(root string) (map[string]struct{}, error) {
 			}
 			return nil
 		}
-		if filepath.Ext(rel) != ".go" || filepath.Base(rel) == "encore.gen.go" || d.Type()&os.ModeSymlink != 0 {
+		if filepath.Ext(rel) != ".go" || d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
 		data, err := os.ReadFile(path)

@@ -2,11 +2,11 @@ package main
 
 import "testing"
 
-func TestParseGenClientArgsAcceptsEncoreStyleInvocation(t *testing.T) {
+func TestParseGenClientArgsAcceptsTargetInvocation(t *testing.T) {
 	opts, err := parseGenClientArgs([]string{
 		"onlvnext-o5o2",
 		"--lang=typescript",
-		"--output=apps/pulse/src/encore-client.ts",
+		"--output=apps/pulse/src/pulse-client.ts",
 		"--app-root",
 		"/tmp/app",
 	})
@@ -19,7 +19,7 @@ func TestParseGenClientArgsAcceptsEncoreStyleInvocation(t *testing.T) {
 	if opts.Lang != "typescript" {
 		t.Fatalf("Lang = %q", opts.Lang)
 	}
-	if opts.Output != "apps/pulse/src/encore-client.ts" {
+	if opts.Output != "apps/pulse/src/pulse-client.ts" {
 		t.Fatalf("Output = %q", opts.Output)
 	}
 	if opts.AppRoot != "/tmp/app" {

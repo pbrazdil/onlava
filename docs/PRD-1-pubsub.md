@@ -2,7 +2,7 @@
 
 This document describes how Pulse pub/sub works today, how to define topics and subscriptions, and what runtime behavior to expect.
 
-Pulse pub/sub is currently a local, embedded runtime intended to preserve the most common Encore-style development flow while keeping the implementation small and predictable.
+Pulse pub/sub is currently a local, embedded runtime intended to preserve a compact local development flow while keeping the implementation small and predictable.
 
 ## Summary
 

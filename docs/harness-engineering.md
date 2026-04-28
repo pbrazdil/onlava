@@ -96,7 +96,6 @@ Hard failures:
 - forbidden CLI/router/color framework imports are rejected in source
 - packages outside `cmd/pulse` may not import `pulse.dev/cmd/pulse`
 - required generated/vendored ignore markers must exist in `.gitignore` and `.gitattributes`
-- non-fixture `encore.gen.go` files are rejected
 - non-generated source files over 2500 lines are rejected
 
 Warnings:
@@ -104,8 +103,6 @@ Warnings:
 - non-generated source files over 1000 lines
 - cgo imports, because they require native build handling
 - `.DS_Store` files found in the working tree
-- Encore compatibility imports outside the known parser/build/codegen compatibility paths
-
 The dependency allowlist is intentionally small and lives in code next to the check. New direct dependencies should be rare and must include the reason they justify the added maintenance surface.
 
 ## Non-Goals

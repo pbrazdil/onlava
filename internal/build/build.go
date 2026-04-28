@@ -505,7 +505,7 @@ func shouldSkipDir(rel string) bool {
 
 func shouldSkipFile(rel string) bool {
 	base := filepath.Base(rel)
-	if base == "encore.gen.go" || base == ".DS_Store" {
+	if base == ".DS_Store" {
 		return true
 	}
 	if base == ".env" || strings.HasPrefix(base, ".env.") {
@@ -534,7 +534,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	if filepath.Ext(src) == ".go" {
-		data, err = rewriteEncoreCompat(src, data)
+		data, err = rewritePulseImports(src, data)
 		if err != nil {
 			return err
 		}
@@ -552,7 +552,7 @@ func sourceFileData(path, rel string) ([]byte, error) {
 		return patchGoModData(data, app.RepoRoot())
 	}
 	if filepath.Ext(rel) == ".go" {
-		return rewriteEncoreCompat(path, data)
+		return rewritePulseImports(path, data)
 	}
 	return data, nil
 }

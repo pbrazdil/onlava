@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func TestValueRedactsPulseAndEncoreSensitiveFields(t *testing.T) {
+func TestValueRedactsPulseSensitiveFields(t *testing.T) {
 	type nested struct {
-		Token string `json:"token" encore:"sensitive"`
+		Token string `json:"token" pulse:"sensitive"`
 	}
 	type payload struct {
 		Password string `json:"password" pulse:"sensitive"`

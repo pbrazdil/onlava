@@ -195,7 +195,7 @@ func App(root, name string) (*model.App, error) {
 		errs = append(errs, "only one pulse:authhandler is supported per application")
 	}
 	if !foundDirective {
-		errs = append(errs, "no Pulse or Encore directives found in application")
+		errs = append(errs, "no Pulse directives found in application")
 	}
 	if len(authHandlers) == 1 {
 		authHandlers[0].Service.AuthHandler = authHandlers[0]
@@ -607,10 +607,8 @@ func parseDirective(group *ast.CommentGroup) *directive {
 
 func directiveBody(comment string) (string, bool) {
 	text := strings.TrimSpace(strings.TrimPrefix(comment, "//"))
-	for _, prefix := range []string{"pulse:", "encore:"} {
-		if strings.HasPrefix(text, prefix) {
-			return strings.TrimPrefix(text, prefix), true
-		}
+	if strings.HasPrefix(text, "pulse:") {
+		return strings.TrimPrefix(text, "pulse:"), true
 	}
 	return "", false
 }
@@ -908,21 +906,11 @@ func paramKind(t types.Type) (runtimeapi.ParamKind, bool) {
 }
 
 func isAuthUIDType(t types.Type) bool {
-	for _, pkgPath := range []string{"pulse.dev/auth", "encore.dev/beta/auth"} {
-		if isNamedType(t, pkgPath, "UID") {
-			return true
-		}
-	}
-	return false
+	return isNamedType(t, "pulse.dev/auth", "UID")
 }
 
 func isMiddlewareNamedType(t types.Type, name string) bool {
-	for _, pkgPath := range []string{"pulse.dev/middleware", "encore.dev/middleware"} {
-		if isNamedType(t, pkgPath, name) {
-			return true
-		}
-	}
-	return false
+	return isNamedType(t, "pulse.dev/middleware", name)
 }
 
 func calledObject(pkg *packages.Package, fun ast.Expr) types.Object {

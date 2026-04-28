@@ -99,24 +99,21 @@ func Hello(ctx context.Context, wrong string) error { return nil }
 	}
 }
 
-func TestParseAcceptsEncoreDirectives(t *testing.T) {
+func TestParseRejectsNonPulseDirectives(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/encoreapp\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
-	writeFile(t, dir, "pulse.app", `{"name":"encoreapp"}`)
+	writeFile(t, dir, "go.mod", "module example.com/otherdirective\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "pulse.app", `{"name":"otherdirective"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
 import "context"
 
-//encore:api public
+//other:api public
 func Hello(ctx context.Context) error { return nil }
 `)
 
-	app, err := parse.App(dir, "encoreapp")
-	if err != nil {
-		t.Fatalf("expected Encore directives to parse, got %v", err)
-	}
-	if len(app.Services) != 1 || len(app.Services[0].Endpoints) != 1 {
-		t.Fatalf("expected one service with one endpoint, got %+v", app.Services)
+	_, err := parse.App(dir, "otherdirective")
+	if err == nil || !strings.Contains(err.Error(), "no Pulse directives found in application") {
+		t.Fatalf("expected no Pulse directives error, got %v", err)
 	}
 }
 
@@ -194,7 +191,7 @@ func Helper() {}
 `)
 
 	_, err := parse.App(dir, "nopulse")
-	if err == nil || !strings.Contains(err.Error(), "no Pulse or Encore directives found in application") {
+	if err == nil || !strings.Contains(err.Error(), "no Pulse directives found in application") {
 		t.Fatalf("expected no Pulse directives error, got %v", err)
 	}
 }

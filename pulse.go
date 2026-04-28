@@ -24,7 +24,6 @@ const (
 	CloudAWS       = shared.CloudAWS
 	CloudGCP       = shared.CloudGCP
 	CloudAzure     = shared.CloudAzure
-	CloudEncore    = shared.CloudEncore
 	CloudLocal     = shared.CloudLocal
 	None           = shared.None
 	APICall        = shared.APICall

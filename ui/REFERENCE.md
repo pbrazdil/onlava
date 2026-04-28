@@ -18,7 +18,7 @@ Current backend contracts used by the source app:
 - WebSocket notifications: `process/start`, `process/compile-start`, `process/reload`, `process/stop`, `process/compile-error`, `process/output`, `trace/new`
 - GraphQL: `getStoredRequests`, `createStoredRequest`, `updateStoredRequest`, `deleteStoredRequest`
 
-Routes intentionally not recreated from Encore:
+Routes intentionally not recreated in the local dashboard:
 - cloud dashboard / deploy entry points
 - Clerk / remote auth UX
 - marketing / onboarding promo flows

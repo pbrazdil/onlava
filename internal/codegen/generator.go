@@ -341,7 +341,7 @@ func pubsubImportAliases(file *ast.File) map[string]bool {
 	aliases := make(map[string]bool)
 	for _, imp := range file.Imports {
 		switch strings.Trim(imp.Path.Value, "\"") {
-		case "pulse.dev/pubsub", "encore.dev/pubsub":
+		case "pulse.dev/pubsub":
 		default:
 			continue
 		}
@@ -388,7 +388,7 @@ func cronImportAliases(file *ast.File) map[string]bool {
 	aliases := make(map[string]bool)
 	for _, imp := range file.Imports {
 		switch strings.Trim(imp.Path.Value, "\"") {
-		case "pulse.dev/cron", "encore.dev/cron":
+		case "pulse.dev/cron":
 		default:
 			continue
 		}

@@ -43,8 +43,8 @@ single local server + dev/inspect/harness tooling
 ```
 
 Architecture invariant: the public Pulse surface is Pulse-named. User apps
-should depend on `pulse.dev/...` packages and `//pulse:` directives, not on
-Encore packages, daemon layers, cloud layers, or compatibility syntax.
+should depend on `pulse.dev/...` packages and `//pulse:` directives, without
+legacy compatibility packages, daemon layers, cloud layers, or non-Pulse syntax.
 
 Architecture invariant: app semantics should be captured as data in
 `internal/model` before code generation or runtime wiring. Avoid duplicating
@@ -229,7 +229,7 @@ Architecture invariant: substantial implementation plans live under
 corpus for parser, codegen, runtime, and CLI behavior.
 
 Architecture invariant: fixture apps should speak Pulse syntax directly. Use
-Encore-derived material only as a reference corpus when porting behavior into
+Historical reference material only as a corpus when porting behavior into
 Pulse-native tests.
 
 ## Cross-Cutting Concerns

@@ -82,11 +82,11 @@ Dev-only or beta surface:
 - Pub/Sub and cron runtime/admin affordances until their lifecycle, retry, scheduling, and clear/delete semantics are frozen
 - Pub/Sub UI and queue controls
 - cron UI
-- Encore migration compatibility
+- migration compatibility for older app shapes
 
 Compatibility posture:
 - Pulse-native syntax and imports are the stable API.
-- Encore directives/imports may still be accepted for migration, but they are compatibility behavior and not the primary v0 API.
+- Non-Pulse directives/imports are not part of the v0 API.
 
 ## `pulse.app`
 
@@ -255,7 +255,7 @@ pulse harness self --json --write
 - output conforms to `pulse.harness.self.v1`
 - it validates the Pulse repo itself instead of a target app
 - it runs docs knowledge validation, `pulse inspect docs --json`, architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, DB Studio UI typecheck/build, UI freshness checks, `go install ./cmd/pulse`, and installed binary freshness checks
-- architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, non-fixture `encore.gen.go`, and non-generated source files over 2500 lines
+- architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source files over 2500 lines
 - architecture checks warn on non-generated source files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
 - `--write` persists the same result to `.pulse/harness/self-latest.json`
 

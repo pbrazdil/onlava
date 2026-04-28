@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	pulseCronExecutionHeader  = "X-Pulse-Cron-Execution"
-	encoreCronExecutionHeader = "X-Encore-Cron-Execution"
-	maxCronScheduleHorizon    = 5 * 366 * 24 * time.Hour
+	pulseCronExecutionHeader = "X-Pulse-Cron-Execution"
+	maxCronScheduleHorizon   = 5 * 366 * 24 * time.Hour
 )
 
 type cronScheduler struct {
@@ -213,7 +212,6 @@ func withCronInvocation(ctx context.Context, job *CronJob, scheduledAt time.Time
 	}
 	headers := make(http.Header)
 	headers.Set(pulseCronExecutionHeader, executionID)
-	headers.Set(encoreCronExecutionHeader, executionID)
 	request := shared.Request{
 		Type:               shared.APICall,
 		Started:            scheduledAt,

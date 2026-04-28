@@ -44,6 +44,6 @@ func TestRunHarnessArchitectureStepReportsViolations(t *testing.T) {
 
 func writeArchitectureSupportFiles(t *testing.T, root string) {
 	t.Helper()
-	writeTestAppFile(t, root, ".gitignore", "/encore/\n/oracle/\n/coverage/\n.pulse/\n.DS_Store\nnode_modules/\n")
+	writeTestAppFile(t, root, ".gitignore", "/oracle/\n/coverage/\n.pulse/\n.DS_Store\nnode_modules/\n")
 	writeTestAppFile(t, root, ".gitattributes", "cmd/pulse/devdash_static/** -diff linguist-generated=true linguist-vendored=true\ndbstudio/reference/original/** -diff linguist-generated=true linguist-vendored=true\ndbstudio/reference/pretty/** -diff linguist-generated=true linguist-vendored=true\nui/public/assets/** -diff linguist-generated=true linguist-vendored=true\nui/dist/** -diff linguist-generated=true\n")
 }

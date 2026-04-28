@@ -49,9 +49,9 @@ function DashboardShell({ appId }: { appId: string }) {
     const root = document.documentElement;
     root.classList.add("dark");
     root.style.colorScheme = "dark";
-    document.body.classList.add("encore-dark");
+    document.body.classList.add("pulse-dark");
     return () => {
-      document.body.classList.remove("encore-dark");
+      document.body.classList.remove("pulse-dark");
     };
   }, []);
 

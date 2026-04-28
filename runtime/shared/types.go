@@ -31,11 +31,10 @@ const (
 type CloudProvider string
 
 const (
-	CloudAWS    CloudProvider = "aws"
-	CloudGCP    CloudProvider = "gcp"
-	CloudAzure  CloudProvider = "azure"
-	CloudEncore CloudProvider = "encore"
-	CloudLocal  CloudProvider = "local"
+	CloudAWS   CloudProvider = "aws"
+	CloudGCP   CloudProvider = "gcp"
+	CloudAzure CloudProvider = "azure"
+	CloudLocal CloudProvider = "local"
 )
 
 type RequestType string

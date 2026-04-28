@@ -10,9 +10,7 @@ Execution Plans
 For complex features, multi-hour tasks, migrations, or significant refactors, create or update an ExecPlan as described in `PLANS.md`. Store active ExecPlans under `docs/plans/<0000-short-slug>.md` using a permanent historical sequence ID, link them from `docs/plans/active.md`, and keep their Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective sections current as you work. `PLAN.md` is the strategic roadmap; do not treat it as an executable task plan.
 
 Summary
-Build a new Pulse-native Go-only local runtime that makes pulse run start a single HTTP server for Pulse services and preserve the most common Encore API behavior, with strict Pulse naming and no compatibility layer for Encore syntax. Use pulse dev for the full local development platform with dashboard, proxy, DB Studio, and live reload.
-
-Use the existing encore tree only as a reference corpus and fixture source. Do not reuse Encore’s daemon/cloud/infra layers; implement a smaller Pulse-native parser, codegen, and runtime.
+Build a Pulse-native Go-only local runtime that makes pulse run start a single HTTP server for Pulse services, with strict Pulse naming and no compatibility layer for non-Pulse syntax. Use pulse dev for the full local development platform with dashboard, proxy, DB Studio, and live reload.
 
 Public Surface
 CLI: pulse dev [--port <n>] [--listen <addr>] for local development, and pulse run [--port <n>] [--listen <addr>] for headless production-like execution. Default listen is 127.0.0.1:4000.
@@ -35,13 +33,13 @@ internal parser/build pipeline for service discovery, directive parsing, codegen
 runtime/public packages under pulse.dev/...
 App discovery and service model:
 pulse run walks upward to pulse.app, then loads the Go module from that root.
-Service discovery follows Encore-style rules: a service is defined by Pulse APIs, a Pulse service struct, or a Pulse auth handler; nested services are invalid; service names come from the root package name and must be unique.
-Parser and compatibility slice:
-Support typed handlers with Encore-style signatures: func(context.Context, [path params...], [payload]) ([resp], error).
+Service discovery follows Pulse rules: a service is defined by Pulse APIs, a Pulse service struct, or a Pulse auth handler; nested services are invalid; service names come from the root package name and must be unique.
+Parser behavior:
+Support typed handlers with Pulse endpoint signatures: func(context.Context, [path params...], [payload]) ([resp], error).
 Support raw handlers: func(http.ResponseWriter, *http.Request).
 Support //pulse:service methods plus optional init<Type>() (*Type, error) service initialization.
 Support //pulse:authhandler as either a package function or service method; allow both token-string auth and structured auth params from header/query/qs/cookie tags; allow optional auth-data return struct.
-Preserve Encore route defaults:
+Preserve Pulse route defaults:
 default path /<service>.<Endpoint>
 typed endpoint default methods GET,POST when no payload, POST when payload exists
 raw endpoint default method wildcard
@@ -58,14 +56,14 @@ Runtime behavior:
 Start one local HTTP server with separate public and private routing tables.
 Mount public and auth endpoints on external HTTP.
 Keep private endpoints internal-only and callable via generated in-process service calls.
-Do not support service-to-service calls to raw endpoints in phase 1; fail at generation time with a clear error, matching Encore’s limitation.
+Do not support service-to-service calls to raw endpoints in phase 1; fail at generation time with a clear error.
 Decode typed requests from path params, headers, query strings, cookies, and JSON body; encode typed responses as JSON.
 Honor pulse:"httpstatus" on response structs.
 Run the auth handler for external auth requests, then expose auth state through pulse.dev/beta/auth.
 Expose enough request metadata through pulse.CurrentRequest() for migrated common cases, especially raw endpoint path params, method, path, service, endpoint, and payload metadata.
 Map pulse.dev/beta/errs codes to HTTP responses and return full structured errors for in-process internal calls.
 Test Plan
-Port a small Pulse-named fixture set from Encore’s Go e2e/parser coverage and use it as the acceptance suite for phase 1.
+Maintain a small Pulse-named fixture set as the acceptance suite for phase 1.
 Add parser/unit tests for:
 directive parsing and validation
 service discovery
@@ -87,7 +85,7 @@ pulse:"httpstatus" and coded error responses
 Gate phase 1 on go test ./... and a lint/format pass for the new Pulse code.
 Assumptions and Defaults
 Go only in phase 1. TypeScript is out of scope.
-Strict Pulse rename only. No encore.app, no encore.dev/..., and no //encore:* support in this milestone.
+Strict Pulse naming only. No non-Pulse app markers, imports, or directives in this milestone.
 No infra generation, DB management/migrations, Pub/Sub, cron, middleware, dashboard, cloud features, namespaces, or live-reload/watch mode.
 No automatic source migration command in phase 1; migrated apps are expected to adopt Pulse syntax directly.
 Single-process local runtime only. No remote service hosting or distributed local orchestration in this phase.

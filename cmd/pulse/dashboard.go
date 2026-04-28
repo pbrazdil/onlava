@@ -56,7 +56,6 @@ func newDashboardServer(supervisor *devSupervisor, assetsDir string) *dashboardS
 	mux.HandleFunc("/", s.handleRoot)
 	mux.HandleFunc("/__graphql", s.handleGraphQL)
 	mux.HandleFunc(devdash.WebSocketPath, s.handleWebSocket)
-	mux.HandleFunc(devdash.EncoreWebSocketPath, s.handleWebSocket)
 	mux.HandleFunc(devdash.ReportPath, s.handleReport)
 	mux.HandleFunc("/sse", s.handleMCP)
 	mux.HandleFunc("/message", s.handleMCP)
@@ -193,7 +192,7 @@ func (s *dashboardServer) handleRoot(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if req.Method != http.MethodGet || req.URL.Path == devdash.WebSocketPath || req.URL.Path == devdash.EncoreWebSocketPath {
+	if req.Method != http.MethodGet || req.URL.Path == devdash.WebSocketPath {
 		http.NotFound(w, req)
 		return
 	}

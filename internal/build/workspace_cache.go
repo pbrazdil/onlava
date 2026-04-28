@@ -188,7 +188,7 @@ func syncGeneratedFiles(root, appRoot string, gen *codegen.Output, prev, sourceF
 		rel = filepath.ToSlash(rel)
 		if filepath.Ext(rel) == ".go" {
 			var err error
-			data, err = rewriteEncoreCompat(filepath.Join(appRoot, rel), data)
+			data, err = rewritePulseImports(filepath.Join(appRoot, rel), data)
 			if err != nil {
 				return nil, err
 			}
@@ -238,17 +238,10 @@ func sortedKeys(set map[string]struct{}) []string {
 	return paths
 }
 
-func rewriteEncoreCompat(path string, src []byte) ([]byte, error) {
+func rewritePulseImports(path string, src []byte) ([]byte, error) {
 	text := string(src)
-	needsCronRewrite := strings.Contains(text, "encore.dev/cron")
-	needsRlogRewrite := strings.Contains(text, "encore.dev/rlog")
-	needsAuthRewrite := strings.Contains(text, "encore.dev/beta/auth")
-	needsErrsRewrite := strings.Contains(text, "encore.dev/beta/errs")
-	needsMiddlewareRewrite := strings.Contains(text, "encore.dev/middleware")
-	needsPubSubRewrite := strings.Contains(text, "encore.dev/pubsub")
 	needsPGXPoolRewrite := strings.Contains(text, "github.com/jackc/pgx/v5/pgxpool")
-	needsRootRewrite := strings.Contains(text, "\"encore.dev\"")
-	if !needsCronRewrite && !needsRlogRewrite && !needsAuthRewrite && !needsErrsRewrite && !needsMiddlewareRewrite && !needsPubSubRewrite && !needsPGXPoolRewrite && !needsRootRewrite {
+	if !needsPGXPoolRewrite {
 		return src, nil
 	}
 
@@ -259,28 +252,7 @@ func rewriteEncoreCompat(path string, src []byte) ([]byte, error) {
 	}
 
 	changed := false
-	if rewriteImportPath(file, "encore.dev/rlog", "pulse.dev/rlog", "") {
-		changed = true
-	}
-	if rewriteImportPath(file, "encore.dev/cron", "pulse.dev/cron", "") {
-		changed = true
-	}
-	if rewriteImportPath(file, "encore.dev/beta/auth", "pulse.dev/auth", "") {
-		changed = true
-	}
-	if rewriteImportPath(file, "encore.dev/beta/errs", "pulse.dev/errs", "") {
-		changed = true
-	}
-	if rewriteImportPath(file, "encore.dev/middleware", "pulse.dev/middleware", "") {
-		changed = true
-	}
-	if rewriteImportPath(file, "encore.dev/pubsub", "pulse.dev/pubsub", "") {
-		changed = true
-	}
 	if rewriteImportPath(file, "github.com/jackc/pgx/v5/pgxpool", "pulse.dev/pgxpool", "") {
-		changed = true
-	}
-	if rewriteImportPath(file, "encore.dev", "pulse.dev", "encore") {
 		changed = true
 	}
 

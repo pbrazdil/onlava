@@ -72,7 +72,6 @@ func runHarnessArchitectureStep(repoRoot string) harnessStep {
 	step.Summary["direct_dependencies"] = summary.DirectDependencies
 	step.Summary["indirect_dependencies"] = summary.IndirectDependencies
 	step.Summary["large_files"] = summary.LargeFiles
-	step.Summary["legacy_refs"] = summary.LegacyRefs
 	step.Summary["warnings"] = warningCount
 	step.Summary["errors"] = errorCount
 	step.Diagnostics = diagnostics
@@ -87,7 +86,6 @@ type architectureSummary struct {
 	DirectDependencies   int
 	IndirectDependencies int
 	LargeFiles           int
-	LegacyRefs           int
 }
 
 func checkArchitectureDependencies(repoRoot string, summary *architectureSummary) []checkDiagnostic {
@@ -185,11 +183,6 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 			if err != nil {
 				return err
 			}
-			for _, diag := range importDiagnostics {
-				if strings.Contains(diag.Message, "Encore compatibility") {
-					summary.LegacyRefs++
-				}
-			}
 			diagnostics = append(diagnostics, importDiagnostics...)
 		}
 		return nil
@@ -232,15 +225,6 @@ func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {
 				SuggestedAction: "Move shared code into internal/ instead of importing the CLI package.",
 			})
 		}
-		if strings.Contains(importPath, "encore.dev") && !architectureAllowsEncoreCompatibility(rel) {
-			diagnostics = append(diagnostics, checkDiagnostic{
-				Stage:           "architecture checks",
-				Severity:        "warning",
-				File:            filepath.ToSlash(path),
-				Message:         "Encore compatibility import/reference should stay isolated",
-				SuggestedAction: "Keep Encore compatibility logic in parser/build/codegen compatibility paths only.",
-			})
-		}
 	}
 	return diagnostics, nil
 }
@@ -248,7 +232,6 @@ func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {
 func checkArchitectureGeneratedHygiene(repoRoot string, summary *architectureSummary) []checkDiagnostic {
 	var diagnostics []checkDiagnostic
 	requiredGitignore := []string{
-		"/encore/",
 		"/oracle/",
 		"/coverage/",
 		".pulse/",
@@ -300,15 +283,6 @@ func checkArchitectureGeneratedHygiene(repoRoot string, summary *architectureSum
 		if architectureSkipDir(filepath.Dir(rel)) {
 			return nil
 		}
-		if filepath.Base(rel) == "encore.gen.go" && !strings.HasPrefix(rel, "testdata/") {
-			diagnostics = append(diagnostics, checkDiagnostic{
-				Stage:           "architecture checks",
-				Severity:        "error",
-				File:            filepath.ToSlash(path),
-				Message:         "encore.gen.go should not exist in the Pulse repo",
-				SuggestedAction: "Remove generated Encore artifacts or move them under testdata as fixtures.",
-			})
-		}
 		if filepath.Base(rel) == ".DS_Store" {
 			dsStoreCount++
 			if len(dsStoreExamples) < 5 {
@@ -339,7 +313,6 @@ func architectureSkipDir(rel string) bool {
 		".pulse",
 		".codex-tmp",
 		"coverage",
-		"encore",
 		"oracle",
 		"node_modules",
 		"ui/node_modules",
@@ -361,24 +334,6 @@ func architectureGeneratedOrVendored(rel string) bool {
 		"ui/public/assets/",
 		"ui/dist/",
 		"dbstudio/dist/",
-	} {
-		if strings.HasPrefix(rel, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-func architectureAllowsEncoreCompatibility(rel string) bool {
-	rel = filepath.ToSlash(rel)
-	if strings.HasSuffix(rel, "_test.go") {
-		return true
-	}
-	for _, prefix := range []string{
-		"internal/build/",
-		"internal/codegen/",
-		"internal/parse/",
-		"cmd/pulse/dashboard_branding",
 	} {
 		if strings.HasPrefix(rel, prefix) {
 			return true

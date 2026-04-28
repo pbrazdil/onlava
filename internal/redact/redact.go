@@ -191,11 +191,9 @@ func (r redactor) value(value reflect.Value, key string) any {
 }
 
 func isSensitiveField(field reflect.StructField) bool {
-	for _, tag := range []string{field.Tag.Get("pulse"), field.Tag.Get("encore")} {
-		for _, part := range strings.Split(tag, ",") {
-			if strings.TrimSpace(part) == "sensitive" {
-				return true
-			}
+	for _, part := range strings.Split(field.Tag.Get("pulse"), ",") {
+		if strings.TrimSpace(part) == "sensitive" {
+			return true
 		}
 	}
 	return false

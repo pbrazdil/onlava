@@ -8,7 +8,7 @@ This plan follows the standard in [../../PLANS.md](../../PLANS.md). It is based 
 
 Pulse is close to being a useful local-first runtime, but the current repository mixes stable app runtime behavior with development-platform behavior. The first production-ready release should be intentionally smaller, more boring, and easier to validate.
 
-The goal of this plan is to freeze a reliable v0 contract. Stable v0 should include the app config file, runtime commands, build artifacts, typed/raw HTTP endpoints, auth handler, service initialization and shutdown, private/internal calls, secrets from environment and `.env`, basic logs/traces, and machine-readable CLI outputs. Development conveniences such as dashboard, DB Studio, local HTTPS proxy, trust-store installation, MCP, Pub/Sub UI, cron UI, and Encore migration compatibility should be labeled dev-only, beta, or explicitly compatibility-mode until their contracts are hardened.
+The goal of this plan is to freeze a reliable v0 contract. Stable v0 should include the app config file, runtime commands, build artifacts, typed/raw HTTP endpoints, auth handler, service initialization and shutdown, private/internal calls, secrets from environment and `.env`, basic logs/traces, and machine-readable CLI outputs. Development conveniences such as dashboard, DB Studio, local HTTPS proxy, trust-store installation, MCP, Pub/Sub UI, and cron UI should be labeled dev-only or beta until their contracts are hardened.
 
 The outcome should be observable from a clean checkout. A contributor should be able to run the documented release validation sequence and prove that the CLI builds, tests pass, generated artifacts are deterministic, stable APIs match docs, dev/admin endpoints are not exposed on the public app listener, secrets are not copied into build caches, and release archives do not contain local machine artifacts.
 
@@ -20,9 +20,9 @@ The outcome should be observable from a clean checkout. A contributor should be 
 - [x] (2026-04-27 17:36Z) Confirmed current checkout has `ui/dist` and `dbstudio/dist`, added `pulse version --json`, and added `pulse.version.v1` schema.
 - [x] (2026-04-27 17:36Z) Gated dev/admin/pprof endpoints behind explicit dev endpoint mode instead of registering them on the public app router by default.
 - [x] (2026-04-27 17:36Z) Made local HTTPS proxy and trust-store installation opt-in through `pulse dev --proxy` and `pulse dev --proxy --trust`.
-- [x] (2026-04-27 17:36Z) Documented Pulse-native behavior as stable and Encore behavior as compatibility-mode rather than the primary v0 API.
+- [x] (2026-04-27 17:36Z) Documented Pulse-native behavior as stable.
 - [x] (2026-04-27 15:48Z) Centralized `.env` parsing in `internal/envfile`, wired runtime secrets, dev supervisor child env, dashboard DB discovery, and DB Studio discovery through it, and documented precedence.
-- [x] (2026-04-27 17:36Z) Restricted build workspace copying so `.env`, `.env.*`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, `__MACOSX`, `coverage`, and `encore.gen.go` are not persisted in build caches.
+- [x] (2026-04-27 17:36Z) Restricted build workspace copying so `.env`, `.env.*`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage` are not persisted in build caches.
 - [x] (2026-04-27 17:36Z) Added response JSON semantics tests for `json:"-"`, `omitempty`, embedded structs, headers, `pulse:"httpstatus"`, and custom marshalers.
 - [x] (2026-04-27 17:36Z) Aligned CLI usage, docs, schemas, and implementation for the release-hardening slice.
 - [x] (2026-04-27 18:38Z) Made missing declared secrets warn in local development but fail before serving under `pulse run --env production`.
@@ -38,7 +38,7 @@ Known audit findings from the PRD:
 - Generated app binaries could carry dev-platform behavior through `pulse.dev/runtimeapp`.
 - `runtime/server.go` mounted dev/admin/platform/pprof endpoints on the app router.
 - Local HTTPS proxy and trust-store behavior were enabled by default in development paths.
-- The repo had conflicting guidance about strict Pulse-only behavior versus Encore compatibility support.
+- The repo had conflicting guidance about strict Pulse-only behavior versus migration compatibility support.
 - The build workspace copied arbitrary app files, which risks copying `.env` and other local files into cache.
 - Response encoding did not fully match normal `encoding/json` semantics for tags such as `json:"-"` and `omitempty`.
 
@@ -63,7 +63,7 @@ Implementation discoveries:
   Rationale: `pulse dev` versus headless `pulse run` is the highest-leverage boundary and already has its own detailed ExecPlan.
   Date/Author: 2026-04-27 / Codex
 
-- Decision: Stable v0 should prefer Pulse-native behavior, with any Encore support made explicit as compatibility mode or migration tooling.
+- Decision: Stable v0 should prefer Pulse-native behavior, with any migration tooling kept explicit and separate.
   Rationale: Hidden compatibility makes APIs harder to freeze and contradicts the repository’s strict Pulse naming goal.
   Date/Author: 2026-04-27 / Codex
 
@@ -113,7 +113,7 @@ The v0 release-hardening slice now has explicit docs for stable/dev/beta/compati
 
 ## Context and Orientation
 
-The release-readiness source audit is stored in `docs/PRD-3-release.md`. It recommends not freezing the current feature set as-is. It names the main risk as the mixing of app runtime, development supervisor, dashboard, local HTTPS proxy, DB Studio, Pub/Sub, cron, MCP, and Encore compatibility.
+The release-readiness source audit is stored in `docs/PRD-3-release.md`. It recommends not freezing the current feature set as-is. It names the main risk as the mixing of app runtime, development supervisor, dashboard, local HTTPS proxy, DB Studio, Pub/Sub, cron, and MCP.
 
 The CLI dispatcher lives in `cmd/pulse/main.go`. The stable commands to freeze for v0 are expected to be `pulse run`, `pulse build`, `pulse check --json`, `pulse inspect ... --json`, `pulse logs --jsonl`, `pulse test`, and `pulse gen client`. `pulse dev` is the development-platform command after the command split.
 
@@ -134,13 +134,13 @@ Terms used in this plan:
 - Stable v0 means the supported behavior that users and agents can rely on without beta labels.
 - Dev-only means a feature is useful in `pulse dev` but not part of the production-like runtime contract.
 - Beta means a feature can ship but its behavior is not frozen yet.
-- Compatibility mode means support for Encore syntax/imports or migration behavior that is explicitly documented and tested rather than accidental.
+- Migration tooling means explicit commands or docs for one-time source transitions, not hidden parser/runtime behavior.
 - Public app listener means the HTTP listener that serves user application endpoints.
 - Admin/dev listener means a local-only or explicitly enabled listener for diagnostics, pprof, Pub/Sub controls, dashboard reporting, or platform operations.
 
 ## Milestones
 
-Milestone 1 defines the release contract. At the end of this milestone, `docs/local-contract.md`, `AGENTS.md`, command usage, and docs index agree on the stable v0 commands, stable runtime features, beta/dev-only features, and compatibility posture.
+Milestone 1 defines the release contract. At the end of this milestone, `docs/local-contract.md`, `AGENTS.md`, command usage, and docs index agree on the stable v0 commands, stable runtime features, and beta/dev-only features.
 
 Milestone 2 completes the runtime/dev boundary. At the end of this milestone, `pulse dev` owns the development platform and headless `pulse run` starts only the app runtime. This milestone is complete when the acceptance criteria in [0001-devrun-command-split.md](0001-devrun-command-split.md) are satisfied.
 
@@ -158,7 +158,7 @@ Milestone 8 runs the release gate. At the end of this milestone, the full releas
 
 ## Plan of Work
 
-Start by updating the release contract before changing behavior. The repo should have one canonical local contract that says what is stable, what is beta, what is dev-only, and what is compatibility-mode. Use `docs/local-contract.md` as the canonical document, and keep `cmd/pulse/main.go` usage text aligned with it.
+Start by updating the release contract before changing behavior. The repo should have one canonical local contract that says what is stable, what is beta, and what is dev-only. Use `docs/local-contract.md` as the canonical document, and keep `cmd/pulse/main.go` usage text aligned with it.
 
 Next, finish the command split work tracked by [0001-devrun-command-split.md](0001-devrun-command-split.md). Do not make other release-hardening work depend on a dev supervisor hidden inside `pulse run`.
 
@@ -167,8 +167,6 @@ Then handle clean-checkout reproducibility. Verify whether `ui/dist` and other e
 After reproducibility, audit runtime routes. Move dev/admin endpoints out of `runtime/server.go` public routing by default. If dashboard or development reporting needs endpoints, keep them on the dashboard/supervisor server. If pprof is needed, expose it only through an explicit local admin mode.
 
 Then make local HTTPS proxy and trust installation opt-in. `pulse dev` may support `--proxy` and a separate explicit trust flag. Do not surprise users by mutating system trust stores. `pulse run` should never install trust roots.
-
-Next, decide Encore compatibility. Either remove compatibility from stable paths for v0 or label it explicitly and add tests/docs. Relevant areas include directive parsing, import rewriting, generated compatibility aliases, dashboard branding rewrites, and public symbols that still mention Encore.
 
 Then centralize `.env` and secrets loading. Replace duplicate parsers and loaders in runtime, supervisor, DB Studio, and tests with one package-level implementation. Document precedence and mode-specific missing-secret behavior.
 
@@ -203,10 +201,6 @@ Use the command split plan:
 Audit public runtime routes:
 
     rg -n "__pulse/config|pubsub/clear|platform.Stats|debug/pprof|Access-Control-Allow-Origin|Access-Control-Allow-Credentials" runtime cmd internal
-
-Audit Encore compatibility:
-
-    rg -n "encore|Encore|encore.dev|//encore" --glob '!encore/**' --glob '!cmd/pulse/devdash_static/**'
 
 Audit build workspace copying:
 
@@ -254,8 +248,6 @@ Release readiness is accepted when all of these are true:
 This plan should be executed in small, independently testable slices. Each milestone should leave the repo buildable. If a risky change fails, revert only that change and keep completed hardening work.
 
 Do not delete development functionality while moving it behind `pulse dev`. The recovery path for a broken command split is to keep `pulse dev` on the existing supervisor path and continue narrowing `pulse run` separately.
-
-Do not silently remove Encore compatibility while app migrations still depend on it. If compatibility is removed from stable v0, provide a documented transition path or explicit compatibility mode.
 
 When changing build workspace copying, expect some apps to rely on embedded assets. Preserve required app assets through explicit inclusion rules or clear diagnostics rather than broad copying.
 
@@ -309,7 +301,6 @@ Dev-only or beta candidates:
     MCP server
     Pub/Sub UI
     cron UI
-    Encore migration compatibility
     source rewrite/direct-call behavior unless made inspectable
 
 ## Interfaces and Dependencies

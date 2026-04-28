@@ -38,7 +38,7 @@ Current focus:
 - Keep supported local-only surfaces first: API Explorer, traces, Pub/Sub, DB explorer, cron, service metadata.
 - Avoid reintroducing cloud, Clerk, deploy, or marketing surfaces.
 
-## Runtime Compatibility
+## Runtime Contracts
 
 - Status: active
 - Owner: Pulse runtime
@@ -48,6 +48,5 @@ Current focus:
 
 Current focus:
 
-- Preserve common Encore-compatible behavior only where it helps migration.
 - Prefer Pulse-native naming and contracts.
 - Keep generated artifacts deterministic and inspectable.
