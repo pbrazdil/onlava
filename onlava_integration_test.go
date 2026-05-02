@@ -1,4 +1,4 @@
-package pulse_test
+package onlava_test
 
 import (
 	"context"
@@ -19,12 +19,12 @@ import (
 )
 
 var (
-	buildPulseBinaryOnce sync.Once
-	buildPulseBinaryPath string
-	buildPulseBinaryErr  error
+	buildOnlavaBinaryOnce sync.Once
+	buildOnlavaBinaryPath string
+	buildOnlavaBinaryErr  error
 )
 
-func TestPulseRunBasicApp(t *testing.T) {
+func TestOnlavaRunBasicApp(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -33,20 +33,20 @@ func TestPulseRunBasicApp(t *testing.T) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = append(pulseRunEnv(repo, dashAddr, cacheDir), "PULSE_CORS_ALLOW_ORIGINS=http://localhost:5178")
+	cmd.Env = append(onlavaRunEnv(repo, dashAddr, cacheDir), "ONLAVA_CORS_ALLOW_ORIGINS=http://localhost:5178")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start onlava run: %v", err)
 	}
 	defer func() {
 		cancel()
@@ -58,7 +58,7 @@ func TestPulseRunBasicApp(t *testing.T) {
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
-			t.Fatalf("timed out waiting for pulse process to exit")
+			t.Fatalf("timed out waiting for onlava process to exit")
 		}
 	}()
 
@@ -73,7 +73,7 @@ func TestPulseRunBasicApp(t *testing.T) {
 	assertCORSActual(t, "http://"+addr+"/service.AuthEcho")
 }
 
-func TestPulseDevReloadsOnGoChanges(t *testing.T) {
+func TestOnlavaDevReloadsOnGoChanges(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -86,22 +86,22 @@ func TestPulseDevReloadsOnGoChanges(t *testing.T) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
-	cmd.Env = pulseDevEnv(repo, dashAddr, cacheDir)
+	cmd.Env = onlavaDevEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse dev: %v", err)
+		t.Fatalf("start onlava dev: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
 	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
@@ -122,7 +122,7 @@ func TestPulseDevReloadsOnGoChanges(t *testing.T) {
 	waitForJSONResponse(t, "http://"+addr+"/service.CallPrivate", http.StatusOK, map[string]any{"message": "secret:bye"})
 }
 
-func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
+func TestOnlavaRunLoadsSecretsFromDotEnv(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -131,22 +131,22 @@ func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Env = onlavaRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start onlava run: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/secrets")
 	getJSON(t, "http://"+addr+"/secrets", nil, http.StatusOK, map[string]any{
@@ -155,7 +155,7 @@ func TestPulseRunLoadsSecretsFromDotEnv(t *testing.T) {
 	})
 }
 
-func TestPulseRunProductionFailsForMissingSecrets(t *testing.T) {
+func TestOnlavaRunProductionFailsForMissingSecrets(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -167,21 +167,21 @@ func TestPulseRunProductionFailsForMissingSecrets(t *testing.T) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr, "--env", "production")
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Env = onlavaRunEnv(repo, dashAddr, cacheDir)
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	output, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Fatalf("pulse run --env production succeeded with missing secrets; output:\n%s", output)
+		t.Fatalf("onlava run --env production succeeded with missing secrets; output:\n%s", output)
 	}
 	if ctx.Err() != nil {
-		t.Fatalf("pulse run --env production timed out; output:\n%s", output)
+		t.Fatalf("onlava run --env production timed out; output:\n%s", output)
 	}
 	got := string(output)
 	for _, want := range []string{"missing required secrets for production"} {
@@ -194,13 +194,13 @@ func TestPulseRunProductionFailsForMissingSecrets(t *testing.T) {
 	}
 }
 
-func TestPulseRunPopulatesSecretsBeforePubSubPackageDeclarations(t *testing.T) {
+func TestOnlavaRunPopulatesSecretsBeforePubSubPackageDeclarations(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
 	appDir := filepath.Join(t.TempDir(), "pubsubsecrets")
-	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/pubsubsecrets\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repo+"\n")
-	writeFile(t, filepath.Join(appDir, "pulse.app"), `{"name":"pubsubsecrets"}`)
+	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/pubsubsecrets\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repo+"\n")
+	writeFile(t, filepath.Join(appDir, ".onlava.json"), `{"name":"pubsubsecrets"}`)
 	writeFile(t, filepath.Join(appDir, ".env"), "TestQueueConcurrency=10\n")
 	writeFile(t, filepath.Join(appDir, "queue", "api.go"), `package queue
 
@@ -209,7 +209,7 @@ import (
 	"strconv"
 	"strings"
 
-	"pulse.dev/pubsub"
+	"onlava.com/pubsub"
 )
 
 var secrets struct {
@@ -244,7 +244,7 @@ func parseConcurrency(value string, fallback int) int {
 	return parsed
 }
 
-//pulse:api public path=/concurrency method=GET
+//onlava:api public path=/concurrency method=GET
 func Concurrency(ctx context.Context) (*Response, error) {
 	return &Response{
 		MaxConcurrency: sub.Config().MaxConcurrency,
@@ -257,22 +257,22 @@ func Concurrency(ctx context.Context) (*Response, error) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Env = onlavaRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start onlava run: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/concurrency")
 	getJSON(t, "http://"+addr+"/concurrency", nil, http.StatusOK, map[string]any{
@@ -281,14 +281,14 @@ func Concurrency(ctx context.Context) (*Response, error) {
 	})
 }
 
-func TestPulseRunInitializesServiceStructsAtStartup(t *testing.T) {
+func TestOnlavaRunInitializesServiceStructsAtStartup(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
 	appDir := filepath.Join(t.TempDir(), "serviceinit")
 	markerPath := filepath.Join(t.TempDir(), "init.marker")
-	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire pulse.dev v0.0.0\n\nreplace pulse.dev => "+repo+"\n")
-	writeFile(t, filepath.Join(appDir, "pulse.app"), `{"name":"serviceinit"}`)
+	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repo+"\n")
+	writeFile(t, filepath.Join(appDir, ".onlava.json"), `{"name":"serviceinit"}`)
 	writeFile(t, filepath.Join(appDir, "svc", "api.go"), `package svc
 
 import (
@@ -296,11 +296,11 @@ import (
 	"os"
 )
 
-//pulse:service
+//onlava:service
 type Service struct{}
 
 func initService() (*Service, error) {
-	if path := os.Getenv("PULSE_INIT_MARKER"); path != "" {
+	if path := os.Getenv("ONLAVA_INIT_MARKER"); path != "" {
 		if err := os.WriteFile(path, []byte("started"), 0o644); err != nil {
 			return nil, err
 		}
@@ -308,7 +308,7 @@ func initService() (*Service, error) {
 	return &Service{}, nil
 }
 
-//pulse:api public
+//onlava:api public
 func (s *Service) Hello(ctx context.Context) error { return nil }
 `)
 
@@ -316,27 +316,27 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = append(pulseRunEnv(repo, dashAddr, cacheDir), "PULSE_INIT_MARKER="+markerPath)
+	cmd.Env = append(onlavaRunEnv(repo, dashAddr, cacheDir), "ONLAVA_INIT_MARKER="+markerPath)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start onlava run: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForFile(t, markerPath)
 }
 
-func TestPulseRunMiddlewareApp(t *testing.T) {
+func TestOnlavaRunMiddlewareApp(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -345,22 +345,22 @@ func TestPulseRunMiddlewareApp(t *testing.T) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Env = onlavaRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start onlava run: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.Context")
 	assertJSONResponseWithHeaders(t, mustRequest(t, http.MethodGet, "http://"+addr+"/service.Context", nil), http.StatusOK, map[string]any{"message": "svc"}, map[string]string{
@@ -373,7 +373,7 @@ func TestPulseRunMiddlewareApp(t *testing.T) {
 	})
 }
 
-func TestPulseRunExecutesCronJobs(t *testing.T) {
+func TestOnlavaRunExecutesCronJobs(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -382,42 +382,42 @@ func TestPulseRunExecutesCronJobs(t *testing.T) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "run", "--listen", addr)
-	cmd.Env = pulseRunEnv(repo, dashAddr, cacheDir)
+	cmd.Env = onlavaRunEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse run: %v", err)
+		t.Fatalf("start onlava run: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/cron/status")
 	waitForCronStatus(t, "http://"+addr+"/cron/status")
 }
 
-func TestPulseBuildProducesRunnableBinary(t *testing.T) {
+func TestOnlavaBuildProducesRunnableBinary(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
 	appDir := copyFixtureApp(t, repo, "basic")
-	pulseBinary := buildPulseBinary(t, repo)
+	onlavaBinary := buildOnlavaBinary(t, repo)
 	outputPath := filepath.Join(t.TempDir(), "basic-app")
 	cacheDir := filepath.Join(t.TempDir(), "cache")
 
-	buildCmd := exec.Command(pulseBinary, "build", "-o", outputPath)
+	buildCmd := exec.Command(onlavaBinary, "build", "-o", outputPath)
 	buildCmd.Dir = appDir
-	buildCmd.Env = append(os.Environ(), "PULSE_DEV_CACHE_DIR="+cacheDir)
+	buildCmd.Env = append(os.Environ(), "ONLAVA_DEV_CACHE_DIR="+cacheDir)
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("pulse build failed: %v\n%s", err, buildOutput)
+		t.Fatalf("onlava build failed: %v\n%s", err, buildOutput)
 	}
 	if _, err := os.Stat(outputPath); err != nil {
 		t.Fatalf("built binary missing: %v", err)
@@ -429,7 +429,7 @@ func TestPulseBuildProducesRunnableBinary(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, outputPath)
-	cmd.Env = append(os.Environ(), "PULSE_LISTEN_ADDR="+addr, "PULSE_LOCAL_PROXY=0", "PULSE_DEV_CACHE_DIR="+cacheDir)
+	cmd.Env = append(os.Environ(), "ONLAVA_LISTEN_ADDR="+addr, "ONLAVA_LOCAL_PROXY=0", "ONLAVA_DEV_CACHE_DIR="+cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -438,13 +438,13 @@ func TestPulseBuildProducesRunnableBinary(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start built app: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
 	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
 }
 
-func TestPulseDevServesHTTPSHostnames(t *testing.T) {
+func TestOnlavaDevServesHTTPSHostnames(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -452,7 +452,7 @@ func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 	appDir := filepath.Join(t.TempDir(), "basic")
 	copyDir(t, sourceAppDir, appDir)
 	rewriteFixtureReplace(t, filepath.Join(appDir, "go.mod"), repo)
-	writePulseApp(t, appDir, `{"name":"basicapp","proxy":{"workspace":"ignored","api_host":"api.onlv.localhost","console_host":"console.onlv.localhost","mcp_host":"mcp.onlv.localhost","frontend_host":"pulse.onlv.localhost"}}`)
+	writeOnlavaApp(t, appDir, `{"name":"basicapp","proxy":{"workspace":"ignored","api_host":"api.acme.localhost","console_host":"console.acme.localhost","mcp_host":"mcp.acme.localhost","frontend_host":"onlava.acme.localhost"}}`)
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
@@ -460,7 +460,7 @@ func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 	httpsPort := freePort(t)
 	frontendPort := freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	frontendLn, err := net.Listen("tcp", "127.0.0.1:"+frontendPort)
 	if err != nil {
@@ -479,24 +479,24 @@ func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr, "--proxy")
-	cmd.Env = pulseDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, "127.0.0.1:"+frontendPort)
+	cmd.Env = onlavaDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, "127.0.0.1:"+frontendPort)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse dev: %v", err)
+		t.Fatalf("start onlava dev: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
 
 	client := insecureHTTPSClient()
-	apiURL := "https://api.onlv.localhost:" + httpsPort + "/service.CallPrivate"
+	apiURL := "https://api.acme.localhost:" + httpsPort + "/service.CallPrivate"
 	getJSONWithClient(t, client, apiURL, nil, http.StatusOK, map[string]any{"message": "secret:hi"})
 
-	consoleURL := "https://console.onlv.localhost:" + httpsPort + "/"
+	consoleURL := "https://console.acme.localhost:" + httpsPort + "/"
 	waitForURL(t, client, consoleURL)
 	resp, err := client.Get(consoleURL)
 	if err != nil {
@@ -507,7 +507,7 @@ func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 		t.Fatalf("unexpected console status %d", resp.StatusCode)
 	}
 
-	mcpURL := "https://mcp.onlv.localhost:" + httpsPort + "/sse?app=basicapp"
+	mcpURL := "https://mcp.acme.localhost:" + httpsPort + "/sse?app=basicapp"
 	waitForURL(t, client, mcpURL)
 	resp, err = client.Get(mcpURL)
 	if err != nil {
@@ -518,7 +518,7 @@ func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 		t.Fatalf("unexpected mcp status %d", resp.StatusCode)
 	}
 
-	frontendURL := "https://pulse.onlv.localhost:" + httpsPort + "/"
+	frontendURL := "https://onlava.acme.localhost:" + httpsPort + "/"
 	waitForURL(t, client, frontendURL)
 	resp, err = client.Get(frontendURL)
 	if err != nil {
@@ -531,7 +531,7 @@ func TestPulseDevServesHTTPSHostnames(t *testing.T) {
 	}
 }
 
-func TestPulseBuiltBinaryIsHeadlessByDefault(t *testing.T) {
+func TestOnlavaBuiltBinaryIsHeadlessByDefault(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -539,17 +539,17 @@ func TestPulseBuiltBinaryIsHeadlessByDefault(t *testing.T) {
 	appDir := filepath.Join(t.TempDir(), "basic")
 	copyDir(t, sourceAppDir, appDir)
 	rewriteFixtureReplace(t, filepath.Join(appDir, "go.mod"), repo)
-	writePulseApp(t, appDir, `{"name":"basicapp","proxy":{"api_host":"api.onlv.localhost","console_host":"console.onlv.localhost","mcp_host":"mcp.onlv.localhost","frontend_host":"pulse.onlv.localhost"}}`)
-	pulseBinary := buildPulseBinary(t, repo)
+	writeOnlavaApp(t, appDir, `{"name":"basicapp","proxy":{"api_host":"api.acme.localhost","console_host":"console.acme.localhost","mcp_host":"mcp.acme.localhost","frontend_host":"onlava.acme.localhost"}}`)
+	onlavaBinary := buildOnlavaBinary(t, repo)
 	outputPath := filepath.Join(t.TempDir(), "basic-app")
 	cacheDir := filepath.Join(t.TempDir(), "cache")
 
-	buildCmd := exec.Command(pulseBinary, "build", "-o", outputPath)
+	buildCmd := exec.Command(onlavaBinary, "build", "-o", outputPath)
 	buildCmd.Dir = appDir
-	buildCmd.Env = append(os.Environ(), "PULSE_DEV_CACHE_DIR="+cacheDir)
+	buildCmd.Env = append(os.Environ(), "ONLAVA_DEV_CACHE_DIR="+cacheDir)
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("pulse build failed: %v\n%s", err, buildOutput)
+		t.Fatalf("onlava build failed: %v\n%s", err, buildOutput)
 	}
 
 	port := freePort(t)
@@ -561,10 +561,10 @@ func TestPulseBuiltBinaryIsHeadlessByDefault(t *testing.T) {
 	cmd := exec.CommandContext(ctx, outputPath)
 	cmd.Env = append(
 		os.Environ(),
-		"PULSE_LISTEN_ADDR="+addr,
-		"PULSE_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
-		"PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
-		"PULSE_DEV_CACHE_DIR="+cacheDir,
+		"ONLAVA_LISTEN_ADDR="+addr,
+		"ONLAVA_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
+		"ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
+		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
 	)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -574,20 +574,20 @@ func TestPulseBuiltBinaryIsHeadlessByDefault(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start built app: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
 	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
 	client := insecureHTTPSClient()
 	client.Timeout = 300 * time.Millisecond
-	resp, err := client.Get("https://api.onlv.localhost:" + httpsPort + "/service.CallPrivate")
+	resp, err := client.Get("https://api.acme.localhost:" + httpsPort + "/service.CallPrivate")
 	if err == nil {
 		resp.Body.Close()
 		t.Fatalf("built binary unexpectedly served local HTTPS proxy on %s", httpsPort)
 	}
 }
 
-func TestPulseDevDashboardNotificationsAndMCP(t *testing.T) {
+func TestOnlavaDevDashboardNotificationsAndMCP(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
@@ -600,27 +600,27 @@ func TestPulseDevDashboardNotificationsAndMCP(t *testing.T) {
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
-	binary := buildPulseBinary(t, repo)
+	binary := buildOnlavaBinary(t, repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
-	cmd.Env = pulseDevEnv(repo, dashAddr, cacheDir)
+	cmd.Env = onlavaDevEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start pulse dev: %v", err)
+		t.Fatalf("start onlava dev: %v", err)
 	}
-	defer stopPulseProcess(t, cancel, cmd)
+	defer stopOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
 	waitForHTTP(t, "http://"+dashAddr+"/basicapp")
 
-	wsConn, _, err := websocket.DefaultDialer.Dial("ws://"+dashAddr+"/__pulse", nil)
+	wsConn, _, err := websocket.DefaultDialer.Dial("ws://"+dashAddr+"/__onlava", nil)
 	if err != nil {
 		t.Fatalf("dial dashboard websocket: %v", err)
 	}
@@ -640,12 +640,12 @@ func TestPulseDevDashboardNotificationsAndMCP(t *testing.T) {
 	initResp := mcp.Call(t, 1, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
 		"clientInfo": map[string]any{
-			"name":    "pulse-test",
+			"name":    "onlava-test",
 			"version": "0.0.0",
 		},
 		"capabilities": map[string]any{},
 	})
-	if toString(toMap(initResp["serverInfo"])["name"]) != "pulse-mcp" {
+	if toString(toMap(initResp["serverInfo"])["name"]) != "onlava-mcp" {
 		t.Fatalf("unexpected mcp initialize response: %#v", initResp)
 	}
 

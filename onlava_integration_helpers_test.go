@@ -1,4 +1,4 @@
-package pulse_test
+package onlava_test
 
 import (
 	"bufio"
@@ -22,65 +22,65 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func buildPulseBinary(t *testing.T, repo string) string {
+func buildOnlavaBinary(t *testing.T, repo string) string {
 	t.Helper()
-	buildPulseBinaryOnce.Do(func() {
-		binDir, err := os.MkdirTemp("", "pulse-test-bin-*")
+	buildOnlavaBinaryOnce.Do(func() {
+		binDir, err := os.MkdirTemp("", "onlava-test-bin-*")
 		if err != nil {
-			buildPulseBinaryErr = err
+			buildOnlavaBinaryErr = err
 			return
 		}
-		binPath := filepath.Join(binDir, "pulse")
-		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/pulse")
+		binPath := filepath.Join(binDir, "onlava")
+		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/onlava")
 		cmd.Dir = repo
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			buildPulseBinaryErr = fmt.Errorf("build pulse binary: %w\n%s", err, output)
+			buildOnlavaBinaryErr = fmt.Errorf("build onlava binary: %w\n%s", err, output)
 			return
 		}
-		buildPulseBinaryPath = binPath
+		buildOnlavaBinaryPath = binPath
 	})
-	if buildPulseBinaryErr != nil {
-		t.Fatal(buildPulseBinaryErr)
+	if buildOnlavaBinaryErr != nil {
+		t.Fatal(buildOnlavaBinaryErr)
 	}
-	return buildPulseBinaryPath
+	return buildOnlavaBinaryPath
 }
 
-func pulseRunEnv(repo, dashboardAddr, cacheDir string) []string {
+func onlavaRunEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
-		"PULSE_DEV_CACHE_DIR="+cacheDir,
-		"PULSE_LOCAL_PROXY=0",
+		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
+		"ONLAVA_LOCAL_PROXY=0",
 	)
 }
 
-func pulseDevEnv(repo, dashboardAddr, cacheDir string) []string {
+func onlavaDevEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
-		"PULSE_DEV_DASHBOARD_ADDR="+dashboardAddr,
-		"PULSE_DEV_CACHE_DIR="+cacheDir,
-		"PULSE_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
-		"PULSE_LOCAL_PROXY=0",
+		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
+		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
+		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
+		"ONLAVA_LOCAL_PROXY=0",
 	)
 }
 
-func pulseDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
+func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
 	env := append(
 		os.Environ(),
-		"PULSE_DEV_DASHBOARD_ADDR="+dashboardAddr,
-		"PULSE_DEV_CACHE_DIR="+cacheDir,
-		"PULSE_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
-		"PULSE_LOCAL_PROXY_HTTP_PORT="+httpPort,
-		"PULSE_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
-		"PULSE_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
+		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
+		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
+		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
+		"ONLAVA_LOCAL_PROXY_HTTP_PORT="+httpPort,
+		"ONLAVA_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
+		"ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
 	)
 	if frontendAddr != "" {
-		env = append(env, "PULSE_FRONTEND_ADDR="+frontendAddr)
+		env = append(env, "ONLAVA_FRONTEND_ADDR="+frontendAddr)
 	}
 	return env
 }
 
-func stopPulseProcess(t *testing.T, cancel context.CancelFunc, cmd *exec.Cmd) {
+func stopOnlavaProcess(t *testing.T, cancel context.CancelFunc, cmd *exec.Cmd) {
 	t.Helper()
 	cmd.WaitDelay = 500 * time.Millisecond
 	if cmd.Process != nil {
@@ -103,7 +103,7 @@ func stopPulseProcess(t *testing.T, cancel context.CancelFunc, cmd *exec.Cmd) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("timed out waiting for pulse process to exit")
+		t.Fatalf("timed out waiting for onlava process to exit")
 	}
 }
 
@@ -694,7 +694,7 @@ func rewriteFixtureReplace(t *testing.T, goModPath, repo string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := strings.Replace(string(data), "replace pulse.dev => ../../..", "replace pulse.dev => "+repo, 1)
+	updated := strings.Replace(string(data), "replace onlava.com => ../../..", "replace onlava.com => "+repo, 1)
 	if updated == string(data) {
 		t.Fatalf("expected fixture go.mod replace in %s", goModPath)
 	}
@@ -712,9 +712,9 @@ func copyFixtureApp(t *testing.T, repo, name string) string {
 	return dst
 }
 
-func writePulseApp(t *testing.T, appDir, contents string) {
+func writeOnlavaApp(t *testing.T, appDir, contents string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(appDir, "pulse.app"), []byte(contents), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(appDir, ".onlava.json"), []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
