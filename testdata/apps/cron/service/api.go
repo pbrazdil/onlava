@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	pulse "pulse.dev"
+	onlava "onlava.com"
 )
 
 var (
@@ -19,9 +19,9 @@ type StatusResponse struct {
 	Path  string `json:"path"`
 }
 
-//pulse:api private
+//onlava:api private
 func Run(ctx context.Context) error {
-	req := pulse.CurrentRequest()
+	req := onlava.CurrentRequest()
 
 	cronMu.Lock()
 	defer cronMu.Unlock()
@@ -32,7 +32,7 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-//pulse:api public path=/cron/status method=GET
+//onlava:api public path=/cron/status method=GET
 func Status(ctx context.Context) (*StatusResponse, error) {
 	cronMu.Lock()
 	defer cronMu.Unlock()

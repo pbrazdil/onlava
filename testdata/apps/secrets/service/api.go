@@ -15,7 +15,7 @@ type Response struct {
 	Helper  string `json:"helper"`
 }
 
-//pulse:api public path=/secrets method=GET
+//onlava:api public path=/secrets method=GET
 func Get(ctx context.Context) (*Response, error) {
 	return &Response{
 		Service: secrets.ServiceSecret,

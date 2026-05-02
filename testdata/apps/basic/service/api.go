@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	pulse "pulse.dev"
-	pulseauth "pulse.dev/auth"
-	"pulse.dev/errs"
+	onlava "onlava.com"
+	onlavaauth "onlava.com/auth"
+	"onlava.com/errs"
 )
 
-//pulse:service
+//onlava:service
 type Service struct {
 	Prefix string
 }
@@ -29,19 +29,19 @@ type EchoResponse struct {
 	Message string `json:"message"`
 }
 
-//pulse:api public path=/echo/:name method=GET,POST
+//onlava:api public path=/echo/:name method=GET,POST
 func (s *Service) Echo(ctx context.Context, name string, req *EchoRequest) (*EchoResponse, error) {
 	return &EchoResponse{
 		Message: s.Prefix + " " + name + " " + req.Title + " " + req.Header + " " + req.Body,
 	}, nil
 }
 
-//pulse:api private
+//onlava:api private
 func (s *Service) Secret(ctx context.Context) (*EchoResponse, error) {
 	return &EchoResponse{Message: "secret:" + s.Prefix}, nil
 }
 
-//pulse:api public
+//onlava:api public
 func (s *Service) CallPrivate(ctx context.Context) (*EchoResponse, error) {
 	return s.Secret(ctx)
 }
@@ -50,8 +50,8 @@ type AuthData struct {
 	Role string `json:"role"`
 }
 
-//pulse:authhandler
-func (s *Service) AuthHandler(ctx context.Context, token string) (pulseauth.UID, *AuthData, error) {
+//onlava:authhandler
+func (s *Service) AuthHandler(ctx context.Context, token string) (onlavaauth.UID, *AuthData, error) {
 	if token != "token123" {
 		return "", nil, errs.B().Code(errs.Unauthenticated).Msg("bad token").Err()
 	}
@@ -63,30 +63,30 @@ type AuthEchoResponse struct {
 	Role string `json:"role"`
 }
 
-//pulse:api auth
+//onlava:api auth
 func (s *Service) AuthEcho(ctx context.Context) (*AuthEchoResponse, error) {
-	userID, ok := pulseauth.UserID()
+	userID, ok := onlavaauth.UserID()
 	if !ok {
 		return nil, errs.B().Code(errs.Unauthenticated).Msg("missing auth").Err()
 	}
-	data := pulseauth.Data().(*AuthData)
+	data := onlavaauth.Data().(*AuthData)
 	return &AuthEchoResponse{User: string(userID), Role: data.Role}, nil
 }
 
 type StatusResponse struct {
 	Message string `json:"message"`
-	Status  int    `pulse:"httpstatus"`
+	Status  int    `onlava:"httpstatus"`
 }
 
-//pulse:api public
+//onlava:api public
 func (s *Service) CustomStatus(ctx context.Context) (*StatusResponse, error) {
 	return &StatusResponse{Message: "created", Status: 201}, nil
 }
 
-//pulse:api public raw path=/raw/*rest
+//onlava:api public raw path=/raw/*rest
 func (s *Service) Raw(w http.ResponseWriter, req *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"path":   pulse.CurrentRequest().PathParams.Get("rest"),
-		"method": pulse.CurrentRequest().Method,
+		"path":   onlava.CurrentRequest().PathParams.Get("rest"),
+		"method": onlava.CurrentRequest().Method,
 	})
 }

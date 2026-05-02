@@ -3,11 +3,11 @@ package mw
 import (
 	service "example.com/middlewareapp/service"
 
-	"pulse.dev/errs"
-	"pulse.dev/middleware"
+	"onlava.com/errs"
+	"onlava.com/middleware"
 )
 
-//pulse:middleware target=tag:rewrite
+//onlava:middleware target=tag:rewrite
 func Rewrite(req middleware.Request, next middleware.Next) middleware.Response {
 	resp := next(req)
 	payload := resp.Payload.(*service.Response)
@@ -15,14 +15,14 @@ func Rewrite(req middleware.Request, next middleware.Next) middleware.Response {
 	return resp
 }
 
-//pulse:middleware target=tag:error
+//onlava:middleware target=tag:error
 func Error(req middleware.Request, next middleware.Next) middleware.Response {
 	return middleware.Response{
 		Err: errs.B().Code(errs.Internal).Msg("middleware error").Err(),
 	}
 }
 
-//pulse:middleware target=tag:raw
+//onlava:middleware target=tag:raw
 func RawHeader(req middleware.Request, next middleware.Next) middleware.Response {
 	resp := next(req)
 	resp.Header().Set("X-Raw-Middleware", "true")
