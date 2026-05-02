@@ -40,7 +40,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 		return "", Config{}, err
 	}
 	for {
-		path := filepath.Join(dir, "pulse.app")
+		path := filepath.Join(dir, ".onlava.json")
 		if data, err := os.ReadFile(path); err == nil {
 			var cfg Config
 			if err := json.Unmarshal(data, &cfg); err != nil {
@@ -50,7 +50,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 				cfg.Name = cfg.ID
 			}
 			if cfg.Name == "" {
-				return "", Config{}, errors.New("pulse.app must define a non-empty name or id")
+				return "", Config{}, errors.New(".onlava.json must define a non-empty name or id")
 			}
 			return dir, cfg, nil
 		}
@@ -60,7 +60,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 		}
 		dir = parent
 	}
-	return "", Config{}, errors.New("no pulse.app found in current directory or any parent")
+	return "", Config{}, errors.New("no .onlava.json found in current directory or any parent")
 }
 
 func RepoRoot() string {
