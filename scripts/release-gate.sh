@@ -2,10 +2,10 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${PULSE_RELEASE_GATE_LOG_DIR:-"$ROOT/.pulse/release-gate/$(date -u +%Y%m%dT%H%M%SZ)"}"
-PULSE_BIN_WAS_SET="${PULSE_BIN+x}"
-PULSE_BIN="${PULSE_BIN:-pulse}"
-ONLV_ROOT="${ONLV_ROOT:-/Users/petrbrazdil/Repos/onlv}"
+LOG_DIR="${ONLAVA_RELEASE_GATE_LOG_DIR:-"$ROOT/.onlava/release-gate/$(date -u +%Y%m%dT%H%M%SZ)"}"
+ONLAVA_BIN_WAS_SET="${ONLAVA_BIN+x}"
+ONLAVA_BIN="${ONLAVA_BIN:-onlava}"
+EXTERNAL_APP_ROOT="${ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT:-}"
 
 mkdir -p "$LOG_DIR"
 
@@ -86,7 +86,7 @@ import sys
 path = Path(sys.argv[1])
 repo = sys.argv[2]
 text = path.read_text()
-updated = text.replace("replace pulse.dev => ../../..", f"replace pulse.dev => {repo}")
+updated = text.replace("replace onlava.com => ../../..", f"replace onlava.com => {repo}")
 if updated == text:
     raise SystemExit(f"expected fixture replace directive in {path}")
 path.write_text(updated)
@@ -100,7 +100,7 @@ start_app() {
   local cache
   cache="$(mktemp -d)"
   cleanup_items+=("rm -rf '$cache'")
-  PULSE_DEV_CACHE_DIR="$cache" "$PULSE_BIN" run --app-root "$app_root" --listen "$addr" >"$log" 2>&1 &
+  ONLAVA_DEV_CACHE_DIR="$cache" "$ONLAVA_BIN" run --app-root "$app_root" --listen "$addr" >"$log" 2>&1 &
   local pid=$!
   cleanup_items+=("kill -INT $pid >/dev/null 2>&1 || true; wait $pid >/dev/null 2>&1 || true")
   wait_for_http "http://$addr/service.CallPrivate"
@@ -135,20 +135,20 @@ ui_builds() {
 
 self_harness() {
   cd "$ROOT"
-  run "$PULSE_BIN" harness self --json --write
+  run "$ONLAVA_BIN" harness self --json --write
 }
 
-install_pulse() {
+install_onlava() {
   cd "$ROOT"
-  run go install ./cmd/pulse
-  if [[ -z "$PULSE_BIN_WAS_SET" ]]; then
+  run go install ./cmd/onlava
+  if [[ -z "$ONLAVA_BIN_WAS_SET" ]]; then
     local gobin
     gobin="$(go env GOBIN)"
     if [[ -z "$gobin" ]]; then
       gobin="$(go env GOPATH)/bin"
     fi
-    PULSE_BIN="$gobin/pulse"
-    export PULSE_BIN
+    ONLAVA_BIN="$gobin/onlava"
+    export ONLAVA_BIN
   fi
 }
 
@@ -175,7 +175,7 @@ for raw in sys.stdin.buffer.read().split(b"\0"):
     shutil.copy2(src, out)
 PY
   cd "$tmp/src"
-  run go install ./cmd/pulse
+  run go install ./cmd/onlava
 }
 
 fixture_smoke() {
@@ -192,11 +192,15 @@ fixture_smoke() {
   run curl -fsS "http://$addr/service.CallPrivate"
 }
 
-onlv_smoke() {
-  [[ -d "$ONLV_ROOT" ]] || die "ONLV_ROOT does not exist: $ONLV_ROOT"
-  [[ -f "$ONLV_ROOT/pulse.app" ]] || die "ONLV_ROOT is not a Pulse app: $ONLV_ROOT"
-  run "$PULSE_BIN" inspect app --json --app-root "$ONLV_ROOT"
-  run "$PULSE_BIN" check --json --app-root "$ONLV_ROOT"
+external_app_smoke() {
+  if [[ -z "$EXTERNAL_APP_ROOT" ]]; then
+    printf 'skipping external app smoke; set ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT to enable\n'
+    return
+  fi
+  [[ -d "$EXTERNAL_APP_ROOT" ]] || die "ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT does not exist: $EXTERNAL_APP_ROOT"
+  [[ -f "$EXTERNAL_APP_ROOT/.onlava.json" ]] || die "ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT is not an Onlava app: $EXTERNAL_APP_ROOT"
+  run "$ONLAVA_BIN" inspect app --json --app-root "$EXTERNAL_APP_ROOT"
+  run "$ONLAVA_BIN" check --json --app-root "$EXTERNAL_APP_ROOT"
 }
 
 router_safety() {
@@ -209,12 +213,12 @@ router_safety() {
   addr="127.0.0.1:$port"
   log="$LOG_DIR/router-safety-app.log"
   start_app "$app" "$addr" "$log" >/dev/null
-  for path in /__pulse/config /platform.Stats /debug/pprof/heap; do
+  for path in /__onlava/config /platform.Stats /debug/pprof/heap; do
     status="$(curl -sS -o /dev/null -w '%{http_code}' "http://$addr$path")"
     [[ "$status" == "404" ]] || die "$path returned $status, want 404"
   done
-  status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "http://$addr/__pulse/pubsub/clear")"
-  [[ "$status" == "404" ]] || die "/__pulse/pubsub/clear returned $status, want 404"
+  status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "http://$addr/__onlava/pubsub/clear")"
+  [[ "$status" == "404" ]] || die "/__onlava/pubsub/clear returned $status, want 404"
 }
 
 secrets_gate() {
@@ -224,7 +228,7 @@ secrets_gate() {
   copy_fixture secrets "$tmp"
   app="$tmp/secrets"
   rm -f "$app/.env"
-  if output="$("$PULSE_BIN" run --app-root "$app" --listen "127.0.0.1:$(free_port)" --env production 2>&1)"; then
+  if output="$("$ONLAVA_BIN" run --app-root "$app" --listen "127.0.0.1:$(free_port)" --env production 2>&1)"; then
     printf '%s\n' "$output"
     die "production run succeeded with missing declared secrets"
   fi
@@ -238,7 +242,7 @@ secrets_gate() {
   port="$(free_port)"
   addr="127.0.0.1:$port"
   log="$LOG_DIR/secrets-smoke-app.log"
-  PULSE_DEV_CACHE_DIR="$tmp/cache" "$PULSE_BIN" run --app-root "$app" --listen "$addr" >"$log" 2>&1 &
+  ONLAVA_DEV_CACHE_DIR="$tmp/cache" "$ONLAVA_BIN" run --app-root "$app" --listen "$addr" >"$log" 2>&1 &
   local pid=$!
   cleanup_items+=("kill -INT $pid >/dev/null 2>&1 || true; wait $pid >/dev/null 2>&1 || true")
   wait_for_http "http://$addr/secrets"
@@ -251,7 +255,7 @@ artifact_hygiene() {
   cd "$ROOT"
   local bad
   bad="$(find . \
-    \( -path './.git' -o -path './.pulse' -o -path './.codex-tmp' -o -path './ui/node_modules' -o -path './dbstudio/node_modules' \) -prune \
+    \( -path './.git' -o -path './.onlava' -o -path './.codex-tmp' -o -path './ui/node_modules' -o -path './dbstudio/node_modules' \) -prune \
     -o \( -name '.DS_Store' -o -name '__MACOSX' \) -print)"
   if [[ -n "$bad" ]]; then
     printf '%s\n' "$bad"
@@ -264,12 +268,12 @@ artifact_hygiene() {
   copy_fixture basic "$tmp"
   app="$tmp/basic"
   cache="$tmp/cache"
-  mkdir -p "$app/.pulse/state" "$app/node_modules" "$app/.git"
+  mkdir -p "$app/.onlava/state" "$app/node_modules" "$app/.git"
   printf 'SHOULD_NOT_COPY=1\n' >"$app/.env"
   printf 'SHOULD_NOT_COPY_LOCAL=1\n' >"$app/.env.local"
   printf 'junk\n' >"$app/.DS_Store"
-  PULSE_DEV_CACHE_DIR="$cache" "$PULSE_BIN" build --app-root "$app" -o "$tmp/basic-app"
-  bad="$(find "$cache" \( -name '.env' -o -name '.env.*' -o -name '.git' -o -name '.pulse' -o -name 'node_modules' -o -name '.DS_Store' -o -name '__MACOSX' \) -print)"
+  ONLAVA_DEV_CACHE_DIR="$cache" "$ONLAVA_BIN" build --app-root "$app" -o "$tmp/basic-app"
+  bad="$(find "$cache" \( -name '.env' -o -name '.env.*' -o -name '.git' -o -name '.onlava' -o -name 'node_modules' -o -name '.DS_Store' -o -name '__MACOSX' \) -print)"
   if [[ -n "$bad" ]]; then
     printf '%s\n' "$bad"
     die "build workspace copied local artifacts"
@@ -282,17 +286,17 @@ main() {
   need curl
   need python3
 
-  printf 'Pulse release gate\nroot: %s\nlogs: %s\n' "$ROOT" "$LOG_DIR"
+  printf 'Onlava release gate\nroot: %s\nlogs: %s\n' "$ROOT" "$LOG_DIR"
 
   step "full go tests" full_go_tests
   step "race tests" race_tests
   step "go lint" lint_go
   step "ui and dbstudio builds" ui_builds
-  step "install pulse" install_pulse
+  step "install onlava" install_onlava
   step "self harness" self_harness
   step "clean checkout install" clean_checkout_install
   step "fixture smoke" fixture_smoke
-  step "onlv smoke" onlv_smoke
+  step "external app smoke" external_app_smoke
   step "router safety" router_safety
   step "secrets" secrets_gate
   step "artifact hygiene" artifact_hygiene
