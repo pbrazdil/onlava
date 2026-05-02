@@ -85,7 +85,7 @@ function resolveStoredRequestPath(pathParams: unknown): string {
 }
 
 export function storageKey(appId: string): string {
-  return `pulse:api-explorer:${appId}`;
+  return `onlava:api-explorer:${appId}`;
 }
 
 export function loadPersistedTabs(appId: string): PersistedTabsState {

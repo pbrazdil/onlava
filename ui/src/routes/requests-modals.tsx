@@ -217,7 +217,7 @@ export function EndpointSelector({
             Define an endpoint to view it in the API Explorer.{" "}
             <a
               className="underline"
-              href="https://pulse.dev/docs/ts/primitives/defining-apis"
+              href="https://onlava.com/docs/ts/primitives/defining-apis"
               rel="noreferrer"
               target="_blank"
             >

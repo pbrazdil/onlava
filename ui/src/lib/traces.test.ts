@@ -81,7 +81,7 @@ describe("trace helpers", () => {
         span_event: {
           http_call_start: {
             method: "GET",
-            url: "https://pulse.dev",
+            url: "https://onlava.com",
           },
         },
       },

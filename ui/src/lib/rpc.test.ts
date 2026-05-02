@@ -30,7 +30,7 @@ class FakeSocket extends EventTarget implements WebSocketLike {
 describe("dashboard rpc client", () => {
   it("queues requests until the socket opens and resolves responses", async () => {
     const socket = new FakeSocket();
-    const client = new DashboardRpcClient("ws://example.test/__pulse", () => socket);
+    const client = new DashboardRpcClient("ws://example.test/__onlava", () => socket);
     const pending = client.request<{ ok: boolean }>("status", { app_id: "app-test" });
 
     expect(socket.sent).toHaveLength(0);
@@ -46,7 +46,7 @@ describe("dashboard rpc client", () => {
 
   it("emits notifications", () => {
     const socket = new FakeSocket();
-    const client = new DashboardRpcClient("ws://example.test/__pulse", () => socket);
+    const client = new DashboardRpcClient("ws://example.test/__onlava", () => socket);
     const seen: string[] = [];
     client.subscribe((notification) => {
       seen.push(notification.method);

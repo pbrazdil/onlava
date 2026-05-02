@@ -62,7 +62,7 @@ import type {
   ServiceRPC,
 } from "../lib/types";
 
-const REQUESTS_SIDEBAR_STORAGE_KEY = "pulse:requests-sidebar-collapsed";
+const REQUESTS_SIDEBAR_STORAGE_KEY = "onlava:requests-sidebar-collapsed";
 const REQUESTS_SIDEBAR_WIDTH = 280;
 
 export function RequestsPage() {

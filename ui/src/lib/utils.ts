@@ -129,5 +129,5 @@ export function upsertTrace(list: TraceSummary[], next: TraceSummary): TraceSumm
 
 export function dashboardWebsocketURL(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/__pulse`;
+  return `${protocol}//${window.location.host}/__onlava`;
 }

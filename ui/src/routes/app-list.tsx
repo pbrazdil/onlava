@@ -75,7 +75,7 @@ export function AppListPage() {
                   ? "/assets/img/wordmark.svg"
                   : "/assets/branding/logo/logo-no-padding.svg"
               }
-              alt="Pulse Logo"
+              alt="Onlava Logo"
             />
           </div>
         </div>
@@ -89,9 +89,9 @@ export function AppListPage() {
             </div>
           ) : apps.length === 0 ? (
             <p>
-              Create your first app by running <code>pulse app create</code> in your terminal, or by
+              Create your first app by running <code>onlava app create</code> in your terminal, or by
               <br />
-              starting an existing app using <code>pulse run</code>.
+              starting an existing app using <code>onlava run</code>.
             </p>
           ) : (
             apps.map((app) => (

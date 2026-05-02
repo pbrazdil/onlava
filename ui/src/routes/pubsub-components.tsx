@@ -95,14 +95,14 @@ export function QueueSparkline({
         onPointerLeave={() => setHover(null)}
       >
         <defs>
-          <linearGradient id={`pulse-${safeID(label)}`} x1="0" x2="0" y1="0" y2="1">
+          <linearGradient id={`onlava-${safeID(label)}`} x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.22" />
             <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path
           d={`${queuedPath} L ${x(end).toFixed(2)} ${height - padding.bottom} L ${x(start).toFixed(2)} ${height - padding.bottom} Z`}
-          fill={`url(#pulse-${safeID(label)})`}
+          fill={`url(#onlava-${safeID(label)})`}
         />
         <path d={queuedPath} fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         <path d={activePath} fill="none" stroke="#bef264" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />

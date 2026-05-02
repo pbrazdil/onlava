@@ -49,9 +49,9 @@ function DashboardShell({ appId }: { appId: string }) {
     const root = document.documentElement;
     root.classList.add("dark");
     root.style.colorScheme = "dark";
-    document.body.classList.add("pulse-dark");
+    document.body.classList.add("onlava-dark");
     return () => {
-      document.body.classList.remove("pulse-dark");
+      document.body.classList.remove("onlava-dark");
     };
   }, []);
 
@@ -250,7 +250,7 @@ function statusTooltip(
   connected: boolean,
 ): string {
   if (!connected) {
-    return "Disconnected from Pulse. Attempting to reconnect.";
+    return "Disconnected from Onlava. Attempting to reconnect.";
   }
   if (compiling) {
     return "Compiling...";

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" role="img" aria-label="Pulse">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" role="img" aria-label="Onlava">
   <style type="text/css">
     .wordmark {
       fill: #eeeee1;
@@ -8,5 +8,5 @@
       letter-spacing: -0.08em;
     }
   </style>
-  <text x="0" y="46" class="wordmark">Pulse</text>
+  <text x="0" y="46" class="wordmark">Onlava</text>
 </svg>
