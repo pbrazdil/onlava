@@ -1,0 +1,115 @@
+name: CI
+
+"on":
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Test
+        run: go test ./...
+
+      - name: Clean install
+        run: go install ./cmd/onlava
+
+      - name: Smoke installed binary
+        run: $(go env GOPATH)/bin/onlava version --json
+
+  ui:
+    name: UI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install dashboard dependencies
+        working-directory: ui
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck dashboard
+        working-directory: ui
+        run: bun run typecheck
+
+      - name: Test dashboard
+        working-directory: ui
+        run: bun run test
+
+      - name: Build dashboard
+        working-directory: ui
+        run: bun run build
+
+      - name: Install DB Studio dependencies
+        working-directory: dbstudio
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck DB Studio
+        working-directory: dbstudio
+        run: bun run typecheck
+
+      - name: Build DB Studio
+        working-directory: dbstudio
+        run: bun run build
+
+  self-harness:
+    name: Self Harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install dashboard dependencies
+        working-directory: ui
+        run: bun install --frozen-lockfile
+
+      - name: Install DB Studio dependencies
+        working-directory: dbstudio
+        run: bun install --frozen-lockfile
+
+      - name: Install Onlava
+        run: go install ./cmd/onlava
+
+      - name: Run self harness
+        run: $(go env GOPATH)/bin/onlava harness self --json --write
