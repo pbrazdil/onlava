@@ -1,6 +1,6 @@
 # JSON vs Wire Benchmark
 
-This fixture measures the generated TypeScript client against a small Pulse app with one typed endpoint.
+This fixture measures the generated TypeScript client against a small Onlava app with one typed endpoint.
 
 Run it from the repo root:
 
@@ -20,9 +20,9 @@ PORT=48200 benchmarks/json-wire/run.sh
 
 The runner:
 
-1. validates this Pulse app with `pulse check`;
+1. validates this Onlava app with `onlava check`;
 2. generates the TypeScript client into `.generated/client.ts`;
-3. starts `pulse run` on `127.0.0.1:${PORT}`;
+3. starts `onlava run` on `127.0.0.1:${PORT}`;
 4. runs `bench.ts` with Bun;
 5. stops the app process.
 

@@ -12,14 +12,14 @@ function makePayload(items: number) {
         meta[`key_${i}`] = `value-${i}-${"x".repeat(12)}`
     }
     return {
-        name: "pulse-wire-benchmark",
+        name: "onlava-wire-benchmark",
         count: 7,
         items: Array.from({ length: items }, (_, i) => ({
             id: `item-${i}`,
             count: i + 1,
             active: i % 2 === 0,
             score: i * 1.25,
-            tags: [`tag-${i % 5}`, `bucket-${i % 3}`, "pulse"],
+            tags: [`tag-${i % 5}`, `bucket-${i % 3}`, "onlava"],
         })),
         meta,
     }

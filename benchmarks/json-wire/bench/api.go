@@ -27,7 +27,7 @@ type EchoResponse struct {
 	Meta      map[string]string `json:"meta"`
 }
 
-//pulse:api public method=POST path=/echo
+//onlava:api public method=POST path=/echo
 func Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, error) {
 	total := req.Count
 	first := ""
