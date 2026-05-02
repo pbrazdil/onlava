@@ -36,14 +36,14 @@ internal/model
 internal/codegen + internal/build
         |
         v
-generated workspace + onlava.com/runtime
+generated workspace + github.com/pbrazdil/onlava/runtime
         |
         v
 single local server + dev/inspect/harness tooling
 ```
 
 Architecture invariant: the public Onlava surface is Onlava-named. User apps
-should depend on `onlava.com/...` packages and `//onlava:` directives, without
+should depend on `github.com/pbrazdil/onlava/...` packages and `//onlava:` directives, without
 legacy compatibility packages, daemon layers, cloud layers, or non-Onlava syntax.
 
 Architecture invariant: app semantics should be captured as data in
@@ -106,7 +106,7 @@ wire modeling, and build. Important types include `App`, `Service`, `Package`,
 
 Architecture invariant: the model is an in-memory description of a parsed app,
 not a runtime registry and not a JSON schema. Public JSON responses live in
-`internal/inspect`; runtime registration lives in `onlava.com/runtime`.
+`internal/inspect`; runtime registration lives in `github.com/pbrazdil/onlava/runtime`.
 
 ### `internal/codegen`
 
@@ -137,7 +137,7 @@ workspace the source of truth.
 Architecture invariant: build metadata should be machine-readable enough for
 agents and humans to diagnose drift without scraping terminal output.
 
-### `onlava.com/runtime`
+### `github.com/pbrazdil/onlava/runtime`
 
 `runtime` is linked into generated app binaries. It registers generated
 endpoints, service initializers, middleware, auth handlers, Pub/Sub handlers,
@@ -160,11 +160,11 @@ requests.
 
 The public packages at the module root are what user apps import:
 
-- `onlava.com` exposes `Meta` and `CurrentRequest`
-- `onlava.com/auth` exposes request auth state helpers
-- `onlava.com/errs` exposes coded errors and HTTP status mapping
-- `onlava.com/middleware` exposes middleware types
-- `onlava.com/pubsub`, `onlava.com/cron`, `onlava.com/pgxpool`, and related small
+- `github.com/pbrazdil/onlava` exposes `Meta` and `CurrentRequest`
+- `github.com/pbrazdil/onlava/auth` exposes request auth state helpers
+- `github.com/pbrazdil/onlava/errs` exposes coded errors and HTTP status mapping
+- `github.com/pbrazdil/onlava/middleware` exposes middleware types
+- `github.com/pbrazdil/onlava/pubsub`, `github.com/pbrazdil/onlava/cron`, `github.com/pbrazdil/onlava/pgxpool`, and related small
   packages expose local runtime integrations
 
 Architecture invariant: public packages are boundaries. Keep them small,

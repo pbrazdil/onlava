@@ -6,7 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	stdpgxpool "github.com/jackc/pgx/v5/pgxpool"
 
-	onlavaruntime "onlava.com/runtime"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
 type (

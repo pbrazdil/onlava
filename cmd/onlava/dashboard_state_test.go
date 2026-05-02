@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 func TestDashboardRunStateWriteAndRemove(t *testing.T) {

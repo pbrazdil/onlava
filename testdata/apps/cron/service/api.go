@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	onlava "onlava.com"
+	onlava "github.com/pbrazdil/onlava"
 )
 
 var (

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"onlava.com/internal/parse"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 func TestParseBasicApp(t *testing.T) {
@@ -58,7 +58,7 @@ func TestParseBasicApp(t *testing.T) {
 
 func TestParseRejectsRawEndpointCalls(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/rawcall\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/rawcall\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"rawcall"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -83,7 +83,7 @@ func Call(w http.ResponseWriter, req *http.Request) {
 
 func TestParseRejectsPathParamMismatch(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/pathmismatch\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/pathmismatch\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"pathmismatch"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -101,7 +101,7 @@ func Hello(ctx context.Context, wrong string) error { return nil }
 
 func TestParseRejectsNonOnlavaDirectives(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/otherdirective\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/otherdirective\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"otherdirective"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -119,7 +119,7 @@ func Hello(ctx context.Context) error { return nil }
 
 func TestParseMiddlewareTargetsAndTags(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/middlewareapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/middlewareapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"middlewareapp"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -130,7 +130,7 @@ func Hello(ctx context.Context) error { return nil }
 `)
 	writeFile(t, dir, "svc/mw/mw.go", `package mw
 
-import "onlava.com/middleware"
+import "github.com/pbrazdil/onlava/middleware"
 
 //onlava:middleware target=tag:foo
 func ServiceTag(req middleware.Request, next middleware.Next) middleware.Response {
@@ -139,7 +139,7 @@ func ServiceTag(req middleware.Request, next middleware.Next) middleware.Respons
 `)
 	writeFile(t, dir, "globalmw/mw.go", `package globalmw
 
-import "onlava.com/middleware"
+import "github.com/pbrazdil/onlava/middleware"
 
 //onlava:middleware global target=all
 func Global(req middleware.Request, next middleware.Next) middleware.Response {
@@ -183,7 +183,7 @@ func Global(req middleware.Request, next middleware.Next) middleware.Response {
 
 func TestParseRejectsAppsWithoutOnlavaDirectives(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/noonlava\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/noonlava\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"noonlava"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -198,7 +198,7 @@ func Helper() {}
 
 func TestParseRejectsInvalidServiceShutdownSignature(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/badshutdown\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/badshutdown\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"badshutdown"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"onlava.com/internal/wire"
+	"github.com/pbrazdil/onlava/internal/wire"
 )
 
 func TestServerGzipCompressesAcceptedResponses(t *testing.T) {

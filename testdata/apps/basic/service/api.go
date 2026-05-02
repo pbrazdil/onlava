@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	onlava "onlava.com"
-	onlavaauth "onlava.com/auth"
-	"onlava.com/errs"
+	onlava "github.com/pbrazdil/onlava"
+	onlavaauth "github.com/pbrazdil/onlava/auth"
+	"github.com/pbrazdil/onlava/errs"
 )
 
 //onlava:service

@@ -1,8 +1,8 @@
 package onlava
 
 import (
-	"onlava.com/runtime"
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/runtime"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 type AppMetadata = shared.AppMetadata

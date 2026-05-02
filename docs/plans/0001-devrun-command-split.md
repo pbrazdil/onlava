@@ -24,7 +24,7 @@ The result is observable from the command line. Running `onlava dev --app-root /
 
 ## Surprises & Discoveries
 
-- Existing generated mains imported `onlava.com/runtimeapp` unconditionally, so built app binaries could start local proxy/DB Studio behavior outside the CLI. Headless behavior required changing codegen, not only command dispatch.
+- Existing generated mains imported `github.com/pbrazdil/onlava/runtimeapp` unconditionally, so built app binaries could start local proxy/DB Studio behavior outside the CLI. Headless behavior required changing codegen, not only command dispatch.
 - The integration suite had several development-platform expectations under `onlava run`, especially reloads, dashboard/MCP, and HTTPS proxy hostnames. Those tests now belong to `onlava dev`.
 - Headless `onlava run` still needs a parent-death monitor for its app child, otherwise force-killing the CLI can leave an orphaned app process.
 
@@ -54,7 +54,7 @@ The result is observable from the command line. Running `onlava dev --app-root /
 
 - `onlava dev` now owns the previous development supervisor path, including dashboard, MCP, proxy, DB Studio, watching, rebuilds, and JSONL development events.
 - `onlava run` now builds once and starts the app binary headlessly with development-only flags rejected.
-- Generated app mains no longer import `onlava.com/runtimeapp` by default, so `onlava build` outputs are headless unless DB Studio is explicitly enabled.
+- Generated app mains no longer import `github.com/pbrazdil/onlava/runtimeapp` by default, so `onlava build` outputs are headless unless DB Studio is explicitly enabled.
 - Validation passed: focused command/codegen/runtime tests, selected fixture integration tests, `go test ./...`, `go install ./cmd/onlava`, `onlava harness self --json --write`, and a read-only `onlava inspect app --json --app-root <external-app-root>` smoke.
 
 ## Context and Orientation

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/clientgen"
-	"onlava.com/internal/parse"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/clientgen"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 type genClientOptions struct {

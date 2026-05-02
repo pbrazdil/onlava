@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"onlava.com/internal/app"
+	"github.com/pbrazdil/onlava/internal/app"
 )
 
 type uiBuildSpec struct {

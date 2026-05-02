@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 const mcpProtocolVersion = "2024-11-05"

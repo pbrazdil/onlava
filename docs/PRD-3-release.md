@@ -45,7 +45,7 @@ Right now onlava run creates a dev supervisor, starts the dashboard, starts DB S
 
 * cmd/onlava/watch.go:36-79 calls newDevSupervisor, supervisor.Start, and then rebuilds/restarts the app.
 * cmd/onlava/dev_supervisor.go:193-210 starts dashboard, DB Studio, and local HTTPS proxy.
-* internal/codegen/generator.go:185-193 generates app mains that import _ "onlava.com/runtimeapp".
+* internal/codegen/generator.go:185-193 generates app mains that import _ "github.com/pbrazdil/onlava/runtimeapp".
 * runtimeapp/app.go:12-18 imports internal DB Studio and local proxy packages and registers standalone dev behavior.
 * runtime/app.go:55-72 can start standalone dev services when the generated app binary is run directly.
 
@@ -76,7 +76,7 @@ There is a concrete release blocker:
 
 * ui/embed.go:5-8 embeds dist with //go:embed dist.
 * There is no ui/dist directory in the uploaded source tree.
-* cmd/onlava/dashboard.go:27 imports onlava.com/ui.
+* cmd/onlava/dashboard.go:27 imports github.com/pbrazdil/onlava/ui.
 * cmd/onlava/dashboard.go:250-257 calls fs.Sub(uidist.Dist, "dist").
 
 That means a normal Go build of the CLI should fail unless the UI has already been built into ui/dist. Either commit the built dashboard assets, generate them as part of release packaging, or move the UI embed behind a build step/tag. Do not ship until go install ./cmd/onlava works from a clean checkout.
@@ -143,7 +143,7 @@ Trust-store mutation is especially sensitive. Users should never be surprised by
 
 3. Keep Onlava-native syntax strict
 
-The repo should expose one app model: `.onlava.json`, `onlava.com/...` imports, and `//onlava:` directives. Migration tooling, if added later, should be explicit and separate from the runtime/parser path.
+The repo should expose one app model: `.onlava.json`, `github.com/pbrazdil/onlava/...` imports, and `//onlava:` directives. Migration tooling, if added later, should be explicit and separate from the runtime/parser path.
 
 4. Reconsider source rewriting and direct-call magic
 

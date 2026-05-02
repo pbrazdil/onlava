@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"onlava.com/internal/model"
+	"github.com/pbrazdil/onlava/internal/model"
 )
 
 func TestBuildMetadataSnapshotIncludesPlatformStats(t *testing.T) {

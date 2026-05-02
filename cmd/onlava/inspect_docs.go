@@ -94,7 +94,7 @@ func buildInspectDocsResponse(repoRoot string) (inspectDocsResponse, error) {
 		SchemaVersion: inspectDocsSchema,
 		Repo: harnessSelfRepo{
 			Root:       repoRoot,
-			ModulePath: "onlava.com",
+			ModulePath: "github.com/pbrazdil/onlava",
 			GoModPath:  filepath.Join(repoRoot, "go.mod"),
 		},
 		Summary: inspectDocsSummary{

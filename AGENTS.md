@@ -39,20 +39,20 @@ Build an Onlava-native Go-only local runtime that makes `onlava run` start a sin
   ```
 
 - Public Go packages:
-  - `onlava.com` with `Meta()` and `CurrentRequest()`.
-  - `onlava.com/auth` with `UserID()` and `Data()`.
-  - `onlava.com/errs` with coded errors and HTTP status mapping.
+  - `github.com/pbrazdil/onlava` with `Meta()` and `CurrentRequest()`.
+  - `github.com/pbrazdil/onlava/auth` with `UserID()` and `Data()`.
+  - `github.com/pbrazdil/onlava/errs` with coded errors and HTTP status mapping.
 - Struct tag surface for typed endpoints/auth params:
   - Request decoding: `json`, `header`, `query`, `qs`, `cookie`.
   - Onlava tags: `onlava:"optional"` and `onlava:"httpstatus"`.
 
 # Implementation Changes
 
-Create a new Go module rooted at `onlava.com` with three main areas:
+Create a new Go module rooted at `github.com/pbrazdil/onlava` with three main areas:
 
 - `cmd/onlava` for the CLI.
 - Internal parser/build pipeline for service discovery, directive parsing, codegen, and app launch.
-- Runtime/public packages under `onlava.com/...`.
+- Runtime/public packages under `github.com/pbrazdil/onlava/...`.
 
 ## App Discovery And Service Model
 
@@ -99,9 +99,9 @@ Create a new Go module rooted at `onlava.com` with three main areas:
 - Decode typed requests from path params, headers, query strings, cookies, and JSON body.
 - Encode typed responses as JSON.
 - Honor `onlava:"httpstatus"` on response structs.
-- Run the auth handler for external auth requests, then expose auth state through `onlava.com/auth`.
+- Run the auth handler for external auth requests, then expose auth state through `github.com/pbrazdil/onlava/auth`.
 - Expose enough request metadata through `onlava.CurrentRequest()` for migrated common cases, especially raw endpoint path params, method, path, service, endpoint, and payload metadata.
-- Map `onlava.com/errs` codes to HTTP responses and return full structured errors for in-process internal calls.
+- Map `github.com/pbrazdil/onlava/errs` codes to HTTP responses and return full structured errors for in-process internal calls.
 
 # Test Plan
 

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"onlava.com/internal/stdlog"
+	"github.com/pbrazdil/onlava/internal/stdlog"
 )
 
 func main() {

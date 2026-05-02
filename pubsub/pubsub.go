@@ -14,7 +14,7 @@ import (
 
 	nserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
-	onlavaruntime "onlava.com/runtime"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
 const (

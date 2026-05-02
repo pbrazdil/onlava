@@ -199,7 +199,7 @@ func TestOnlavaRunPopulatesSecretsBeforePubSubPackageDeclarations(t *testing.T) 
 
 	repo := repoRoot(t)
 	appDir := filepath.Join(t.TempDir(), "pubsubsecrets")
-	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/pubsubsecrets\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repo+"\n")
+	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/pubsubsecrets\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repo+"\n")
 	writeFile(t, filepath.Join(appDir, ".onlava.json"), `{"name":"pubsubsecrets"}`)
 	writeFile(t, filepath.Join(appDir, ".env"), "TestQueueConcurrency=10\n")
 	writeFile(t, filepath.Join(appDir, "queue", "api.go"), `package queue
@@ -209,7 +209,7 @@ import (
 	"strconv"
 	"strings"
 
-	"onlava.com/pubsub"
+	"github.com/pbrazdil/onlava/pubsub"
 )
 
 var secrets struct {
@@ -287,7 +287,7 @@ func TestOnlavaRunInitializesServiceStructsAtStartup(t *testing.T) {
 	repo := repoRoot(t)
 	appDir := filepath.Join(t.TempDir(), "serviceinit")
 	markerPath := filepath.Join(t.TempDir(), "init.marker")
-	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repo+"\n")
+	writeFile(t, filepath.Join(appDir, "go.mod"), "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repo+"\n")
 	writeFile(t, filepath.Join(appDir, ".onlava.json"), `{"name":"serviceinit"}`)
 	writeFile(t, filepath.Join(appDir, "svc", "api.go"), `package svc
 

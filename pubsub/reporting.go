@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	onlavaruntime "onlava.com/runtime"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
 func (rt *localRuntime) reportPubSubSnapshots(ctx context.Context) {

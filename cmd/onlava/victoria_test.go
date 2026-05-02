@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 func TestVictoriaEnabledDefaultsToTrue(t *testing.T) {

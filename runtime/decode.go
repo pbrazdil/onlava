@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"onlava.com/errs"
+	"github.com/pbrazdil/onlava/errs"
 )
 
 func convertScalar(kind ParamKind, value string) (any, error) {

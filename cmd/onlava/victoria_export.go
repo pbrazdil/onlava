@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 var victoriaExportClient = &http.Client{Timeout: time.Second}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"onlava.com/internal/redact"
+	"github.com/pbrazdil/onlava/internal/redact"
 )
 
 type ErrCode string

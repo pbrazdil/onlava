@@ -14,9 +14,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"onlava.com/auth"
-	"onlava.com/internal/model"
-	"onlava.com/internal/runtimeapi"
+	"github.com/pbrazdil/onlava/auth"
+	"github.com/pbrazdil/onlava/internal/model"
+	"github.com/pbrazdil/onlava/internal/runtimeapi"
 )
 
 type directive struct {
@@ -906,11 +906,11 @@ func paramKind(t types.Type) (runtimeapi.ParamKind, bool) {
 }
 
 func isAuthUIDType(t types.Type) bool {
-	return isNamedType(t, "onlava.com/auth", "UID")
+	return isNamedType(t, "github.com/pbrazdil/onlava/auth", "UID")
 }
 
 func isMiddlewareNamedType(t types.Type, name string) bool {
-	return isNamedType(t, "onlava.com/middleware", name)
+	return isNamedType(t, "github.com/pbrazdil/onlava/middleware", name)
 }
 
 func calledObject(pkg *packages.Package, fun ast.Expr) types.Object {

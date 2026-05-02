@@ -20,15 +20,15 @@ import (
 	"sync"
 	"time"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/build"
-	"onlava.com/internal/dbstudio"
-	"onlava.com/internal/devdash"
-	"onlava.com/internal/devmeta"
-	"onlava.com/internal/envfile"
-	"onlava.com/internal/localproxy"
-	"onlava.com/internal/model"
-	"onlava.com/internal/parse"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/build"
+	"github.com/pbrazdil/onlava/internal/dbstudio"
+	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devmeta"
+	"github.com/pbrazdil/onlava/internal/envfile"
+	"github.com/pbrazdil/onlava/internal/localproxy"
+	"github.com/pbrazdil/onlava/internal/model"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 type runningApp struct {

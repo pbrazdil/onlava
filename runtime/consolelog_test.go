@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"onlava.com/errs"
+	"github.com/pbrazdil/onlava/errs"
 )
 
 func TestOnlavaConsoleHandlerFormatsTraceRecords(t *testing.T) {
@@ -52,7 +52,7 @@ func TestOnlavaConsoleHandlerFormatsSecretsWarning(t *testing.T) {
 	for _, want := range []string{
 		"warning: secrets not defined: DatabaseURL, ResendAPIKey",
 		"note: undefined secrets are left empty for local development only.",
-		"https://onlava.com/docs/primitives/secrets",
+		"https://github.com/pbrazdil/onlava/docs/primitives/secrets",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output %q does not contain %q", got, want)

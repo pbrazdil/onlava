@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	appcfg "onlava.com/internal/app"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
 )
 
 type harnessSelfOptions struct {
@@ -56,7 +56,7 @@ func runOnlavaHarnessSelf(ctx context.Context, stdout io.Writer, args []string) 
 		GeneratedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 		Repo: harnessSelfRepo{
 			Root:       repoRoot,
-			ModulePath: "onlava.com",
+			ModulePath: "github.com/pbrazdil/onlava",
 			GoModPath:  filepath.Join(repoRoot, "go.mod"),
 		},
 		Knowledge: buildHarnessSelfKnowledge(repoRoot),
@@ -215,7 +215,7 @@ func findOnlavaRepoRoot(start string) (string, bool) {
 		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 		if err == nil {
 			text := string(data)
-			if strings.HasPrefix(text, "module onlava.com\n") || strings.Contains(text, "\nmodule onlava.com\n") {
+			if strings.HasPrefix(text, "module github.com/pbrazdil/onlava\n") || strings.Contains(text, "\nmodule github.com/pbrazdil/onlava\n") {
 				return dir, true
 			}
 		}

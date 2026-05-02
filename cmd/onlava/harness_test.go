@@ -43,7 +43,7 @@ func TestFindOnlavaRepoRoot(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module onlava.com\n\ngo 1.26.0\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/pbrazdil/onlava\n\ngo 1.26.0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +186,7 @@ func writeHarnessTestApp(t *testing.T, root, name, body string) {
 func writeHarnessSelfRepo(t *testing.T, schema string) string {
 	t.Helper()
 	root := t.TempDir()
-	writeTestAppFile(t, root, "go.mod", "module onlava.com\n\ngo 1.26.0\n")
+	writeTestAppFile(t, root, "go.mod", "module github.com/pbrazdil/onlava\n\ngo 1.26.0\n")
 	writeTestAppFile(t, root, "AGENTS.md", "See [harness](docs/harness-engineering.md).\n")
 	writeTestAppFile(t, root, "PLAN.md", "See [docs](docs/index.md).\n")
 	writeTestAppFile(t, root, "PLANS.md", validExecPlanStandardForTest())

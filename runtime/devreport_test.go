@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"onlava.com/internal/devdash"
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 func TestDevReporterDisablesOnConnectionRefused(t *testing.T) {

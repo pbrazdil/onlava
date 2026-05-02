@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"onlava.com/runtime"
+	"github.com/pbrazdil/onlava/runtime"
 )
 
 type UID string

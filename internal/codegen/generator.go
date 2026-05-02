@@ -12,10 +12,10 @@ import (
 	"slices"
 	"strings"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/model"
-	"onlava.com/internal/runtimeapi"
-	"onlava.com/internal/wiremodel"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/model"
+	"github.com/pbrazdil/onlava/internal/runtimeapi"
+	"github.com/pbrazdil/onlava/internal/wiremodel"
 )
 
 type Output struct {
@@ -89,7 +89,7 @@ func GenerateWithConfig(appModel *model.App, cfg appcfg.Config) (*Output, error)
 func generateEarlyConfigFile(pkg *model.Package, hasSecrets bool) ([]byte, error) {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "package %s\n\n", pkg.Name)
-	buf.WriteString("import onlavaruntime \"onlava.com/runtime\"\n\n")
+	buf.WriteString("import onlavaruntime \"github.com/pbrazdil/onlava/runtime\"\n\n")
 	buf.WriteString("var onlavaInternalDotEnvInitialized = onlavaruntime.MustLoadDotEnvIntoEnv()\n")
 	if hasSecrets {
 		buf.WriteString("\n")
@@ -152,15 +152,15 @@ func generatePackageFile(pkg *model.Package) ([]byte, error) {
 	})
 
 	im := newImports(pkg.ImportPath)
-	im.use("onlavaruntime", "onlava.com/runtime")
+	im.use("onlavaruntime", "github.com/pbrazdil/onlava/runtime")
 	if needsContextImport(pkgEndpoints, authHandler, serviceStruct) {
 		im.use("context", "context")
 	}
 	if len(pkgMiddleware) > 0 {
-		im.use("onlavamiddleware", "onlava.com/middleware")
+		im.use("onlavamiddleware", "github.com/pbrazdil/onlava/middleware")
 	}
 	if serviceStruct != nil {
-		im.use("onlavapubsub", "onlava.com/pubsub")
+		im.use("onlavapubsub", "github.com/pbrazdil/onlava/pubsub")
 		im.use("sync", "sync")
 		im.use("time", "time")
 	}
@@ -189,9 +189,9 @@ func generateMain(appModel *model.App, cfg appcfg.Config) ([]byte, error) {
 	buf.WriteString("import (\n")
 	buf.WriteString("\t\"fmt\"\n")
 	buf.WriteString("\t\"os\"\n")
-	buf.WriteString("\tonlavaruntime \"onlava.com/runtime\"\n")
+	buf.WriteString("\tonlavaruntime \"github.com/pbrazdil/onlava/runtime\"\n")
 	if cfg.EnableDBStudio {
-		buf.WriteString("\t_ \"onlava.com/runtimeapp\"\n")
+		buf.WriteString("\t_ \"github.com/pbrazdil/onlava/runtimeapp\"\n")
 	}
 	for _, pkg := range appModel.Packages {
 		if hasResources(pkg) {
@@ -341,7 +341,7 @@ func pubsubImportAliases(file *ast.File) map[string]bool {
 	aliases := make(map[string]bool)
 	for _, imp := range file.Imports {
 		switch strings.Trim(imp.Path.Value, "\"") {
-		case "onlava.com/pubsub":
+		case "github.com/pbrazdil/onlava/pubsub":
 		default:
 			continue
 		}
@@ -388,7 +388,7 @@ func cronImportAliases(file *ast.File) map[string]bool {
 	aliases := make(map[string]bool)
 	for _, imp := range file.Imports {
 		switch strings.Trim(imp.Path.Value, "\"") {
-		case "onlava.com/cron":
+		case "github.com/pbrazdil/onlava/cron":
 		default:
 			continue
 		}

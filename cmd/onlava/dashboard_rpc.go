@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 func (s *dashboardServer) handleRPC(ctx context.Context, req rpcRequest) rpcResponse {

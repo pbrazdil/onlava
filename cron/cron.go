@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"time"
 
-	onlavaruntime "onlava.com/runtime"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
 type JobConfig struct {

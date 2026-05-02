@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/codegen"
-	"onlava.com/internal/parse"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/codegen"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 func TestCopyTreeSkipsHiddenDirsAndBrokenSymlinks(t *testing.T) {
@@ -90,8 +90,8 @@ func Open(conn string) (*pgxpool.Pool, error) {
 	if strings.Contains(got, `"github.com/jackc/pgx/v5/pgxpool"`) {
 		t.Fatalf("expected pgxpool import to be rewritten, got:\n%s", got)
 	}
-	if !strings.Contains(got, `"onlava.com/pgxpool"`) {
-		t.Fatalf("expected onlava.com/pgxpool import to be present, got:\n%s", got)
+	if !strings.Contains(got, `"github.com/pbrazdil/onlava/pgxpool"`) {
+		t.Fatalf("expected github.com/pbrazdil/onlava/pgxpool import to be present, got:\n%s", got)
 	}
 }
 
@@ -724,7 +724,7 @@ func TestSyncGeneratedFilesKeepsPathsThatAreNowRegularSourceFiles(t *testing.T) 
 func newBuildTestApp(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	writeBuildTestFile(t, root, "go.mod", "module example.com/buildtest\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeBuildTestFile(t, root, "go.mod", "module example.com/buildtest\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeBuildTestFile(t, root, ".onlava.json", `{"name":"buildtest"}`)
 	writeBuildTestFile(t, root, "svc/api.go", `package svc
 

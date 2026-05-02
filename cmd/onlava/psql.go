@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	appcfg "onlava.com/internal/app"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
 )
 
 type psqlOptions struct {

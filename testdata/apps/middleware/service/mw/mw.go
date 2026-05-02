@@ -3,8 +3,8 @@ package mw
 import (
 	service "example.com/middlewareapp/service"
 
-	"onlava.com/errs"
-	"onlava.com/middleware"
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/middleware"
 )
 
 //onlava:middleware target=tag:rewrite

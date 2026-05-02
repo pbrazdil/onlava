@@ -40,7 +40,7 @@ module example.com/hello
 
 go 1.26.0
 
-require onlava.com v0.0.0
+require github.com/pbrazdil/onlava v0.0.0
 ```
 
 Create `service/api.go`:
@@ -102,14 +102,14 @@ Struct tags:
 
 ## Public Go Packages
 
-- `onlava.com`: app metadata and `CurrentRequest()`.
-- `onlava.com/auth`: request auth helpers such as `UserID()` and `Data()`.
-- `onlava.com/errs`: coded errors and HTTP status mapping.
-- `onlava.com/middleware`: middleware request/response types.
-- `onlava.com/pubsub`: local Pub/Sub declarations and runtime integration.
-- `onlava.com/cron`: cron job declarations.
-- `onlava.com/pgxpool`: pgx pool wrapper with Onlava DB tracing.
-- `onlava.com/et`: endpoint and service mocking helpers for tests.
+- `github.com/pbrazdil/onlava`: app metadata and `CurrentRequest()`.
+- `github.com/pbrazdil/onlava/auth`: request auth helpers such as `UserID()` and `Data()`.
+- `github.com/pbrazdil/onlava/errs`: coded errors and HTTP status mapping.
+- `github.com/pbrazdil/onlava/middleware`: middleware request/response types.
+- `github.com/pbrazdil/onlava/pubsub`: local Pub/Sub declarations and runtime integration.
+- `github.com/pbrazdil/onlava/cron`: cron job declarations.
+- `github.com/pbrazdil/onlava/pgxpool`: pgx pool wrapper with Onlava DB tracing.
+- `github.com/pbrazdil/onlava/et`: endpoint and service mocking helpers for tests.
 
 ## Auth
 
@@ -120,7 +120,7 @@ Token-style auth handlers can accept a token string. Structured auth handlers ca
 Inside auth-protected endpoints, use:
 
 ```go
-import "onlava.com/auth"
+import "github.com/pbrazdil/onlava/auth"
 
 userID := auth.UserID()
 data := auth.Data()
@@ -147,14 +147,14 @@ Onlava initializes service structs and wraps methods so endpoint calls still pas
 
 ## Errors And Responses
 
-Use `onlava.com/errs` for coded errors that map cleanly to HTTP responses.
+Use `github.com/pbrazdil/onlava/errs` for coded errors that map cleanly to HTTP responses.
 
 Use `onlava:"httpstatus"` on a response struct field when the endpoint should return a non-default HTTP status.
 
 Use `onlava.CurrentRequest()` when an endpoint needs request metadata such as method, path, service, endpoint, path params, or payload metadata:
 
 ```go
-import onlava "onlava.com"
+import onlava "github.com/pbrazdil/onlava"
 ```
 
 ## Local Development

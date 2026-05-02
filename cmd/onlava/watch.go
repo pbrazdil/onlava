@@ -20,7 +20,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"onlava.com/internal/app"
+	"github.com/pbrazdil/onlava/internal/app"
 )
 
 const (

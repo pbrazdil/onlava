@@ -1,6 +1,6 @@
 package globalmw
 
-import "onlava.com/middleware"
+import "github.com/pbrazdil/onlava/middleware"
 
 //onlava:middleware global target=tag:global
 func AddHeader(req middleware.Request, next middleware.Next) middleware.Response {

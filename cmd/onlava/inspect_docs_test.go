@@ -21,7 +21,7 @@ func TestRunOnlavaInspectDocs(t *testing.T) {
 	if payload.SchemaVersion != inspectDocsSchema {
 		t.Fatalf("schema = %q", payload.SchemaVersion)
 	}
-	if payload.Repo.Root != root || payload.Repo.ModulePath != "onlava.com" {
+	if payload.Repo.Root != root || payload.Repo.ModulePath != "github.com/pbrazdil/onlava" {
 		t.Fatalf("repo = %+v", payload.Repo)
 	}
 	if payload.Summary.DocumentCount == 0 || payload.Summary.MissingCount != 0 {

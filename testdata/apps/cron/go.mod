@@ -2,6 +2,6 @@ module example.com/cronapp
 
 go 1.26.0
 
-require onlava.com v0.0.0
+require github.com/pbrazdil/onlava v0.0.0
 
-replace onlava.com => ../../..
+replace github.com/pbrazdil/onlava => ../../..

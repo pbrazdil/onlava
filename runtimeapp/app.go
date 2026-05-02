@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"onlava.com/internal/dbstudio"
-	"onlava.com/internal/localproxy"
-	"onlava.com/runtime"
+	"github.com/pbrazdil/onlava/internal/dbstudio"
+	"github.com/pbrazdil/onlava/internal/localproxy"
+	"github.com/pbrazdil/onlava/runtime"
 )
 
 func init() {

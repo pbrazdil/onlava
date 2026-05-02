@@ -10,7 +10,7 @@ import (
 	"sync"
 	"unicode"
 
-	"onlava.com/internal/envfile"
+	"github.com/pbrazdil/onlava/internal/envfile"
 )
 
 var (

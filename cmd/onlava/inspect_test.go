@@ -219,7 +219,7 @@ func Config(context.Context) error { return nil }
 func TestRunOnlavaInspectExcludesUnrelatedPackages(t *testing.T) {
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"inspectapp","id":"inspect-id"}`)
-	writeTestAppFile(t, root, "go.mod", "module example.com/inspectapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRootForTest(t)+"\n")
+	writeTestAppFile(t, root, "go.mod", "module example.com/inspectapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRootForTest(t)+"\n")
 	writeTestAppFile(t, root, "users/api.go", `package users
 
 import "context"
@@ -236,7 +236,7 @@ func Helper() {}
 `)
 	writeTestAppFile(t, root, "users/mw/mw.go", `package mw
 
-import "onlava.com/middleware"
+import "github.com/pbrazdil/onlava/middleware"
 
 //onlava:middleware target=all
 func ServiceMW(req middleware.Request, next middleware.Next) middleware.Response {
@@ -245,7 +245,7 @@ func ServiceMW(req middleware.Request, next middleware.Next) middleware.Response
 `)
 	writeTestAppFile(t, root, "globalmw/mw.go", `package globalmw
 
-import "onlava.com/middleware"
+import "github.com/pbrazdil/onlava/middleware"
 
 //onlava:middleware global target=all
 func Global(req middleware.Request, next middleware.Next) middleware.Response {

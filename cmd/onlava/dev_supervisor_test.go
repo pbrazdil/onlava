@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 func TestAppChildEnvForcesColorWhenRequested(t *testing.T) {

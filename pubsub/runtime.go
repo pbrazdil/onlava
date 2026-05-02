@@ -3,7 +3,7 @@ package pubsub
 import (
 	"context"
 
-	"onlava.com/runtime"
+	"github.com/pbrazdil/onlava/runtime"
 )
 
 func init() {

@@ -216,12 +216,12 @@ func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {
 				SuggestedAction: "Keep cgo isolated and document the native build requirement.",
 			})
 		}
-		if importPath == "onlava.com/cmd/onlava" && !strings.HasPrefix(rel, "cmd/onlava/") {
+		if importPath == "github.com/pbrazdil/onlava/cmd/onlava" && !strings.HasPrefix(rel, "cmd/onlava/") {
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "error",
 				File:            filepath.ToSlash(path),
-				Message:         "non-CLI package imports onlava.com/cmd/onlava",
+				Message:         "non-CLI package imports github.com/pbrazdil/onlava/cmd/onlava",
 				SuggestedAction: "Move shared code into internal/ instead of importing the CLI package.",
 			})
 		}

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"reflect"
 
-	"onlava.com/errs"
-	onlavamiddleware "onlava.com/middleware"
+	"github.com/pbrazdil/onlava/errs"
+	onlavamiddleware "github.com/pbrazdil/onlava/middleware"
 )
 
 func executeTypedEndpoint(ep *Endpoint, ctx context.Context, pathArgs []any, payload any) (any, int, http.Header, error) {

@@ -1,6 +1,6 @@
 package et
 
-import "onlava.com/runtime"
+import "github.com/pbrazdil/onlava/runtime"
 
 type helperT interface {
 	Helper()

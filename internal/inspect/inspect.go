@@ -8,10 +8,10 @@ import (
 	"slices"
 	"sort"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/model"
-	"onlava.com/internal/wire"
-	"onlava.com/internal/wiremodel"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/model"
+	"github.com/pbrazdil/onlava/internal/wire"
+	"github.com/pbrazdil/onlava/internal/wiremodel"
 )
 
 type AppRef struct {

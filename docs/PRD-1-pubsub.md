@@ -6,7 +6,7 @@ Onlava pub/sub is currently a local, embedded runtime intended to preserve a com
 
 ## Summary
 
-- Package: `onlava.com/pubsub`
+- Package: `github.com/pbrazdil/onlava/pubsub`
 - Runtime transport: embedded NATS JetStream
 - Message encoding: JSON
 - Delivery guarantee supported in Onlava v1: `AtLeastOnce`
@@ -56,7 +56,7 @@ package emails
 import (
     "context"
 
-    "onlava.com/pubsub"
+    "github.com/pbrazdil/onlava/pubsub"
 )
 
 type WelcomeEmail struct {
@@ -98,7 +98,7 @@ package billing
 import (
     "context"
 
-    "onlava.com/pubsub"
+    "github.com/pbrazdil/onlava/pubsub"
 )
 
 //onlava:service
@@ -414,7 +414,7 @@ import (
     "context"
     "time"
 
-    "onlava.com/pubsub"
+    "github.com/pbrazdil/onlava/pubsub"
 )
 
 type UserCreated struct {

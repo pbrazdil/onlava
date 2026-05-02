@@ -2,7 +2,7 @@ package jobs
 
 import (
 	"example.com/cronapp/service"
-	"onlava.com/cron"
+	"github.com/pbrazdil/onlava/cron"
 )
 
 var _ = cron.NewJob("onlava-tick", cron.JobConfig{

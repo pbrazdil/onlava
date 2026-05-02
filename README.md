@@ -55,7 +55,7 @@ go install ./cmd/onlava
 onlava version --json
 ```
 
-The module path is `onlava.com`. Source installs are useful when working from a checkout or testing unreleased changes.
+The module path is `github.com/pbrazdil/onlava`. Source installs are useful when working from a checkout or testing unreleased changes.
 
 ## Prebuilt CLI Binaries
 
@@ -92,9 +92,9 @@ module example.com/hello
 
 go 1.26.0
 
-require onlava.com v0.0.0
+require github.com/pbrazdil/onlava v0.0.0
 
-replace onlava.com => /path/to/onlava
+replace github.com/pbrazdil/onlava => /path/to/onlava
 ```
 
 Create `service/api.go`:
@@ -183,14 +183,14 @@ See [docs/local-contract.md](docs/local-contract.md) for the full command contra
 
 ## Public Go Packages
 
-- `onlava.com` exposes app metadata and current request metadata.
-- `onlava.com/auth` exposes request auth state helpers.
-- `onlava.com/errs` exposes coded errors and HTTP status mapping.
-- `onlava.com/middleware` exposes middleware request/response types.
-- `onlava.com/pubsub` exposes local Pub/Sub declarations and runtime integration.
-- `onlava.com/cron` exposes cron job declarations.
-- `onlava.com/pgxpool` wraps `pgxpool` with Onlava DB tracing.
-- `onlava.com/et` exposes endpoint/service mocking helpers for tests.
+- `github.com/pbrazdil/onlava` exposes app metadata and current request metadata.
+- `github.com/pbrazdil/onlava/auth` exposes request auth state helpers.
+- `github.com/pbrazdil/onlava/errs` exposes coded errors and HTTP status mapping.
+- `github.com/pbrazdil/onlava/middleware` exposes middleware request/response types.
+- `github.com/pbrazdil/onlava/pubsub` exposes local Pub/Sub declarations and runtime integration.
+- `github.com/pbrazdil/onlava/cron` exposes cron job declarations.
+- `github.com/pbrazdil/onlava/pgxpool` wraps `pgxpool` with Onlava DB tracing.
+- `github.com/pbrazdil/onlava/et` exposes endpoint/service mocking helpers for tests.
 
 ## TypeScript Client Generation
 

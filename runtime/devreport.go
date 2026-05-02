@@ -20,10 +20,10 @@ import (
 	"syscall"
 	"time"
 
-	"onlava.com/errs"
-	"onlava.com/internal/devdash"
-	"onlava.com/internal/redact"
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/redact"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 type traceSpan struct {

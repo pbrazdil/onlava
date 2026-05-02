@@ -694,7 +694,7 @@ func rewriteFixtureReplace(t *testing.T, goModPath, repo string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := strings.Replace(string(data), "replace onlava.com => ../../..", "replace onlava.com => "+repo, 1)
+	updated := strings.Replace(string(data), "replace github.com/pbrazdil/onlava => ../../..", "replace github.com/pbrazdil/onlava => "+repo, 1)
 	if updated == string(data) {
 		t.Fatalf("expected fixture go.mod replace in %s", goModPath)
 	}

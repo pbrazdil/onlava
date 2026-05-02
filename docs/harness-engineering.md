@@ -94,7 +94,7 @@ Hard failures:
 
 - direct Go dependencies must be listed in the self-harness allowlist with a concrete rationale
 - forbidden CLI/router/color framework imports are rejected in source
-- packages outside `cmd/onlava` may not import `onlava.com/cmd/onlava`
+- packages outside `cmd/onlava` may not import `github.com/pbrazdil/onlava/cmd/onlava`
 - required generated/vendored ignore markers must exist in `.gitignore` and `.gitattributes`
 - non-generated source files over 2500 lines are rejected
 

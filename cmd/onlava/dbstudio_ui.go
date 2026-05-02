@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/dbstudio"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/dbstudio"
 )
 
 const dbStudioUIAddr = "127.0.0.1:4003"

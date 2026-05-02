@@ -51,7 +51,7 @@ func TestOnlavaTestRunsGoTestInGeneratedWorkspace(t *testing.T) {
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"testapp"}`)
 	writeTestAppFile(t, root, "go.mod", "module example.com/testapp\n\ngo 1.26.0\n")
 	writeTestAppFile(t, root, "svc/api.go", "package svc\n\nimport \"context\"\n\n//onlava:api public\nfunc Ping(context.Context) error { return nil }\n")
-	writeTestAppFile(t, root, "svc/api_test.go", "package svc\n\nimport (\n\t\"testing\"\n\n\tonlava \"onlava.com\"\n)\n\nfunc TestOnlavaMetaUsesTestEnv(t *testing.T) {\n\tif onlava.Meta().Environment.Type != onlava.EnvTest {\n\t\tt.Fatalf(\"env type = %q, want %q\", onlava.Meta().Environment.Type, onlava.EnvTest)\n\t}\n}\n")
+	writeTestAppFile(t, root, "svc/api_test.go", "package svc\n\nimport (\n\t\"testing\"\n\n\tonlava \"github.com/pbrazdil/onlava\"\n)\n\nfunc TestOnlavaMetaUsesTestEnv(t *testing.T) {\n\tif onlava.Meta().Environment.Type != onlava.EnvTest {\n\t\tt.Fatalf(\"env type = %q, want %q\", onlava.Meta().Environment.Type, onlava.EnvTest)\n\t}\n}\n")
 
 	restore := chdirForTest(t, filepath.Join(root, "svc"))
 	defer restore()

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 type requestStateKey struct{}

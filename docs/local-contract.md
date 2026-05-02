@@ -166,7 +166,7 @@ Inspect rules:
 - `--min-duration-ms` filters root traces by duration in milliseconds.
 - `--status` accepts `ok` or `error`.
 - `metrics` defaults to `--since 24h` and `--limit 10000` so agents get useful local summaries without scanning unbounded history.
-- `docs` inspects the Onlava repo knowledge base, not a target Onlava app. It accepts `--repo-root` and otherwise walks upward to the `module onlava.com` repo root.
+- `docs` inspects the Onlava repo knowledge base, not a target Onlava app. It accepts `--repo-root` and otherwise walks upward to the `module github.com/pbrazdil/onlava` repo root.
 
 Command split:
 
@@ -630,7 +630,7 @@ Example output:
   "schema_version": "onlava.inspect.docs.v1",
   "repo": {
     "root": "/repo/onlava",
-    "module_path": "onlava.com",
+    "module_path": "github.com/pbrazdil/onlava",
     "go_mod_path": "/repo/onlava/go.mod"
   },
   "summary": {

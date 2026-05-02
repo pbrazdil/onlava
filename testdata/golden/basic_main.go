@@ -3,7 +3,7 @@ package main
 import (
 	_ "example.com/basicapp/service"
 	"fmt"
-	onlavaruntime "onlava.com/runtime"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 	"os"
 )
 

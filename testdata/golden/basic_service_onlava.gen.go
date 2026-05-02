@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
+	onlavapubsub "github.com/pbrazdil/onlava/pubsub"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 	"net/http"
-	onlavapubsub "onlava.com/pubsub"
-	onlavaruntime "onlava.com/runtime"
 	"sync"
 	"time"
 )

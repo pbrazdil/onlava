@@ -1,4 +1,4 @@
-module onlava.com
+module github.com/pbrazdil/onlava
 
 go 1.26.0
 

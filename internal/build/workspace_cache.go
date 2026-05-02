@@ -17,7 +17,7 @@ import (
 	"sort"
 	"strings"
 
-	"onlava.com/internal/codegen"
+	"github.com/pbrazdil/onlava/internal/codegen"
 )
 
 func dependencyFingerprintFromWorkspace(root string) (string, error) {
@@ -252,7 +252,7 @@ func rewriteOnlavaImports(path string, src []byte) ([]byte, error) {
 	}
 
 	changed := false
-	if rewriteImportPath(file, "github.com/jackc/pgx/v5/pgxpool", "onlava.com/pgxpool", "") {
+	if rewriteImportPath(file, "github.com/jackc/pgx/v5/pgxpool", "github.com/pbrazdil/onlava/pgxpool", "") {
 		changed = true
 	}
 

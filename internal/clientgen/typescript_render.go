@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"onlava.com/internal/wire"
-	"onlava.com/internal/wiremodel"
+	"github.com/pbrazdil/onlava/internal/wire"
+	"github.com/pbrazdil/onlava/internal/wiremodel"
 )
 
 func (g *tsGenerator) render() ([]byte, error) {

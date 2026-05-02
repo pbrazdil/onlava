@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/build"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/build"
 )
 
 type runOptions struct {

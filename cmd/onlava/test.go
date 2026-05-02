@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/build"
-	"onlava.com/internal/parse"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/build"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 type testOptions struct {

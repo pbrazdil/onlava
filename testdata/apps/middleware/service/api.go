@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	onlava "onlava.com"
-	"onlava.com/middleware"
+	onlava "github.com/pbrazdil/onlava"
+	"github.com/pbrazdil/onlava/middleware"
 )
 
 //onlava:service

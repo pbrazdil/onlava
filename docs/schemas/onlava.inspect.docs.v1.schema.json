@@ -11,7 +11,7 @@
       "required": ["root", "module_path", "go_mod_path"],
       "properties": {
         "root": { "type": "string" },
-        "module_path": { "const": "onlava.com" },
+        "module_path": { "const": "github.com/pbrazdil/onlava" },
         "go_mod_path": { "type": "string" }
       },
       "additionalProperties": false

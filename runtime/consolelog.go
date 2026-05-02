@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"onlava.com/errs"
-	"onlava.com/internal/redact"
-	"onlava.com/internal/stdlog"
-	"onlava.com/internal/termstyle"
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/internal/redact"
+	"github.com/pbrazdil/onlava/internal/stdlog"
+	"github.com/pbrazdil/onlava/internal/termstyle"
 )
 
 const levelTrace = slog.Level(-8)
@@ -178,7 +178,7 @@ func (h *onlavaConsoleHandler) formatSecretsWarning(attrs []consoleAttr) string 
 	b.WriteString(" undefined secrets are left empty for local development only.")
 	b.WriteByte('\n')
 	b.WriteString(h.palette.Dim("see "))
-	b.WriteString(h.palette.Dim("https://onlava.com/docs/primitives/secrets"))
+	b.WriteString(h.palette.Dim("https://github.com/pbrazdil/onlava/docs/primitives/secrets"))
 	b.WriteString(h.palette.Dim(" for more information"))
 	b.WriteByte('\n')
 	return b.String()

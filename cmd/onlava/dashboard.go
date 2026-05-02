@@ -23,8 +23,8 @@ import (
 	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq"
 
-	"onlava.com/internal/devdash"
-	"onlava.com/internal/envfile"
+	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envfile"
 )
 
 var dashboardUpgrader = websocket.Upgrader{

@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"onlava.com/errs"
-	"onlava.com/internal/wire"
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/internal/wire"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 type server struct {

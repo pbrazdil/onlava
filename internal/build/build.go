@@ -16,12 +16,12 @@ import (
 
 	"golang.org/x/mod/modfile"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/codegen"
-	inspectdata "onlava.com/internal/inspect"
-	"onlava.com/internal/model"
-	"onlava.com/internal/parse"
-	"onlava.com/internal/wiremodel"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/codegen"
+	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
+	"github.com/pbrazdil/onlava/internal/model"
+	"github.com/pbrazdil/onlava/internal/parse"
+	"github.com/pbrazdil/onlava/internal/wiremodel"
 )
 
 type Result struct {
@@ -577,11 +577,11 @@ func patchGoModData(data []byte, repoRoot string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := file.AddRequire("onlava.com", "v0.0.0"); err != nil && !strings.Contains(err.Error(), "already exists") {
+	if err := file.AddRequire("github.com/pbrazdil/onlava", "v0.0.0"); err != nil && !strings.Contains(err.Error(), "already exists") {
 		return nil, err
 	}
-	_ = file.DropReplace("onlava.com", "")
-	if err := file.AddReplace("onlava.com", "", repoRoot, ""); err != nil {
+	_ = file.DropReplace("github.com/pbrazdil/onlava", "")
+	if err := file.AddReplace("github.com/pbrazdil/onlava", "", repoRoot, ""); err != nil {
 		return nil, err
 	}
 	formatted, err := file.Format()

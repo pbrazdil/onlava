@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"onlava.com/errs"
-	"onlava.com/internal/wire"
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/internal/wire"
 )
 
 func TestWireCapabilitiesAndBinaryCall(t *testing.T) {

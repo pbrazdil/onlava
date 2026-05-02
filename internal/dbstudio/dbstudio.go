@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"onlava.com/internal/envfile"
+	"github.com/pbrazdil/onlava/internal/envfile"
 )
 
 const DefaultPort = 4002

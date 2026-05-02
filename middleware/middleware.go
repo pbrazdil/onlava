@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sync"
 
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 // Signature documents the function signature middleware must implement.

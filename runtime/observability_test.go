@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 func TestNewExternalStateAppliesSeparateLogAndTraceFilters(t *testing.T) {

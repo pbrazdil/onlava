@@ -22,7 +22,7 @@ func TestRunHarnessArchitectureStepSuccess(t *testing.T) {
 func TestRunHarnessArchitectureStepReportsViolations(t *testing.T) {
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 	writeArchitectureSupportFiles(t, root)
-	writeTestAppFile(t, root, "go.mod", "module onlava.com\n\ngo 1.26.0\n\nrequire github.com/example/newdep v1.0.0\n")
+	writeTestAppFile(t, root, "go.mod", "module github.com/pbrazdil/onlava\n\ngo 1.26.0\n\nrequire github.com/example/newdep v1.0.0\n")
 	writeTestAppFile(t, root, "internal/bad/bad.go", "package bad\n\nimport _ \"github.com/spf13/cobra\"\n")
 
 	step := runHarnessArchitectureStep(root)

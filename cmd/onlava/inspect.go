@@ -8,12 +8,12 @@ import (
 	"os"
 	"path/filepath"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/build"
-	inspectdata "onlava.com/internal/inspect"
-	"onlava.com/internal/model"
-	"onlava.com/internal/parse"
-	"onlava.com/internal/wiremodel"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/build"
+	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
+	"github.com/pbrazdil/onlava/internal/model"
+	"github.com/pbrazdil/onlava/internal/parse"
+	"github.com/pbrazdil/onlava/internal/wiremodel"
 )
 
 type inspectOptions struct {

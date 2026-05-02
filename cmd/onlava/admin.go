@@ -12,8 +12,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 type adminOptions struct {

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"onlava.com/internal/termstyle"
+	"github.com/pbrazdil/onlava/internal/termstyle"
 )
 
 type runConsole struct {

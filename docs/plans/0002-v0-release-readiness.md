@@ -35,7 +35,7 @@ The outcome should be observable from a clean checkout. A contributor should be 
 Known audit findings from the PRD:
 
 - `onlava run` previously started development supervisor behavior, including dashboard, DB Studio, local HTTPS proxy, MCP, and file watching.
-- Generated app binaries could carry dev-platform behavior through `onlava.com/runtimeapp`.
+- Generated app binaries could carry dev-platform behavior through `github.com/pbrazdil/onlava/runtimeapp`.
 - `runtime/server.go` mounted dev/admin/platform/pprof endpoints on the app router.
 - Local HTTPS proxy and trust-store behavior were enabled by default in development paths.
 - The repo had conflicting guidance about strict Onlava-only behavior versus migration compatibility support.
@@ -127,7 +127,7 @@ The public runtime server lives in `runtime/server.go`. Audit findings say this 
 
 The local proxy lives under `internal/localproxy`. It uses embedded Caddy and can install local trust roots. The release contract must make this opt-in and clearly development-only.
 
-The dashboard UI source lives in `ui/` and is embedded by the CLI through `onlava.com/ui`. A clean release build must either include built `ui/dist` assets, generate them in the release process, or avoid requiring them for headless/stable builds.
+The dashboard UI source lives in `ui/` and is embedded by the CLI through `github.com/pbrazdil/onlava/ui`. A clean release build must either include built `ui/dist` assets, generate them in the release process, or avoid requiring them for headless/stable builds.
 
 Terms used in this plan:
 

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/inspect"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/inspect"
 )
 
 type harnessOptions struct {

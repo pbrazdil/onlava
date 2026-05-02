@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/parse"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 func TestGenerateTypeScriptIncludesStructuredRequestHandling(t *testing.T) {
@@ -72,7 +72,7 @@ func TestGenerateTypeScriptIncludesNamedAliases(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	writeFile("go.mod", "module example.com/clientapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+appcfg.RepoRoot()+"\n")
+	writeFile("go.mod", "module example.com/clientapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+appcfg.RepoRoot()+"\n")
 	writeFile(".onlava.json", `{"name":"clientapp"}`)
 	writeFile("point/point.go", `package point
 

@@ -3,7 +3,7 @@ package onlava
 import (
 	"testing"
 
-	"onlava.com/runtime"
+	"github.com/pbrazdil/onlava/runtime"
 )
 
 func TestMetaIncludesLocalEnvironmentDefaults(t *testing.T) {

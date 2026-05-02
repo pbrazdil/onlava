@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 
-	"onlava.com/internal/app"
-	"onlava.com/internal/build"
+	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/build"
 )
 
 func buildCommand(args []string) error {

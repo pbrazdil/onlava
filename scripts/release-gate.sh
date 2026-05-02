@@ -86,7 +86,7 @@ import sys
 path = Path(sys.argv[1])
 repo = sys.argv[2]
 text = path.read_text()
-updated = text.replace("replace onlava.com => ../../..", f"replace onlava.com => {repo}")
+updated = text.replace("replace github.com/pbrazdil/onlava => ../../..", f"replace github.com/pbrazdil/onlava => {repo}")
 if updated == text:
     raise SystemExit(f"expected fixture replace directive in {path}")
 path.write_text(updated)

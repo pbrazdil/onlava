@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"onlava.com/errs"
-	"onlava.com/internal/runtimeapi"
-	onlavamiddleware "onlava.com/middleware"
-	"onlava.com/runtime/shared"
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/internal/runtimeapi"
+	onlavamiddleware "github.com/pbrazdil/onlava/middleware"
+	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 type Access = runtimeapi.Access

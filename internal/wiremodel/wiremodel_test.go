@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/parse"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 func TestAppCapabilitiesMarksUnsupportedEndpointJSONOnly(t *testing.T) {
 	root := t.TempDir()
-	writeWireModelTestFile(t, root, "go.mod", "module example.com/wiretest\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+appcfg.RepoRoot()+"\n")
+	writeWireModelTestFile(t, root, "go.mod", "module example.com/wiretest\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+appcfg.RepoRoot()+"\n")
 	writeWireModelTestFile(t, root, ".onlava.json", `{"name":"wiretest"}`)
 	writeWireModelTestFile(t, root, "svc/api.go", `package svc
 

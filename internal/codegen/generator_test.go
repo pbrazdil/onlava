@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	appcfg "onlava.com/internal/app"
-	"onlava.com/internal/codegen"
-	"onlava.com/internal/parse"
+	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/codegen"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 func TestGenerateBasicGolden(t *testing.T) {
@@ -28,7 +28,7 @@ func TestGenerateBasicGolden(t *testing.T) {
 
 func TestGenerateSanitizesBlankIdentifiers(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/blankident\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/blankident\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"blankident"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -61,7 +61,7 @@ func Hello(_ context.Context) error { return nil }
 
 func TestGenerateRawOnlyPackageOmitsContextImport(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/rawonly\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/rawonly\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"rawonly"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -88,7 +88,7 @@ func Hook(w http.ResponseWriter, req *http.Request) {}
 
 func TestGeneratePopulatesSecretsBeforePackageVarInitializers(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/earlysecrets\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/earlysecrets\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"earlysecrets"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -127,7 +127,7 @@ func Hello(ctx context.Context) error { return nil }
 
 func TestGenerateRegistersMiddlewareAndEndpointLinks(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/middlewaregen\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/middlewaregen\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"middlewaregen"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -138,7 +138,7 @@ func Hello(ctx context.Context) error { return nil }
 `)
 	writeFile(t, dir, "svc/mw.go", `package svc
 
-import "onlava.com/middleware"
+import "github.com/pbrazdil/onlava/middleware"
 
 //onlava:middleware target=tag:foo
 func Apply(req middleware.Request, next middleware.Next) middleware.Response {
@@ -166,7 +166,7 @@ func Apply(req middleware.Request, next middleware.Next) middleware.Response {
 
 func TestGenerateRegistersServiceInitializer(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"serviceinit"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -201,7 +201,7 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 
 func TestGenerateRegistersServiceShutdownAndMockLookup(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/serviceshutdown\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/serviceshutdown\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"serviceshutdown"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -241,7 +241,7 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 
 func TestGenerateMainImportsCronOnlyPackages(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/cronapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/cronapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"cronapp"}`)
 	writeFile(t, dir, "service/api.go", `package service
 
@@ -254,7 +254,7 @@ func Run(ctx context.Context) error { return nil }
 
 import (
 	"example.com/cronapp/service"
-	"onlava.com/cron"
+	"github.com/pbrazdil/onlava/cron"
 )
 
 var _ = cron.NewJob("tick", cron.JobConfig{
@@ -281,7 +281,7 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 
 func TestGenerateMainImportsPubSubOnlyPackages(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/pubsubapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/pubsubapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"pubsubapp"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -294,7 +294,7 @@ func Run(ctx context.Context) error { return nil }
 
 import (
 	"context"
-	"onlava.com/pubsub"
+	"github.com/pbrazdil/onlava/pubsub"
 )
 
 type Event struct { Value string }
@@ -325,7 +325,7 @@ var _ = pubsub.NewSubscription(Topic, "events-sub", pubsub.SubscriptionConfig[*E
 
 func TestGenerateRegistersPubSubServiceAccessor(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/pubsubsvc\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/pubsubsvc\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"pubsubsvc"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -350,7 +350,7 @@ type Service struct{}
 
 func TestGenerateMainEnablesDBStudioWhenConfigured(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/dbstudioapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/dbstudioapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"dbstudioapp"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -370,7 +370,7 @@ func Run(ctx context.Context) error { return nil }
 	}
 
 	got := string(out.Generated["onlava_internal_main/main.go"])
-	if !strings.Contains(got, `_ "onlava.com/runtimeapp"`) {
+	if !strings.Contains(got, `_ "github.com/pbrazdil/onlava/runtimeapp"`) {
 		t.Fatalf("expected generated main to import runtimeapp for db studio, got:\n%s", got)
 	}
 	if !strings.Contains(got, "EnableDBStudio: true") {
@@ -380,7 +380,7 @@ func Run(ctx context.Context) error { return nil }
 
 func TestGenerateMainOmitsRuntimeAppByDefault(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/headlessapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/headlessapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"headlessapp","proxy":{"api_host":"api.acme.localhost"}}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 
@@ -400,14 +400,14 @@ func Run(ctx context.Context) error { return nil }
 	}
 
 	got := string(out.Generated["onlava_internal_main/main.go"])
-	if strings.Contains(got, `onlava.com/runtimeapp`) {
+	if strings.Contains(got, `github.com/pbrazdil/onlava/runtimeapp`) {
 		t.Fatalf("generated main imported runtimeapp by default:\n%s", got)
 	}
 }
 
 func TestGenerateMainIncludesObservabilityFiltersWhenConfigured(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/obsapp\n\ngo 1.26.0\n\nrequire onlava.com v0.0.0\n\nreplace onlava.com => "+repoRoot(t)+"\n")
+	writeFile(t, dir, "go.mod", "module example.com/obsapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"obsapp"}`)
 	writeFile(t, dir, "svc/api.go", `package svc
 

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"onlava.com/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 type graphqlRequest struct {
