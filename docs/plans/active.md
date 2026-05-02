@@ -7,13 +7,13 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
-1. [0001 Split `pulse dev` From Headless `pulse run`](0001-devrun-command-split.md): turn the PRD-4 command split into an executable implementation plan.
-2. [0002 Pulse v0 Release Readiness](0002-v0-release-readiness.md): convert the release-readiness audit into a staged hardening plan for a narrow, boring v0.
+1. [0001 Split `onlava dev` From Headless `onlava run`](0001-devrun-command-split.md): turn the PRD-4 command split into an executable implementation plan.
+2. [0002 Onlava v0 Release Readiness](0002-v0-release-readiness.md): convert the release-readiness audit into a staged hardening plan for a narrow, boring v0.
 
 ## Agent-Friendly Local Runtime
 
 - Status: active
-- Owner: Pulse runtime
+- Owner: Onlava runtime
 - Last reviewed: 2026-04-27
 - Review after: 2026-05-27
 - Quality: B
@@ -27,7 +27,7 @@ Current focus:
 ## Dashboard Source Parity
 
 - Status: active
-- Owner: Pulse dashboard
+- Owner: Onlava dashboard
 - Last reviewed: 2026-04-27
 - Review after: 2026-05-27
 - Quality: B
@@ -41,12 +41,12 @@ Current focus:
 ## Runtime Contracts
 
 - Status: active
-- Owner: Pulse runtime
+- Owner: Onlava runtime
 - Last reviewed: 2026-04-27
 - Review after: 2026-05-27
 - Quality: B
 
 Current focus:
 
-- Prefer Pulse-native naming and contracts.
+- Prefer Onlava-native naming and contracts.
 - Keep generated artifacts deterministic and inspectable.

@@ -1,8 +1,8 @@
-# Pulse Local Contract
+# Onlava Local Contract
 
-This document freezes the local developer and agent-facing contract for Pulse v0.
+This document freezes the local developer and agent-facing contract for Onlava v0.
 
-The goal is to make Pulse deterministic and inspectable:
+The goal is to make Onlava deterministic and inspectable:
 - app shape is explicit
 - CLI grammar is explicit
 - machine-readable JSON outputs have versioned schemas
@@ -15,51 +15,51 @@ If implementation and this document disagree, treat that as a bug.
 Implemented now. This list describes what the CLI can do today; it is not the
 same as the stable v0 support surface.
 
-- `pulse.app`
-- `pulse dev --json`
-- `pulse run`
-- `pulse version --json`
-- `pulse check --json`
-- `pulse psql`
-- `pulse harness --json`
-- `pulse harness self --json`
-- `pulse admin traces clear --json`
-- `pulse admin pubsub clear --json`
-- `pulse inspect app --json`
-- `pulse inspect routes --json`
-- `pulse inspect services --json`
-- `pulse inspect endpoints --json`
-- `pulse inspect wire --json`
-- `pulse inspect build --json`
-- `pulse inspect paths --json`
-- `pulse inspect traces --json`
-- `pulse inspect metrics --json`
-- `pulse inspect docs --json`
-- `pulse logs --jsonl`
-- `.pulse/gen/app.json`
-- `.pulse/gen/routes.json`
-- `.pulse/gen/services.json`
-- `.pulse/gen/endpoints.json`
-- `.pulse/gen/wire/capabilities.json`
-- `.pulse/gen/manifest.json`
-- `.pulse/build/latest.json`
-- `.pulse/harness/latest.json`
-- `.pulse/harness/self-latest.json`
+- `.onlava.json`
+- `onlava dev --json`
+- `onlava run`
+- `onlava version --json`
+- `onlava check --json`
+- `onlava psql`
+- `onlava harness --json`
+- `onlava harness self --json`
+- `onlava admin traces clear --json`
+- `onlava admin pubsub clear --json`
+- `onlava inspect app --json`
+- `onlava inspect routes --json`
+- `onlava inspect services --json`
+- `onlava inspect endpoints --json`
+- `onlava inspect wire --json`
+- `onlava inspect build --json`
+- `onlava inspect paths --json`
+- `onlava inspect traces --json`
+- `onlava inspect metrics --json`
+- `onlava inspect docs --json`
+- `onlava logs --jsonl`
+- `.onlava/gen/app.json`
+- `.onlava/gen/routes.json`
+- `.onlava/gen/services.json`
+- `.onlava/gen/endpoints.json`
+- `.onlava/gen/wire/capabilities.json`
+- `.onlava/gen/manifest.json`
+- `.onlava/build/latest.json`
+- `.onlava/harness/latest.json`
+- `.onlava/harness/self-latest.json`
 
 Reserved by contract, implementation pending:
-- other `pulse admin ... --json` commands beyond `traces clear` and `pubsub clear`
-- repo-local runtime and state manifests beyond `.pulse/build/latest.json`, `.pulse/gen/*`, and `.pulse/harness/latest.json`
+- other `onlava admin ... --json` commands beyond `traces clear` and `pubsub clear`
+- repo-local runtime and state manifests beyond `.onlava/build/latest.json`, `.onlava/gen/*`, and `.onlava/harness/latest.json`
 
 Stable v0 surface:
-- `pulse.app`
-- `pulse run`
-- `pulse build`
-- `pulse version --json`
-- `pulse check --json`
-- `pulse inspect app|routes|services|endpoints|wire|build|paths|docs --json`
-- `pulse logs --jsonl`
-- `pulse test`
-- `pulse gen client`
+- `.onlava.json`
+- `onlava run`
+- `onlava build`
+- `onlava version --json`
+- `onlava check --json`
+- `onlava inspect app|routes|services|endpoints|wire|build|paths|docs --json`
+- `onlava logs --jsonl`
+- `onlava test`
+- `onlava gen client`
 - typed/raw HTTP endpoints
 - auth handler
 - service struct initialization and shutdown
@@ -68,11 +68,11 @@ Stable v0 surface:
 - basic runtime logs and trace emission
 
 Dev-only or beta surface:
-- `pulse dev`
-- `pulse psql`
-- `pulse inspect traces|metrics --json`
-- `pulse admin traces clear --json`
-- `pulse admin pubsub clear --json`
+- `onlava dev`
+- `onlava psql`
+- `onlava inspect traces|metrics --json`
+- `onlava admin traces clear --json`
+- `onlava admin pubsub clear --json`
 - dashboard and API Explorer
 - DB Studio
 - MCP server
@@ -85,13 +85,13 @@ Dev-only or beta surface:
 - migration compatibility for older app shapes
 
 Compatibility posture:
-- Pulse-native syntax and imports are the stable API.
-- Non-Pulse directives/imports are not part of the v0 API.
+- Onlava-native syntax and imports are the stable API.
+- Non-Onlava directives/imports are not part of the v0 API.
 
-## `pulse.app`
+## `.onlava.json`
 
 Schema:
-- [pulse.app.v1.schema.json](schemas/pulse.app.v1.schema.json)
+- [onlava.config.v1.schema.json](schemas/onlava.config.v1.schema.json)
 
 Current shape:
 
@@ -100,11 +100,11 @@ Current shape:
   "name": "myapp",
   "id": "myapp-dev",
   "proxy": {
-    "workspace": "onlv",
-    "api_host": "api.onlv.localhost",
-    "console_host": "console.onlv.localhost",
-    "mcp_host": "mcp.onlv.localhost",
-    "frontend_host": "pulse.onlv.localhost"
+    "workspace": "acme",
+    "api_host": "api.acme.localhost",
+    "console_host": "console.acme.localhost",
+    "mcp_host": "mcp.acme.localhost",
+    "frontend_host": "app.acme.localhost"
   },
   "observability": {
     "logs": {
@@ -121,7 +121,7 @@ Current shape:
 
 Rules:
 - `name` or `id` must be non-empty.
-- If `name` is empty, Pulse falls back to `id`.
+- If `name` is empty, Onlava falls back to `id`.
 - `proxy` is optional.
 - `observability` is optional.
 - Unknown fields are currently ignored by Go JSON decoding, but they are not part of the frozen contract.
@@ -131,101 +131,101 @@ Rules:
 Current implemented grammar:
 
 ```text
-pulse dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]
-pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-pulse version [--json]
-pulse build [--app-root <path>] [-o <path>] [--db-studio]
-pulse check [--app-root <path>] [--json]
-pulse harness [--app-root <path>] [--json] [--write]
-pulse harness self [--repo-root <path>] [--json] [--write]
-pulse inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]
-pulse inspect docs --json [--repo-root <path>]
-pulse inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
-pulse inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
-pulse admin traces clear --json [--app-root <path>]
-pulse admin pubsub clear --json [--app-root <path>]
-pulse logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
-pulse test [--app-root <path>] [go test flags/packages...]
-pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]
+onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava version [--json]
+onlava build [--app-root <path>] [-o <path>] [--db-studio]
+onlava check [--app-root <path>] [--json]
+onlava harness [--app-root <path>] [--json] [--write]
+onlava harness self [--repo-root <path>] [--json] [--write]
+onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]
+onlava inspect docs --json [--repo-root <path>]
+onlava inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
+onlava inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
+onlava admin traces clear --json [--app-root <path>]
+onlava admin pubsub clear --json [--app-root <path>]
+onlava logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
+onlava test [--app-root <path>] [go test flags/packages...]
+onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 ```
 
 Implemented beta/dev helper grammar:
 
 ```text
-pulse psql [--app-root <path>] [psql args...]
+onlava psql [--app-root <path>] [psql args...]
 ```
 
 Inspect rules:
-- `pulse inspect` requires a subject.
-- `pulse inspect` currently requires `--json`.
-- `--app-root` is optional. When omitted, Pulse walks upward from the current working directory to find `pulse.app`.
+- `onlava inspect` requires a subject.
+- `onlava inspect` currently requires `--json`.
+- `--app-root` is optional. When omitted, Onlava walks upward from the current working directory to find `.onlava.json`.
 - Stable inspect subjects for v0 are `app`, `routes`, `services`, `endpoints`, `wire`, `build`, `paths`, and `docs`.
-- `traces` and `metrics` are beta diagnostic subjects. They prefer local VictoriaTraces reads when those sidecars are available, and fall back to the Pulse dashboard SQLite store. If no local state exists, they return valid JSON with a warning and empty result sets.
-- The `pulse.inspect.traces.v1` and `pulse.inspect.metrics.v1` schemas are useful for agents, but their source-selection, retention, rollup, percentile, and clear/delete semantics are not stable v0 API yet.
+- `traces` and `metrics` are beta diagnostic subjects. They prefer local VictoriaTraces reads when those sidecars are available, and fall back to the Onlava dashboard SQLite store. If no local state exists, they return valid JSON with a warning and empty result sets.
+- The `onlava.inspect.traces.v1` and `onlava.inspect.metrics.v1` schemas are useful for agents, but their source-selection, retention, rollup, percentile, and clear/delete semantics are not stable v0 API yet.
 - `--since` accepts Go duration strings such as `15m`, `1h`, or `24h`.
 - `--min-duration-ms` filters root traces by duration in milliseconds.
 - `--status` accepts `ok` or `error`.
 - `metrics` defaults to `--since 24h` and `--limit 10000` so agents get useful local summaries without scanning unbounded history.
-- `docs` inspects the Pulse repo knowledge base, not a target Pulse app. It accepts `--repo-root` and otherwise walks upward to the `module pulse.dev` repo root.
+- `docs` inspects the Onlava repo knowledge base, not a target Onlava app. It accepts `--repo-root` and otherwise walks upward to the `module onlava.com` repo root.
 
 Command split:
 
-- `pulse dev` starts the local development platform: app process, dashboard, MCP endpoint, DB Studio when configured, file watching, and rebuild/restart supervision.
-- `pulse dev` also starts local VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default when their binaries can be found or downloaded. SQLite dashboard storage remains active for parity and fallback. This is a dev-only beta implementation detail, not a stable production API.
-- `pulse dev --proxy` enables the local HTTPS/frontend proxy.
-- `pulse dev --proxy --trust` allows local trust-store installation. Without `--trust`, the proxy skips trust installation.
-- `pulse run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, DB Studio, frontend proxy, or file watcher.
-- `pulse build` produces the deployable binary and remains the preferred deployment artifact path.
-- Generated app binaries are headless by default. `pulse build --db-studio` is an explicit opt-in for the DB Studio integration.
+- `onlava dev` starts the local development platform: app process, dashboard, MCP endpoint, DB Studio when configured, file watching, and rebuild/restart supervision.
+- `onlava dev` also starts local VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default when their binaries can be found or downloaded. SQLite dashboard storage remains active for parity and fallback. This is a dev-only beta implementation detail, not a stable production API.
+- `onlava dev --proxy` enables the local HTTPS/frontend proxy.
+- `onlava dev --proxy --trust` allows local trust-store installation. Without `--trust`, the proxy skips trust installation.
+- `onlava run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, DB Studio, frontend proxy, or file watcher.
+- `onlava build` produces the deployable binary and remains the preferred deployment artifact path.
+- Generated app binaries are headless by default. `onlava build --db-studio` is an explicit opt-in for the DB Studio integration.
 
 Runtime safety:
 
-- `pulse run` and generated binaries do not expose dev/admin endpoints by default.
-- Dev/admin endpoints such as `/__pulse/config`, `/__pulse/pubsub/clear`, `/platform.Stats`, and `/debug/pprof/*` are enabled only for the development child process launched by `pulse dev` or when `PULSE_DEV_ENDPOINTS=1` is set explicitly.
-- Runtime CORS reflection is enabled in dev endpoint mode. Outside dev mode, CORS origins must be explicitly allowlisted with `PULSE_CORS_ALLOW_ORIGINS`.
-- Build workspaces skip local secret and machine artifacts such as `.env`, `.env.*`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage`.
+- `onlava run` and generated binaries do not expose dev/admin endpoints by default.
+- Dev/admin endpoints such as `/__onlava/config`, `/__onlava/pubsub/clear`, `/platform.Stats`, and `/debug/pprof/*` are enabled only for the development child process launched by `onlava dev` or when `ONLAVA_DEV_ENDPOINTS=1` is set explicitly.
+- Runtime CORS reflection is enabled in dev endpoint mode. Outside dev mode, CORS origins must be explicitly allowlisted with `ONLAVA_CORS_ALLOW_ORIGINS`.
+- Build workspaces skip local secret and machine artifacts such as `.env`, `.env.*`, `.git`, `.onlava`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage`.
 
 Local observability:
 
-- Pulse keeps SQLite observability writes active in `pulse dev`.
-- When Victoria sidecars are available, Pulse also exports OTLP protobuf to:
+- Onlava keeps SQLite observability writes active in `onlava dev`.
+- When Victoria sidecars are available, Onlava also exports OTLP protobuf to:
   - VictoriaMetrics: `/opentelemetry/v1/metrics`
   - VictoriaLogs: `/insert/opentelemetry/v1/logs`
   - VictoriaTraces: `/insert/opentelemetry/v1/traces`
-- Dashboard trace reads and `pulse inspect traces|metrics --json` prefer Victoria data and fall back to SQLite data.
-- Victoria sidecars are supervised by `pulse dev`, store data under `.pulse/victoria/` by default, and are stopped with the dev supervisor.
-- `PULSE_DEV_VICTORIA=0` disables Victoria sidecars. `PULSE_DEV_VICTORIA_DOWNLOAD=0` disables automatic binary downloads.
+- Dashboard trace reads and `onlava inspect traces|metrics --json` prefer Victoria data and fall back to SQLite data.
+- Victoria sidecars are supervised by `onlava dev`, store data under `.onlava/victoria/` by default, and are stopped with the dev supervisor.
+- `ONLAVA_DEV_VICTORIA=0` disables Victoria sidecars. `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` disables automatic binary downloads.
 - Victoria binary names, versions, ports, storage layout, download behavior, and Victoria query semantics are beta. They are documented so local development is debuggable, but they are not part of the stable v0 runtime contract.
 
 Secrets and environment:
 
 - Process environment always wins over values loaded from local files.
 - The stable runtime path reads `.env` from the app root for local secret population when a value is not already present in the process environment.
-- `pulse dev` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
-- `pulse dev` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
+- `onlava dev` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
+- `onlava dev` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
 - Missing declared secrets warn in local development mode.
-- `pulse run --env production` fails before serving if any declared secret is missing from the process environment or `.env`.
+- `onlava run --env production` fails before serving if any declared secret is missing from the process environment or `.env`.
 - `.env`, `.env.*`, and secret-bearing local files are not copied into build workspaces.
 
 Implemented `dev --json` rules:
 
 ```text
-pulse dev --json
+onlava dev --json
 ```
 
 - output is JSONL
-- each line conforms to `pulse.run.event.v1`
+- each line conforms to `onlava.run.event.v1`
 - human-readable console output is suppressed in this mode
 - child stdout/stderr are emitted as structured `process.output` events instead of raw terminal writes
 
 Implemented `check --json` rules:
 
 ```text
-pulse check --json
+onlava check --json
 ```
 
 - output is a single JSON document
-- output conforms to `pulse.check.result.v1`
+- output conforms to `onlava.check.result.v1`
 - success returns `ok: true` and an empty `diagnostics` array
 - failure returns `ok: false` and structured diagnostics
 - diagnostics may include `stage`, `file`, `line`, `column`, `severity`, `message`, and `suggested_action`
@@ -233,31 +233,31 @@ pulse check --json
 Implemented `harness --json` rules:
 
 ```text
-pulse harness --json
-pulse harness --json --write
+onlava harness --json
+onlava harness --json --write
 ```
 
 - output is a single JSON document
-- output conforms to `pulse.harness.result.v1`
-- it composes `pulse check --json` and the stable `pulse inspect ... --json` surfaces
+- output conforms to `onlava.harness.result.v1`
+- it composes `onlava check --json` and the stable `onlava inspect ... --json` surfaces
 - success returns `ok: true`
 - failure returns `ok: false`, per-step errors, diagnostics, and `next_actions`
-- `--write` persists the same result to `.pulse/harness/latest.json`
+- `--write` persists the same result to `.onlava/harness/latest.json`
 
 Implemented `harness self --json` rules:
 
 ```text
-pulse harness self --json
-pulse harness self --json --write
+onlava harness self --json
+onlava harness self --json --write
 ```
 
 - output is a single JSON document
-- output conforms to `pulse.harness.self.v1`
-- it validates the Pulse repo itself instead of a target app
-- it runs docs knowledge validation, `pulse inspect docs --json`, architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, DB Studio UI typecheck/build, UI freshness checks, `go install ./cmd/pulse`, and installed binary freshness checks
+- output conforms to `onlava.harness.self.v1`
+- it validates the Onlava repo itself instead of a target app
+- it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, DB Studio UI typecheck/build, UI freshness checks, `go install ./cmd/onlava`, and installed binary freshness checks
 - architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source files over 2500 lines
 - architecture checks warn on non-generated source files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
-- `--write` persists the same result to `.pulse/harness/self-latest.json`
+- `--write` persists the same result to `.onlava/harness/self-latest.json`
 
 Release gate:
 
@@ -266,34 +266,34 @@ scripts/release-gate.sh
 ```
 
 - this is the high-signal pre-release gate, not the normal inner-loop developer check
-- it runs full Go tests, race tests, `golangci-lint`, dashboard UI and DB Studio typecheck/build, installed self-harness, clean source-copy install, fixture smoke, read-only ONLV smoke, public-router safety checks, production secrets checks, and artifact hygiene checks
-- `ONLV_ROOT` may override the default `/Users/petrbrazdil/Repos/onlv` app used by the ONLV smoke
-- `PULSE_RELEASE_GATE_LOG_DIR` may override the log directory; otherwise logs are written under `.pulse/release-gate/`
+- it runs full Go tests, race tests, `golangci-lint`, dashboard UI and DB Studio typecheck/build, installed self-harness, clean source-copy install, fixture smoke, optional external app smoke, public-router safety checks, production secrets checks, and artifact hygiene checks
+- `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` may point at a read-only Onlava app for the optional external app smoke
+- `ONLAVA_RELEASE_GATE_LOG_DIR` may override the log directory; otherwise logs are written under `.onlava/release-gate/`
 - artifact hygiene is intentionally strict and fails on local release artifacts such as `.DS_Store` and `__MACOSX`
 
 Implemented `logs --jsonl` rules:
 
 ```text
-pulse logs --jsonl
-pulse logs --json
+onlava logs --jsonl
+onlava logs --json
 ```
 
 - `--json` is an alias for `--jsonl`
 - output is JSONL
-- each line conforms to `pulse.logs.event.v1`
+- each line conforms to `onlava.logs.event.v1`
 - one JSON object is emitted per stored process-output chunk
 - human-readable raw output remains the default when neither flag is used
 
 Reserved grammar:
 
 ```text
-pulse admin <subcommand> --json ...
+onlava admin <subcommand> --json ...
 ```
 
 Implemented `admin --json` rules:
 - current supported commands are `traces clear` and `pubsub clear`
-- output conforms to `pulse.admin.result.v1`
-- `pubsub clear` requires a running Pulse dashboard/supervisor because it tunnels through the supervisor RPC surface
+- output conforms to `onlava.admin.result.v1`
+- `pubsub clear` requires a running Onlava dashboard/supervisor because it tunnels through the supervisor RPC surface
 - admin commands are dev/admin beta for v0; their existence does not make Pub/Sub, cron, trace clearing, or queue deletion semantics stable
 
 Any additional admin subcommands are reserved contract surfaces and should produce versioned JSON when implemented.
@@ -302,23 +302,23 @@ Any additional admin subcommands are reserved contract surfaces and should produ
 
 ### Current implemented locations
 
-Use `pulse inspect paths --json` as the source of truth.
+Use `onlava inspect paths --json` as the source of truth.
 
-Today Pulse uses:
-- app config: `<app-root>/pulse.app`
+Today Onlava uses:
+- app config: `<app-root>/.onlava.json`
 - cache root:
-  - `$PULSE_DEV_CACHE_DIR`, if set
-  - otherwise OS user cache + `/pulse`
+  - `$ONLAVA_DEV_CACHE_DIR`, if set
+  - otherwise OS user cache + `/onlava`
 - build workspace: `<cache-root>/build/<sanitized-app-name>-<hash>`
-- built app binary: `<workspace>/pulse-app`
-- build state: `<workspace>/.pulse-build-state.json`
+- built app binary: `<workspace>/onlava-app`
+- build state: `<workspace>/.onlava-build-state.json`
 
 ### Stable repo-local locations
 
 Implemented now:
 
 ```text
-<app-root>/.pulse/
+<app-root>/.onlava/
   gen/
     app.json
     routes.json
@@ -337,66 +337,66 @@ Implemented now:
 Reserved for upcoming work:
 
 ```text
-<app-root>/.pulse/
+<app-root>/.onlava/
   state/
   logs/
 ```
 
 Rules:
-- `app.json`, `routes.json`, `services.json`, and `endpoints.json` mirror the current `pulse inspect ... --json` outputs for those subjects
-- `wire/capabilities.json` mirrors `pulse inspect wire --json` and the runtime `GET /_wire/capabilities` response
+- `app.json`, `routes.json`, `services.json`, and `endpoints.json` mirror the current `onlava inspect ... --json` outputs for those subjects
+- `wire/capabilities.json` mirrors `onlava inspect wire --json` and the runtime `GET /_wire/capabilities` response
 - `manifest.json` ties the generated inspect artifacts to schema versions, stable artifact paths, and deterministic content hashes
 - `build/latest.json` is the stable repo-local pointer to the latest prepared or compiled build workspace
 - `harness/latest.json` is the stable repo-local pointer to the latest agent validation run
-- `harness/self-latest.json` is the stable repo-local pointer to the latest Pulse repo validation run
-- agents can use either `pulse inspect ... --json` or the corresponding `.pulse/gen/*.json` files
+- `harness/self-latest.json` is the stable repo-local pointer to the latest Onlava repo validation run
+- agents can use either `onlava inspect ... --json` or the corresponding `.onlava/gen/*.json` files
 - future implementation should conform to these locations instead of inventing a different layout
 
 ## JSON Schemas
 
 Implemented now:
-- [pulse.inspect.app.v1.schema.json](schemas/pulse.inspect.app.v1.schema.json)
-- [pulse.inspect.routes.v1.schema.json](schemas/pulse.inspect.routes.v1.schema.json)
-- [pulse.inspect.services.v1.schema.json](schemas/pulse.inspect.services.v1.schema.json)
-- [pulse.inspect.endpoints.v1.schema.json](schemas/pulse.inspect.endpoints.v1.schema.json)
-- [pulse.inspect.traces.v1.schema.json](schemas/pulse.inspect.traces.v1.schema.json)
-- [pulse.inspect.metrics.v1.schema.json](schemas/pulse.inspect.metrics.v1.schema.json)
-- [pulse.inspect.docs.v1.schema.json](schemas/pulse.inspect.docs.v1.schema.json)
-- [pulse.docs.index.v1.schema.json](schemas/pulse.docs.index.v1.schema.json)
-- [pulse.wire.capabilities.v1.schema.json](schemas/pulse.wire.capabilities.v1.schema.json)
-- [pulse.inspect.build.v1.schema.json](schemas/pulse.inspect.build.v1.schema.json)
-- [pulse.inspect.paths.v1.schema.json](schemas/pulse.inspect.paths.v1.schema.json)
-- [pulse.gen.manifest.v1.schema.json](schemas/pulse.gen.manifest.v1.schema.json)
-- [pulse.build.latest.v1.schema.json](schemas/pulse.build.latest.v1.schema.json)
-- [pulse.run.event.v1.schema.json](schemas/pulse.run.event.v1.schema.json)
-- [pulse.check.result.v1.schema.json](schemas/pulse.check.result.v1.schema.json)
-- [pulse.harness.result.v1.schema.json](schemas/pulse.harness.result.v1.schema.json)
-- [pulse.harness.self.v1.schema.json](schemas/pulse.harness.self.v1.schema.json)
-- [pulse.logs.event.v1.schema.json](schemas/pulse.logs.event.v1.schema.json)
-- [pulse.admin.result.v1.schema.json](schemas/pulse.admin.result.v1.schema.json)
-- [pulse.version.v1.schema.json](schemas/pulse.version.v1.schema.json)
+- [onlava.inspect.app.v1.schema.json](schemas/onlava.inspect.app.v1.schema.json)
+- [onlava.inspect.routes.v1.schema.json](schemas/onlava.inspect.routes.v1.schema.json)
+- [onlava.inspect.services.v1.schema.json](schemas/onlava.inspect.services.v1.schema.json)
+- [onlava.inspect.endpoints.v1.schema.json](schemas/onlava.inspect.endpoints.v1.schema.json)
+- [onlava.inspect.traces.v1.schema.json](schemas/onlava.inspect.traces.v1.schema.json)
+- [onlava.inspect.metrics.v1.schema.json](schemas/onlava.inspect.metrics.v1.schema.json)
+- [onlava.inspect.docs.v1.schema.json](schemas/onlava.inspect.docs.v1.schema.json)
+- [onlava.docs.index.v1.schema.json](schemas/onlava.docs.index.v1.schema.json)
+- [onlava.wire.capabilities.v1.schema.json](schemas/onlava.wire.capabilities.v1.schema.json)
+- [onlava.inspect.build.v1.schema.json](schemas/onlava.inspect.build.v1.schema.json)
+- [onlava.inspect.paths.v1.schema.json](schemas/onlava.inspect.paths.v1.schema.json)
+- [onlava.gen.manifest.v1.schema.json](schemas/onlava.gen.manifest.v1.schema.json)
+- [onlava.build.latest.v1.schema.json](schemas/onlava.build.latest.v1.schema.json)
+- [onlava.run.event.v1.schema.json](schemas/onlava.run.event.v1.schema.json)
+- [onlava.check.result.v1.schema.json](schemas/onlava.check.result.v1.schema.json)
+- [onlava.harness.result.v1.schema.json](schemas/onlava.harness.result.v1.schema.json)
+- [onlava.harness.self.v1.schema.json](schemas/onlava.harness.self.v1.schema.json)
+- [onlava.logs.event.v1.schema.json](schemas/onlava.logs.event.v1.schema.json)
+- [onlava.admin.result.v1.schema.json](schemas/onlava.admin.result.v1.schema.json)
+- [onlava.version.v1.schema.json](schemas/onlava.version.v1.schema.json)
 
 Reserved now:
-- future command-specific admin schemas if `pulse.admin.result.v1` becomes too generic
+- future command-specific admin schemas if `onlava.admin.result.v1` becomes too generic
 
 Schema rules:
 - top-level schema field is `schema_version`
-- schema names are versioned strings like `pulse.inspect.app.v1`
+- schema names are versioned strings like `onlava.inspect.app.v1`
 - additive fields are allowed in future versions only by introducing a new schema version when needed
 - consumers should match on `schema_version`, not on command name alone
 
 ## Examples
 
-### `pulse inspect app --json`
+### `onlava inspect app --json`
 
 ```json
 {
-  "schema_version": "pulse.inspect.app.v1",
+  "schema_version": "onlava.inspect.app.v1",
   "app": {
     "name": "billing",
     "id": "billing-dev",
     "root": "/repo/billing",
-    "config_path": "/repo/billing/pulse.app",
+    "config_path": "/repo/billing/.onlava.json",
     "module_path": "example.com/billing"
   },
   "config": {
@@ -407,7 +407,7 @@ Schema rules:
       "api_host": "api.billing.localhost",
       "console_host": "console.billing.localhost",
       "mcp_host": "mcp.billing.localhost",
-      "frontend_host": "pulse.billing.localhost"
+      "frontend_host": "onlava.billing.localhost"
     },
     "observability": {
       "logs": {
@@ -438,22 +438,22 @@ Schema rules:
 }
 ```
 
-### `pulse inspect build --json`
+### `onlava inspect build --json`
 
 ```json
 {
-  "schema_version": "pulse.inspect.build.v1",
+  "schema_version": "onlava.inspect.build.v1",
   "app": {
     "name": "billing",
     "root": "/repo/billing",
-    "config_path": "/repo/billing/pulse.app"
+    "config_path": "/repo/billing/.onlava.json"
   },
   "build": {
-    "workspace_dir": "/Users/me/Library/Caches/pulse/build/billing-abcdef0123456789",
-    "binary_path": "/Users/me/Library/Caches/pulse/build/billing-abcdef0123456789/pulse-app",
+    "workspace_dir": "/cache/onlava/build/billing-abcdef0123456789",
+    "binary_path": "/cache/onlava/build/billing-abcdef0123456789/onlava-app",
     "workspace_exists": true,
     "binary_exists": true,
-    "build_state_path": "/Users/me/Library/Caches/pulse/build/billing-abcdef0123456789/.pulse-build-state.json",
+    "build_state_path": "/cache/onlava/build/billing-abcdef0123456789/.onlava-build-state.json",
     "build_state_exists": true,
     "build_state_version": "2",
     "dependency_fingerprint": "abc123",
@@ -466,15 +466,15 @@ Schema rules:
 }
 ```
 
-### `pulse inspect endpoints --json`
+### `onlava inspect endpoints --json`
 
 ```json
 {
-  "schema_version": "pulse.inspect.endpoints.v1",
+  "schema_version": "onlava.inspect.endpoints.v1",
   "app": {
     "name": "billing",
     "root": "/repo/billing",
-    "config_path": "/repo/billing/pulse.app"
+    "config_path": "/repo/billing/.onlava.json"
   },
   "endpoints": [
     {
@@ -501,11 +501,11 @@ Schema rules:
 }
 ```
 
-### `pulse inspect wire --json`
+### `onlava inspect wire --json`
 
-`pulse inspect wire --json` returns the same hidden generated-client capability document served at `GET /_wire/capabilities`. It is intended for generated clients and agents that need to know whether the JSON transport or binary transport will be used for each logical endpoint.
+`onlava inspect wire --json` returns the same hidden generated-client capability document served at `GET /_wire/capabilities`. It is intended for generated clients and agents that need to know whether the JSON transport or binary transport will be used for each logical endpoint.
 
-### `pulse inspect traces --json`
+### `onlava inspect traces --json`
 
 Beta diagnostic subject. Use this when an agent needs concrete local traces
 without scraping the dashboard UI. The JSON shape is versioned, but retention,
@@ -515,18 +515,18 @@ this is promoted to stable v0.
 Example:
 
 ```text
-pulse inspect traces --json --endpoint SyncGet --min-duration-ms 2000 --since 1h --slowest
+onlava inspect traces --json --endpoint SyncGet --min-duration-ms 2000 --since 1h --slowest
 ```
 
 Example output:
 
 ```json
 {
-  "schema_version": "pulse.inspect.traces.v1",
+  "schema_version": "onlava.inspect.traces.v1",
   "app": {
     "name": "billing",
     "root": "/repo/billing",
-    "config_path": "/repo/billing/pulse.app"
+    "config_path": "/repo/billing/.onlava.json"
   },
   "query": {
     "app_id": "billing",
@@ -553,7 +553,7 @@ Example output:
 }
 ```
 
-### `pulse inspect metrics --json`
+### `onlava inspect metrics --json`
 
 Beta diagnostic subject. Use this when an agent needs a metrics-style rollup
 over locally captured traces and logs. The JSON shape is versioned, but rollup
@@ -563,18 +563,18 @@ selection may change before this is promoted to stable v0.
 Example:
 
 ```text
-pulse inspect metrics --json --service sync --since 15m
+onlava inspect metrics --json --service sync --since 15m
 ```
 
 Example output:
 
 ```json
 {
-  "schema_version": "pulse.inspect.metrics.v1",
+  "schema_version": "onlava.inspect.metrics.v1",
   "app": {
     "name": "billing",
     "root": "/repo/billing",
-    "config_path": "/repo/billing/pulse.app"
+    "config_path": "/repo/billing/.onlava.json"
   },
   "query": {
     "app_id": "billing",
@@ -605,7 +605,7 @@ Example output:
 }
 ```
 
-### `pulse inspect docs --json`
+### `onlava inspect docs --json`
 
 Use this when an agent needs to understand the repo knowledge base before making changes.
 
@@ -620,18 +620,18 @@ Source files:
 Example:
 
 ```text
-pulse inspect docs --json
+onlava inspect docs --json
 ```
 
 Example output:
 
 ```json
 {
-  "schema_version": "pulse.inspect.docs.v1",
+  "schema_version": "onlava.inspect.docs.v1",
   "repo": {
-    "root": "/repo/pulse",
-    "module_path": "pulse.dev",
-    "go_mod_path": "/repo/pulse/go.mod"
+    "root": "/repo/onlava",
+    "module_path": "onlava.com",
+    "go_mod_path": "/repo/onlava/go.mod"
   },
   "summary": {
     "document_count": 9,
@@ -646,8 +646,8 @@ Example output:
   "documents": [
     {
       "path": "docs/local-contract.md",
-      "title": "Pulse Local Contract",
-      "owner": "Pulse runtime",
+      "title": "Onlava Local Contract",
+      "owner": "Onlava runtime",
       "status": "active",
       "quality": "A",
       "freshness": "current",

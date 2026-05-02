@@ -6,17 +6,17 @@ Completed means implemented or shipped at least once. It does not imply stable
 v0 support. Use [../local-contract.md](../local-contract.md) as the source of
 truth for stable, beta, dev-only, and compatibility-mode classification.
 
-## Pulse Go Runner Phase 1
+## Onlava Go Runner Phase 1
 
 - Status: completed
-- Owner: Pulse runtime
+- Owner: Onlava runtime
 - Completed: 2026-04-27
 - Quality: B
 
 Shipped:
 
-- `pulse run`, `pulse build`, `pulse test`, `pulse check`, `pulse logs`, and beta `pulse psql`
-- Pulse API parser/codegen/runtime for common Go service behavior
+- `onlava run`, `onlava build`, `onlava test`, `onlava check`, `onlava logs`, and beta `onlava psql`
+- Onlava API parser/codegen/runtime for common Go service behavior
 - Secrets from `.env`
 - local HTTPS proxy support
 - cron, middleware, Pub/Sub, tracing, logging, DB query tracing, and dashboard support
@@ -24,23 +24,23 @@ Shipped:
 ## Stable Inspect And Harness Contracts
 
 - Status: completed
-- Owner: Pulse runtime
+- Owner: Onlava runtime
 - Completed: 2026-04-27
 - Quality: A
 
 Shipped:
 
-- `pulse inspect app|routes|services|endpoints|wire|build|paths --json`
-- beta `pulse inspect traces|metrics --json`
-- `pulse inspect docs --json`
-- `.pulse/gen/*` and `.pulse/build/latest.json`
-- `pulse harness --json --write`
-- `pulse harness self --json --write`
+- `onlava inspect app|routes|services|endpoints|wire|build|paths --json`
+- beta `onlava inspect traces|metrics --json`
+- `onlava inspect docs --json`
+- `.onlava/gen/*` and `.onlava/build/latest.json`
+- `onlava harness --json --write`
+- `onlava harness self --json --write`
 
 ## Queryable Observability
 
 - Status: completed
-- Owner: Pulse observability
+- Owner: Onlava observability
 - Completed: 2026-04-27
 - Quality: B
 
@@ -53,29 +53,29 @@ Shipped:
 ## Victoria Observability Sidecars
 
 - Status: completed
-- Owner: Pulse runtime
+- Owner: Onlava runtime
 - Completed: 2026-04-27
 - Quality: A
 - ExecPlan: [0003 Victoria Observability Sidecars](0003-victoria-observability-sidecars.md)
 
 Shipped:
 
-- `pulse dev` starts VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default while preserving SQLite observability writes.
-- Sidecars use loopback ports, `.pulse/victoria/` storage, automatic binary resolution/download, and graceful shutdown with the dev supervisor.
-- Pulse exports built-in trace, log, and request-duration metric reports to Victoria over OTLP protobuf.
+- `onlava dev` starts VictoriaMetrics, VictoriaLogs, and VictoriaTraces sidecars by default while preserving SQLite observability writes.
+- Sidecars use loopback ports, `.onlava/victoria/` storage, automatic binary resolution/download, and graceful shutdown with the dev supervisor.
+- Onlava exports built-in trace, log, and request-duration metric reports to Victoria over OTLP protobuf.
 - Dashboard and inspect trace reads prefer VictoriaTraces with SQLite fallback.
 
-## Pulse-Native Local HTTPS Proxy
+## Onlava-Native Local HTTPS Proxy
 
 - Status: completed
-- Owner: Pulse runtime
+- Owner: Onlava runtime
 - Completed: 2026-04-27
 - Quality: B
-- ExecPlan: [0004 Pulse-Native Local HTTPS Proxy](0004-pulse-native-localproxy.md)
+- ExecPlan: [0004 Onlava-Native Local HTTPS Proxy](0004-onlava-native-localproxy.md)
 
 Shipped:
 
 - Replaced embedded Caddy local HTTPS proxying with a standard-library route table, TLS certificate cache, trust installer hooks, HTTPS reverse proxy, and optional HTTP redirect listener.
-- Preserved `internal/localproxy` public API names and the existing Pulse local URL shape.
+- Preserved `internal/localproxy` public API names and the existing Onlava local URL shape.
 - Removed `internal/localproxy/caddyimports.go` plus Caddy, CertMagic, and ZeroSSL module dependencies.
 - Added behavior tests for routing, frontend config/catch-all handling, Host rewriting, redirects, certificate SANs and reuse, trust installer injection, and lifecycle cleanup.

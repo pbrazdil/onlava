@@ -1,4 +1,4 @@
-# Pulse v0 Release Readiness
+# Onlava v0 Release Readiness
 
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
@@ -6,7 +6,7 @@ This plan follows the standard in [../../PLANS.md](../../PLANS.md). It is based 
 
 ## Purpose / Big Picture
 
-Pulse is close to being a useful local-first runtime, but the current repository mixes stable app runtime behavior with development-platform behavior. The first production-ready release should be intentionally smaller, more boring, and easier to validate.
+Onlava is close to being a useful local-first runtime, but the current repository mixes stable app runtime behavior with development-platform behavior. The first production-ready release should be intentionally smaller, more boring, and easier to validate.
 
 The goal of this plan is to freeze a reliable v0 contract. Stable v0 should include the app config file, runtime commands, build artifacts, typed/raw HTTP endpoints, auth handler, service initialization and shutdown, private/internal calls, secrets from environment and `.env`, basic logs/traces, and machine-readable CLI outputs. Development conveniences such as dashboard, DB Studio, local HTTPS proxy, trust-store installation, MCP, Pub/Sub UI, and cron UI should be labeled dev-only or beta until their contracts are hardened.
 
@@ -16,41 +16,41 @@ The outcome should be observable from a clean checkout. A contributor should be 
 
 - [x] (2026-04-27 16:34Z) Created this ExecPlan from `docs/PRD-3-release.md`.
 - [x] (2026-04-27 17:36Z) Defined the stable v0 surface and marked everything else dev-only, beta, or compatibility-mode in `docs/local-contract.md`.
-- [x] (2026-04-27 17:36Z) Confirmed the `pulse dev` / headless `pulse run` split is implemented and kept [0001-devrun-command-split.md](0001-devrun-command-split.md) as the detailed dependency.
-- [x] (2026-04-27 17:36Z) Confirmed current checkout has `ui/dist` and `dbstudio/dist`, added `pulse version --json`, and added `pulse.version.v1` schema.
+- [x] (2026-04-27 17:36Z) Confirmed the `onlava dev` / headless `onlava run` split is implemented and kept [0001-devrun-command-split.md](0001-devrun-command-split.md) as the detailed dependency.
+- [x] (2026-04-27 17:36Z) Confirmed current checkout has `ui/dist` and `dbstudio/dist`, added `onlava version --json`, and added `onlava.version.v1` schema.
 - [x] (2026-04-27 17:36Z) Gated dev/admin/pprof endpoints behind explicit dev endpoint mode instead of registering them on the public app router by default.
-- [x] (2026-04-27 17:36Z) Made local HTTPS proxy and trust-store installation opt-in through `pulse dev --proxy` and `pulse dev --proxy --trust`.
-- [x] (2026-04-27 17:36Z) Documented Pulse-native behavior as stable.
+- [x] (2026-04-27 17:36Z) Made local HTTPS proxy and trust-store installation opt-in through `onlava dev --proxy` and `onlava dev --proxy --trust`.
+- [x] (2026-04-27 17:36Z) Documented Onlava-native behavior as stable.
 - [x] (2026-04-27 15:48Z) Centralized `.env` parsing in `internal/envfile`, wired runtime secrets, dev supervisor child env, dashboard DB discovery, and DB Studio discovery through it, and documented precedence.
-- [x] (2026-04-27 17:36Z) Restricted build workspace copying so `.env`, `.env.*`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage` are not persisted in build caches.
-- [x] (2026-04-27 17:36Z) Added response JSON semantics tests for `json:"-"`, `omitempty`, embedded structs, headers, `pulse:"httpstatus"`, and custom marshalers.
+- [x] (2026-04-27 17:36Z) Restricted build workspace copying so `.env`, `.env.*`, `.git`, `.onlava`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage` are not persisted in build caches.
+- [x] (2026-04-27 17:36Z) Added response JSON semantics tests for `json:"-"`, `omitempty`, embedded structs, headers, `onlava:"httpstatus"`, and custom marshalers.
 - [x] (2026-04-27 17:36Z) Aligned CLI usage, docs, schemas, and implementation for the release-hardening slice.
-- [x] (2026-04-27 18:38Z) Made missing declared secrets warn in local development but fail before serving under `pulse run --env production`.
-- [x] (2026-04-27 18:48Z) Reclassified reachable-but-not-frozen surfaces so `pulse psql`, Victoria sidecars/downloads, Pub/Sub/Cron admin affordances, and trace/metric inspect semantics do not accidentally become stable v0 API.
-- [x] (2026-04-27 19:06Z) Added `scripts/release-gate.sh` as the single pre-release gate for full tests, race, lint, UI builds, self-harness, clean install, fixture and ONLV smoke, router safety, secrets, and artifact hygiene.
+- [x] (2026-04-27 18:38Z) Made missing declared secrets warn in local development but fail before serving under `onlava run --env production`.
+- [x] (2026-04-27 18:48Z) Reclassified reachable-but-not-frozen surfaces so `onlava psql`, Victoria sidecars/downloads, Pub/Sub/Cron admin affordances, and trace/metric inspect semantics do not accidentally become stable v0 API.
+- [x] (2026-04-27 19:06Z) Added `scripts/release-gate.sh` as the single pre-release gate for full tests, race, lint, UI builds, self-harness, clean install, fixture and optional external app smoke, router safety, secrets, and artifact hygiene.
 - [x] (2026-04-27 15:48Z) Ran the release validation sequence and recorded the results.
 
 ## Surprises & Discoveries
 
 Known audit findings from the PRD:
 
-- `pulse run` previously started development supervisor behavior, including dashboard, DB Studio, local HTTPS proxy, MCP, and file watching.
-- Generated app binaries could carry dev-platform behavior through `pulse.dev/runtimeapp`.
+- `onlava run` previously started development supervisor behavior, including dashboard, DB Studio, local HTTPS proxy, MCP, and file watching.
+- Generated app binaries could carry dev-platform behavior through `onlava.com/runtimeapp`.
 - `runtime/server.go` mounted dev/admin/platform/pprof endpoints on the app router.
 - Local HTTPS proxy and trust-store behavior were enabled by default in development paths.
-- The repo had conflicting guidance about strict Pulse-only behavior versus migration compatibility support.
+- The repo had conflicting guidance about strict Onlava-only behavior versus migration compatibility support.
 - The build workspace copied arbitrary app files, which risks copying `.env` and other local files into cache.
 - Response encoding did not fully match normal `encoding/json` semantics for tags such as `json:"-"` and `omitempty`.
 
 Implementation discoveries:
 
-- `pulse dev` and headless `pulse run` were already split before this plan execution started, including tests that reject dev flags on `pulse run`.
-- Runtime dev endpoints could be preserved for `pulse dev` by injecting `PULSE_DEV_ENDPOINTS=1` into the development child process.
-- Local proxy startup could be made opt-in without changing Caddy configuration internals by changing defaults and adding `pulse dev --proxy` / `--trust` environment wiring.
-- Full integration tests exposed older assumptions that `pulse run` reflected arbitrary CORS origins by default and that `pulse dev` always started the local HTTPS proxy. The tests were updated to assert the new release contract: explicit CORS allowlist for headless run and `pulse dev --proxy` for hostname routing.
+- `onlava dev` and headless `onlava run` were already split before this plan execution started, including tests that reject dev flags on `onlava run`.
+- Runtime dev endpoints could be preserved for `onlava dev` by injecting `ONLAVA_DEV_ENDPOINTS=1` into the development child process.
+- Local proxy startup could be made opt-in without changing Caddy configuration internals by changing defaults and adding `onlava dev --proxy` / `--trust` environment wiring.
+- Full integration tests exposed older assumptions that `onlava run` reflected arbitrary CORS origins by default and that `onlava dev` always started the local HTTPS proxy. The tests were updated to assert the new release contract: explicit CORS allowlist for headless run and `onlava dev --proxy` for hostname routing.
 - The shared `.env` loader can preserve package-init ergonomics by passing `.env` and `.env.local` values into the development child process before Go package initialization. This avoids requiring app code to manually parse local env files.
 - Generated package init already runs secret population before the app server starts, so strict production secret validation can live in the runtime secret loader and still fail before serving.
-- The implemented CLI surface is broader than the stable support surface. `pulse psql`, Victoria sidecars/downloads, local admin clear commands, and trace/metric inspect subjects are useful, but their semantics are still too implementation-shaped to freeze as stable v0.
+- The implemented CLI surface is broader than the stable support surface. `onlava psql`, Victoria sidecars/downloads, local admin clear commands, and trace/metric inspect subjects are useful, but their semantics are still too implementation-shaped to freeze as stable v0.
 - The release gate should be executable as one script so human and agent release checks do not drift into overlapping hand-run recipes.
 
 ## Decision Log
@@ -60,11 +60,11 @@ Implementation discoveries:
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Treat the command split in [0001-devrun-command-split.md](0001-devrun-command-split.md) as a release-readiness dependency, not a duplicate workstream.
-  Rationale: `pulse dev` versus headless `pulse run` is the highest-leverage boundary and already has its own detailed ExecPlan.
+  Rationale: `onlava dev` versus headless `onlava run` is the highest-leverage boundary and already has its own detailed ExecPlan.
   Date/Author: 2026-04-27 / Codex
 
-- Decision: Stable v0 should prefer Pulse-native behavior, with any migration tooling kept explicit and separate.
-  Rationale: Hidden compatibility makes APIs harder to freeze and contradicts the repository’s strict Pulse naming goal.
+- Decision: Stable v0 should prefer Onlava-native behavior, with any migration tooling kept explicit and separate.
+  Rationale: Hidden compatibility makes APIs harder to freeze and contradicts the repository’s strict Onlava naming goal.
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Dev/admin features should not live on the public app listener by default.
@@ -72,11 +72,11 @@ Implementation discoveries:
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Keep dev endpoints available under explicit dev mode instead of deleting them.
-  Rationale: The dashboard and frontend proxy still need `/__pulse/config`, `/__pulse/pubsub/clear`, platform stats, and pprof during local development, but production-like `pulse run` and generated binaries should not expose them by default.
+  Rationale: The dashboard and frontend proxy still need `/__onlava/config`, `/__onlava/pubsub/clear`, platform stats, and pprof during local development, but production-like `onlava run` and generated binaries should not expose them by default.
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Make local proxy trust installation a second opt-in after proxy startup.
-  Rationale: Starting a local reverse proxy is less invasive than mutating system trust stores. `pulse dev --proxy` should not imply trust-store mutation.
+  Rationale: Starting a local reverse proxy is less invasive than mutating system trust stores. `onlava dev --proxy` should not imply trust-store mutation.
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Use one shared local env parser and preserve process environment precedence.
@@ -84,11 +84,11 @@ Implementation discoveries:
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Missing declared secrets are warnings outside production and startup errors in production.
-  Rationale: Local development should stay forgiving, but `pulse run --env production` must fail before serving if an app declares secrets that are not present in process env or `.env`.
+  Rationale: Local development should stay forgiving, but `onlava run --env production` must fail before serving if an app declares secrets that are not present in process env or `.env`.
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Classify implemented local helpers separately from stable v0 API.
-  Rationale: Being reachable from the CLI should not imply a long-term support promise. `pulse psql`, Victoria supervision/download behavior, Pub/Sub/Cron admin affordances, and trace/metric inspection semantics remain beta/dev-only until their contracts are intentionally frozen.
+  Rationale: Being reachable from the CLI should not imply a long-term support promise. `onlava psql`, Victoria supervision/download behavior, Pub/Sub/Cron admin affordances, and trace/metric inspection semantics remain beta/dev-only until their contracts are intentionally frozen.
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Keep the release gate strict and explicit.
@@ -104,10 +104,10 @@ Completed validation on 2026-04-27:
 - `go test ./...` passed.
 - `go test -race ./...` passed.
 - `golangci-lint run ./...` passed.
-- `go install ./cmd/pulse` passed.
-- `pulse version --json` returned `pulse.version.v1`.
-- `pulse inspect docs --json --repo-root /Users/petrbrazdil/Repos/pulse` passed with `missing_count=0`, `review_due_count=0`, and `stale_count=0`.
-- `pulse harness self --json --write` passed and wrote `.pulse/harness/self-latest.json`.
+- `go install ./cmd/onlava` passed.
+- `onlava version --json` returned `onlava.version.v1`.
+- `onlava inspect docs --json --repo-root <onlava-repo-root>` passed with `missing_count=0`, `review_due_count=0`, and `stale_count=0`.
+- `onlava harness self --json --write` passed and wrote `.onlava/harness/self-latest.json`.
 
 The v0 release-hardening slice now has explicit docs for stable/dev/beta/compatibility surfaces, including reachable helpers that are deliberately not stable yet. It also has gated dev/admin endpoints, opt-in proxy/trust behavior, safe build workspace filtering, centralized local env parsing, response encoding semantics tests, and a scriptified release gate.
 
@@ -115,11 +115,11 @@ The v0 release-hardening slice now has explicit docs for stable/dev/beta/compati
 
 The release-readiness source audit is stored in `docs/PRD-3-release.md`. It recommends not freezing the current feature set as-is. It names the main risk as the mixing of app runtime, development supervisor, dashboard, local HTTPS proxy, DB Studio, Pub/Sub, cron, and MCP.
 
-The CLI dispatcher lives in `cmd/pulse/main.go`. The stable commands to freeze for v0 are expected to be `pulse run`, `pulse build`, `pulse check --json`, `pulse inspect ... --json`, `pulse logs --jsonl`, `pulse test`, and `pulse gen client`. `pulse dev` is the development-platform command after the command split.
+The CLI dispatcher lives in `cmd/onlava/main.go`. The stable commands to freeze for v0 are expected to be `onlava run`, `onlava build`, `onlava check --json`, `onlava inspect ... --json`, `onlava logs --jsonl`, `onlava test`, and `onlava gen client`. `onlava dev` is the development-platform command after the command split.
 
-The current development supervisor lives in `cmd/pulse/dev_supervisor.go`. It owns dashboard, DB Studio, local proxy, MCP/dashboard endpoints, app child process lifecycle, file watching integration, process output capture, and dashboard state.
+The current development supervisor lives in `cmd/onlava/dev_supervisor.go`. It owns dashboard, DB Studio, local proxy, MCP/dashboard endpoints, app child process lifecycle, file watching integration, process output capture, and dashboard state.
 
-The file watcher lives in `cmd/pulse/watch.go`. It has historically watched only selected files such as `pulse.app`, `.go`, `.cpp`, and `.h`, which may miss build-affecting files like `go.mod`, `go.sum`, `.env`, and `.env.local`.
+The file watcher lives in `cmd/onlava/watch.go`. It has historically watched only selected files such as `.onlava.json`, `.go`, `.cpp`, and `.h`, which may miss build-affecting files like `go.mod`, `go.sum`, `.env`, and `.env.local`.
 
 The generated runtime entry point and build workspace logic live under `internal/build` and `internal/codegen`. Release readiness depends on deterministic generated artifacts and safe build workspace copying.
 
@@ -127,12 +127,12 @@ The public runtime server lives in `runtime/server.go`. Audit findings say this 
 
 The local proxy lives under `internal/localproxy`. It uses embedded Caddy and can install local trust roots. The release contract must make this opt-in and clearly development-only.
 
-The dashboard UI source lives in `ui/` and is embedded by the CLI through `pulse.dev/ui`. A clean release build must either include built `ui/dist` assets, generate them in the release process, or avoid requiring them for headless/stable builds.
+The dashboard UI source lives in `ui/` and is embedded by the CLI through `onlava.com/ui`. A clean release build must either include built `ui/dist` assets, generate them in the release process, or avoid requiring them for headless/stable builds.
 
 Terms used in this plan:
 
 - Stable v0 means the supported behavior that users and agents can rely on without beta labels.
-- Dev-only means a feature is useful in `pulse dev` but not part of the production-like runtime contract.
+- Dev-only means a feature is useful in `onlava dev` but not part of the production-like runtime contract.
 - Beta means a feature can ship but its behavior is not frozen yet.
 - Migration tooling means explicit commands or docs for one-time source transitions, not hidden parser/runtime behavior.
 - Public app listener means the HTTP listener that serves user application endpoints.
@@ -142,35 +142,35 @@ Terms used in this plan:
 
 Milestone 1 defines the release contract. At the end of this milestone, `docs/local-contract.md`, `AGENTS.md`, command usage, and docs index agree on the stable v0 commands, stable runtime features, and beta/dev-only features.
 
-Milestone 2 completes the runtime/dev boundary. At the end of this milestone, `pulse dev` owns the development platform and headless `pulse run` starts only the app runtime. This milestone is complete when the acceptance criteria in [0001-devrun-command-split.md](0001-devrun-command-split.md) are satisfied.
+Milestone 2 completes the runtime/dev boundary. At the end of this milestone, `onlava dev` owns the development platform and headless `onlava run` starts only the app runtime. This milestone is complete when the acceptance criteria in [0001-devrun-command-split.md](0001-devrun-command-split.md) are satisfied.
 
-Milestone 3 removes release build blockers. At the end of this milestone, a clean checkout can run `go install ./cmd/pulse` without missing embedded assets. Release docs state the required Go version and the Bun/UI build expectations. Release packaging excludes `.DS_Store`, `__MACOSX`, caches, and other local artifacts.
+Milestone 3 removes release build blockers. At the end of this milestone, a clean checkout can run `go install ./cmd/onlava` without missing embedded assets. Release docs state the required Go version and the Bun/UI build expectations. Release packaging excludes `.DS_Store`, `__MACOSX`, caches, and other local artifacts.
 
-Milestone 4 hardens public-router safety. At the end of this milestone, pprof, `/__pulse/config`, `/__pulse/pubsub/clear`, platform stats, dashboard reporting, and other dev/admin endpoints are not mounted on the public app listener by default. If any remain, they are explicitly gated, documented, tested, and safe for local-only use.
+Milestone 4 hardens public-router safety. At the end of this milestone, pprof, `/__onlava/config`, `/__onlava/pubsub/clear`, platform stats, dashboard reporting, and other dev/admin endpoints are not mounted on the public app listener by default. If any remain, they are explicitly gated, documented, tested, and safe for local-only use.
 
 Milestone 5 centralizes configuration and secrets. At the end of this milestone, one loader owns process environment, `.env`, and `.env.local` precedence. Development may warn for missing secrets, while production-like run/build paths fail early for missing required secrets unless explicitly configured otherwise.
 
-Milestone 6 makes build artifacts safe and deterministic. At the end of this milestone, build workspace copying includes only files needed to compile and run the app. `.env`, `.env.*`, `.git`, `.pulse` runtime state, `node_modules`, editor files, caches, and local artifacts are excluded unless explicitly required and documented.
+Milestone 6 makes build artifacts safe and deterministic. At the end of this milestone, build workspace copying includes only files needed to compile and run the app. `.env`, `.env.*`, `.git`, `.onlava` runtime state, `node_modules`, editor files, caches, and local artifacts are excluded unless explicitly required and documented.
 
-Milestone 7 fixes framework semantics before freeze. At the end of this milestone, response encoding honors expected Go JSON behavior for `json:"-"`, `omitempty`, embedded structs, pointers, headers, `pulse:"httpstatus"`, and custom marshalers, or documents any deliberate custom behavior with tests.
+Milestone 7 fixes framework semantics before freeze. At the end of this milestone, response encoding honors expected Go JSON behavior for `json:"-"`, `omitempty`, embedded structs, pointers, headers, `onlava:"httpstatus"`, and custom marshalers, or documents any deliberate custom behavior with tests.
 
 Milestone 8 runs the release gate. At the end of this milestone, the full release validation checklist passes and `Outcomes & Retrospective` records exact command results.
 
 ## Plan of Work
 
-Start by updating the release contract before changing behavior. The repo should have one canonical local contract that says what is stable, what is beta, and what is dev-only. Use `docs/local-contract.md` as the canonical document, and keep `cmd/pulse/main.go` usage text aligned with it.
+Start by updating the release contract before changing behavior. The repo should have one canonical local contract that says what is stable, what is beta, and what is dev-only. Use `docs/local-contract.md` as the canonical document, and keep `cmd/onlava/main.go` usage text aligned with it.
 
-Next, finish the command split work tracked by [0001-devrun-command-split.md](0001-devrun-command-split.md). Do not make other release-hardening work depend on a dev supervisor hidden inside `pulse run`.
+Next, finish the command split work tracked by [0001-devrun-command-split.md](0001-devrun-command-split.md). Do not make other release-hardening work depend on a dev supervisor hidden inside `onlava run`.
 
-Then handle clean-checkout reproducibility. Verify whether `ui/dist` and other embedded assets are required for `go install ./cmd/pulse`. If they are required, choose one explicit release strategy: commit built assets, generate them in release packaging, or move embedding behind a development build boundary. The strategy must be documented and validated from a clean checkout.
+Then handle clean-checkout reproducibility. Verify whether `ui/dist` and other embedded assets are required for `go install ./cmd/onlava`. If they are required, choose one explicit release strategy: commit built assets, generate them in release packaging, or move embedding behind a development build boundary. The strategy must be documented and validated from a clean checkout.
 
 After reproducibility, audit runtime routes. Move dev/admin endpoints out of `runtime/server.go` public routing by default. If dashboard or development reporting needs endpoints, keep them on the dashboard/supervisor server. If pprof is needed, expose it only through an explicit local admin mode.
 
-Then make local HTTPS proxy and trust installation opt-in. `pulse dev` may support `--proxy` and a separate explicit trust flag. Do not surprise users by mutating system trust stores. `pulse run` should never install trust roots.
+Then make local HTTPS proxy and trust installation opt-in. `onlava dev` may support `--proxy` and a separate explicit trust flag. Do not surprise users by mutating system trust stores. `onlava run` should never install trust roots.
 
 Then centralize `.env` and secrets loading. Replace duplicate parsers and loaders in runtime, supervisor, DB Studio, and tests with one package-level implementation. Document precedence and mode-specific missing-secret behavior.
 
-Then lock down build workspace copying. Replace broad file copying with an allowlist plus explicit asset inclusion behavior. Add tests that prove `.env`, `.env.local`, `.git`, `.pulse`, `node_modules`, `.DS_Store`, and `__MACOSX` are excluded.
+Then lock down build workspace copying. Replace broad file copying with an allowlist plus explicit asset inclusion behavior. Add tests that prove `.env`, `.env.local`, `.git`, `.onlava`, `node_modules`, `.DS_Store`, and `__MACOSX` are excluded.
 
 Finally, add the response encoding tests and fix semantics before declaring the runtime contract stable.
 
@@ -178,15 +178,15 @@ Finally, add the response encoding tests and fix semantics before declaring the 
 
 Work from the repository root:
 
-    cd /Users/petrbrazdil/Repos/pulse
+    cd <onlava-repo-root>
 
 List current command and runtime boundary references:
 
-    rg -n "case \"run\"|case \"dev\"|runCommand|devCommand|runWithWatch|newDevSupervisor|runtimeapp|localproxy|pprof|platform.Stats|pubsub/clear|__pulse/config" cmd internal runtime
+    rg -n "case \"run\"|case \"dev\"|runCommand|devCommand|runWithWatch|newDevSupervisor|runtimeapp|localproxy|pprof|platform.Stats|pubsub/clear|__onlava/config" cmd internal runtime
 
 Check clean checkout build assumptions:
 
-    go install ./cmd/pulse
+    go install ./cmd/onlava
     test -f ui/dist/index.html
     test -f dbstudio/dist/index.html
 
@@ -200,7 +200,7 @@ Use the command split plan:
 
 Audit public runtime routes:
 
-    rg -n "__pulse/config|pubsub/clear|platform.Stats|debug/pprof|Access-Control-Allow-Origin|Access-Control-Allow-Credentials" runtime cmd internal
+    rg -n "__onlava/config|pubsub/clear|platform.Stats|debug/pprof|Access-Control-Allow-Origin|Access-Control-Allow-Credentials" runtime cmd internal
 
 Audit build workspace copying:
 
@@ -208,17 +208,17 @@ Audit build workspace copying:
 
 Audit secrets loaders:
 
-    rg -n "LoadDotEnv|\\.env|secrets|DatabaseURL|PULSE_ENV|PULSE_MODE" cmd internal runtime
+    rg -n "LoadDotEnv|\\.env|secrets|DatabaseURL|ONLAVA_ENV|ONLAVA_MODE" cmd internal runtime
 
 Add or update tests for the release blockers:
 
-    go test ./cmd/pulse ./internal/build ./runtime
+    go test ./cmd/onlava ./internal/build ./runtime
 
 Run the full validation gate:
 
     scripts/release-gate.sh
 
-The script also runs `go install ./cmd/pulse`, `pulse harness self --json --write`, dashboard UI and DB Studio builds, a clean source-copy install, fixture smoke, read-only ONLV smoke, public-router safety checks, production secrets checks, and artifact hygiene checks. If `/Users/petrbrazdil/Repos/onlv` is used, keep it read-only; set `ONLV_ROOT` to override that app path.
+The script also runs `go install ./cmd/onlava`, `onlava harness self --json --write`, dashboard UI and DB Studio builds, a clean source-copy install, fixture smoke, optional external app smoke, public-router safety checks, production secrets checks, and artifact hygiene checks. Set `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` to include a read-only external Onlava app in the gate.
 
 Record exact command results in `Outcomes & Retrospective` before marking this plan complete.
 
@@ -226,20 +226,20 @@ Record exact command results in `Outcomes & Retrospective` before marking this p
 
 Release readiness is accepted when all of these are true:
 
-- A clean checkout can run `go install ./cmd/pulse`.
+- A clean checkout can run `go install ./cmd/onlava`.
 - `go test ./...` passes.
 - `go test -race ./...` has either passed or has documented exclusions for tests where race mode is impractical.
-- `pulse harness self --json --write` passes.
-- `pulse inspect docs --json --repo-root /Users/petrbrazdil/Repos/pulse` reports no missing or stale documents.
+- `onlava harness self --json --write` passes.
+- `onlava inspect docs --json --repo-root <onlava-repo-root>` reports no missing or stale documents.
 - CLI usage text and `docs/local-contract.md` describe the same commands.
-- `pulse version --json` exists or the lack of version command is explicitly deferred before release.
+- `onlava version --json` exists or the lack of version command is explicitly deferred before release.
 - Stable, beta, dev-only, and compatibility-mode features are labeled in docs.
-- `pulse run` is headless and production-like.
-- `pulse dev` owns dashboard, DB Studio, local HTTPS proxy, frontend proxy, MCP, file watching, and development-only UI.
+- `onlava run` is headless and production-like.
+- `onlava dev` owns dashboard, DB Studio, local HTTPS proxy, frontend proxy, MCP, file watching, and development-only UI.
 - The public app listener does not expose pprof, platform stats, Pub/Sub clear, dashboard report endpoints, or arbitrary credentialed CORS by default.
 - Local HTTPS proxy and trust-store installation are opt-in.
-- `.env`, `.env.local`, `.git`, `.pulse` runtime state, `node_modules`, `.DS_Store`, and `__MACOSX` are not copied into build workspaces or release archives.
-- Response encoding tests cover `json:"-"`, `omitempty`, embedded structs, pointer fields, header fields, `pulse:"httpstatus"`, and custom marshalers.
+- `.env`, `.env.local`, `.git`, `.onlava` runtime state, `node_modules`, `.DS_Store`, and `__MACOSX` are not copied into build workspaces or release archives.
+- Response encoding tests cover `json:"-"`, `omitempty`, embedded structs, pointer fields, header fields, `onlava:"httpstatus"`, and custom marshalers.
 - The release validation sequence is documented in `Outcomes & Retrospective`.
 - `scripts/release-gate.sh` passes before release artifacts are cut.
 
@@ -247,7 +247,7 @@ Release readiness is accepted when all of these are true:
 
 This plan should be executed in small, independently testable slices. Each milestone should leave the repo buildable. If a risky change fails, revert only that change and keep completed hardening work.
 
-Do not delete development functionality while moving it behind `pulse dev`. The recovery path for a broken command split is to keep `pulse dev` on the existing supervisor path and continue narrowing `pulse run` separately.
+Do not delete development functionality while moving it behind `onlava dev`. The recovery path for a broken command split is to keep `onlava dev` on the existing supervisor path and continue narrowing `onlava run` separately.
 
 When changing build workspace copying, expect some apps to rely on embedded assets. Preserve required app assets through explicit inclusion rules or clear diagnostics rather than broad copying.
 
@@ -265,26 +265,26 @@ Related active ExecPlan:
 
 Validation artifact:
 
-    .pulse/harness/self-latest.json
+    .onlava/harness/self-latest.json
 
 Release-stable generated artifacts:
 
-    .pulse/gen/app.json
-    .pulse/gen/routes.json
-    .pulse/gen/services.json
-    .pulse/gen/manifest.json
-    .pulse/build/latest.json
+    .onlava/gen/app.json
+    .onlava/gen/routes.json
+    .onlava/gen/services.json
+    .onlava/gen/manifest.json
+    .onlava/build/latest.json
 
 Stable v0 candidates:
 
-    pulse.app
-    pulse run
-    pulse build
-    pulse check --json
-    pulse inspect ... --json
-    pulse logs --jsonl
-    pulse test
-    pulse gen client
+    .onlava.json
+    onlava run
+    onlava build
+    onlava check --json
+    onlava inspect ... --json
+    onlava logs --jsonl
+    onlava test
+    onlava gen client
     typed/raw HTTP endpoints
     auth handler
     service struct initialization and shutdown
@@ -305,18 +305,18 @@ Dev-only or beta candidates:
 
 ## Interfaces and Dependencies
 
-No new external dependency is expected for this plan. Prefer the Go standard library and existing Pulse packages.
+No new external dependency is expected for this plan. Prefer the Go standard library and existing Onlava packages.
 
 Expected CLI interfaces to freeze:
 
-    pulse dev [development flags]
-    pulse run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-    pulse build [--app-root <path>] [-o <path>] [--db-studio]
-    pulse check --json [--app-root <path>]
-    pulse inspect app|routes|services|endpoints|wire|build|paths|traces|metrics|docs --json
-    pulse logs --jsonl [--app-root <path>]
-    pulse test [--app-root <path>] [go test flags/packages...]
-    pulse gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+    onlava dev [development flags]
+    onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+    onlava build [--app-root <path>] [-o <path>] [--db-studio]
+    onlava check --json [--app-root <path>]
+    onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics|docs --json
+    onlava logs --jsonl [--app-root <path>]
+    onlava test [--app-root <path>] [go test flags/packages...]
+    onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 
 Expected documentation interfaces:
 
@@ -328,10 +328,10 @@ Expected documentation interfaces:
 
 Expected implementation areas:
 
-    cmd/pulse/main.go
-    cmd/pulse/watch.go
-    cmd/pulse/dev_supervisor.go
-    cmd/pulse/build.go
+    cmd/onlava/main.go
+    cmd/onlava/watch.go
+    cmd/onlava/dev_supervisor.go
+    cmd/onlava/build.go
     runtime/server.go
     runtime/secrets.go
     runtime/encode.go

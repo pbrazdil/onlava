@@ -1,11 +1,11 @@
-# Pulse Harness Engineering
+# Onlava Harness Engineering
 
-Pulse treats agent support as a runtime feature, not as prompt folklore.
+Onlava treats agent support as a runtime feature, not as prompt folklore.
 
 The harness contract gives Codex and other agents a short feedback loop:
 
 1. discover the app and its stable generated metadata
-2. compile the generated runtime exactly like `pulse run` would
+2. compile the generated runtime exactly like `onlava run` would
 3. report diagnostics as structured JSON
 4. expose inspect outputs and artifact paths without scraping terminal text
 5. persist the latest harness result when requested
@@ -13,8 +13,8 @@ The harness contract gives Codex and other agents a short feedback loop:
 ## Command
 
 ```text
-pulse harness [--app-root <path>] [--json] [--write]
-pulse harness self [--repo-root <path>] [--json] [--write]
+onlava harness [--app-root <path>] [--json] [--write]
+onlava harness self [--repo-root <path>] [--json] [--write]
 ```
 
 Use this before large edits and after fixes when an agent needs a single machine-readable status snapshot.
@@ -22,25 +22,25 @@ Use this before large edits and after fixes when an agent needs a single machine
 Recommended agent loop:
 
 ```text
-pulse harness --json --write
-pulse harness self --json --write
+onlava harness --json --write
+onlava harness self --json --write
 ```
 
 The command runs:
 
-- `pulse check --json`
-- `pulse inspect app --json`
-- `pulse inspect routes --json`
-- `pulse inspect services --json`
-- `pulse inspect endpoints --json`
-- `pulse inspect wire --json`
-- `pulse inspect build --json`
-- `pulse inspect paths --json`
-- `pulse inspect traces --json`
-- `pulse inspect metrics --json`
-- `pulse inspect docs --json`
+- `onlava check --json`
+- `onlava inspect app --json`
+- `onlava inspect routes --json`
+- `onlava inspect services --json`
+- `onlava inspect endpoints --json`
+- `onlava inspect wire --json`
+- `onlava inspect build --json`
+- `onlava inspect paths --json`
+- `onlava inspect traces --json`
+- `onlava inspect metrics --json`
+- `onlava inspect docs --json`
 
-`pulse inspect traces --json` and `pulse inspect metrics --json` are included
+`onlava inspect traces --json` and `onlava inspect metrics --json` are included
 as beta diagnostic inputs for agents. Their schema versions are useful for
 automation, but their rollup and backend-selection semantics are not stable v0
 API yet; see [local-contract.md](local-contract.md).
@@ -49,34 +49,34 @@ API yet; see [local-contract.md](local-contract.md).
 
 JSON output conforms to:
 
-- [pulse.harness.result.v1.schema.json](schemas/pulse.harness.result.v1.schema.json)
+- [onlava.harness.result.v1.schema.json](schemas/onlava.harness.result.v1.schema.json)
 
-When `--write` is present, Pulse writes:
+When `--write` is present, Onlava writes:
 
 ```text
-<app-root>/.pulse/harness/latest.json
+<app-root>/.onlava/harness/latest.json
 ```
 
 That file is intentionally stable. Agents should use it as the latest local validation snapshot instead of guessing from cache directories or parsing human logs.
 
-For the Pulse repo itself, `pulse harness self --json --write` writes:
+For the Onlava repo itself, `onlava harness self --json --write` writes:
 
 ```text
-<repo-root>/.pulse/harness/self-latest.json
+<repo-root>/.onlava/harness/self-latest.json
 ```
 
-The self harness validates the local Pulse development loop:
+The self harness validates the local Onlava development loop:
 
-- `go test ./cmd/pulse ./internal/devdash ./runtime`
+- `go test ./cmd/onlava ./internal/devdash ./runtime`
 - docs knowledge base integrity through `docs/knowledge.json`
 - local markdown links and schema JSON syntax
-- `pulse inspect docs --json`
+- `onlava inspect docs --json`
 - architecture checks for dependency policy, package boundaries, generated-file hygiene, and oversized source files
 - dashboard UI typecheck and build
 - DB Studio UI typecheck and build
 - dashboard and DB Studio build freshness
-- `go install ./cmd/pulse`
-- installed `pulse` binary freshness against repo sources
+- `go install ./cmd/onlava`
+- installed `onlava` binary freshness against repo sources
 
 ## Design Rules
 
@@ -88,13 +88,13 @@ The self harness validates the local Pulse development loop:
 
 ## Architecture Checks
 
-`pulse harness self` includes a fast `architecture checks` step.
+`onlava harness self` includes a fast `architecture checks` step.
 
 Hard failures:
 
 - direct Go dependencies must be listed in the self-harness allowlist with a concrete rationale
 - forbidden CLI/router/color framework imports are rejected in source
-- packages outside `cmd/pulse` may not import `pulse.dev/cmd/pulse`
+- packages outside `cmd/onlava` may not import `onlava.com/cmd/onlava`
 - required generated/vendored ignore markers must exist in `.gitignore` and `.gitattributes`
 - non-generated source files over 2500 lines are rejected
 

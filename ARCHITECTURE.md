@@ -1,6 +1,6 @@
-# Pulse Architecture
+# Onlava Architecture
 
-This document is a stable map of the Pulse repository. It should help a new
+This document is a stable map of the Onlava repository. It should help a new
 contributor answer two questions quickly: where does a change belong, and which
 boundaries should the change preserve?
 
@@ -10,10 +10,10 @@ the names mentioned here.
 
 ## Bird's Eye View
 
-Pulse is a Go-native local runtime and toolchain for applications that declare
-services with `//pulse:` directives and a `pulse.app` root marker.
+Onlava is a Go-native local runtime and toolchain for applications that declare
+services with `//onlava:` directives and a `.onlava.json` root marker.
 
-At a high level, Pulse does four things:
+At a high level, Onlava does four things:
 
 - discovers an app root and parses Go packages into an app model
 - generates a transient build workspace and synthetic runtime entrypoint
@@ -24,7 +24,7 @@ At a high level, Pulse does four things:
 The central flow is:
 
 ```text
-pulse.app + Go source
+.onlava.json + Go source
         |
         v
 internal/app + internal/parse
@@ -36,15 +36,15 @@ internal/model
 internal/codegen + internal/build
         |
         v
-generated workspace + pulse.dev/runtime
+generated workspace + onlava.com/runtime
         |
         v
 single local server + dev/inspect/harness tooling
 ```
 
-Architecture invariant: the public Pulse surface is Pulse-named. User apps
-should depend on `pulse.dev/...` packages and `//pulse:` directives, without
-legacy compatibility packages, daemon layers, cloud layers, or non-Pulse syntax.
+Architecture invariant: the public Onlava surface is Onlava-named. User apps
+should depend on `onlava.com/...` packages and `//onlava:` directives, without
+legacy compatibility packages, daemon layers, cloud layers, or non-Onlava syntax.
 
 Architecture invariant: app semantics should be captured as data in
 `internal/model` before code generation or runtime wiring. Avoid duplicating
@@ -52,37 +52,37 @@ parser-derived decisions downstream when the model can represent them once.
 
 ## Code Map
 
-### `cmd/pulse`
+### `cmd/onlava`
 
 This is the CLI entrypoint and orchestration layer. `main`, `run`, and the
 command-specific functions parse flags and connect internal packages into user
 commands such as `dev`, `run`, `build`, `check`, `inspect`, `harness`, `logs`,
 `admin`, `test`, and `gen`.
 
-`pulse run` is the headless app execution path. `pulse dev` wraps the same app
+`onlava run` is the headless app execution path. `onlava dev` wraps the same app
 build/run loop with the local development platform: dashboard, proxy, DB Studio,
 live rebuild behavior, logs, traces, metrics, and process supervision.
 
-Architecture invariant: non-CLI packages must not import `cmd/pulse`. Shared
+Architecture invariant: non-CLI packages must not import `cmd/onlava`. Shared
 logic belongs in `internal/` or a public package, depending on whether user apps
 need it.
 
 Architecture invariant: the CLI stays hand-rolled unless a new dependency has a
-clear payoff. The command grammar is part of Pulse's local contract and should
+clear payoff. The command grammar is part of Onlava's local contract and should
 remain easy to audit.
 
 ### `internal/app`
 
 `internal/app` owns repository and app-root discovery. It walks upward to find
-`pulse.app`, decodes app config, and provides repo-root helpers for self-harness
+`.onlava.json`, decodes app config, and provides repo-root helpers for self-harness
 work.
 
-Architecture invariant: `pulse.app` is the app root marker for Pulse apps. App
+Architecture invariant: `.onlava.json` is the app root marker for Onlava apps. App
 loading should fail clearly when the marker is missing or invalid.
 
 ### `internal/parse`
 
-`internal/parse` loads Go packages with `go/packages`, reads `//pulse:`
+`internal/parse` loads Go packages with `go/packages`, reads `//onlava:`
 directives from AST comments, validates endpoint/service/auth/middleware shapes,
 and builds the app model.
 
@@ -106,7 +106,7 @@ wire modeling, and build. Important types include `App`, `Service`, `Package`,
 
 Architecture invariant: the model is an in-memory description of a parsed app,
 not a runtime registry and not a JSON schema. Public JSON responses live in
-`internal/inspect`; runtime registration lives in `pulse.dev/runtime`.
+`internal/inspect`; runtime registration lives in `onlava.com/runtime`.
 
 ### `internal/codegen`
 
@@ -119,7 +119,7 @@ wrappers and registration over runtime reflection when the parser already knows
 the shape of the app.
 
 Architecture invariant: endpoint-to-endpoint calls should go through generated
-Pulse call helpers when Pulse semantics matter. Direct user function calls must
+Onlava call helpers when Onlava semantics matter. Direct user function calls must
 not bypass auth context, private access rules, routing metadata, or internal
 transport behavior.
 
@@ -137,7 +137,7 @@ workspace the source of truth.
 Architecture invariant: build metadata should be machine-readable enough for
 agents and humans to diagnose drift without scraping terminal output.
 
-### `pulse.dev/runtime`
+### `onlava.com/runtime`
 
 `runtime` is linked into generated app binaries. It registers generated
 endpoints, service initializers, middleware, auth handlers, Pub/Sub handlers,
@@ -148,11 +148,11 @@ context, current request metadata, structured error responses, middleware,
 observability reports, secrets, DB tracing, Pub/Sub, cron, and graceful shutdown.
 
 Architecture invariant: there is one local app server per generated app process.
-`pulse dev` may run extra development services around it, but app API execution
+`onlava dev` may run extra development services around it, but app API execution
 stays inside the generated app binary.
 
 Architecture invariant: runtime request state must be scoped to the current
-request or internal call. Public helpers such as `pulse.CurrentRequest()` and
+request or internal call. Public helpers such as `onlava.CurrentRequest()` and
 `auth.UserID()` should not rely on global mutable app state that leaks across
 requests.
 
@@ -160,11 +160,11 @@ requests.
 
 The public packages at the module root are what user apps import:
 
-- `pulse.dev` exposes `Meta` and `CurrentRequest`
-- `pulse.dev/auth` exposes request auth state helpers
-- `pulse.dev/errs` exposes coded errors and HTTP status mapping
-- `pulse.dev/middleware` exposes middleware types
-- `pulse.dev/pubsub`, `pulse.dev/cron`, `pulse.dev/pgxpool`, and related small
+- `onlava.com` exposes `Meta` and `CurrentRequest`
+- `onlava.com/auth` exposes request auth state helpers
+- `onlava.com/errs` exposes coded errors and HTTP status mapping
+- `onlava.com/middleware` exposes middleware types
+- `onlava.com/pubsub`, `onlava.com/cron`, `onlava.com/pgxpool`, and related small
   packages expose local runtime integrations
 
 Architecture invariant: public packages are boundaries. Keep them small,
@@ -197,15 +197,15 @@ These packages support the local development platform around a running app.
 `internal/devdash` stores dashboard-visible state and observability data.
 `internal/localproxy` owns the local proxy layer. `internal/dbstudio` manages DB
 Studio process lifecycle. The dashboard server and UI embedding are orchestrated
-from `cmd/pulse`.
+from `cmd/onlava`.
 
 Architecture invariant: development services should be optional around the app
-runtime. They can improve local ergonomics, but `pulse run` must remain a
+runtime. They can improve local ergonomics, but `onlava run` must remain a
 headless execution path.
 
 ### `ui` and `dbstudio`
 
-`ui` is the Pulse dashboard frontend. `dbstudio` is the DB Studio frontend
+`ui` is the Onlava dashboard frontend. `dbstudio` is the DB Studio frontend
 wrapper. Both are TypeScript/React applications that are built and embedded for
 local development use.
 
@@ -228,15 +228,15 @@ Architecture invariant: substantial implementation plans live under
 `testdata` contains fixture apps and golden generated files. It is the acceptance
 corpus for parser, codegen, runtime, and CLI behavior.
 
-Architecture invariant: fixture apps should speak Pulse syntax directly. Use
+Architecture invariant: fixture apps should speak Onlava syntax directly. Use
 Historical reference material only as a corpus when porting behavior into
-Pulse-native tests.
+Onlava-native tests.
 
 ## Cross-Cutting Concerns
 
 ### Dependencies
 
-Pulse prefers the Go standard library. Direct Go dependencies are allowlisted by
+Onlava prefers the Go standard library. Direct Go dependencies are allowlisted by
 the self-harness with a concrete rationale. New dependencies should be rare and
 should solve a specific maintenance, correctness, or interoperability problem.
 
@@ -251,9 +251,9 @@ Prefer tests at stable boundaries: directive parsing, app modeling, generated
 code, CLI JSON contracts, runtime HTTP behavior, and fixture apps. Use helper
 checks to keep tests data-driven and easy to update when internals move.
 
-After repository changes, rebuild the CLI with `go install ./cmd/pulse`. For
-substantial changes, run `pulse harness self --json --write` when practical so
-`.pulse/harness/self-latest.json` captures one stable validation snapshot.
+After repository changes, rebuild the CLI with `go install ./cmd/onlava`. For
+substantial changes, run `onlava harness self --json --write` when practical so
+`.onlava/harness/self-latest.json` captures one stable validation snapshot.
 
 ### Generated Artifacts
 
@@ -271,7 +271,7 @@ Local observability is part of the product surface. Runtime traces, logs,
 metrics, dashboard state, and inspect commands should give enough evidence to
 debug a local app without relying on external services.
 
-`pulse dev` uses a Victoria-plus-SQLite posture for local observability. The
+`onlava dev` uses a Victoria-plus-SQLite posture for local observability. The
 dashboard report path writes SQLite first for parity and fallback, then exports
 OTLP protobuf to supervised VictoriaMetrics, VictoriaLogs, and VictoriaTraces
 sidecars when available. Dashboard and inspect trace reads prefer Victoria and
@@ -280,7 +280,7 @@ the stable boundary is HTTP/OTLP, not Go library imports.
 
 ### File Size And Placement
 
-Pulse favors code that can be found quickly. Keep related concepts adjacent in
+Onlava favors code that can be found quickly. Keep related concepts adjacent in
 the tree, split very large files before they become hard to review, and prefer a
 flat package map over deeply nested internal hierarchies unless a boundary earns
 the extra structure.

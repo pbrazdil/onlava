@@ -1,6 +1,6 @@
-# Pulse Execution Plans (ExecPlans)
+# Onlava Execution Plans (ExecPlans)
 
-Source: [OpenAI Codex ExecPlans](https://developers.openai.com/cookbook/articles/codex_exec_plans), adapted for Pulse on 2026-04-27.
+Source: [OpenAI Codex ExecPlans](https://developers.openai.com/cookbook/articles/codex_exec_plans), adapted for Onlava on 2026-04-27.
 
 An ExecPlan is a living implementation specification for a complex feature, migration, or refactor. It is different from [PLAN.md](PLAN.md): `PLAN.md` is the strategic roadmap, while an ExecPlan is the self-contained file an agent can execute from start to finish.
 
@@ -58,19 +58,19 @@ Prefer additive milestones that keep the repo testable. If a prototype is needed
 
 ## Validation Requirements
 
-Every ExecPlan must include project-specific validation commands. For Pulse repo changes, the default validation set is:
+Every ExecPlan must include project-specific validation commands. For Onlava repo changes, the default validation set is:
 
 - `go test ./...`
-- `go install ./cmd/pulse`
-- `pulse harness self --json --write` when practical
+- `go install ./cmd/onlava`
+- `onlava harness self --json --write` when practical
 
 For frontend changes, include the relevant `bun run typecheck` and `bun run build` commands in `ui/` or `dbstudio/`.
 
-For app-facing runtime changes, include an example command against a fixture app or `/Users/petrbrazdil/Repos/onlv` when the app can be used read-only.
+For app-facing runtime changes, include an example command against a fixture app or another read-only Onlava app available to the contributor.
 
 ## Harness Enforcement
 
-`pulse harness self` validates this contract:
+`onlava harness self` validates this contract:
 
 - `PLANS.md` must exist and define the required ExecPlan sections.
 - Any Markdown file directly under `docs/plans/` except `active.md` and `completed.md` must contain all required ExecPlan section headings.

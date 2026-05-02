@@ -2,24 +2,24 @@ Below is a copy-pasteable PRD/implementation prompt for a coding agent.
 
 ---
 
-# PRD Prompt: Hidden Binary Generated-Client Transport for Pulse
+# PRD Prompt: Hidden Binary Generated-Client Transport for Onlava
 
-You are working on **Pulse**, a local-first Go framework/runtime/codegen tool. Pulse currently exposes developer-authored APIs through normal Go functions and `//pulse:api` directives, with JSON/HTTP behavior and generated clients.
+You are working on **Onlava**, a local-first Go framework/runtime/codegen tool. Onlava currently exposes developer-authored APIs through normal Go functions and `//onlava:api` directives, with JSON/HTTP behavior and generated clients.
 
 Implement a new **hidden binary generated-client transport**.
 
-The product goal is **faster generated-client communication** without requiring Pulse developers to know anything about protobuf, proto files, gRPC, Connect, schemas, field numbers, descriptors, or RPC services.
+The product goal is **faster generated-client communication** without requiring Onlava developers to know anything about protobuf, proto files, gRPC, Connect, schemas, field numbers, descriptors, or RPC services.
 
-Developers should continue writing normal Pulse APIs exactly as they do for JSON.
+Developers should continue writing normal Onlava APIs exactly as they do for JSON.
 
 ## Core product principle
 
-Pulse should expose **one logical API model** and multiple wire formats.
+Onlava should expose **one logical API model** and multiple wire formats.
 
 Developer-facing model:
 
 ```go
-//pulse:api public method=GET path=/users/:id
+//onlava:api public method=GET path=/users/:id
 func GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
     ...
 }
@@ -28,7 +28,7 @@ func GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
 Generated client model:
 
 ```ts
-const api = createPulseClient({
+const api = createOnlavaClient({
   baseUrl: "http://localhost:4000",
   transport: "auto",
 });
@@ -48,7 +48,7 @@ Binary wire:
   generated-client optimized
   faster serialization/deserialization
   implemented internally using generated protobuf/Connect-like machinery if appropriate
-  never exposed as a concept to normal Pulse developers
+  never exposed as a concept to normal Onlava developers
 ```
 
 Do **not** create a public “protobuf API” or “RPC API” concept.
@@ -83,7 +83,7 @@ JSON is the compatibility escape hatch.
 
 ## Required behavior
 
-Pulse should serve JSON and binary at the same time.
+Onlava should serve JSON and binary at the same time.
 
 Developers should see one endpoint:
 
@@ -171,7 +171,7 @@ transport: "auto"
 Expected call shape:
 
 ```ts
-const api = createPulseClient({
+const api = createOnlavaClient({
   baseUrl: "http://localhost:4000",
 });
 
@@ -203,14 +203,14 @@ api/_wire/*
 
 ## Binary schema generation
 
-Pulse should generate binary schemas automatically from the existing Pulse endpoint/type IR.
+Onlava should generate binary schemas automatically from the existing Onlava endpoint/type IR.
 
 Source of truth:
 
 ```text
 Go endpoint functions
 Go request/response structs
-Pulse parser/codegen metadata
+Onlava parser/codegen metadata
 ```
 
 Not source of truth:
@@ -226,8 +226,8 @@ Pipeline:
 
 ```text
 Go source
-  -> Pulse parser
-  -> Pulse endpoint/type IR
+  -> Onlava parser
+  -> Onlava endpoint/type IR
   -> generated JSON adapters
   -> generated binary schema
   -> generated binary server adapters
@@ -238,7 +238,7 @@ Go source
 Generated protobuf/proto-like files may exist internally in:
 
 ```text
-.pulse/gen/wire/...
+.onlava/gen/wire/...
 ```
 
 They should not be placed in the app source tree as files the developer is expected to maintain.
@@ -249,7 +249,7 @@ They should be treated as ephemeral/generated artifacts.
 
 Do not implement long-term protobuf field-number compatibility.
 
-For now, assign binary field numbers deterministically from the current Pulse IR.
+For now, assign binary field numbers deterministically from the current Onlava IR.
 
 Acceptable strategies:
 
@@ -279,7 +279,7 @@ Example response:
 
 ```json
 {
-  "schema": "pulse.wire.capabilities/v0",
+  "schema": "onlava.wire.capabilities/v0",
   "wire_schema_hash": "sha256:abc123",
   "endpoints": {
     "users.GetUser": {
@@ -294,7 +294,7 @@ Example response:
 Generated client embeds its own schema hash:
 
 ```ts
-const PULSE_WIRE_SCHEMA_HASH = "sha256:abc123";
+const ONLAVA_WIRE_SCHEMA_HASH = "sha256:abc123";
 ```
 
 Behavior:
@@ -323,7 +323,7 @@ The generated client should fall back to JSON when:
 - binary request decoding fails on server before handler invocation
 - binary protocol negotiation fails
 - binary response decoding fails
-- binary route returns a Pulse wire/decode/protocol error
+- binary route returns an Onlava wire/decode/protocol error
 ```
 
 Do not fall back to JSON for normal application errors.
@@ -335,7 +335,7 @@ Examples that should **not** trigger fallback:
 - permission denied
 - validation error from user handler
 - business logic error
-- normal 4xx/5xx mapped from Pulse errs
+- normal 4xx/5xx mapped from Onlava errs
 ```
 
 Those errors should be returned to the caller identically across JSON and binary transports.
@@ -351,7 +351,7 @@ Required approach:
 Each generated-client binary call should send a unique call ID:
 
 ```http
-X-Pulse-Call-ID: <uuid-or-random-id>
+X-Onlava-Call-ID: <uuid-or-random-id>
 ```
 
 Runtime should maintain a short-lived in-memory recovery store for generated-client calls.
@@ -368,7 +368,7 @@ Expected recovery response:
 
 ```json
 {
-  "schema": "pulse.wire.recovery/v0",
+  "schema": "onlava.wire.recovery/v0",
   "endpoint": "users.GetUser",
   "status": "ok",
   "result": {
@@ -386,7 +386,7 @@ If recovery is missing:
 
 ```text
 - for safe/idempotent endpoints, retry the normal JSON endpoint
-- for non-idempotent endpoints, return a clear PulseWireFallbackError
+- for non-idempotent endpoints, return a clear OnlavaWireFallbackError
 ```
 
 Safe/idempotent defaults:
@@ -399,7 +399,7 @@ POST, PUT, PATCH, DELETE = not safe unless explicitly marked
 Optional future directive:
 
 ```go
-//pulse:api public method=POST path=/search idempotent
+//onlava:api public method=POST path=/search idempotent
 ```
 
 Do not introduce this directive unless needed for the first implementation.
@@ -461,7 +461,7 @@ Do not fail the whole app because one endpoint cannot be encoded as binary.
 
 ## Error model
 
-Keep one Pulse error model.
+Keep one Onlava error model.
 
 Developer writes:
 
@@ -469,7 +469,7 @@ Developer writes:
 return GetUserResponse{}, errs.NotFound("user not found")
 ```
 
-JSON transport returns a Pulse JSON error.
+JSON transport returns an Onlava JSON error.
 
 Binary transport returns the equivalent internal wire error.
 
@@ -483,7 +483,7 @@ Client-side behavior:
 try {
   await api.users.getUser({ id });
 } catch (err) {
-  if (isPulseError(err, "not_found")) {
+  if (isOnlavaError(err, "not_found")) {
     ...
   }
 }
@@ -550,7 +550,7 @@ Prefer Connect-Go internally if it fits the implementation.
 However:
 
 ```text
-- do not expose Connect types to Pulse app developers
+- do not expose Connect types to Onlava app developers
 - do not expose Connect concepts in public CLI/dashboard/docs
 - do not require app developers to import connectrpc packages
 - do not require app developers to define services
@@ -559,14 +559,14 @@ However:
 
 Connect/protobuf can be an implementation detail inside generated server/client code.
 
-Public Pulse code should remain ordinary Go.
+Public Onlava code should remain ordinary Go.
 
 ## CLI requirements
 
 Existing command:
 
 ```text
-pulse gen client
+onlava gen client
 ```
 
 should generate a client that supports both JSON and binary where possible.
@@ -574,16 +574,16 @@ should generate a client that supports both JSON and binary where possible.
 Do not require:
 
 ```text
-pulse gen proto
-pulse gen rpc
-pulse gen grpc
+onlava gen proto
+onlava gen rpc
+onlava gen grpc
 ```
 
 Allowed internal/advanced command names:
 
 ```text
-pulse inspect wire --json
-pulse inspect endpoints --json
+onlava inspect wire --json
+onlava inspect endpoints --json
 ```
 
 Avoid public primary commands named:
@@ -599,7 +599,7 @@ Suggested inspect output:
 
 ```json
 {
-  "schema": "pulse.endpoints/v0",
+  "schema": "onlava.endpoints/v0",
   "wire_schema_hash": "sha256:abc123",
   "endpoints": [
     {
@@ -646,14 +646,14 @@ Wire formats:
 
 For binary requests captured in logs/traces, decode and display the logical JSON-shaped request/response in the dashboard.
 
-Chrome devtools may show binary as opaque; Pulse dashboard should make binary calls understandable.
+Chrome devtools may show binary as opaque; Onlava dashboard should make binary calls understandable.
 
 ## File/layout guidance
 
 Generated internal wire artifacts can live under:
 
 ```text
-.pulse/gen/wire/
+.onlava/gen/wire/
 ```
 
 Generated TypeScript client can look like:
@@ -674,7 +674,7 @@ web/src/api/
 Public import:
 
 ```ts
-import { createPulseClient } from "./api";
+import { createOnlavaClient } from "./api";
 ```
 
 Private/internal imports may reference:
@@ -692,14 +692,14 @@ Add tests for at least the following.
 
 ### 1. JSON still works
 
-Given a normal Pulse endpoint, the existing JSON route still behaves as before.
+Given a normal Onlava endpoint, the existing JSON route still behaves as before.
 
 ### 2. Binary works for supported endpoint
 
 Given:
 
 ```go
-//pulse:api public method=GET path=/users/:id
+//onlava:api public method=GET path=/users/:id
 func GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error)
 ```
 
@@ -759,7 +759,7 @@ Endpoint returns `errs.NotFound`.
 Expected:
 
 ```text
-- generated client returns Pulse not_found error
+- generated client returns Onlava not_found error
 - no JSON fallback retry caused by normal app error
 ```
 
@@ -794,7 +794,7 @@ For every endpoint, determine:
 Add:
 
 ```text
-pulse inspect endpoints --json
+onlava inspect endpoints --json
 ```
 
 or extend existing inspect/check output.
@@ -831,7 +831,7 @@ Add short-lived in-memory recovery store.
 
 ### Phase 4: Generated client support
 
-Update `pulse gen client`.
+Update `onlava gen client`.
 
 Generated client should support:
 
@@ -879,8 +879,8 @@ users.GetUser
 This feature is done when:
 
 ```text
-1. A developer can write a normal //pulse:api endpoint with Go structs.
-2. Pulse automatically generates binary wire internals.
+1. A developer can write a normal //onlava:api endpoint with Go structs.
+2. Onlava automatically generates binary wire internals.
 3. The developer never writes or edits proto files.
 4. The generated client can call the endpoint using binary transport.
 5. The same generated client can use JSON transport.
@@ -922,21 +922,21 @@ descriptor
 buf
 ```
 
-Advanced/internal comments may mention implementation details, but the default developer experience must remain Pulse-native.
+Advanced/internal comments may mention implementation details, but the default developer experience must remain Onlava-native.
 
 ## Design summary
 
 The intended user experience is:
 
 ```go
-//pulse:api public method=GET path=/users/:id
+//onlava:api public method=GET path=/users/:id
 func GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
     ...
 }
 ```
 
 ```ts
-const api = createPulseClient({ baseUrl });
+const api = createOnlavaClient({ baseUrl });
 
 const result = await api.users.getUser({ id: "u_123" });
 ```

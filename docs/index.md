@@ -1,12 +1,12 @@
-# Pulse Documentation Index
+# Onlava Documentation Index
 
-This is the human entry point for Pulse's local knowledge base.
+This is the human entry point for Onlava's local knowledge base.
 
 For agents, the machine-readable source of truth is [knowledge.json](knowledge.json). Validate it with:
 
 ```text
-pulse inspect docs --json
-pulse harness self --json
+onlava inspect docs --json
+onlava harness self --json
 ```
 
 ## Core Contracts
@@ -28,7 +28,7 @@ pulse harness self --json
 - [Pub/Sub PRD](PRD-1-pubsub.md): embedded NATS-backed Pub/Sub behavior and developer API.
 - [Proto/Wire PRD](PRD-2-proto.md): binary wire and generated transport plan.
 - [Release Readiness PRD](PRD-3-release.md): audit and recommendations for freezing a smaller production-ready v0.
-- [Dev/Run Command Split PRD](PRD-4-devrun.md): product direction for `pulse dev`, headless `pulse run`, and `pulse build`.
+- [Dev/Run Command Split PRD](PRD-4-devrun.md): product direction for `onlava dev`, headless `onlava run`, and `onlava build`.
 
 ## Schemas
 
@@ -36,10 +36,10 @@ JSON schemas live in [schemas/](schemas/). They are part of the local agent cont
 
 Start with:
 
-- [pulse.app.v1](schemas/pulse.app.v1.schema.json)
-- [pulse.check.result.v1](schemas/pulse.check.result.v1.schema.json)
-- [pulse.harness.result.v1](schemas/pulse.harness.result.v1.schema.json)
-- [pulse.harness.self.v1](schemas/pulse.harness.self.v1.schema.json)
-- [pulse.inspect.docs.v1](schemas/pulse.inspect.docs.v1.schema.json)
-- [pulse.docs.index.v1](schemas/pulse.docs.index.v1.schema.json)
-- [pulse.version.v1](schemas/pulse.version.v1.schema.json)
+- [onlava.config.v1](schemas/onlava.config.v1.schema.json)
+- [onlava.check.result.v1](schemas/onlava.check.result.v1.schema.json)
+- [onlava.harness.result.v1](schemas/onlava.harness.result.v1.schema.json)
+- [onlava.harness.self.v1](schemas/onlava.harness.self.v1.schema.json)
+- [onlava.inspect.docs.v1](schemas/onlava.inspect.docs.v1.schema.json)
+- [onlava.docs.index.v1](schemas/onlava.docs.index.v1.schema.json)
+- [onlava.version.v1](schemas/onlava.version.v1.schema.json)
