@@ -1,9 +1,9 @@
-package pulse
+package onlava
 
 import (
 	"testing"
 
-	"pulse.dev/runtime"
+	"onlava.com/runtime"
 )
 
 func TestMetaIncludesLocalEnvironmentDefaults(t *testing.T) {

@@ -15,7 +15,7 @@ func TestInfoLogsWithKeyValues(t *testing.T) {
 	slog.SetDefault(logger)
 	defer slog.SetDefault(prev)
 
-	Info("hello", "service", "pulse", "count", 3)
+	Info("hello", "service", "onlava", "count", 3)
 
 	var entry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
@@ -24,8 +24,8 @@ func TestInfoLogsWithKeyValues(t *testing.T) {
 	if entry["msg"] != "hello" {
 		t.Fatalf("msg = %v, want %q", entry["msg"], "hello")
 	}
-	if entry["service"] != "pulse" {
-		t.Fatalf("service = %v, want %q", entry["service"], "pulse")
+	if entry["service"] != "onlava" {
+		t.Fatalf("service = %v, want %q", entry["service"], "onlava")
 	}
 	if entry["count"] != float64(3) {
 		t.Fatalf("count = %v, want %v", entry["count"], 3)

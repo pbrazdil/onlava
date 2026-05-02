@@ -6,7 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	stdpgxpool "github.com/jackc/pgx/v5/pgxpool"
 
-	pulseruntime "pulse.dev/runtime"
+	onlavaruntime "onlava.com/runtime"
 )
 
 type (
@@ -56,14 +56,14 @@ func (t *queryTracer) TraceQueryStart(ctx context.Context, conn *pgx.Conn, data 
 	if t.base != nil {
 		ctx = t.base.TraceQueryStart(ctx, conn, data)
 	}
-	return pulseruntime.TraceDBQueryStart(ctx, data.SQL, len(data.Args))
+	return onlavaruntime.TraceDBQueryStart(ctx, data.SQL, len(data.Args))
 }
 
 func (t *queryTracer) TraceQueryEnd(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryEndData) {
 	if t.base != nil {
 		t.base.TraceQueryEnd(ctx, conn, data)
 	}
-	pulseruntime.TraceDBQueryEnd(ctx, data.CommandTag.String(), data.CommandTag.RowsAffected(), data.Err)
+	onlavaruntime.TraceDBQueryEnd(ctx, data.CommandTag.String(), data.CommandTag.RowsAffected(), data.Err)
 }
 
 func (t *queryTracer) TraceBatchStart(ctx context.Context, conn *pgx.Conn, data pgx.TraceBatchStartData) context.Context {

@@ -7,18 +7,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func TestParseConfigInjectsPulseTracer(t *testing.T) {
-	cfg, err := ParseConfig("postgres://pulse:pulse@localhost/pulse?sslmode=disable")
+func TestParseConfigInjectsOnlavaTracer(t *testing.T) {
+	cfg, err := ParseConfig("postgres://onlava:onlava@localhost/onlava?sslmode=disable")
 	if err != nil {
 		t.Fatalf("ParseConfig returned error: %v", err)
 	}
 	if _, ok := cfg.ConnConfig.Tracer.(*queryTracer); !ok {
-		t.Fatalf("expected pulse query tracer, got %T", cfg.ConnConfig.Tracer)
+		t.Fatalf("expected onlava query tracer, got %T", cfg.ConnConfig.Tracer)
 	}
 }
 
 func TestInstrumentConfigIsIdempotent(t *testing.T) {
-	cfg, err := ParseConfig("postgres://pulse:pulse@localhost/pulse?sslmode=disable")
+	cfg, err := ParseConfig("postgres://onlava:onlava@localhost/onlava?sslmode=disable")
 	if err != nil {
 		t.Fatalf("ParseConfig returned error: %v", err)
 	}

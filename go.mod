@@ -1,4 +1,4 @@
-module pulse.dev
+module onlava.com
 
 go 1.26.0
 

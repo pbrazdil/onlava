@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sync"
 
-	"pulse.dev/runtime/shared"
+	"onlava.com/runtime/shared"
 )
 
 // Signature documents the function signature middleware must implement.

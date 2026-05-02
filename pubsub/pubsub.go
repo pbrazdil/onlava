@@ -14,7 +14,7 @@ import (
 
 	nserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
-	pulseruntime "pulse.dev/runtime"
+	onlavaruntime "onlava.com/runtime"
 )
 
 const (
@@ -326,7 +326,7 @@ func StartLocalRuntime(ctx context.Context, cfg LocalRuntimeConfig) (func(contex
 	}
 	for _, topic := range topics {
 		if topic.cfg.DeliveryGuarantee == ExactlyOnce {
-			return nil, fmt.Errorf("pubsub: topic %q uses ExactlyOnce, which is not supported in Pulse v1", topic.name)
+			return nil, fmt.Errorf("pubsub: topic %q uses ExactlyOnce, which is not supported in Onlava v1", topic.name)
 		}
 	}
 
@@ -342,7 +342,7 @@ func StartLocalRuntime(ctx context.Context, cfg LocalRuntimeConfig) (func(contex
 		return nil, err
 	}
 	opts := &nserver.Options{
-		ServerName:      "pulse-pubsub-" + sanitizeName(cfg.AppID),
+		ServerName:      "onlava-pubsub-" + sanitizeName(cfg.AppID),
 		Host:            "127.0.0.1",
 		Port:            -1,
 		JetStream:       true,
@@ -361,7 +361,7 @@ func StartLocalRuntime(ctx context.Context, cfg LocalRuntimeConfig) (func(contex
 		return nil, errors.New("pubsub: embedded NATS server failed to start")
 	}
 
-	conn, err := nats.Connect(srv.ClientURL(), nats.Name("pulse pubsub"))
+	conn, err := nats.Connect(srv.ClientURL(), nats.Name("onlava pubsub"))
 	if err != nil {
 		srv.Shutdown()
 		return nil, err
@@ -382,8 +382,8 @@ func StartLocalRuntime(ctx context.Context, cfg LocalRuntimeConfig) (func(contex
 		topics:     make(map[*topicDecl]runtimeTopic, len(topics)),
 		stats:      make(map[string]*subscriptionStats, len(subs)),
 		published:  make(map[string]*atomic.Int64, len(topics)),
-		dlqStream:  "PULSE_DLQ_" + sanitizeName(cfg.AppID),
-		dlqSubject: "pulse." + sanitizeSubjectPart(cfg.AppID) + ".dlq.>",
+		dlqStream:  "ONLAVA_DLQ_" + sanitizeName(cfg.AppID),
+		dlqSubject: "onlava." + sanitizeSubjectPart(cfg.AppID) + ".dlq.>",
 		cancel:     cancel,
 	}
 	if err := rt.ensureDLQStream(); err != nil {
@@ -481,8 +481,8 @@ func snapshotDeclarations() ([]*topicDecl, []*subscriptionDecl, error) {
 }
 
 func (rt *localRuntime) ensureTopic(topic *topicDecl, subs []*subscriptionDecl) (runtimeTopic, error) {
-	streamName := "PULSE_" + sanitizeName(rt.appID) + "_" + sanitizeName(topic.name)
-	subject := "pulse." + sanitizeSubjectPart(rt.appID) + "." + sanitizeSubjectPart(topic.name)
+	streamName := "ONLAVA_" + sanitizeName(rt.appID) + "_" + sanitizeName(topic.name)
+	subject := "onlava." + sanitizeSubjectPart(rt.appID) + "." + sanitizeSubjectPart(topic.name)
 	maxAge := defaultMessageRetention
 	for _, sub := range subs {
 		if sub.topic == topic && sub.retention > maxAge {
@@ -605,7 +605,7 @@ func (rt *localRuntime) startSubscription(ctx context.Context, sub *subscription
 	if !ok {
 		return fmt.Errorf("pubsub: topic %q not initialized for subscription %q", sub.topic.name, sub.name)
 	}
-	durable := "PULSE_" + sanitizeName(rt.appID) + "_" + sanitizeName(sub.topic.name) + "_" + sanitizeName(sub.name)
+	durable := "ONLAVA_" + sanitizeName(rt.appID) + "_" + sanitizeName(sub.topic.name) + "_" + sanitizeName(sub.name)
 	maxAckPending := 1024
 	if sub.maxConc > 0 {
 		maxAckPending = sub.maxConc
@@ -709,7 +709,7 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 	if meta != nil && !meta.Timestamp.IsZero() {
 		insertedAt = meta.Timestamp.UTC()
 	}
-	trace := pulseruntime.StartPubSubMessageTrace(firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, msg.Data)
+	trace := onlavaruntime.StartPubSubMessageTrace(firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, msg.Data)
 	traceID := ""
 	if trace != nil {
 		traceID = trace.TraceID
@@ -733,7 +733,7 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 			stats.deadLettered.Add(1)
 		}
 		duration := time.Since(started)
-		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+		onlavaruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
 		rt.reportMessage(sub, messageID, msg.Data, "dead_lettered", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, metaDeliveries(meta))
 		return
 	}
@@ -744,7 +744,7 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 			stats.completed.Add(1)
 		}
 		duration := time.Since(started)
-		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, nil)
+		onlavaruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, nil)
 		rt.reportMessage(sub, messageID, msg.Data, "completed", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, nil, metaDeliveries(meta))
 		return
 	}
@@ -759,7 +759,7 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 			stats.deadLettered.Add(1)
 		}
 		duration := time.Since(started)
-		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+		onlavaruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
 		rt.reportMessage(sub, messageID, msg.Data, "dead_lettered", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, deliveries)
 		return
 	}
@@ -767,13 +767,13 @@ func (rt *localRuntime) handleMessage(parent context.Context, sub *subscriptionD
 	if delay > 0 {
 		_ = msg.NakWithDelay(delay)
 		duration := time.Since(started)
-		pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+		onlavaruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
 		rt.reportMessage(sub, messageID, msg.Data, "retrying", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, deliveries)
 		return
 	}
 	_ = msg.Nak()
 	duration := time.Since(started)
-	pulseruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
+	onlavaruntime.FinishPubSubMessageTrace(trace, firstNonEmpty(sub.serviceName, sub.topic.name), sub.name, sub.topic.name, messageID, duration, err)
 	rt.reportMessage(sub, messageID, msg.Data, "retrying", traceID, attempt, started, insertedAt, time.Now().UTC(), duration, err, deliveries)
 }
 
@@ -789,7 +789,7 @@ func (rt *localRuntime) publishDLQ(sub *subscriptionDecl, payload []byte, delive
 	if marshalErr != nil {
 		return marshalErr
 	}
-	subject := "pulse." + sanitizeSubjectPart(rt.appID) + ".dlq." + sanitizeSubjectPart(sub.topic.name) + "." + sanitizeSubjectPart(sub.name)
+	subject := "onlava." + sanitizeSubjectPart(rt.appID) + ".dlq." + sanitizeSubjectPart(sub.topic.name) + "." + sanitizeSubjectPart(sub.name)
 	_, pubErr := rt.js.Publish(subject, body)
 	return pubErr
 }

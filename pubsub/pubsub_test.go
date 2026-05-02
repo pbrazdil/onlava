@@ -25,7 +25,7 @@ func (s *methodHandlerService) Handle(ctx context.Context, msg *methodHandlerEve
 func TestStartLocalRuntimePublishesAndConsumes(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
-	t.Setenv("PULSE_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
 
 	type event struct {
 		Value string `json:"value"`
@@ -70,7 +70,7 @@ func TestStartLocalRuntimePublishesAndConsumes(t *testing.T) {
 func TestLocalRuntimePubSubSnapshot(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
-	t.Setenv("PULSE_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
 
 	type event struct {
 		Value string `json:"value"`
@@ -149,7 +149,7 @@ func TestLocalRuntimePubSubSnapshot(t *testing.T) {
 func TestClearLocalRuntimePurgesTopicStreams(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
-	t.Setenv("PULSE_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
 
 	type event struct {
 		Value string `json:"value"`
@@ -179,7 +179,7 @@ func TestClearLocalRuntimePurgesTopicStreams(t *testing.T) {
 			t.Fatalf("Publish() error = %v", err)
 		}
 	}
-	info, err := rt.js.StreamInfo("PULSE_testapp_clear_events")
+	info, err := rt.js.StreamInfo("ONLAVA_testapp_clear_events")
 	if err != nil {
 		t.Fatalf("StreamInfo() error = %v", err)
 	}
@@ -190,7 +190,7 @@ func TestClearLocalRuntimePurgesTopicStreams(t *testing.T) {
 	if _, err := ClearLocalRuntime(context.Background()); err != nil {
 		t.Fatalf("ClearLocalRuntime() error = %v", err)
 	}
-	info, err = rt.js.StreamInfo("PULSE_testapp_clear_events")
+	info, err = rt.js.StreamInfo("ONLAVA_testapp_clear_events")
 	if err != nil {
 		t.Fatalf("StreamInfo() after clear error = %v", err)
 	}
@@ -202,7 +202,7 @@ func TestClearLocalRuntimePurgesTopicStreams(t *testing.T) {
 func TestStartLocalRuntimeClearsQueuesOnRestart(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
-	t.Setenv("PULSE_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
 
 	type event struct {
 		Value string `json:"value"`
@@ -225,7 +225,7 @@ func TestStartLocalRuntimeClearsQueuesOnRestart(t *testing.T) {
 			t.Fatalf("Publish() error = %v", err)
 		}
 	}
-	info, err := rt.js.StreamInfo("PULSE_testapp_restart_clear_events")
+	info, err := rt.js.StreamInfo("ONLAVA_testapp_restart_clear_events")
 	if err != nil {
 		t.Fatalf("StreamInfo() error = %v", err)
 	}
@@ -258,7 +258,7 @@ func TestStartLocalRuntimeClearsQueuesOnRestart(t *testing.T) {
 	if rt == nil {
 		t.Fatal("runtime not restarted")
 	}
-	info, err = rt.js.StreamInfo("PULSE_testapp_restart_clear_events")
+	info, err = rt.js.StreamInfo("ONLAVA_testapp_restart_clear_events")
 	if err != nil {
 		t.Fatalf("StreamInfo() after restart error = %v", err)
 	}
@@ -270,7 +270,7 @@ func TestStartLocalRuntimeClearsQueuesOnRestart(t *testing.T) {
 func TestStartLocalRuntimeUpdatesConsumerWhenConcurrencyChanges(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
-	t.Setenv("PULSE_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
 
 	type event struct {
 		Value string `json:"value"`
@@ -324,7 +324,7 @@ func TestStartLocalRuntimeUpdatesConsumerWhenConcurrencyChanges(t *testing.T) {
 	if rt == nil {
 		t.Fatal("runtime not started")
 	}
-	info, err := rt.js.ConsumerInfo("PULSE_testapp_reconfig_events", "PULSE_testapp_reconfig_events_reconfig_sub")
+	info, err := rt.js.ConsumerInfo("ONLAVA_testapp_reconfig_events", "ONLAVA_testapp_reconfig_events_reconfig_sub")
 	if err != nil {
 		t.Fatalf("ConsumerInfo() error = %v", err)
 	}
@@ -336,7 +336,7 @@ func TestStartLocalRuntimeUpdatesConsumerWhenConcurrencyChanges(t *testing.T) {
 func TestStartLocalRuntimePreservesAckFloorWhenConcurrencyChanges(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
-	t.Setenv("PULSE_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
 
 	type event struct {
 		Value string `json:"value"`
@@ -376,7 +376,7 @@ func TestStartLocalRuntimePreservesAckFloorWhenConcurrencyChanges(t *testing.T) 
 			t.Fatal("timed out waiting for subscription message")
 		}
 	}
-	waitForConsumerInfo(t, rt, "PULSE_testapp_ack_floor_events", "PULSE_testapp_ack_floor_events_ack_floor_sub", func(info *nats.ConsumerInfo) bool {
+	waitForConsumerInfo(t, rt, "ONLAVA_testapp_ack_floor_events", "ONLAVA_testapp_ack_floor_events_ack_floor_sub", func(info *nats.ConsumerInfo) bool {
 		return info.NumPending == 0 && info.NumAckPending == 0
 	})
 
@@ -418,7 +418,7 @@ func TestStartLocalRuntimePreservesAckFloorWhenConcurrencyChanges(t *testing.T) 
 	if rt == nil {
 		t.Fatal("runtime not restarted")
 	}
-	info := waitForConsumerInfo(t, rt, "PULSE_testapp_ack_floor_events", "PULSE_testapp_ack_floor_events_ack_floor_sub", func(info *nats.ConsumerInfo) bool {
+	info := waitForConsumerInfo(t, rt, "ONLAVA_testapp_ack_floor_events", "ONLAVA_testapp_ack_floor_events_ack_floor_sub", func(info *nats.ConsumerInfo) bool {
 		return info.Config.MaxAckPending == 5
 	})
 	if info.NumPending != 0 {
@@ -432,7 +432,7 @@ func TestStartLocalRuntimePreservesAckFloorWhenConcurrencyChanges(t *testing.T) 
 func TestMethodHandlerUsesServiceAccessor(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
-	t.Setenv("PULSE_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
 
 	received := make(chan string, 1)
 	RegisterServiceAccessorFor[*methodHandlerService](func() (any, error) {

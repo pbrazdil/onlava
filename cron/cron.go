@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"time"
 
-	pulseruntime "pulse.dev/runtime"
+	onlavaruntime "onlava.com/runtime"
 )
 
 type JobConfig struct {
@@ -47,7 +47,7 @@ func NewJob(id string, cfg JobConfig) *Job {
 	if err != nil {
 		panic(err)
 	}
-	pulseruntime.RegisterCronJob(&pulseruntime.CronJob{
+	onlavaruntime.RegisterCronJob(&onlavaruntime.CronJob{
 		ID:       job.ID,
 		Title:    job.Title,
 		Every:    time.Duration(job.Every) * time.Second,

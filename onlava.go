@@ -1,8 +1,8 @@
-package pulse
+package onlava
 
 import (
-	"pulse.dev/runtime"
-	"pulse.dev/runtime/shared"
+	"onlava.com/runtime"
+	"onlava.com/runtime/shared"
 )
 
 type AppMetadata = shared.AppMetadata

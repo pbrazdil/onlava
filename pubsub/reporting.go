@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	pulseruntime "pulse.dev/runtime"
+	onlavaruntime "onlava.com/runtime"
 )
 
 func (rt *localRuntime) reportPubSubSnapshots(ctx context.Context) {
@@ -37,7 +37,7 @@ func (rt *localRuntime) reportPubSubSnapshot() {
 	if len(topics) == 0 {
 		return
 	}
-	pulseruntime.ReportPubSubSnapshot(topics)
+	onlavaruntime.ReportPubSubSnapshot(topics)
 }
 
 func (rt *localRuntime) reportQueuedMessages(topic *topicDecl, messageID string, payload []byte, insertedAt time.Time) {
@@ -79,7 +79,7 @@ func (rt *localRuntime) reportMessage(
 	} else {
 		result = map[string]any{"status": status, "error": err.Error()}
 	}
-	pulseruntime.ReportPubSubMessage(map[string]any{
+	onlavaruntime.ReportPubSubMessage(map[string]any{
 		"message_id":        messageID,
 		"topic_name":        sub.topic.name,
 		"subscription_name": sub.name,
@@ -326,13 +326,13 @@ func retryDelay(policy RetryPolicy, deliveries int) time.Duration {
 }
 
 func localStoreDir(appID string) (string, error) {
-	root := strings.TrimSpace(os.Getenv("PULSE_DEV_CACHE_DIR"))
+	root := strings.TrimSpace(os.Getenv("ONLAVA_DEV_CACHE_DIR"))
 	if root == "" {
 		dir, err := os.UserCacheDir()
 		if err != nil {
 			return "", err
 		}
-		root = filepathJoin(dir, "pulse")
+		root = filepathJoin(dir, "onlava")
 	}
 	path := filepathJoin(root, "pubsub", sanitizeName(appID))
 	if err := os.MkdirAll(path, 0o755); err != nil {

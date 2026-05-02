@@ -1,6 +1,6 @@
 package et
 
-import "pulse.dev/runtime"
+import "onlava.com/runtime"
 
 type helperT interface {
 	Helper()

@@ -8,7 +8,7 @@ import (
 
 func TestHTTPErrorRedactsSensitiveMeta(t *testing.T) {
 	type credentials struct {
-		Token string `json:"token" pulse:"sensitive"`
+		Token string `json:"token" onlava:"sensitive"`
 		Name  string `json:"name"`
 	}
 
