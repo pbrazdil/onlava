@@ -45,6 +45,7 @@ same as the stable v0 support surface.
 - `.onlava/build/latest.json`
 - `.onlava/harness/latest.json`
 - `.onlava/harness/self-latest.json`
+- `github.com/pbrazdil/onlava/data` beta dynamic data platform package
 
 Reserved by contract, implementation pending:
 - other `onlava admin ... --json` commands beyond `traces clear` and `pubsub clear`
@@ -82,6 +83,7 @@ Dev-only or beta surface:
 - Pub/Sub and cron runtime/admin affordances until their lifecycle, retry, scheduling, and clear/delete semantics are frozen
 - Pub/Sub UI and queue controls
 - cron UI
+- `github.com/pbrazdil/onlava/data` dynamic data platform first vertical slice until metadata migration, permission, and live-update contracts are hardened
 - migration compatibility for older app shapes
 
 Compatibility posture:
@@ -212,6 +214,17 @@ Secrets and environment:
 - Missing declared secrets warn in local development mode.
 - `onlava run --env production` fails before serving if any declared secret is missing from the process environment or `.env`.
 - `.env`, `.env.*`, and secret-bearing local files are not copied into build workspaces.
+
+Beta dynamic data platform:
+
+- Apps may import `github.com/pbrazdil/onlava/data` and open a store with a pgx-compatible pool.
+- The first slice stores metadata and outbox rows in `onlava_data` and physical dynamic record tables in `onlava_data_records`.
+- Objects and scalar/composite fields are metadata-defined and backed by real PostgreSQL tables and columns.
+- User-managed select and multi-select fields use `text` and `text[]` plus metadata options, not PostgreSQL enum types.
+- Record queries are compiled from metadata to parameterized SQL; user input must not become SQL identifiers.
+- Record mutations write outbox events in the same transaction.
+- Live updates use SSE over ordinary raw onlava endpoints plus the PostgreSQL outbox sequence for reconnect/replay.
+- Direct SQL or DB Studio writes to physical record tables do not guarantee outbox rows or live updates in this first slice. Trigger-backed outbox support is reserved for a later design.
 
 Implemented `dev --json` rules:
 
