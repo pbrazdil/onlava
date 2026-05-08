@@ -63,7 +63,28 @@ func run(args []string) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage:\n  stable/dev commands:\n    onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]\n    onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]\n    onlava version [--json]\n    onlava build [--app-root <path>] [-o <path>] [--db-studio]\n    onlava check [--app-root <path>] [--json]\n    onlava harness [--app-root <path>] [--json] [--write]\n    onlava harness self [--repo-root <path>] [--json] [--write]\n    onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]\n    onlava inspect docs --json [--repo-root <path>]\n    onlava inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]\n    onlava inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]\n    onlava admin traces clear --json [--app-root <path>]\n    onlava admin pubsub clear --json [--app-root <path>]\n    onlava logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]\n    onlava test [--app-root <path>] [go test flags/packages...]\n    onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]\n\n  beta/dev helpers:\n    onlava psql [--app-root <path>] [psql args...]")
+	return fmt.Errorf(`usage:
+  stable/dev commands:
+    onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]
+    onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+    onlava version [--json]
+    onlava build [--app-root <path>] [-o <path>] [--db-studio]
+    onlava check [--app-root <path>] [--json]
+    onlava harness [--app-root <path>] [--json] [--write]
+    onlava harness self [--repo-root <path>] [--json] [--write]
+    onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]
+    onlava inspect docs --json [--repo-root <path>]
+    onlava inspect data --json --database-url <postgres-url> [--tenant <key>] [--object <name>]
+    onlava inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
+    onlava inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
+    onlava admin traces clear --json [--app-root <path>]
+    onlava admin pubsub clear --json [--app-root <path>]
+    onlava logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
+    onlava test [--app-root <path>] [go test flags/packages...]
+    onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+
+  beta/dev helpers:
+    onlava psql [--app-root <path>] [psql args...]`)
 }
 
 type silentCLIError struct {

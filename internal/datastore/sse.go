@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+var (
+	sseHeartbeatInterval  = 25 * time.Second
+	sseOutboxPollInterval = time.Second
+)
+
 func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWriter, req *http.Request) error {
 	subRequests, afterSeq, err := parseSubscriptionRequests(req)
 	if err != nil {
@@ -43,6 +48,7 @@ func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWri
 	w.Header().Set("X-Accel-Buffering", "no")
 	flusher, _ := w.(http.Flusher)
 
+	lastSeq := afterSeq
 	write := func(event *Event) error {
 		if event == nil {
 			return nil
@@ -56,6 +62,9 @@ func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWri
 		}
 		if flusher != nil {
 			flusher.Flush()
+		}
+		if event.Seq > lastSeq {
+			lastSeq = event.Seq
 		}
 		return nil
 	}
@@ -94,6 +103,9 @@ func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWri
 				}
 			}
 		}
+		if event.Seq > lastSeq {
+			lastSeq = event.Seq
+		}
 	}
 	if _, err := fmt.Fprint(w, "event: ready\ndata: {}\n\n"); err != nil {
 		return err
@@ -102,8 +114,10 @@ func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWri
 		flusher.Flush()
 	}
 
-	ticker := time.NewTicker(25 * time.Second)
+	ticker := time.NewTicker(sseHeartbeatInterval)
 	defer ticker.Stop()
+	pollTicker := time.NewTicker(sseOutboxPollInterval)
+	defer pollTicker.Stop()
 	for {
 		select {
 		case <-req.Context().Done():
@@ -111,6 +125,23 @@ func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWri
 		case event := <-merged:
 			if err := write(event); err != nil {
 				return err
+			}
+		case <-pollTicker.C:
+			events, err := s.eventsAfter(ctx, lastSeq, tenantIDs, 1000)
+			if err != nil {
+				return err
+			}
+			for _, event := range events {
+				for _, sub := range subs {
+					if deliver := eventForSubscription(event, sub); deliver != nil {
+						if err := write(deliver); err != nil {
+							return err
+						}
+					}
+				}
+				if event.Seq > lastSeq {
+					lastSeq = event.Seq
+				}
 			}
 		case <-ticker.C:
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {

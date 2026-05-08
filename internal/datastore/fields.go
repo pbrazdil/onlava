@@ -18,7 +18,7 @@ func normalizeFieldType(raw FieldType) (FieldType, error) {
 	}
 }
 
-func fieldColumns(name string, fieldType FieldType, nullable bool) ([]PhysicalColumn, error) {
+func fieldColumns(name, fieldID string, fieldType FieldType, nullable bool) ([]PhysicalColumn, error) {
 	if err := validateName("field", name); err != nil {
 		return nil, err
 	}
@@ -28,7 +28,7 @@ func fieldColumns(name string, fieldType FieldType, nullable bool) ([]PhysicalCo
 	}
 	col := func(suffix, sqlType string) PhysicalColumn {
 		return PhysicalColumn{
-			Name:     safeColumnName(name, suffix),
+			Name:     physicalColumnName(fieldID, name, suffix),
 			Part:     suffix,
 			SQLType:  sqlType,
 			Nullable: nullable,

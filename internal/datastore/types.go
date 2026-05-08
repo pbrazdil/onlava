@@ -48,18 +48,19 @@ type Tenant struct {
 }
 
 type Object struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	NameSingular  string    `json:"name_singular"`
-	NamePlural    string    `json:"name_plural"`
-	TableName     string    `json:"table_name"`
-	LabelSingular string    `json:"label_singular"`
-	LabelPlural   string    `json:"label_plural"`
-	IsCustom      bool      `json:"is_custom"`
-	IsSystem      bool      `json:"is_system"`
-	SchemaVersion int64     `json:"schema_version"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID                    string    `json:"id"`
+	TenantID              string    `json:"tenant_id"`
+	NameSingular          string    `json:"name_singular"`
+	NamePlural            string    `json:"name_plural"`
+	TableName             string    `json:"table_name"`
+	LabelSingular         string    `json:"label_singular"`
+	LabelPlural           string    `json:"label_plural"`
+	IsCustom              bool      `json:"is_custom"`
+	IsSystem              bool      `json:"is_system"`
+	SchemaVersion         int64     `json:"schema_version"`
+	OutboxTriggersEnabled bool      `json:"outbox_triggers_enabled"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type FieldType string

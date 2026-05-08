@@ -4,50 +4,52 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestPostgresVerticalSlice(t *testing.T) {
-	dsn := os.Getenv("ONLAVA_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("set ONLAVA_TEST_DATABASE_URL to run PostgreSQL data platform integration tests")
-	}
+	dsn := postgresTestDatabaseURL(t)
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatalf("pgxpool.New: %v", err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 
 	store, err := Open(ctx, pool, Options{})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	tenantKey := fmt.Sprintf("tenant_%d", time.Now().UnixNano())
+	if err := cleanupPostgresTenant(ctx, pool, tenantKey); err != nil {
+		t.Fatalf("pre-clean tenant %q: %v", tenantKey, err)
+	}
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
 	actor := Actor{ID: "tester"}
 
-	obj, err := store.CreateObject(ctx, actor, CreateObjectRequest{
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{
 		TenantKey:    tenantKey,
 		TenantName:   "Tenant",
 		NameSingular: "company",
 		NamePlural:   "companies",
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("CreateObject: %v", err)
 	}
-	defer func() {
-		_, _ = pool.Exec(context.Background(), `drop table if exists `+qualifiedIdent(RecordsSchema, obj.TableName))
-	}()
-
 	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
 		t.Fatalf("CreateField(name): %v", err)
 	}
@@ -124,6 +126,7 @@ func TestPostgresVerticalSlice(t *testing.T) {
 	filterData, _ := json.Marshal(Filter{Op: "eq", Field: "stage", Value: "won"})
 	streamURL := server.URL + "/events?tenant_key=" + url.QueryEscape(tenantKey) +
 		"&object=company&query_id=won-companies&fields=name,stage&filter=" + url.QueryEscape(string(filterData))
+	streamURL += "&after_seq=" + fmt.Sprint(created.Event.Seq)
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	req, err := http.NewRequestWithContext(streamCtx, http.MethodGet, streamURL, nil)
@@ -196,6 +199,46 @@ func TestPostgresVerticalSlice(t *testing.T) {
 	if replay.Seq != updated.Event.Seq {
 		t.Fatalf("replay seq = %d, want %d", replay.Seq, updated.Event.Seq)
 	}
+	replayCancel()
+	_ = replayResp.Body.Close()
+
+	store.perms = rowFilterPermissions{filter: &Filter{Op: "eq", Field: "stage", Value: "won"}}
+	permissionURL := server.URL + "/events?tenant_key=" + url.QueryEscape(tenantKey) +
+		"&object=company&query_id=permission-filtered&fields=name,stage&after_seq=" + fmt.Sprint(updated.Event.Seq)
+	permissionCtx, permissionCancel := context.WithCancel(ctx)
+	defer permissionCancel()
+	permissionReq, _ := http.NewRequestWithContext(permissionCtx, http.MethodGet, permissionURL, nil)
+	permissionResp, err := server.Client().Do(permissionReq)
+	if err != nil {
+		t.Fatalf("open permission SSE: %v", err)
+	}
+	defer permissionResp.Body.Close()
+	permissionReader := bufio.NewReader(permissionResp.Body)
+	if eventName, _, _, err := readSSEEvent(permissionReader); err != nil || eventName != "ready" {
+		t.Fatalf("permission first SSE event = %q, err %v; want ready", eventName, err)
+	}
+	movedOut, err := store.UpdateRecord(ctx, actor, "company", recordID, UpdateRecordRequest{
+		TenantKey: tenantKey,
+		Values:    Record{"stage": "lead"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateRecord(moved out): %v", err)
+	}
+	eventName, eventData, _, err = readSSEEvent(permissionReader)
+	if err != nil {
+		t.Fatalf("read permission SSE: %v", err)
+	}
+	if eventName != "data" {
+		t.Fatalf("permission SSE event name = %q, want data", eventName)
+	}
+	var permissionLive Event
+	if err := json.Unmarshal([]byte(eventData), &permissionLive); err != nil {
+		t.Fatalf("decode permission event: %v", err)
+	}
+	if permissionLive.Seq != movedOut.Event.Seq || len(permissionLive.QueryIDs) != 1 || permissionLive.QueryIDs[0] != "permission-filtered" {
+		t.Fatalf("permission live event = %#v, moved event = %#v", permissionLive, movedOut.Event)
+	}
+	permissionCancel()
 
 	deleted, err := store.DeleteRecord(ctx, actor, "company", recordID, DeleteRecordRequest{TenantKey: tenantKey})
 	if err != nil {
@@ -204,6 +247,600 @@ func TestPostgresVerticalSlice(t *testing.T) {
 	if deleted.Event == nil || deleted.Event.Action != "deleted" {
 		t.Fatalf("delete event = %#v", deleted.Event)
 	}
+}
+
+type rowFilterPermissions struct {
+	AllowAllPermissions
+	filter *Filter
+}
+
+func (p rowFilterPermissions) RowFilter(context.Context, Actor, ObjectRef) (*Filter, error) {
+	return p.filter, nil
+}
+
+func TestPostgresBootstrapIdempotent(t *testing.T) {
+	dsn := postgresTestDatabaseURL(t)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	for i := 0; i < 3; i++ {
+		if _, err := Open(ctx, pool, Options{}); err != nil {
+			t.Fatalf("Open #%d: %v", i+1, err)
+		}
+	}
+}
+
+func TestPostgresCreateObjectAndFieldAreIdempotent(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_idempotent_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+
+	firstObject, err := store.CreateObject(ctx, actor, CreateObjectRequest{
+		TenantKey:    tenantKey,
+		TenantName:   "Tenant",
+		NameSingular: "company",
+		NamePlural:   "companies",
+	})
+	if err != nil {
+		t.Fatalf("CreateObject(first): %v", err)
+	}
+	secondObject, err := store.CreateObject(ctx, actor, CreateObjectRequest{
+		TenantKey:    tenantKey,
+		TenantName:   "Tenant",
+		NameSingular: "company",
+		NamePlural:   "companies",
+	})
+	if err != nil {
+		t.Fatalf("CreateObject(second): %v", err)
+	}
+	if secondObject.ID != firstObject.ID || secondObject.TableName != firstObject.TableName {
+		t.Fatalf("second object = %#v, want same identity as %#v", secondObject, firstObject)
+	}
+	if got := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "objects")+` where tenant_id = $1`, firstObject.TenantID); got != 1 {
+		t.Fatalf("object count = %d, want 1", got)
+	}
+
+	firstField, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldText})
+	if err != nil {
+		t.Fatalf("CreateField(first): %v", err)
+	}
+	secondField, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldText})
+	if err != nil {
+		t.Fatalf("CreateField(second): %v", err)
+	}
+	if secondField.ID != firstField.ID || len(secondField.Columns) != len(firstField.Columns) || secondField.Columns[0].Name != firstField.Columns[0].Name {
+		t.Fatalf("second field = %#v, want same identity as %#v", secondField, firstField)
+	}
+	if got := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "fields")+` where tenant_id = $1 and object_id = $2`, firstField.TenantID, firstField.ObjectID); got != 1 {
+		t.Fatalf("field count = %d, want 1", got)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldNumeric}); err == nil || !strings.Contains(err.Error(), "already exists with type") {
+		t.Fatalf("CreateField(incompatible) error = %v, want type mismatch", err)
+	}
+
+	if _, err := pool.Exec(ctx, `alter table `+qualifiedIdent(RecordsSchema, firstObject.TableName)+` drop column `+quoteIdent(firstField.Columns[0].Name)); err != nil {
+		t.Fatalf("drop physical column: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldText}); err == nil || !strings.Contains(err.Error(), "physical schema drift") {
+		t.Fatalf("CreateField(after drift) error = %v, want drift detection", err)
+	}
+}
+
+func TestPostgresConcurrentCreatesAreIdempotent(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_concurrent_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+
+	objectIDs := runConcurrent(t, 8, func() (string, error) {
+		obj, err := store.CreateObject(ctx, actor, CreateObjectRequest{
+			TenantKey:    tenantKey,
+			TenantName:   "Tenant",
+			NameSingular: "company",
+			NamePlural:   "companies",
+		})
+		if err != nil {
+			return "", err
+		}
+		return obj.ID, nil
+	})
+	if got := uniqueStrings(objectIDs); len(got) != 1 {
+		t.Fatalf("object ids = %#v, want one unique id", got)
+	}
+	objectID := objectIDs[0]
+	if got := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "objects")+` where id = $1`, objectID); got != 1 {
+		t.Fatalf("object count = %d, want 1", got)
+	}
+
+	fieldIDs := runConcurrent(t, 8, func() (string, error) {
+		field, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldText})
+		if err != nil {
+			return "", err
+		}
+		return field.ID, nil
+	})
+	if got := uniqueStrings(fieldIDs); len(got) != 1 {
+		t.Fatalf("field ids = %#v, want one unique id", got)
+	}
+	if got := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "fields")+` where object_id = $1`, objectID); got != 1 {
+		t.Fatalf("field count = %d, want 1", got)
+	}
+}
+
+func TestPostgresFailedMigrationIsRecordedAndRetryCanSucceed(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_failed_migration_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(name): %v", err)
+	}
+	if _, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{TenantKey: tenantKey, Values: Record{"name": "Acme"}}); err != nil {
+		t.Fatalf("CreateRecord: %v", err)
+	}
+
+	nullableFalse := false
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "required", Type: FieldText, Nullable: &nullableFalse}); err == nil || !strings.Contains(err.Error(), "required") {
+		t.Fatalf("CreateField(required not null) error = %v, want DDL failure", err)
+	}
+	if got := countRows(t, pool, `
+		select count(*)
+		from `+qualifiedIdent(MetadataSchema, "schema_migrations")+` m
+		join `+qualifiedIdent(MetadataSchema, "tenants")+` t on t.id = m.tenant_id
+		where t.key = $1 and m.status = 'failed' and m.error <> ''
+	`, tenantKey); got == 0 {
+		t.Fatalf("failed migration count = 0, want at least 1")
+	}
+
+	nullableTrue := true
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "required", Type: FieldText, Nullable: &nullableTrue}); err != nil {
+		t.Fatalf("CreateField(required retry nullable): %v", err)
+	}
+}
+
+func TestPostgresServeEventsHeartbeat(t *testing.T) {
+	oldInterval := sseHeartbeatInterval
+	sseHeartbeatInterval = 10 * time.Millisecond
+	t.Cleanup(func() { sseHeartbeatInterval = oldInterval })
+
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_heartbeat_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	afterSeq := countRows(t, pool, `select coalesce(max(seq), 0) from `+qualifiedIdent(MetadataSchema, "outbox_events"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = store.ServeEvents(r.Context(), actor, w, r)
+	}))
+	defer server.Close()
+
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	streamURL := server.URL + "/events?tenant_key=" + url.QueryEscape(tenantKey) + "&object=company&query_id=heartbeat&after_seq=" + fmt.Sprint(afterSeq)
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodGet, streamURL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("open SSE: %v", err)
+	}
+	defer resp.Body.Close()
+	reader := bufio.NewReader(resp.Body)
+	if eventName, _, _, err := readSSEEvent(reader); err != nil || eventName != "ready" {
+		t.Fatalf("first SSE event = %q, err %v; want ready", eventName, err)
+	}
+
+	lines := make(chan string, 1)
+	errs := make(chan error, 1)
+	go func() {
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				errs <- err
+				return
+			}
+			if strings.HasPrefix(strings.TrimSpace(line), ": heartbeat") {
+				lines <- line
+				return
+			}
+		}
+	}()
+	select {
+	case <-lines:
+	case err := <-errs:
+		t.Fatalf("read heartbeat: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for heartbeat")
+	}
+}
+
+func TestPostgresTriggerBackedOutboxCapturesDirectSQL(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_trigger_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(name): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldSelect, Options: []FieldOptionRequest{{Value: "lead"}, {Value: "won"}}}); err != nil {
+		t.Fatalf("CreateField(stage): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "full_name", Type: FieldFullName}); err != nil {
+		t.Fatalf("CreateField(full_name): %v", err)
+	}
+	enabled, err := store.EnableOutboxTriggers(ctx, actor, tenantKey, "company")
+	if err != nil {
+		t.Fatalf("EnableOutboxTriggers: %v", err)
+	}
+	if !enabled.OutboxTriggersEnabled {
+		t.Fatalf("enabled object = %#v, want outbox triggers enabled", enabled)
+	}
+	state, err := store.loadState(ctx, tenantKey, "company")
+	if err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	present, err := store.outboxTriggerPresent(ctx, pool, state.Object.TableName, outboxTriggerName(state.Object.ID))
+	if err != nil {
+		t.Fatalf("outboxTriggerPresent: %v", err)
+	}
+	if !present {
+		t.Fatalf("trigger %s not present on table %s", outboxTriggerName(state.Object.ID), state.Object.TableName)
+	}
+
+	nameColumn := testFieldColumn(t, state, "name", "")
+	stageColumn := testFieldColumn(t, state, "stage", "")
+	firstNameColumn := testFieldColumn(t, state, "full_name", "first_name")
+	lastNameColumn := testFieldColumn(t, state, "full_name", "last_name")
+	beforeSeq := countRows(t, pool, `select coalesce(max(seq), 0) from `+qualifiedIdent(MetadataSchema, "outbox_events"))
+	recordID, err := newUUID()
+	if err != nil {
+		t.Fatalf("newUUID: %v", err)
+	}
+	_, err = pool.Exec(ctx, `insert into `+qualifiedIdent(RecordsSchema, state.Object.TableName)+`
+		(`+quoteIdentList([]string{"id", "tenant_id", "created_at", "updated_at", nameColumn, stageColumn, firstNameColumn, lastNameColumn})+`)
+		values ($1, $2, now(), now(), $3, $4, $5, $6)
+	`, recordID, state.Tenant.ID, "Acme", "lead", "Ada", "Lovelace")
+	if err != nil {
+		t.Fatalf("direct insert: %v", err)
+	}
+	events, err := store.eventsAfter(ctx, beforeSeq, map[string]bool{state.Tenant.ID: true}, 10)
+	if err != nil {
+		t.Fatalf("eventsAfter(insert): %v", err)
+	}
+	insertEvent := lastEventForRecord(events, recordID)
+	if insertEvent == nil {
+		t.Fatalf("insert event for record %s not found in %#v", recordID, events)
+	}
+	if insertEvent.Action != "created" || insertEvent.ActorID != "" || insertEvent.After["name"] != "Acme" || insertEvent.After["stage"] != "lead" {
+		t.Fatalf("insert event = %#v", insertEvent)
+	}
+	fullName, ok := insertEvent.After["full_name"].(map[string]any)
+	if !ok || fullName["first_name"] != "Ada" || fullName["last_name"] != "Lovelace" {
+		t.Fatalf("insert full_name = %#v", insertEvent.After["full_name"])
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	if err := setOutboxTxContext(ctx, tx, Actor{ID: "dbstudio"}, false); err != nil {
+		t.Fatalf("setOutboxTxContext: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `update `+qualifiedIdent(RecordsSchema, state.Object.TableName)+`
+		set `+quoteIdent(stageColumn)+` = $1, updated_at = now()
+		where id = $2
+	`, "won", recordID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("direct update: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	events, err = store.eventsAfter(ctx, insertEvent.Seq, map[string]bool{state.Tenant.ID: true}, 10)
+	if err != nil {
+		t.Fatalf("eventsAfter(update): %v", err)
+	}
+	updateEvent := lastEventForRecord(events, recordID)
+	if updateEvent == nil {
+		t.Fatalf("update event for record %s not found in %#v", recordID, events)
+	}
+	if updateEvent.Action != "updated" || updateEvent.ActorID != "dbstudio" || updateEvent.Before["stage"] != "lead" || updateEvent.After["stage"] != "won" {
+		t.Fatalf("update event = %#v", updateEvent)
+	}
+	if !stringInSlice(updateEvent.ChangedFields, "stage") {
+		t.Fatalf("update changed fields = %#v, want stage", updateEvent.ChangedFields)
+	}
+
+	beforeExplicit := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "outbox_events")+` where tenant_id = $1`, state.Tenant.ID)
+	created, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{TenantKey: tenantKey, Values: Record{"name": "Explicit", "stage": "won"}})
+	if err != nil {
+		t.Fatalf("CreateRecord explicit: %v", err)
+	}
+	afterExplicit := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "outbox_events")+` where tenant_id = $1`, state.Tenant.ID)
+	if afterExplicit != beforeExplicit+1 {
+		t.Fatalf("explicit outbox count = %d, want %d", afterExplicit, beforeExplicit+1)
+	}
+	if got := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "outbox_events")+` where record_id = $1`, created.Record["id"]); got != 1 {
+		t.Fatalf("explicit record outbox events = %d, want 1", got)
+	}
+
+	_, err = pool.Exec(ctx, `delete from `+qualifiedIdent(RecordsSchema, state.Object.TableName)+` where id = $1`, recordID)
+	if err != nil {
+		t.Fatalf("direct delete: %v", err)
+	}
+	events, err = store.eventsAfter(ctx, updateEvent.Seq, map[string]bool{state.Tenant.ID: true}, 20)
+	if err != nil {
+		t.Fatalf("eventsAfter(delete): %v", err)
+	}
+	deleteEvent := lastEventForRecord(events, recordID)
+	if deleteEvent == nil || deleteEvent.Action != "deleted" || deleteEvent.Before["name"] != "Acme" {
+		t.Fatalf("delete event = %#v", deleteEvent)
+	}
+}
+
+func TestPostgresTriggerBackedOutboxFeedsSSE(t *testing.T) {
+	oldPollInterval := sseOutboxPollInterval
+	sseOutboxPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { sseOutboxPollInterval = oldPollInterval })
+
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_trigger_sse_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(name): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(stage): %v", err)
+	}
+	if _, err := store.EnableOutboxTriggers(ctx, actor, tenantKey, "company"); err != nil {
+		t.Fatalf("EnableOutboxTriggers: %v", err)
+	}
+	state, err := store.loadState(ctx, tenantKey, "company")
+	if err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	afterSeq := countRows(t, pool, `select coalesce(max(seq), 0) from `+qualifiedIdent(MetadataSchema, "outbox_events"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = store.ServeEvents(r.Context(), actor, w, r)
+	}))
+	defer server.Close()
+
+	filterData, _ := json.Marshal(Filter{Op: "eq", Field: "stage", Value: "won"})
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	streamURL := server.URL + "/events?tenant_key=" + url.QueryEscape(tenantKey) +
+		"&object=company&query_id=triggered&fields=name,stage&filter=" + url.QueryEscape(string(filterData)) +
+		"&after_seq=" + fmt.Sprint(afterSeq)
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodGet, streamURL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("open SSE: %v", err)
+	}
+	defer resp.Body.Close()
+	reader := bufio.NewReader(resp.Body)
+	if eventName, _, _, err := readSSEEvent(reader); err != nil || eventName != "ready" {
+		t.Fatalf("first SSE event = %q, err %v; want ready", eventName, err)
+	}
+
+	recordID, err := newUUID()
+	if err != nil {
+		t.Fatalf("newUUID: %v", err)
+	}
+	_, err = pool.Exec(ctx, `insert into `+qualifiedIdent(RecordsSchema, state.Object.TableName)+`
+		(`+quoteIdentList([]string{"id", "tenant_id", "created_at", "updated_at", testFieldColumn(t, state, "name", ""), testFieldColumn(t, state, "stage", "")})+`)
+		values ($1, $2, now(), now(), $3, $4)
+	`, recordID, state.Tenant.ID, "SSE Corp", "won")
+	if err != nil {
+		t.Fatalf("direct insert: %v", err)
+	}
+	eventName, eventData, _, err := readSSEEvent(reader)
+	if err != nil {
+		t.Fatalf("read trigger SSE: %v", err)
+	}
+	if eventName != "data" {
+		t.Fatalf("trigger SSE event = %q, want data", eventName)
+	}
+	var live Event
+	if err := json.Unmarshal([]byte(eventData), &live); err != nil {
+		t.Fatalf("decode live event: %v", err)
+	}
+	if live.RecordID != recordID || live.Action != "created" || live.After["stage"] != "won" || len(live.QueryIDs) != 1 || live.QueryIDs[0] != "triggered" {
+		t.Fatalf("live trigger event = %#v", live)
+	}
+}
+
+func openPostgresStore(t *testing.T) (*pgxpool.Pool, *Store) {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, postgresTestDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	store, err := Open(ctx, pool, Options{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	return pool, store
+}
+
+func runConcurrent(t *testing.T, n int, fn func() (string, error)) []string {
+	t.Helper()
+	start := make(chan struct{})
+	values := make([]string, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			values[i], errs[i] = fn()
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent call %d: %v", i, err)
+		}
+	}
+	return values
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func countRows(t *testing.T, pool *pgxpool.Pool, query string, args ...any) int64 {
+	t.Helper()
+	var count int64
+	if err := pool.QueryRow(context.Background(), query, args...).Scan(&count); err != nil {
+		t.Fatalf("count query failed: %v\n%s", err, query)
+	}
+	return count
+}
+
+func testFieldColumn(t *testing.T, state *metadataState, fieldName, part string) string {
+	t.Helper()
+	field := state.Fields[fieldName]
+	if field == nil {
+		t.Fatalf("field %s not found", fieldName)
+	}
+	for _, column := range field.Columns {
+		if column.Part == part {
+			return column.Name
+		}
+	}
+	t.Fatalf("field %s part %q not found in %#v", fieldName, part, field.Columns)
+	return ""
+}
+
+func lastEventForRecord(events []*Event, recordID string) *Event {
+	var out *Event
+	for _, event := range events {
+		if event.RecordID == recordID {
+			out = event
+		}
+	}
+	return out
+}
+
+func stringInSlice(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func cleanupPostgresTenant(ctx context.Context, pool *pgxpool.Pool, tenantKey string) error {
+	rows, err := pool.Query(ctx, `
+		select o.table_name
+		from `+qualifiedIdent(MetadataSchema, "objects")+` o
+		join `+qualifiedIdent(MetadataSchema, "tenants")+` t on t.id = o.tenant_id
+		where t.key = $1
+	`, tenantKey)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return nil
+		}
+		return err
+	}
+	defer rows.Close()
+	var tableNames []string
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			return err
+		}
+		tableNames = append(tableNames, tableName)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	var tenantID string
+	err = pool.QueryRow(ctx, `select id::text from `+qualifiedIdent(MetadataSchema, "tenants")+` where key = $1`, tenantKey).Scan(&tenantID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = nil
+	}
+	if err == nil && tenantID != "" {
+		if _, err := pool.Exec(ctx, `delete from `+qualifiedIdent(MetadataSchema, "outbox_events")+` where tenant_id = $1`, tenantID); err != nil {
+			return err
+		}
+		if _, err := pool.Exec(ctx, `delete from `+qualifiedIdent(MetadataSchema, "schema_migrations")+` where tenant_id = $1`, tenantID); err != nil {
+			return err
+		}
+		if _, err := pool.Exec(ctx, `delete from `+qualifiedIdent(MetadataSchema, "tenants")+` where id = $1`, tenantID); err != nil {
+			return err
+		}
+	}
+	for _, tableName := range tableNames {
+		if _, err := pool.Exec(ctx, `drop table if exists `+qualifiedIdent(RecordsSchema, tableName)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func readSSEEvent(r *bufio.Reader) (eventName, data, id string, err error) {

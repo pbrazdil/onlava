@@ -60,15 +60,50 @@ func safeColumnName(field string, suffix string) string {
 	return strings.TrimRight(prefix, "_") + "_" + hex.EncodeToString(sum[:])[:8]
 }
 
-func physicalTableName(tenantID, objectName string) string {
-	sum := sha256.Sum256([]byte(tenantID + ":" + objectName))
-	prefix := "t_" + hex.EncodeToString(sum[:])[:12] + "_"
-	remaining := maxIdentifierLength - len(prefix)
-	if len(objectName) > remaining {
-		objectName = objectName[:remaining]
-		objectName = strings.TrimRight(objectName, "_")
+func physicalTableName(objectID, objectName string) string {
+	return physicalNameWithSuffix(objectName, shortIdentifierSuffix(objectID))
+}
+
+func physicalColumnName(fieldID, fieldName, part string) string {
+	base := fieldName
+	if part != "" {
+		base += "_" + part
 	}
-	return prefix + objectName
+	return physicalNameWithSuffix(base, shortIdentifierSuffix(fieldID))
+}
+
+func physicalNameWithSuffix(base, suffix string) string {
+	if suffix == "" {
+		sum := sha256.Sum256([]byte(base))
+		suffix = hex.EncodeToString(sum[:])[:12]
+	}
+	suffix = "__" + suffix
+	limit := maxIdentifierLength - len(suffix)
+	if limit < 1 {
+		limit = 1
+	}
+	if len(base) > limit {
+		base = strings.TrimRight(base[:limit], "_")
+	}
+	if base == "" {
+		base = "x"
+	}
+	return base + suffix
+}
+
+func shortIdentifierSuffix(id string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(id) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	value := b.String()
+	if len(value) >= 12 {
+		return value[:12]
+	}
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 func newUUID() (string, error) {

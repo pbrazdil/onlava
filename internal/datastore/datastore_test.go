@@ -1,8 +1,10 @@
 package datastore
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateNameRejectsUnsafeIdentifiers(t *testing.T) {
@@ -29,44 +31,50 @@ func TestValidateNameRejectsUnsafeIdentifiers(t *testing.T) {
 func TestFieldColumnsMapping(t *testing.T) {
 	tests := []struct {
 		name      string
+		id        string
 		fieldType FieldType
 		want      []PhysicalColumn
 	}{
 		{
 			name:      "text",
+			id:        "11111111-1111-4111-8111-111111111111",
 			fieldType: FieldText,
-			want:      []PhysicalColumn{{Name: "text", SQLType: "text", Nullable: true}},
+			want:      []PhysicalColumn{{Name: "text__111111111111", SQLType: "text", Nullable: true}},
 		},
 		{
 			name:      "amount",
+			id:        "22222222-2222-4222-8222-222222222222",
 			fieldType: FieldCurrency,
 			want: []PhysicalColumn{
-				{Name: "amount_amount", Part: "amount", SQLType: "numeric", Nullable: true},
-				{Name: "amount_currency_code", Part: "currency_code", SQLType: "text", Nullable: true},
+				{Name: "amount_amount__222222222222", Part: "amount", SQLType: "numeric", Nullable: true},
+				{Name: "amount_currency_code__222222222222", Part: "currency_code", SQLType: "text", Nullable: true},
 			},
 		},
 		{
 			name:      "name",
+			id:        "33333333-3333-4333-8333-333333333333",
 			fieldType: FieldFullName,
 			want: []PhysicalColumn{
-				{Name: "name_first_name", Part: "first_name", SQLType: "text", Nullable: true},
-				{Name: "name_last_name", Part: "last_name", SQLType: "text", Nullable: true},
+				{Name: "name_first_name__333333333333", Part: "first_name", SQLType: "text", Nullable: true},
+				{Name: "name_last_name__333333333333", Part: "last_name", SQLType: "text", Nullable: true},
 			},
 		},
 		{
 			name:      "stage",
+			id:        "44444444-4444-4444-8444-444444444444",
 			fieldType: FieldSelect,
-			want:      []PhysicalColumn{{Name: "stage", SQLType: "text", Nullable: true}},
+			want:      []PhysicalColumn{{Name: "stage__444444444444", SQLType: "text", Nullable: true}},
 		},
 		{
 			name:      "tags",
+			id:        "55555555-5555-4555-8555-555555555555",
 			fieldType: FieldMultiSelect,
-			want:      []PhysicalColumn{{Name: "tags", SQLType: "text[]", Nullable: true}},
+			want:      []PhysicalColumn{{Name: "tags__555555555555", SQLType: "text[]", Nullable: true}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := fieldColumns(tt.name, tt.fieldType, true)
+			got, err := fieldColumns(tt.name, tt.id, tt.fieldType, true)
 			if err != nil {
 				t.Fatalf("fieldColumns() error = %v", err)
 			}
@@ -83,10 +91,10 @@ func TestFieldColumnsMapping(t *testing.T) {
 }
 
 func TestDDLGenerationUsesRealColumns(t *testing.T) {
-	tableName := "t_123_company"
+	tableName := "company__111111111111"
 	create := createObjectTableDDL(tableName)
 	for _, want := range []string{
-		`create table "onlava_data_records"."t_123_company"`,
+		`create table "onlava_data_records"."company__111111111111"`,
 		`id uuid primary key`,
 		`tenant_id uuid not null`,
 		`deleted_at timestamptz null`,
@@ -99,11 +107,40 @@ func TestDDLGenerationUsesRealColumns(t *testing.T) {
 		Name:       "stage",
 		Type:       FieldSelect,
 		IsNullable: true,
-		Columns:    []PhysicalColumn{{Name: "stage", SQLType: "text", Nullable: true}},
+		Columns:    []PhysicalColumn{{Name: "stage__444444444444", SQLType: "text", Nullable: true}},
 	}
 	ddl := addFieldDDL(tableName, field)
-	if len(ddl) != 1 || ddl[0] != `alter table "onlava_data_records"."t_123_company" add column "stage" text` {
+	if len(ddl) != 1 || ddl[0] != `alter table "onlava_data_records"."company__111111111111" add column "stage__444444444444" text` {
 		t.Fatalf("addFieldDDL = %#v", ddl)
+	}
+}
+
+func TestPhysicalNamesUseStableReadableSuffixes(t *testing.T) {
+	objectID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	if got, want := physicalTableName(objectID, "company"), "company__aaaaaaaaaaaa"; got != want {
+		t.Fatalf("physicalTableName = %q, want %q", got, want)
+	}
+	fieldID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	if got, want := physicalColumnName(fieldID, "stage", ""), "stage__bbbbbbbbbbbb"; got != want {
+		t.Fatalf("physicalColumnName = %q, want %q", got, want)
+	}
+	if got, want := physicalColumnName(fieldID, "full_name", "first_name"), "full_name_first_name__bbbbbbbbbbbb"; got != want {
+		t.Fatalf("physicalColumnName composite = %q, want %q", got, want)
+	}
+}
+
+func TestPhysicalNamesRespectPostgresIdentifierLength(t *testing.T) {
+	longName := strings.Repeat("a", maxIdentifierLength)
+	objectName := physicalTableName("cccccccc-cccc-4ccc-8ccc-cccccccccccc", longName)
+	if len(objectName) > maxIdentifierLength {
+		t.Fatalf("physical table name length = %d, want <= %d: %q", len(objectName), maxIdentifierLength, objectName)
+	}
+	columnName := physicalColumnName("dddddddd-dddd-4ddd-8ddd-dddddddddddd", longName, "currency_code")
+	if len(columnName) > maxIdentifierLength {
+		t.Fatalf("physical column name length = %d, want <= %d: %q", len(columnName), maxIdentifierLength, columnName)
+	}
+	if !strings.HasSuffix(objectName, "__cccccccccccc") || !strings.HasSuffix(columnName, "__dddddddddddd") {
+		t.Fatalf("physical suffixes not preserved: table=%q column=%q", objectName, columnName)
 	}
 }
 
@@ -182,31 +219,188 @@ func TestEventMatchingAgainstQuerySubscription(t *testing.T) {
 	}
 }
 
+func TestEventMatchingUsesBeforeAfterByAction(t *testing.T) {
+	sub := &liveSubscription{
+		tenantID: "tenant-1",
+		request: SubscriptionRequest{
+			QueryID: "won-companies",
+			Object:  "company",
+			Filter:  &Filter{Op: "eq", Field: "stage", Value: "won"},
+		},
+	}
+	tests := []struct {
+		name  string
+		event Event
+		want  bool
+	}{
+		{
+			name: "create matching after",
+			event: Event{TenantID: "tenant-1", Object: "company", Action: "created",
+				After: Record{"stage": "won"}},
+			want: true,
+		},
+		{
+			name: "create nonmatching after",
+			event: Event{TenantID: "tenant-1", Object: "company", Action: "created",
+				After: Record{"stage": "lead"}},
+		},
+		{
+			name: "update moves into query",
+			event: Event{TenantID: "tenant-1", Object: "company", Action: "updated",
+				Before: Record{"stage": "lead"}, After: Record{"stage": "won"}},
+			want: true,
+		},
+		{
+			name: "update moves out of query",
+			event: Event{TenantID: "tenant-1", Object: "company", Action: "updated",
+				Before: Record{"stage": "won"}, After: Record{"stage": "lost"}},
+			want: true,
+		},
+		{
+			name: "update never matched",
+			event: Event{TenantID: "tenant-1", Object: "company", Action: "updated",
+				Before: Record{"stage": "lead"}, After: Record{"stage": "lost"}},
+		},
+		{
+			name: "delete previously matched",
+			event: Event{TenantID: "tenant-1", Object: "company", Action: "deleted",
+				Before: Record{"stage": "won"}},
+			want: true,
+		},
+		{
+			name: "delete nonmatching before",
+			event: Event{TenantID: "tenant-1", Object: "company", Action: "deleted",
+				Before: Record{"stage": "lead"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eventForSubscription(&tt.event, sub) != nil
+			if got != tt.want {
+				t.Fatalf("eventForSubscription delivered = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseSubscriptionRequestsUsesLastEventID(t *testing.T) {
+	req := httptest.NewRequest("GET", "/events?tenant_key=test&object=company&query_id=q", nil)
+	req.Header.Set("Last-Event-ID", "42")
+	subs, afterSeq, err := parseSubscriptionRequests(req)
+	if err != nil {
+		t.Fatalf("parseSubscriptionRequests: %v", err)
+	}
+	if afterSeq != 42 || len(subs) != 1 || subs[0].AfterSeq != 42 {
+		t.Fatalf("afterSeq=%d subs=%#v, want 42", afterSeq, subs)
+	}
+}
+
+func TestLiveRouterFanoutFilteringAndUnsubscribe(t *testing.T) {
+	router := newLiveRouter()
+	wonSub := &liveSubscription{
+		tenantID: "tenant-1",
+		request: SubscriptionRequest{
+			QueryID: "won",
+			Object:  "company",
+			Filter:  EQFilter("stage", "won"),
+		},
+	}
+	leadSub := &liveSubscription{
+		tenantID: "tenant-1",
+		request: SubscriptionRequest{
+			QueryID: "lead",
+			Object:  "company",
+			Filter:  EQFilter("stage", "lead"),
+		},
+	}
+	unsubWon := router.subscribe(wonSub)
+	unsubLead := router.subscribe(leadSub)
+	defer unsubLead()
+
+	router.publish(&Event{
+		TenantID: "tenant-1",
+		Object:   "company",
+		Action:   "updated",
+		Before:   Record{"stage": "lead"},
+		After:    Record{"stage": "won"},
+	})
+	assertLiveEvent(t, wonSub.ch, "won")
+	assertLiveEvent(t, leadSub.ch, "lead")
+
+	unsubWon()
+	select {
+	case _, ok := <-wonSub.ch:
+		if ok {
+			t.Fatal("won subscription channel still open after unsubscribe")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("unsubscribe did not close subscription channel")
+	}
+}
+
+func TestLiveRouterPublishDoesNotBlockOnSlowSubscriber(t *testing.T) {
+	router := newLiveRouter()
+	sub := &liveSubscription{
+		tenantID: "tenant-1",
+		request:  SubscriptionRequest{QueryID: "all", Object: "company"},
+	}
+	unsub := router.subscribe(sub)
+	defer unsub()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < cap(sub.ch)+10; i++ {
+			router.publish(&Event{TenantID: "tenant-1", Object: "company", Action: "created", After: Record{"id": i}})
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("publish blocked on a full slow subscriber channel")
+	}
+}
+
+func EQFilter(field string, value any) *Filter {
+	return &Filter{Op: "eq", Field: field, Value: value}
+}
+
+func assertLiveEvent(t *testing.T, ch <-chan *Event, queryID string) {
+	t.Helper()
+	select {
+	case event := <-ch:
+		if event == nil || len(event.QueryIDs) != 1 || event.QueryIDs[0] != queryID {
+			t.Fatalf("event = %#v, want query id %q", event, queryID)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for query id %q", queryID)
+	}
+}
+
 func testState() *metadataState {
 	return &metadataState{
 		Tenant: &Tenant{ID: "00000000-0000-0000-0000-000000000001", Key: "test"},
-		Object: &Object{ID: "00000000-0000-0000-0000-000000000002", TenantID: "00000000-0000-0000-0000-000000000001", NameSingular: "company", TableName: "t_test_company", SchemaVersion: 3},
+		Object: &Object{ID: "00000000-0000-0000-0000-000000000002", TenantID: "00000000-0000-0000-0000-000000000001", NameSingular: "company", TableName: "company__000000000000", SchemaVersion: 3},
 		Fields: map[string]*Field{
 			"name": {
 				ID:         "field-name",
 				Name:       "name",
 				Type:       FieldText,
 				IsNullable: true,
-				Columns:    []PhysicalColumn{{Name: "name", SQLType: "text", Nullable: true}},
+				Columns:    []PhysicalColumn{{Name: "name__fieldname", SQLType: "text", Nullable: true}},
 			},
 			"stage": {
 				ID:         "field-stage",
 				Name:       "stage",
 				Type:       FieldSelect,
 				IsNullable: true,
-				Columns:    []PhysicalColumn{{Name: "stage", SQLType: "text", Nullable: true}},
+				Columns:    []PhysicalColumn{{Name: "stage__fieldstage", SQLType: "text", Nullable: true}},
 			},
 			"arr": {
 				ID:         "field-arr",
 				Name:       "arr",
 				Type:       FieldNumeric,
 				IsNullable: true,
-				Columns:    []PhysicalColumn{{Name: "arr", SQLType: "numeric", Nullable: true}},
+				Columns:    []PhysicalColumn{{Name: "arr__fieldarr", SQLType: "numeric", Nullable: true}},
 			},
 		},
 	}

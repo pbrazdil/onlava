@@ -72,6 +72,18 @@ func (s *Service) CreateField(ctx context.Context, object string, req *data.Crea
 	return s.store.CreateField(ctx, data.ActorFromContext(ctx), object, *req)
 }
 
+type EnableOutboxTriggersRequest struct {
+	TenantKey string `json:"tenant_key"`
+}
+
+//onlava:api auth path=/data/objects/:object/outbox-triggers method=POST
+func (s *Service) EnableOutboxTriggers(ctx context.Context, object string, req *EnableOutboxTriggersRequest) (*data.Object, error) {
+	if req == nil {
+		return nil, errs.B().Code(errs.InvalidArgument).Msg("request is required").Err()
+	}
+	return s.store.EnableOutboxTriggers(ctx, data.ActorFromContext(ctx), req.TenantKey, object)
+}
+
 //onlava:api auth path=/data/objects/:object/records/query method=POST
 func (s *Service) QueryRecords(ctx context.Context, object string, req *data.QueryRecordsRequest) (*data.RecordPage, error) {
 	if req == nil {

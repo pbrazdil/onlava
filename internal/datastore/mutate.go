@@ -39,6 +39,9 @@ func (s *Store) CreateRecord(ctx context.Context, actor Actor, objectName string
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setOutboxTxContext(ctx, tx, actor, true); err != nil {
+		return nil, fmt.Errorf("set outbox transaction context: %w", err)
+	}
 	columns := []string{"id", "tenant_id", "created_at", "updated_at"}
 	args := []any{id, state.Tenant.ID, now, now}
 	placeholders := []string{"$1", "$2", "$3", "$4"}
@@ -102,6 +105,9 @@ func (s *Store) UpdateRecord(ctx context.Context, actor Actor, objectName, id st
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setOutboxTxContext(ctx, tx, actor, true); err != nil {
+		return nil, fmt.Errorf("set outbox transaction context: %w", err)
+	}
 	before, err := queryOneRecord(ctx, tx, state, id)
 	if err != nil {
 		return nil, err
@@ -169,6 +175,9 @@ func (s *Store) DeleteRecord(ctx context.Context, actor Actor, objectName, id st
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setOutboxTxContext(ctx, tx, actor, true); err != nil {
+		return nil, fmt.Errorf("set outbox transaction context: %w", err)
+	}
 	before, err := queryOneRecord(ctx, tx, state, id)
 	if err != nil {
 		return nil, err

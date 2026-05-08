@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onlava.com/schemas/onlava.inspect.data.v1.schema.json",
+  "title": "onlava.inspect.data.v1",
+  "type": "object",
+  "required": ["schema_version", "schemas", "tenants", "objects", "migrations", "outbox"],
+  "properties": {
+    "schema_version": { "const": "onlava.inspect.data.v1" },
+    "schemas": {
+      "type": "object",
+      "required": ["metadata", "records"],
+      "properties": {
+        "metadata": { "type": "string" },
+        "records": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tenants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tenant" }
+    },
+    "objects": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/object" }
+    },
+    "migrations": { "$ref": "#/$defs/migrations" },
+    "outbox": { "$ref": "#/$defs/outbox" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "tenant": {
+      "type": "object",
+      "required": ["id", "key", "name", "objects", "latest_outbox_seq"],
+      "properties": {
+        "id": { "type": "string" },
+        "key": { "type": "string" },
+        "name": { "type": "string" },
+        "objects": { "type": "integer" },
+        "latest_outbox_seq": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "object": {
+      "type": "object",
+      "required": ["id", "tenant_id", "tenant_key", "name", "physical_table", "schema_version", "outbox_triggers_enabled", "outbox_trigger_present", "fields"],
+      "properties": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "tenant_key": { "type": "string" },
+        "name": { "type": "string" },
+        "physical_table": { "type": "string" },
+        "schema_version": { "type": "integer" },
+        "outbox_triggers_enabled": { "type": "boolean" },
+        "outbox_trigger_name": { "type": "string" },
+        "outbox_trigger_present": { "type": "boolean" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "required": ["name", "label", "type", "columns"],
+      "properties": {
+        "name": { "type": "string" },
+        "label": { "type": "string" },
+        "type": { "type": "string" },
+        "columns": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "migrations": {
+      "type": "object",
+      "required": ["pending", "failed", "latest"],
+      "properties": {
+        "pending": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "latest": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/migration" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "migration": {
+      "type": "object",
+      "required": ["id", "tenant_id", "from_version", "to_version", "status", "started_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "tenant_key": { "type": "string" },
+        "object_id": { "type": "string" },
+        "object": { "type": "string" },
+        "from_version": { "type": "integer" },
+        "to_version": { "type": "integer" },
+        "status": { "type": "string" },
+        "ddl": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "outbox": {
+      "type": "object",
+      "required": ["latest_seq", "unpublished"],
+      "properties": {
+        "latest_seq": { "type": "integer" },
+        "unpublished": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -54,11 +54,13 @@ func (s *Store) bootstrap(ctx context.Context) error {
 			is_custom boolean not null,
 			is_system boolean not null,
 			schema_version bigint not null,
+			outbox_triggers_enabled boolean not null default false,
 			created_at timestamptz not null,
 			updated_at timestamptz not null,
 			unique (tenant_id, name_singular),
 			unique (tenant_id, table_name)
 		)`,
+		`alter table ` + qualifiedIdent(MetadataSchema, "objects") + ` add column if not exists outbox_triggers_enabled boolean not null default false`,
 		`create table if not exists ` + qualifiedIdent(MetadataSchema, "fields") + ` (
 			id uuid primary key,
 			tenant_id uuid not null references ` + qualifiedIdent(MetadataSchema, "tenants") + `(id) on delete cascade,
@@ -120,6 +122,7 @@ func (s *Store) bootstrap(ctx context.Context) error {
 		)`,
 		`create index if not exists outbox_events_tenant_seq_idx on ` + qualifiedIdent(MetadataSchema, "outbox_events") + ` (tenant_id, seq)`,
 		`create index if not exists outbox_events_object_seq_idx on ` + qualifiedIdent(MetadataSchema, "outbox_events") + ` (tenant_id, object_name, seq)`,
+		recordChangeTriggerFunctionDDL(),
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(ctx, stmt); err != nil {
@@ -199,13 +202,13 @@ func (s *Store) loadObject(ctx context.Context, tenantID, objectName string) (*O
 	err := s.db.QueryRow(ctx, `
 		select id::text, tenant_id::text, name_singular, name_plural, table_name,
 		       label_singular, label_plural, is_custom, is_system, schema_version,
-		       created_at, updated_at
+		       outbox_triggers_enabled, created_at, updated_at
 		from `+qualifiedIdent(MetadataSchema, "objects")+`
 		where tenant_id = $1 and name_singular = $2
 	`, tenantID, objectName).Scan(
 		&obj.ID, &obj.TenantID, &obj.NameSingular, &obj.NamePlural, &obj.TableName,
 		&obj.LabelSingular, &obj.LabelPlural, &obj.IsCustom, &obj.IsSystem, &obj.SchemaVersion,
-		&obj.CreatedAt, &obj.UpdatedAt,
+		&obj.OutboxTriggersEnabled, &obj.CreatedAt, &obj.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("load data object %q: %w", objectName, err)

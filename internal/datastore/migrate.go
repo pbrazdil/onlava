@@ -3,8 +3,12 @@ package datastore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectRequest) (*Object, error) {
@@ -21,24 +25,39 @@ func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectR
 	if err != nil {
 		return nil, err
 	}
+	if existing, err := s.loadObjectIfExists(ctx, tenant.ID, req.NameSingular); err != nil {
+		return nil, err
+	} else if existing != nil {
+		if err := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, ObjectID: existing.ID, Name: existing.NameSingular}); err != nil {
+			return nil, err
+		}
+		if err := objectMatchesRequest(existing, req); err != nil {
+			return nil, err
+		}
+		if err := s.verifyObjectTable(ctx, s.db, existing.TableName); err != nil {
+			return nil, fmt.Errorf("object %s exists but physical schema drift was detected: %w", existing.NameSingular, err)
+		}
+		return existing, nil
+	}
 	objectID, err := newUUID()
 	if err != nil {
 		return nil, err
 	}
-	tableName := physicalTableName(tenant.ID, req.NameSingular)
+	tableName := physicalTableName(objectID, req.NameSingular)
 	obj := &Object{
-		ID:            objectID,
-		TenantID:      tenant.ID,
-		NameSingular:  req.NameSingular,
-		NamePlural:    req.NamePlural,
-		TableName:     tableName,
-		LabelSingular: firstNonEmpty(req.LabelSingular, defaultLabel(req.NameSingular)),
-		LabelPlural:   firstNonEmpty(req.LabelPlural, defaultLabel(req.NamePlural)),
-		IsCustom:      true,
-		IsSystem:      false,
-		SchemaVersion: 1,
-		CreatedAt:     s.now(),
-		UpdatedAt:     s.now(),
+		ID:                    objectID,
+		TenantID:              tenant.ID,
+		NameSingular:          req.NameSingular,
+		NamePlural:            req.NamePlural,
+		TableName:             tableName,
+		LabelSingular:         firstNonEmpty(req.LabelSingular, defaultLabel(req.NameSingular)),
+		LabelPlural:           firstNonEmpty(req.LabelPlural, defaultLabel(req.NamePlural)),
+		IsCustom:              true,
+		IsSystem:              false,
+		SchemaVersion:         1,
+		OutboxTriggersEnabled: false,
+		CreatedAt:             s.now(),
+		UpdatedAt:             s.now(),
 	}
 	if err := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, ObjectID: obj.ID, Name: obj.NameSingular}); err != nil {
 		return nil, err
@@ -83,6 +102,16 @@ func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectR
 		})
 		return outboxErr
 	}); err != nil {
+		if isUniqueViolation(err) {
+			if existing, loadErr := s.loadObjectIfExists(ctx, tenant.ID, req.NameSingular); loadErr == nil && existing != nil {
+				if permErr := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, ObjectID: existing.ID, Name: existing.NameSingular}); permErr == nil && objectMatchesRequest(existing, req) == nil {
+					if verifyErr := s.verifyObjectTable(ctx, s.db, existing.TableName); verifyErr == nil {
+						_ = s.finishMigration(ctx, migrationID, "skipped", "object already exists")
+						return existing, nil
+					}
+				}
+			}
+		}
 		_ = s.finishMigration(ctx, migrationID, "failed", err.Error())
 		return nil, err
 	}
@@ -109,17 +138,27 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 		return nil, err
 	}
 	if _, exists := state.Fields[req.Name]; exists {
-		return nil, fmt.Errorf("field %s already exists on object %s", req.Name, objectName)
+		existing := state.Fields[req.Name]
+		if err := s.perms.CanWriteField(ctx, actor, fieldRef(state, existing)); err != nil {
+			return nil, err
+		}
+		if err := fieldMatchesRequest(existing, req, fieldType); err != nil {
+			return nil, err
+		}
+		if err := s.verifyFieldColumns(ctx, s.db, state.Object.TableName, existing.Columns); err != nil {
+			return nil, fmt.Errorf("field %s.%s exists but physical schema drift was detected: %w", objectName, existing.Name, err)
+		}
+		return existing, nil
 	}
 	nullable := true
 	if req.Nullable != nil {
 		nullable = *req.Nullable
 	}
-	columns, err := fieldColumns(req.Name, fieldType, nullable)
+	fieldID, err := newUUID()
 	if err != nil {
 		return nil, err
 	}
-	fieldID, err := newUUID()
+	columns, err := fieldColumns(req.Name, fieldID, fieldType, nullable)
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +264,18 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 		})
 		return outboxErr
 	}); err != nil {
+		if isUniqueViolation(err) {
+			if freshState, loadErr := s.loadState(ctx, req.TenantKey, objectName); loadErr == nil {
+				if existing := freshState.Fields[req.Name]; existing != nil {
+					if permErr := s.perms.CanWriteField(ctx, actor, fieldRef(freshState, existing)); permErr == nil && fieldMatchesRequest(existing, req, fieldType) == nil {
+						if verifyErr := s.verifyFieldColumns(ctx, s.db, freshState.Object.TableName, existing.Columns); verifyErr == nil {
+							_ = s.finishMigration(ctx, migrationID, "skipped", "field already exists")
+							return existing, nil
+						}
+					}
+				}
+			}
+		}
 		_ = s.finishMigration(ctx, migrationID, "failed", err.Error())
 		return nil, err
 	}
@@ -405,6 +456,112 @@ func buildFieldOption(tenantID, fieldID string, req FieldOptionRequest, index in
 		Color:    strings.TrimSpace(req.Color),
 		Position: index,
 	}, nil
+}
+
+func (s *Store) loadObjectIfExists(ctx context.Context, tenantID, objectName string) (*Object, error) {
+	if err := validateName("object", objectName); err != nil {
+		return nil, err
+	}
+	var obj Object
+	err := s.db.QueryRow(ctx, `
+		select id::text, tenant_id::text, name_singular, name_plural, table_name,
+		       label_singular, label_plural, is_custom, is_system, schema_version,
+		       outbox_triggers_enabled, created_at, updated_at
+		from `+qualifiedIdent(MetadataSchema, "objects")+`
+		where tenant_id = $1 and name_singular = $2
+	`, tenantID, objectName).Scan(
+		&obj.ID, &obj.TenantID, &obj.NameSingular, &obj.NamePlural, &obj.TableName,
+		&obj.LabelSingular, &obj.LabelPlural, &obj.IsCustom, &obj.IsSystem, &obj.SchemaVersion,
+		&obj.OutboxTriggersEnabled, &obj.CreatedAt, &obj.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load data object %q: %w", objectName, err)
+	}
+	return &obj, nil
+}
+
+func objectMatchesRequest(existing *Object, req CreateObjectRequest) error {
+	if existing == nil {
+		return fmt.Errorf("object metadata is missing")
+	}
+	labelSingular := firstNonEmpty(req.LabelSingular, defaultLabel(req.NameSingular))
+	labelPlural := firstNonEmpty(req.LabelPlural, defaultLabel(req.NamePlural))
+	if existing.NamePlural != req.NamePlural {
+		return fmt.Errorf("object %s already exists with plural %q, not %q", existing.NameSingular, existing.NamePlural, req.NamePlural)
+	}
+	if existing.LabelSingular != labelSingular || existing.LabelPlural != labelPlural {
+		return fmt.Errorf("object %s already exists with different labels", existing.NameSingular)
+	}
+	return nil
+}
+
+func fieldMatchesRequest(existing *Field, req CreateFieldRequest, fieldType FieldType) error {
+	if existing == nil {
+		return fmt.Errorf("field metadata is missing")
+	}
+	nullable := true
+	if req.Nullable != nil {
+		nullable = *req.Nullable
+	}
+	label := firstNonEmpty(req.Label, defaultLabel(req.Name))
+	settings := req.Settings
+	if settings == nil {
+		settings = map[string]any{}
+	}
+	switch {
+	case existing.Type != fieldType:
+		return fmt.Errorf("field %s already exists with type %s, not %s", existing.Name, existing.Type, fieldType)
+	case existing.Label != label:
+		return fmt.Errorf("field %s already exists with different label", existing.Name)
+	case existing.IsNullable != nullable:
+		return fmt.Errorf("field %s already exists with nullable=%v, not %v", existing.Name, existing.IsNullable, nullable)
+	case existing.IsUnique != req.Unique:
+		return fmt.Errorf("field %s already exists with unique=%v, not %v", existing.Name, existing.IsUnique, req.Unique)
+	case existing.IsArray != req.Array:
+		return fmt.Errorf("field %s already exists with array=%v, not %v", existing.Name, existing.IsArray, req.Array)
+	case !jsonEqual(existing.Settings, settings):
+		return fmt.Errorf("field %s already exists with different settings", existing.Name)
+	case !fieldOptionsMatch(existing.Options, req.Options):
+		return fmt.Errorf("field %s already exists with different options", existing.Name)
+	}
+	return nil
+}
+
+func fieldOptionsMatch(existing []FieldOption, requested []FieldOptionRequest) bool {
+	if len(existing) != len(requested) {
+		return false
+	}
+	for i := range requested {
+		value := strings.TrimSpace(requested[i].Value)
+		label := strings.TrimSpace(requested[i].Label)
+		if label == "" {
+			label = defaultLabel(value)
+		}
+		if existing[i].Value != value || existing[i].Label != label || existing[i].Color != strings.TrimSpace(requested[i].Color) {
+			return false
+		}
+	}
+	return true
+}
+
+func jsonEqual(a, b any) bool {
+	left, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	right, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return string(left) == string(right)
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func nullableUUID(value string) any {

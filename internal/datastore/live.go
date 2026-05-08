@@ -82,6 +82,11 @@ func (s *Store) resolveSubscription(ctx context.Context, actor Actor, req Subscr
 	if err := s.perms.CanReadObject(ctx, actor, objectRef(state)); err != nil {
 		return nil, err
 	}
+	permissionFilter, err := s.perms.RowFilter(ctx, actor, objectRef(state))
+	if err != nil {
+		return nil, err
+	}
+	req.Filter = andFilters(req.Filter, permissionFilter)
 	for _, fieldName := range req.SelectedFields {
 		field, ok := state.Fields[fieldName]
 		if !ok {
