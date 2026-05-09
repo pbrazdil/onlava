@@ -379,3 +379,23 @@ Shipped:
 - `onlava inspect data --json` index reporting with physical presence/drift state.
 - Keyset cursor pagination for `QueryRecords` and opaque `RecordPage.NextCursor` values.
 - Fixture app endpoints and README examples for index creation/listing and cursor pagination.
+
+## Data Platform Search
+
+- Status: completed
+- Owner: onlava data platform
+- Completed: 2026-05-09
+- Quality: B+
+- ExecPlan: [0020 Data Platform Search](0020-data-platform-search.md)
+
+Shipped:
+
+- Field-level search metadata with `is_searchable` and `search_weight`.
+- PostgreSQL-backed `onlava_data.search_documents` table with a GIN-indexed `tsvector` document.
+- Transactional search document maintenance for create, update, and delete through the public data mutation path.
+- Object-wide `search` query filter, public `data.Search(...)` helper, and live-event search matching.
+- `onlava inspect data --json` searchable-field reporting and Data Explorer search input.
+
+Follow-ups:
+
+- Direct SQL and DB Studio edits do not refresh search documents in this version. Add trigger-backed search refresh or explicit rebuild tooling before treating direct SQL search freshness as stable.

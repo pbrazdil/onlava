@@ -23,25 +23,30 @@ dashboard search box
 
 ## Progress
 
-- [ ] Create ExecPlan.
-- [ ] Decide search storage model.
-- [ ] Add metadata for searchable fields.
-- [ ] Add search indexes.
-- [ ] Add query compiler support.
-- [ ] Add dashboard search.
-- [ ] Add tests.
+- [x] Create ExecPlan.
+- [x] Decide search storage model.
+- [x] Add metadata for searchable fields.
+- [x] Add search indexes.
+- [x] Add query compiler support.
+- [x] Add dashboard search.
+- [x] Add tests.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- A generic search document table keeps the first implementation smaller than per-object generated columns and avoids reworking physical object-table DDL every time a searchable field is added.
+- Direct SQL and DB Studio edits are not enough to keep search documents fresh in this version. Normal data mutation APIs update search documents transactionally; trigger-backed search refresh can close the direct-SQL gap later.
 
 ## Decision Log
 
-Record decisions here.
+- Use `onlava_data.search_documents` with a GIN index on a `tsvector` document. This gives one indexed PostgreSQL search path for all dynamic objects without adding a search service.
+- Maintain search documents in the mutation layer for `CreateRecord`, `UpdateRecord`, and `DeleteRecord`, in the same transaction as the record write and outbox row.
+- Add field metadata columns `is_searchable` and `search_weight` instead of storing search configuration only in opaque settings JSON.
+- Add an object-wide `search` filter operator and a public `data.Search(...)` helper. Field-scoped search is intentionally not part of this pass.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Implemented searchable field metadata, search document storage, GIN indexing, query compiler support, live-event search matching, inspect output, public helper, and Data Explorer search input.
+- The first version is useful and indexed through normal data writes, but direct SQL/DB Studio changes need a later rebuild or trigger-backed refresh path to keep search documents current.
 
 ## Context and Orientation
 

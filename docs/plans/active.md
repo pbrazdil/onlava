@@ -7,7 +7,7 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
-- [0020 Data Platform Search](0020-data-platform-search.md)
+- [0021 Standard Auth x Data Tenant Permissions](0021-auth-data-tenant-permissions.md)
 
 ## Agent-Friendly Local Runtime
 

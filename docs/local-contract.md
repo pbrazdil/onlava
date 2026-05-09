@@ -88,7 +88,7 @@ Dev-only or beta surface:
 - Pub/Sub and cron runtime/admin affordances until their lifecycle, retry, scheduling, and clear/delete semantics are frozen
 - Pub/Sub UI and queue controls
 - cron UI
-- `github.com/pbrazdil/onlava/data` dynamic data platform first vertical slice until metadata migration, permission, and live-update contracts are hardened
+- `github.com/pbrazdil/onlava/data` dynamic data platform, including object/field metadata, record CRUD/query, indexes, saved views, relationships, beta search, and live updates
 - migration compatibility for older app shapes
 
 Compatibility posture:

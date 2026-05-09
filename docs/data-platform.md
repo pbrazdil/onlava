@@ -38,6 +38,20 @@ _, err = store.CreateField(ctx, actor, "company", data.CreateFieldRequest{
 
 Select fields use text metadata options, not PostgreSQL enum types.
 
+Fields can opt into PostgreSQL-backed full-text search:
+
+```go
+_, err = store.CreateField(ctx, actor, "company", data.CreateFieldRequest{
+	TenantKey:    "acme",
+	Name:         "name",
+	Type:         data.FieldText,
+	Searchable:   true,
+	SearchWeight: "A",
+})
+```
+
+Supported weights are `A`, `B`, `C`, and `D`. Searchable fields currently support text-like values: text, rich text, select, multi-select, full name, address, emails, and phones.
+
 ## Records And Queries
 
 ```go
@@ -53,7 +67,7 @@ page, err := store.QueryRecords(ctx, actor, "company", data.QueryRecordsRequest{
 	TenantKey: "acme",
 	Query: data.Query{
 		Select: []string{"name", "stage"},
-		Filter: data.EQ("stage", "won"),
+		Filter: data.And(data.EQ("stage", "won"), data.Search("acme")),
 		Sort:   []data.Sort{data.Asc("name")},
 		Limit:  50,
 	},
@@ -61,6 +75,8 @@ page, err := store.QueryRecords(ctx, actor, "company", data.QueryRecordsRequest{
 ```
 
 `RecordPage.NextCursor` is an opaque keyset cursor. Reuse the same object and sort shape when passing it back as `Query.Cursor`.
+
+`data.Search("term")` uses an indexed `onlava_data.search_documents` table maintained by normal data mutations in the same transaction as record writes. Direct SQL or DB Studio edits can update records without refreshing search documents in this version; use the public data mutation path for searchable data until trigger-backed search rebuilds are added.
 
 ## Relations
 
