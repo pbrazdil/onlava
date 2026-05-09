@@ -132,6 +132,48 @@ type FieldOptionRequest struct {
 	Color string `json:"color,omitempty"`
 }
 
+type IndexMethod string
+
+const (
+	IndexMethodBTree IndexMethod = "btree"
+	IndexMethodGIN   IndexMethod = "gin"
+)
+
+type Index struct {
+	ID           string       `json:"id"`
+	TenantID     string       `json:"tenant_id"`
+	ObjectID     string       `json:"object_id"`
+	Name         string       `json:"name"`
+	PhysicalName string       `json:"physical_name"`
+	Method       IndexMethod  `json:"method"`
+	IsUnique     bool         `json:"is_unique"`
+	IsSystem     bool         `json:"is_system"`
+	Fields       []IndexField `json:"fields"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+}
+
+type IndexField struct {
+	Field     string `json:"field"`
+	FieldID   string `json:"field_id,omitempty"`
+	Position  int    `json:"position,omitempty"`
+	Desc      bool   `json:"desc,omitempty"`
+	Direction string `json:"direction,omitempty"`
+	OpClass   string `json:"opclass,omitempty"`
+}
+
+type CreateIndexRequest struct {
+	TenantKey string       `json:"tenant_key"`
+	Name      string       `json:"name"`
+	Method    IndexMethod  `json:"method,omitempty"`
+	Unique    bool         `json:"unique,omitempty"`
+	Fields    []IndexField `json:"fields"`
+}
+
+type ListIndexesRequest struct {
+	TenantKey string `json:"tenant_key"`
+}
+
 type Actor struct {
 	ID   string `json:"id,omitempty"`
 	Data any    `json:"data,omitempty"`

@@ -113,6 +113,24 @@ func TestDDLGenerationUsesRealColumns(t *testing.T) {
 	if len(ddl) != 1 || ddl[0] != `alter table "onlava_data_records"."company__111111111111" add column "stage__444444444444" text` {
 		t.Fatalf("addFieldDDL = %#v", ddl)
 	}
+	state := testState()
+	index := &Index{
+		Name:         "company_stage_arr",
+		PhysicalName: "company_stage_arr__aaaaaaaaaaaa",
+		Method:       IndexMethodBTree,
+		Fields: []IndexField{
+			{Field: "stage"},
+			{Field: "arr", Desc: true},
+		},
+	}
+	indexDDL, err := createIndexDDL(tableName, index, state.Fields)
+	if err != nil {
+		t.Fatalf("createIndexDDL: %v", err)
+	}
+	wantIndex := `create index "company_stage_arr__aaaaaaaaaaaa" on "onlava_data_records"."company__111111111111" using btree ("stage__fieldstage" asc, "arr__fieldarr" desc)`
+	if indexDDL != wantIndex {
+		t.Fatalf("createIndexDDL = %q, want %q", indexDDL, wantIndex)
+	}
 }
 
 func TestPhysicalNamesUseStableReadableSuffixes(t *testing.T) {
@@ -126,6 +144,10 @@ func TestPhysicalNamesUseStableReadableSuffixes(t *testing.T) {
 	}
 	if got, want := physicalColumnName(fieldID, "full_name", "first_name"), "full_name_first_name__bbbbbbbbbbbb"; got != want {
 		t.Fatalf("physicalColumnName composite = %q, want %q", got, want)
+	}
+	indexID := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	if got, want := physicalIndexName(indexID, "company_stage_arr"), "company_stage_arr__cccccccccccc"; got != want {
+		t.Fatalf("physicalIndexName = %q, want %q", got, want)
 	}
 }
 
@@ -172,6 +194,60 @@ func TestCompileQueryParameterizesValuesAndQuotesMetadataIdentifiers(t *testing.
 	}
 	if len(compiled.Args) != 5 {
 		t.Fatalf("compileQuery args len = %d, want 5: %#v", len(compiled.Args), compiled.Args)
+	}
+}
+
+func TestCompileQueryAppliesKeysetCursor(t *testing.T) {
+	state := testState()
+	cursor, err := encodeCursor(cursorPayload{
+		Version:       1,
+		Object:        "company",
+		SchemaVersion: state.Object.SchemaVersion,
+		Sort:          []Sort{{Field: "arr", Desc: true}, {Field: "id"}},
+		Values:        []any{100, "record-1"},
+	})
+	if err != nil {
+		t.Fatalf("encodeCursor: %v", err)
+	}
+	compiled, err := compileQuery(state, Query{
+		Select: []string{"name"},
+		Sort:   []Sort{{Field: "arr", Desc: true}},
+		Limit:  10,
+		Cursor: cursor,
+	})
+	if err != nil {
+		t.Fatalf("compileQuery() error = %v", err)
+	}
+	for _, want := range []string{
+		`("arr__fieldarr" < $2)`,
+		`("arr__fieldarr" = $2 and id::text > $3)`,
+		`order by "arr__fieldarr" desc, id::text asc`,
+		`limit $4`,
+	} {
+		if !strings.Contains(compiled.SQL, want) {
+			t.Fatalf("compileQuery SQL missing %q:\n%s", want, compiled.SQL)
+		}
+	}
+	if compiled.Limit != 10 || len(compiled.CursorColumns) != 2 {
+		t.Fatalf("compiled cursor metadata = %#v", compiled)
+	}
+}
+
+func TestCompileQueryRejectsCursorShapeMismatch(t *testing.T) {
+	state := testState()
+	cursor, err := encodeCursor(cursorPayload{
+		Version:       1,
+		Object:        "company",
+		SchemaVersion: state.Object.SchemaVersion,
+		Sort:          []Sort{{Field: "name"}, {Field: "id"}},
+		Values:        []any{"Acme", "record-1"},
+	})
+	if err != nil {
+		t.Fatalf("encodeCursor: %v", err)
+	}
+	_, err = compileQuery(state, Query{Sort: []Sort{{Field: "arr"}}, Cursor: cursor})
+	if err == nil || !strings.Contains(err.Error(), "cursor sort shape") {
+		t.Fatalf("compileQuery error = %v, want cursor sort shape mismatch", err)
 	}
 }
 

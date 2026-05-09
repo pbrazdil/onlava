@@ -19,6 +19,11 @@ type (
 	PhysicalColumn       = datastore.PhysicalColumn
 	FieldOption          = datastore.FieldOption
 	FieldOptionRequest   = datastore.FieldOptionRequest
+	IndexMethod          = datastore.IndexMethod
+	Index                = datastore.Index
+	IndexField           = datastore.IndexField
+	CreateIndexRequest   = datastore.CreateIndexRequest
+	ListIndexesRequest   = datastore.ListIndexesRequest
 	Actor                = datastore.Actor
 	CreateObjectRequest  = datastore.CreateObjectRequest
 	CreateFieldRequest   = datastore.CreateFieldRequest
@@ -66,6 +71,8 @@ const (
 	FieldEmails      = datastore.FieldEmails
 	FieldPhones      = datastore.FieldPhones
 	FieldRelation    = datastore.FieldRelation
+	IndexMethodBTree = datastore.IndexMethodBTree
+	IndexMethodGIN   = datastore.IndexMethodGIN
 )
 
 func Open(ctx context.Context, db DB, opts Options) (*Store, error) {
@@ -86,6 +93,14 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, object string, req
 
 func (s *Store) EnableOutboxTriggers(ctx context.Context, actor Actor, tenantKey string, object string) (*Object, error) {
 	return s.inner.EnableOutboxTriggers(ctx, actor, tenantKey, object)
+}
+
+func (s *Store) CreateIndex(ctx context.Context, actor Actor, object string, req CreateIndexRequest) (*Index, error) {
+	return s.inner.CreateIndex(ctx, actor, object, req)
+}
+
+func (s *Store) ListIndexes(ctx context.Context, actor Actor, object string, req ListIndexesRequest) ([]Index, error) {
+	return s.inner.ListIndexes(ctx, actor, object, req)
 }
 
 func (s *Store) CreateRecord(ctx context.Context, actor Actor, object string, req CreateRecordRequest) (*RecordResponse, error) {

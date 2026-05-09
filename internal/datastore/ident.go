@@ -72,6 +72,10 @@ func physicalColumnName(fieldID, fieldName, part string) string {
 	return physicalNameWithSuffix(base, shortIdentifierSuffix(fieldID))
 }
 
+func physicalIndexName(indexID, indexName string) string {
+	return physicalNameWithSuffix(indexName, shortIdentifierSuffix(indexID))
+}
+
 func physicalNameWithSuffix(base, suffix string) string {
 	if suffix == "" {
 		sum := sha256.Sum256([]byte(base))

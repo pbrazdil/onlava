@@ -91,6 +91,33 @@ func (s *Store) bootstrap(ctx context.Context) error {
 			is_archived boolean not null default false,
 			unique (tenant_id, field_id, value)
 		)`,
+		`create table if not exists ` + qualifiedIdent(MetadataSchema, "indexes") + ` (
+			id uuid primary key,
+			tenant_id uuid not null references ` + qualifiedIdent(MetadataSchema, "tenants") + `(id) on delete cascade,
+			object_id uuid not null references ` + qualifiedIdent(MetadataSchema, "objects") + `(id) on delete cascade,
+			name text not null,
+			physical_name text not null,
+			method text not null,
+			is_unique boolean not null default false,
+			is_system boolean not null default false,
+			created_at timestamptz not null,
+			updated_at timestamptz not null,
+			unique (tenant_id, object_id, name),
+			unique (tenant_id, object_id, physical_name)
+		)`,
+		`create table if not exists ` + qualifiedIdent(MetadataSchema, "index_fields") + ` (
+			id uuid primary key,
+			tenant_id uuid not null references ` + qualifiedIdent(MetadataSchema, "tenants") + `(id) on delete cascade,
+			index_id uuid not null references ` + qualifiedIdent(MetadataSchema, "indexes") + `(id) on delete cascade,
+			field_id uuid not null references ` + qualifiedIdent(MetadataSchema, "fields") + `(id) on delete cascade,
+			position integer not null,
+			direction text not null default 'asc',
+			opclass text not null default '',
+			expression text not null default '',
+			created_at timestamptz not null,
+			updated_at timestamptz not null,
+			unique (tenant_id, index_id, position)
+		)`,
 		`create table if not exists ` + qualifiedIdent(MetadataSchema, "schema_migrations") + ` (
 			id uuid primary key,
 			tenant_id uuid not null,

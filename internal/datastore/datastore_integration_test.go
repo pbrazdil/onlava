@@ -336,6 +336,148 @@ func TestPostgresCreateObjectAndFieldAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestPostgresCreateIndexAndCursorPagination(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_index_cursor_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(name): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldSelect, Options: []FieldOptionRequest{{Value: "lead"}, {Value: "won"}}}); err != nil {
+		t.Fatalf("CreateField(stage): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "arr", Type: FieldNumeric}); err != nil {
+		t.Fatalf("CreateField(arr): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "tags", Type: FieldMultiSelect}); err != nil {
+		t.Fatalf("CreateField(tags): %v", err)
+	}
+
+	btree, err := store.CreateIndex(ctx, actor, "company", CreateIndexRequest{
+		TenantKey: tenantKey,
+		Name:      "company_stage_arr",
+		Fields: []IndexField{
+			{Field: "stage"},
+			{Field: "arr", Desc: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIndex(btree): %v", err)
+	}
+	if btree.PhysicalName == "" || btree.Method != IndexMethodBTree || len(btree.Fields) != 2 {
+		t.Fatalf("btree index = %#v", btree)
+	}
+	if _, err := store.CreateIndex(ctx, actor, "company", CreateIndexRequest{
+		TenantKey: tenantKey,
+		Name:      "company_tags",
+		Method:    IndexMethodGIN,
+		Fields:    []IndexField{{Field: "tags"}},
+	}); err != nil {
+		t.Fatalf("CreateIndex(gin): %v", err)
+	}
+	indexes, err := store.ListIndexes(ctx, actor, "company", ListIndexesRequest{TenantKey: tenantKey})
+	if err != nil {
+		t.Fatalf("ListIndexes: %v", err)
+	}
+	if len(indexes) != 2 {
+		t.Fatalf("indexes len = %d, want 2: %#v", len(indexes), indexes)
+	}
+	state, err := store.loadState(ctx, tenantKey, "company")
+	if err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	if err := store.verifyIndex(ctx, pool, state.Object.TableName, btree.PhysicalName); err != nil {
+		t.Fatalf("verifyIndex: %v", err)
+	}
+	if got := countRows(t, pool, `
+		select count(*)
+		from `+qualifiedIdent(MetadataSchema, "schema_migrations")+` m
+		join `+qualifiedIdent(MetadataSchema, "tenants")+` t on t.id = m.tenant_id
+		where t.key = $1 and m.status = 'applied' and m.ddl::text like '%create index%'
+	`, tenantKey); got < 2 {
+		t.Fatalf("index migration count = %d, want at least 2", got)
+	}
+
+	for i, item := range []struct {
+		name  string
+		stage string
+		arr   float64
+	}{
+		{name: "Acme", stage: "won", arr: 10},
+		{name: "Beta", stage: "won", arr: 20},
+		{name: "Core", stage: "won", arr: 30},
+	} {
+		resp, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{
+			TenantKey: tenantKey,
+			Values: Record{
+				"name":  item.name,
+				"stage": item.stage,
+				"arr":   item.arr,
+				"tags":  []string{"customer", fmt.Sprintf("rank_%d", i)},
+			},
+		})
+		if err != nil {
+			t.Fatalf("CreateRecord(%s): %v", item.name, err)
+		}
+		if resp.Record["id"] == "" {
+			t.Fatalf("created record missing id: %#v", resp.Record)
+		}
+	}
+	first, err := store.QueryRecords(ctx, actor, "company", QueryRecordsRequest{
+		TenantKey: tenantKey,
+		Query: Query{
+			Select: []string{"name", "arr"},
+			Filter: &Filter{Op: "eq", Field: "stage", Value: "won"},
+			Sort:   []Sort{{Field: "arr"}},
+			Limit:  2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("QueryRecords(first): %v", err)
+	}
+	if len(first.Records) != 2 || first.NextCursor == "" {
+		t.Fatalf("first page = %#v, want 2 records and next cursor", first)
+	}
+	if first.Records[0]["name"] != "Acme" || first.Records[1]["name"] != "Beta" {
+		t.Fatalf("first page records = %#v", first.Records)
+	}
+	second, err := store.QueryRecords(ctx, actor, "company", QueryRecordsRequest{
+		TenantKey: tenantKey,
+		Query: Query{
+			Select: []string{"name", "arr"},
+			Filter: &Filter{Op: "eq", Field: "stage", Value: "won"},
+			Sort:   []Sort{{Field: "arr"}},
+			Limit:  2,
+			Cursor: first.NextCursor,
+		},
+	})
+	if err != nil {
+		t.Fatalf("QueryRecords(second): %v", err)
+	}
+	if len(second.Records) != 1 || second.NextCursor != "" || second.Records[0]["name"] != "Core" {
+		t.Fatalf("second page = %#v, want Core and no next cursor", second)
+	}
+	if _, err := store.QueryRecords(ctx, actor, "company", QueryRecordsRequest{
+		TenantKey: tenantKey,
+		Query: Query{
+			Sort:   []Sort{{Field: "name"}},
+			Limit:  2,
+			Cursor: first.NextCursor,
+		},
+	}); err == nil || !strings.Contains(err.Error(), "cursor sort shape") {
+		t.Fatalf("QueryRecords(cursor mismatch) error = %v, want cursor sort shape mismatch", err)
+	}
+}
+
 func TestPostgresConcurrentCreatesAreIdempotent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
