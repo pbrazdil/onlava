@@ -78,6 +78,20 @@ page, err := store.QueryRecords(ctx, actor, "company", data.QueryRecordsRequest{
 
 `data.Search("term")` uses an indexed `onlava_data.search_documents` table maintained by normal data mutations in the same transaction as record writes. Direct SQL or DB Studio edits can update records without refreshing search documents in this version; use the public data mutation path for searchable data until trigger-backed search rebuilds are added.
 
+## Standard Auth Tenant Permissions
+
+Standard auth exposes an active `tenant_id`. The data package maps that value to `TenantKey`:
+
+```go
+store, err := data.Open(ctx, pool, data.Options{
+	Permissions: data.StandardAuthPermissions{},
+})
+tenantKey, err := data.RequireTenantKeyFromContext(ctx)
+actor := data.ActorFromContext(ctx)
+```
+
+`StandardAuthPermissions` fails closed when the actor has no standard-auth tenant or when a request tries to access another data tenant. Apps can wrap their own permission provider with `Base` to add object, field, or row-level rules after the tenant check passes.
+
 ## Relations
 
 ```go
@@ -118,6 +132,27 @@ _, err = store.CreateView(ctx, actor, "company", data.CreateViewRequest{
 ```
 
 Saved views are reusable query shapes. Use `QueryView` to execute one.
+
+## Import And Export
+
+`ExportTenant` returns a portable `onlava.data.export.v1` bundle with logical metadata and records:
+
+```go
+bundle, err := store.ExportTenant(ctx, actor, data.ExportTenantRequest{
+	TenantKey: "acme",
+})
+```
+
+`ImportTenant` recreates objects, fields, indexes, saved views, and records through the normal mutation paths:
+
+```go
+resp, err := store.ImportTenant(ctx, actor, data.ImportTenantRequest{
+	Bundle:          *bundle,
+	TargetTenantKey: "acme_copy",
+})
+```
+
+Imported records receive new IDs. The response includes `RecordIDMap`, keyed by exported record ID, so apps can reconcile fixture references. Import writes normal outbox rows and publishes imported record events after the import transaction commits.
 
 ## Errors
 

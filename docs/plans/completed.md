@@ -399,3 +399,36 @@ Shipped:
 Follow-ups:
 
 - Direct SQL and DB Studio edits do not refresh search documents in this version. Add trigger-backed search refresh or explicit rebuild tooling before treating direct SQL search freshness as stable.
+
+## Standard Auth x Data Tenant Permissions
+
+- Status: completed
+- Owner: onlava data platform
+- Completed: 2026-05-09
+- Quality: B+
+- ExecPlan: [0021 Standard Auth x Data Tenant Permissions](0021-auth-data-tenant-permissions.md)
+
+Shipped:
+
+- `data.Actor` tenant awareness and `data.ActorFromContext` standard-auth tenant mapping.
+- `data.TenantKeyFromContext`, `data.RequireTenantKeyFromContext`, and `data.TenantKeyFromActor` helpers.
+- `data.StandardAuthPermissions`, which maps standard-auth `tenant_id` directly to data `TenantKey`, fails closed on mismatches, and delegates to an optional base permission provider.
+- Tenant key propagation through object and field permission refs.
+- Tests for same-tenant access, cross-tenant denial, delegated row filters, and live subscription denial.
+
+## Data Import, Export, and Fixtures
+
+- Status: completed
+- Owner: onlava data platform
+- Completed: 2026-05-09
+- Quality: B
+- ExecPlan: [0022 Data Import, Export, and Fixtures](0022-data-import-export-fixtures.md)
+
+Shipped:
+
+- `onlava.data.export.v1` JSON schema.
+- Public `data.Store.ExportTenant` and `data.Store.ImportTenant` APIs.
+- Portable bundles for logical tenants, objects, fields/options, indexes, saved views, and records.
+- Transactional import through existing mutation paths, with new record IDs and `record_id_map` reconciliation.
+- Fixture app export/import endpoints and `company-export.json` fixture data.
+- PostgreSQL-backed round-trip coverage for metadata, records, indexes, saved views, and ID remapping.

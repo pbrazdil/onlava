@@ -3,7 +3,9 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	onlavaauth "github.com/pbrazdil/onlava/auth"
 	"github.com/pbrazdil/onlava/internal/objectstore"
@@ -34,6 +36,15 @@ type (
 	UpdateRecordRequest    = objectstore.UpdateRecordRequest
 	DeleteRecordRequest    = objectstore.DeleteRecordRequest
 	QueryRecordsRequest    = objectstore.QueryRecordsRequest
+	ExportTenantRequest    = objectstore.ExportTenantRequest
+	ImportTenantRequest    = objectstore.ImportTenantRequest
+	ImportTenantResponse   = objectstore.ImportTenantResponse
+	ExportBundle           = objectstore.ExportBundle
+	ExportTenant           = objectstore.ExportTenant
+	ExportObject           = objectstore.ExportObject
+	ExportField            = objectstore.ExportField
+	ExportIndex            = objectstore.ExportIndex
+	ExportView             = objectstore.ExportView
 	ViewType               = objectstore.ViewType
 	ViewVisibility         = objectstore.ViewVisibility
 	View                   = objectstore.View
@@ -149,6 +160,16 @@ func (s *Store) QueryRecords(ctx context.Context, actor Actor, object string, re
 	return out, wrapError("QueryRecords", err)
 }
 
+func (s *Store) ExportTenant(ctx context.Context, actor Actor, req ExportTenantRequest) (*ExportBundle, error) {
+	out, err := s.inner.ExportTenant(ctx, actor, req)
+	return out, wrapError("ExportTenant", err)
+}
+
+func (s *Store) ImportTenant(ctx context.Context, actor Actor, req ImportTenantRequest) (*ImportTenantResponse, error) {
+	out, err := s.inner.ImportTenant(ctx, actor, req)
+	return out, wrapError("ImportTenant", err)
+}
+
 func (s *Store) CreateView(ctx context.Context, actor Actor, object string, req CreateViewRequest) (*View, error) {
 	out, err := s.inner.CreateView(ctx, actor, object, req)
 	return out, wrapError("CreateView", err)
@@ -177,7 +198,7 @@ func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWri
 	return wrapError("ServeEvents", s.inner.ServeEvents(ctx, actor, w, req))
 }
 
-func ActorFromContext(context.Context) Actor {
+func ActorFromContext(ctx context.Context) Actor {
 	var actor Actor
 	if uid, ok := onlavaauth.UserID(); ok {
 		actor.ID = string(uid)
@@ -185,7 +206,27 @@ func ActorFromContext(context.Context) Actor {
 	if data := onlavaauth.Data(); data != nil {
 		actor.Data = data
 	}
+	if tenantKey, ok := TenantKeyFromContext(ctx); ok {
+		actor.TenantKey = tenantKey
+	}
 	return actor
+}
+
+func TenantKeyFromContext(context.Context) (string, bool) {
+	authData, ok := onlavaauth.CurrentAuthData()
+	if !ok || authData == nil {
+		return "", false
+	}
+	tenantKey := strings.TrimSpace(string(authData.TenantID))
+	return tenantKey, tenantKey != ""
+}
+
+func RequireTenantKeyFromContext(ctx context.Context) (string, error) {
+	tenantKey, ok := TenantKeyFromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("standard auth tenant_id is required for data tenant access")
+	}
+	return tenantKey, nil
 }
 
 func ServeEvents(ctx context.Context, store *Store, actor Actor, w http.ResponseWriter, req *http.Request) error {

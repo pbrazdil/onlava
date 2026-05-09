@@ -13,7 +13,7 @@ onlava harness self --json
 
 - [Architecture](../ARCHITECTURE.md): high-level repo map, boundaries, and architectural invariants.
 - [Local Contract](local-contract.md): CLI grammar, stable JSON schemas, generated artifacts, and local runtime contracts.
-- [Data Platform](data-platform.md): beta dynamic data package usage, query shapes, relations, saved views, and public error codes.
+- [Data Platform](data-platform.md): beta dynamic data package usage, query shapes, auth tenant permissions, import/export, relations, saved views, and public error codes.
 - [Harness Engineering](harness-engineering.md): agent validation loop, harness outputs, and self-harness expectations.
 - [Execution Plan Standard](../PLANS.md): required structure for long-running agent-executable implementation plans.
 
@@ -47,5 +47,6 @@ Start with:
 - [onlava.harness.self.v1](schemas/onlava.harness.self.v1.schema.json)
 - [onlava.inspect.docs.v1](schemas/onlava.inspect.docs.v1.schema.json)
 - [onlava.inspect.data.v1](schemas/onlava.inspect.data.v1.schema.json)
+- [onlava.data.export.v1](schemas/onlava.data.export.v1.schema.json)
 - [onlava.docs.index.v1](schemas/onlava.docs.index.v1.schema.json)
 - [onlava.version.v1](schemas/onlava.version.v1.schema.json)

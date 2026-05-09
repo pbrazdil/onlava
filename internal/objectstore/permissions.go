@@ -3,16 +3,18 @@ package objectstore
 import "context"
 
 type ObjectRef struct {
-	TenantID string
-	ObjectID string
-	Name     string
+	TenantID  string
+	TenantKey string
+	ObjectID  string
+	Name      string
 }
 
 type FieldRef struct {
-	TenantID string
-	ObjectID string
-	FieldID  string
-	Name     string
+	TenantID  string
+	TenantKey string
+	ObjectID  string
+	FieldID   string
+	Name      string
 }
 
 type Permissions interface {
@@ -47,17 +49,19 @@ func (AllowAllPermissions) RowFilter(context.Context, Actor, ObjectRef) (*Filter
 
 func objectRef(state *metadataState) ObjectRef {
 	return ObjectRef{
-		TenantID: state.Tenant.ID,
-		ObjectID: state.Object.ID,
-		Name:     state.Object.NameSingular,
+		TenantID:  state.Tenant.ID,
+		TenantKey: state.Tenant.Key,
+		ObjectID:  state.Object.ID,
+		Name:      state.Object.NameSingular,
 	}
 }
 
 func fieldRef(state *metadataState, field *Field) FieldRef {
 	return FieldRef{
-		TenantID: state.Tenant.ID,
-		ObjectID: state.Object.ID,
-		FieldID:  field.ID,
-		Name:     field.Name,
+		TenantID:  state.Tenant.ID,
+		TenantKey: state.Tenant.Key,
+		ObjectID:  state.Object.ID,
+		FieldID:   field.ID,
+		Name:      field.Name,
 	}
 }

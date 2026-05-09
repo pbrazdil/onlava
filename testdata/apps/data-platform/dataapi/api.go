@@ -108,6 +108,22 @@ func (s *Service) QueryRecords(ctx context.Context, object string, req *data.Que
 	return s.store.QueryRecords(ctx, data.ActorFromContext(ctx), object, *req)
 }
 
+//onlava:api auth path=/data/tenants/export method=POST
+func (s *Service) ExportTenant(ctx context.Context, req *data.ExportTenantRequest) (*data.ExportBundle, error) {
+	if req == nil {
+		return nil, errs.B().Code(errs.InvalidArgument).Msg("request is required").Err()
+	}
+	return s.store.ExportTenant(ctx, data.ActorFromContext(ctx), *req)
+}
+
+//onlava:api auth path=/data/tenants/import method=POST
+func (s *Service) ImportTenant(ctx context.Context, req *data.ImportTenantRequest) (*data.ImportTenantResponse, error) {
+	if req == nil {
+		return nil, errs.B().Code(errs.InvalidArgument).Msg("request is required").Err()
+	}
+	return s.store.ImportTenant(ctx, data.ActorFromContext(ctx), *req)
+}
+
 //onlava:api auth path=/data/objects/:object/records method=POST
 func (s *Service) CreateRecord(ctx context.Context, object string, req *data.CreateRecordRequest) (*data.RecordResponse, error) {
 	if req == nil {

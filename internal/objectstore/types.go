@@ -177,8 +177,9 @@ type ListIndexesRequest struct {
 }
 
 type Actor struct {
-	ID   string `json:"id,omitempty"`
-	Data any    `json:"data,omitempty"`
+	ID        string `json:"id,omitempty"`
+	TenantKey string `json:"tenant_key,omitempty"`
+	Data      any    `json:"data,omitempty"`
 }
 
 type CreateObjectRequest struct {
@@ -342,6 +343,82 @@ type Query struct {
 	Sort   []Sort   `json:"sort,omitempty"`
 	Limit  int      `json:"limit,omitempty"`
 	Cursor string   `json:"cursor,omitempty"`
+}
+
+type ExportTenantRequest struct {
+	TenantKey string `json:"tenant_key"`
+}
+
+type ImportTenantRequest struct {
+	Bundle           ExportBundle `json:"bundle"`
+	TargetTenantKey  string       `json:"target_tenant_key,omitempty"`
+	TargetTenantName string       `json:"target_tenant_name,omitempty"`
+}
+
+type ImportTenantResponse struct {
+	TenantKey   string            `json:"tenant_key"`
+	Objects     int               `json:"objects"`
+	Fields      int               `json:"fields"`
+	Indexes     int               `json:"indexes"`
+	Views       int               `json:"views"`
+	Records     int               `json:"records"`
+	RecordIDMap map[string]string `json:"record_id_map,omitempty"`
+}
+
+type ExportBundle struct {
+	SchemaVersion string         `json:"schema_version"`
+	Tenant        ExportTenant   `json:"tenant"`
+	Objects       []ExportObject `json:"objects"`
+}
+
+type ExportTenant struct {
+	Key  string `json:"key"`
+	Name string `json:"name,omitempty"`
+}
+
+type ExportObject struct {
+	NameSingular  string        `json:"name_singular"`
+	NamePlural    string        `json:"name_plural,omitempty"`
+	LabelSingular string        `json:"label_singular,omitempty"`
+	LabelPlural   string        `json:"label_plural,omitempty"`
+	Fields        []ExportField `json:"fields,omitempty"`
+	Indexes       []ExportIndex `json:"indexes,omitempty"`
+	Views         []ExportView  `json:"views,omitempty"`
+	Records       []Record      `json:"records,omitempty"`
+}
+
+type ExportField struct {
+	Name           string               `json:"name"`
+	Label          string               `json:"label,omitempty"`
+	Type           FieldType            `json:"type"`
+	Nullable       bool                 `json:"nullable"`
+	Unique         bool                 `json:"unique,omitempty"`
+	Array          bool                 `json:"array,omitempty"`
+	Searchable     bool                 `json:"searchable,omitempty"`
+	SearchWeight   string               `json:"search_weight,omitempty"`
+	RelationObject string               `json:"relation_object,omitempty"`
+	Relation       RelationSettings     `json:"relation,omitempty"`
+	Settings       map[string]any       `json:"settings,omitempty"`
+	Options        []FieldOptionRequest `json:"options,omitempty"`
+}
+
+type ExportIndex struct {
+	Name   string       `json:"name"`
+	Method IndexMethod  `json:"method,omitempty"`
+	Unique bool         `json:"unique,omitempty"`
+	Fields []IndexField `json:"fields"`
+}
+
+type ExportView struct {
+	Name       string         `json:"name"`
+	Type       ViewType       `json:"type,omitempty"`
+	Columns    []string       `json:"columns,omitempty"`
+	Filter     *Filter        `json:"filter,omitempty"`
+	Sort       []Sort         `json:"sort,omitempty"`
+	Limit      int            `json:"limit,omitempty"`
+	Visibility ViewVisibility `json:"visibility,omitempty"`
+	OwnerID    string         `json:"owner_id,omitempty"`
+	Layout     map[string]any `json:"layout,omitempty"`
 }
 
 type Filter struct {

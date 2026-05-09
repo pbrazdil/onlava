@@ -7,7 +7,7 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
-- [0021 Standard Auth x Data Tenant Permissions](0021-auth-data-tenant-permissions.md)
+No active ExecPlans. The sequence through [0022 Data Import, Export, and Fixtures](0022-data-import-export-fixtures.md) is complete.
 
 ## Agent-Friendly Local Runtime
 

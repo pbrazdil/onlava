@@ -23,24 +23,31 @@ fixture apps and tests become easier
 
 ## Progress
 
-- [ ] Create ExecPlan.
-- [ ] Design export format.
-- [ ] Implement export.
-- [ ] Implement import.
-- [ ] Add fixture support.
-- [ ] Add tests.
+- [x] Create ExecPlan.
+- [x] Design export format.
+- [x] Implement export.
+- [x] Implement import.
+- [x] Add fixture support.
+- [x] Add tests.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- The portable bundle should avoid physical table names, column names, field IDs, and relation join-table names. Those belong to the target tenant's migration history and are regenerated on import.
+- Reusing existing mutation paths inside an outer transaction works with pgx nested transactions/savepoints and keeps migrations, outbox rows, search documents, and validation behavior consistent.
 
 ## Decision Log
 
-Record decisions here.
+- Use `onlava.data.export.v1` as the portable JSON schema.
+- Export logical objects, fields/options, indexes, saved views, and records.
+- Import recreates metadata through existing create APIs and creates new record IDs; the response returns `record_id_map` for exported ID to imported ID reconciliation.
+- Import writes normal outbox rows and publishes imported record events only after the outer import transaction commits.
+- Re-importing metadata is idempotent when the requested shape matches; records are appended as new records.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Implemented `ExportTenant` and `ImportTenant` in objectstore and the public `data.Store`.
+- Added schema, fixture bundle, fixture API endpoints, docs, and PostgreSQL-backed round-trip coverage.
+- The first import/export surface is intentionally local-development sized, not a bulk ETL system.
 
 ## Context and Orientation
 

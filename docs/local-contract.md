@@ -256,6 +256,8 @@ Beta dynamic data platform:
 - Apps may call `store.CreateIndex(ctx, actor, objectName, data.CreateIndexRequest{...})` and `store.ListIndexes(ctx, actor, objectName, data.ListIndexesRequest{...})` for metadata-backed PostgreSQL indexes. The first index surface supports btree scalar indexes, compound btree indexes, and explicit GIN indexes for multi-select and JSON fields.
 - Relation fields can target another object through `data.RelationSettings`. `many_to_one` relations create a real UUID column plus PostgreSQL foreign key. `many_to_many` relations create a physical join table; record-level many-to-many mutation helpers are not stable yet.
 - Apps may create, update, list, delete, and query saved views with `store.CreateView`, `store.UpdateView`, `store.ListViews`, `store.DeleteView`, and `store.QueryView`. The first view surface stores table-style columns, filter, sort, limit, visibility, owner ID, and layout metadata.
+- Apps may use `data.StandardAuthPermissions` to scope data access to the active standard-auth `tenant_id`; the auth tenant ID maps directly to `TenantKey`.
+- Apps may export and import portable tenant bundles with `store.ExportTenant` and `store.ImportTenant`. The bundle schema is `onlava.data.export.v1`; imports recreate metadata through existing mutation paths, create new record IDs, and return `record_id_map`.
 - Public data methods wrap failures in `*data.Error` where possible. Use `data.CodeOf(err)` for coarse handling of `object_not_found`, `field_not_found`, `invalid_filter`, `permission_denied`, `migration_failed`, `schema_drift`, and `invalid_cursor`.
 - Record queries are compiled from metadata to parameterized SQL; user input must not become SQL identifiers.
 - Record queries can filter, sort, and select one-hop `many_to_one` relation paths such as `company.name`; deeper paths and many-to-many path queries remain future work.
@@ -437,6 +439,7 @@ Implemented now:
 - [onlava.inspect.endpoints.v1.schema.json](schemas/onlava.inspect.endpoints.v1.schema.json)
 - [onlava.inspect.traces.v1.schema.json](schemas/onlava.inspect.traces.v1.schema.json)
 - [onlava.inspect.metrics.v1.schema.json](schemas/onlava.inspect.metrics.v1.schema.json)
+- [onlava.data.export.v1.schema.json](schemas/onlava.data.export.v1.schema.json)
 - [onlava.inspect.data.v1.schema.json](schemas/onlava.inspect.data.v1.schema.json)
 - [onlava.inspect.docs.v1.schema.json](schemas/onlava.inspect.docs.v1.schema.json)
 - [onlava.docs.index.v1.schema.json](schemas/onlava.docs.index.v1.schema.json)

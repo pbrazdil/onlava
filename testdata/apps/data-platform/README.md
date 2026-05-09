@@ -68,6 +68,25 @@ curl -sS -X POST http://127.0.0.1:4000/data/objects/company/records/query \
 When the query response includes `next_cursor`, pass it back as
 `query.cursor` with the same object and sort shape to fetch the next page.
 
+Export a tenant bundle:
+
+```sh
+curl -sS -X POST http://127.0.0.1:4000/data/tenants/export \
+  -H 'content-type: application/json' \
+  -d '{"tenant_key":"fixture_tenant"}'
+```
+
+Import a fixture bundle into a new tenant:
+
+```sh
+jq '{bundle: ., target_tenant_key: "fixture_tenant_imported"}' testdata/apps/data-platform/fixtures/company-export.json |
+curl -sS -X POST http://127.0.0.1:4000/data/tenants/import \
+  -H 'content-type: application/json' \
+  -d @-
+```
+
+Imported records receive new IDs and the response returns `record_id_map`.
+
 Open an SSE stream for matching updates:
 
 ```sh

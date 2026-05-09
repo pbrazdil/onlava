@@ -735,6 +735,158 @@ func TestPostgresSavedViews(t *testing.T) {
 	}
 }
 
+func TestPostgresTenantKeyPermissionsAffectQueriesAndLiveSubscriptions(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_permissions_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester", TenantKey: tenantKey}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(name): %v", err)
+	}
+	if _, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{TenantKey: tenantKey, Values: Record{"name": "Acme"}}); err != nil {
+		t.Fatalf("CreateRecord: %v", err)
+	}
+
+	guarded, err := Open(ctx, pool, Options{Permissions: tenantKeyGuardPermissions{}})
+	if err != nil {
+		t.Fatalf("Open(guarded): %v", err)
+	}
+	if _, err := guarded.QueryRecords(ctx, Actor{TenantKey: "other"}, "company", QueryRecordsRequest{TenantKey: tenantKey}); err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("QueryRecords(cross tenant) error = %v, want permission denied", err)
+	}
+	page, err := guarded.QueryRecords(ctx, actor, "company", QueryRecordsRequest{TenantKey: tenantKey})
+	if err != nil {
+		t.Fatalf("QueryRecords(same tenant): %v", err)
+	}
+	if len(page.Records) != 1 {
+		t.Fatalf("same-tenant page = %#v", page)
+	}
+	if _, err := guarded.resolveSubscription(ctx, Actor{TenantKey: "other"}, SubscriptionRequest{TenantKey: tenantKey, Object: "company", QueryID: "companies"}); err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("resolveSubscription(cross tenant) error = %v, want permission denied", err)
+	}
+}
+
+func TestPostgresExportImportTenantRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	sourceTenant := fmt.Sprintf("tenant_export_source_%d", time.Now().UnixNano())
+	targetTenant := fmt.Sprintf("tenant_export_target_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		for _, tenantKey := range []string{sourceTenant, targetTenant} {
+			if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+				t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+			}
+		}
+	})
+	actor := Actor{ID: "tester", TenantKey: sourceTenant}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: sourceTenant, TenantName: "Source Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: sourceTenant, Name: "name", Type: FieldText, Searchable: true, SearchWeight: "A"}); err != nil {
+		t.Fatalf("CreateField(name): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{
+		TenantKey: sourceTenant,
+		Name:      "stage",
+		Type:      FieldSelect,
+		Options:   []FieldOptionRequest{{Value: "lead", Label: "Lead"}, {Value: "won", Label: "Won"}},
+	}); err != nil {
+		t.Fatalf("CreateField(stage): %v", err)
+	}
+	nullableFalse := false
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: sourceTenant, Name: "arr", Type: FieldNumeric, Nullable: &nullableFalse}); err != nil {
+		t.Fatalf("CreateField(arr): %v", err)
+	}
+	if _, err := store.CreateIndex(ctx, actor, "company", CreateIndexRequest{
+		TenantKey: sourceTenant,
+		Name:      "company_stage_arr",
+		Fields:    []IndexField{{Field: "stage"}, {Field: "arr", Desc: true}},
+	}); err != nil {
+		t.Fatalf("CreateIndex: %v", err)
+	}
+	if _, err := store.CreateView(ctx, actor, "company", CreateViewRequest{
+		TenantKey:  sourceTenant,
+		Name:       "won_companies",
+		Columns:    []string{"name", "stage", "arr"},
+		Filter:     &Filter{Op: "eq", Field: "stage", Value: "won"},
+		Sort:       []Sort{{Field: "arr", Desc: true}},
+		Limit:      50,
+		Visibility: ViewVisibilityShared,
+	}); err != nil {
+		t.Fatalf("CreateView: %v", err)
+	}
+	first, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{
+		TenantKey: sourceTenant,
+		Values:    Record{"name": "Acme", "stage": "won", "arr": 20},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord(first): %v", err)
+	}
+	second, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{
+		TenantKey: sourceTenant,
+		Values:    Record{"name": "Beta", "stage": "lead", "arr": 10},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord(second): %v", err)
+	}
+
+	bundle, err := store.ExportTenant(ctx, actor, ExportTenantRequest{TenantKey: sourceTenant})
+	if err != nil {
+		t.Fatalf("ExportTenant: %v", err)
+	}
+	if bundle.SchemaVersion != dataExportSchemaVersion || len(bundle.Objects) != 1 {
+		t.Fatalf("bundle = %#v", bundle)
+	}
+	encoded, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatalf("Marshal(bundle): %v", err)
+	}
+	var decoded ExportBundle
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal(bundle): %v", err)
+	}
+
+	importActor := Actor{ID: "tester", TenantKey: targetTenant}
+	resp, err := store.ImportTenant(ctx, importActor, ImportTenantRequest{
+		Bundle:           decoded,
+		TargetTenantKey:  targetTenant,
+		TargetTenantName: "Target Tenant",
+	})
+	if err != nil {
+		t.Fatalf("ImportTenant: %v", err)
+	}
+	if resp.Objects != 1 || resp.Fields != 3 || resp.Indexes != 1 || resp.Views != 1 || resp.Records != 2 {
+		t.Fatalf("import response = %#v", resp)
+	}
+	for _, oldID := range []string{fmt.Sprint(first.Record["id"]), fmt.Sprint(second.Record["id"])} {
+		if oldID == "" || resp.RecordIDMap[oldID] == "" || resp.RecordIDMap[oldID] == oldID {
+			t.Fatalf("record id map[%q] = %q", oldID, resp.RecordIDMap[oldID])
+		}
+	}
+	page, err := store.QueryView(ctx, importActor, "company", "won_companies", QueryViewRequest{TenantKey: targetTenant})
+	if err != nil {
+		t.Fatalf("QueryView(imported): %v", err)
+	}
+	if len(page.Records) != 1 || page.Records[0]["name"] != "Acme" {
+		t.Fatalf("imported view page = %#v", page)
+	}
+	indexes, err := store.ListIndexes(ctx, importActor, "company", ListIndexesRequest{TenantKey: targetTenant})
+	if err != nil {
+		t.Fatalf("ListIndexes(imported): %v", err)
+	}
+	if len(indexes) != 1 || indexes[0].Name != "company_stage_arr" {
+		t.Fatalf("imported indexes = %#v", indexes)
+	}
+}
+
 func TestPostgresConcurrentCreatesAreIdempotent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
@@ -1200,6 +1352,17 @@ type denyWriteObjectPermissions struct {
 
 func (denyWriteObjectPermissions) CanWriteObject(context.Context, Actor, ObjectRef) error {
 	return errors.New("write denied")
+}
+
+type tenantKeyGuardPermissions struct {
+	AllowAllPermissions
+}
+
+func (tenantKeyGuardPermissions) CanReadObject(_ context.Context, actor Actor, ref ObjectRef) error {
+	if actor.TenantKey != ref.TenantKey {
+		return errors.New("permission denied: tenant mismatch")
+	}
+	return nil
 }
 
 func cleanupPostgresTenant(ctx context.Context, pool *pgxpool.Pool, tenantKey string) error {

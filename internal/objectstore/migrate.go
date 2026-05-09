@@ -28,7 +28,7 @@ func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectR
 	if existing, err := s.loadObjectIfExists(ctx, tenant.ID, req.NameSingular); err != nil {
 		return nil, err
 	} else if existing != nil {
-		if err := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, ObjectID: existing.ID, Name: existing.NameSingular}); err != nil {
+		if err := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, TenantKey: tenant.Key, ObjectID: existing.ID, Name: existing.NameSingular}); err != nil {
 			return nil, err
 		}
 		if err := objectMatchesRequest(existing, req); err != nil {
@@ -59,7 +59,7 @@ func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectR
 		CreatedAt:             s.now(),
 		UpdatedAt:             s.now(),
 	}
-	if err := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, ObjectID: obj.ID, Name: obj.NameSingular}); err != nil {
+	if err := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, TenantKey: tenant.Key, ObjectID: obj.ID, Name: obj.NameSingular}); err != nil {
 		return nil, err
 	}
 
@@ -104,7 +104,7 @@ func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectR
 	}); err != nil {
 		if isUniqueViolation(err) {
 			if existing, loadErr := s.loadObjectIfExists(ctx, tenant.ID, req.NameSingular); loadErr == nil && existing != nil {
-				if permErr := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, ObjectID: existing.ID, Name: existing.NameSingular}); permErr == nil && objectMatchesRequest(existing, req) == nil {
+				if permErr := s.perms.CanWriteObject(ctx, actor, ObjectRef{TenantID: tenant.ID, TenantKey: tenant.Key, ObjectID: existing.ID, Name: existing.NameSingular}); permErr == nil && objectMatchesRequest(existing, req) == nil {
 					if verifyErr := s.verifyObjectTable(ctx, s.db, existing.TableName); verifyErr == nil {
 						_ = s.finishMigration(ctx, migrationID, "skipped", "object already exists")
 						return existing, nil

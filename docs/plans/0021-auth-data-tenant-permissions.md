@@ -23,23 +23,27 @@ row/field/object access
 
 ## Progress
 
-- [ ] Create ExecPlan.
-- [ ] Audit standard auth tenant model.
-- [ ] Design data tenant mapping.
-- [ ] Implement default permission provider.
-- [ ] Add tests and docs.
+- [x] Create ExecPlan.
+- [x] Audit standard auth tenant model.
+- [x] Design data tenant mapping.
+- [x] Implement default permission provider.
+- [x] Add tests and docs.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- Standard auth already exposes `AuthData.TenantID`, and it is the right stable value to map directly onto data `TenantKey`.
+- `ObjectRef` and `FieldRef` previously carried only the metadata tenant UUID, not the tenant key, so permission providers could not compare against auth tenant claims without extra database lookups.
 
 ## Decision Log
 
-Record decisions here.
+- `data.StandardAuthPermissions` is a public wrapper, not a policy engine. It fails closed on missing/mismatched tenant keys, then delegates to an optional `Base` permission provider.
+- `data.Actor` now carries `TenantKey`; `data.ActorFromContext` fills it from standard auth when available.
+- The auth tenant ID maps directly to the data tenant key. Apps that want a different mapping can still provide their own `Permissions`.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Implemented standard-auth tenant scoping for data permissions, tenant-aware actor helpers, tenant-key propagation through object and field refs, and coverage for query/live subscription denial on tenant mismatch.
+- Updated the public data docs and local contract. Default allow-all behavior remains available when apps do not opt into `StandardAuthPermissions`.
 
 ## Context and Orientation
 
