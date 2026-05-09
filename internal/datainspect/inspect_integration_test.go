@@ -53,6 +53,13 @@ func TestBuildWithPostgres(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateField: %v", err)
 	}
+	if _, err := store.CreateIndex(ctx, actor, "company", datastore.CreateIndexRequest{
+		TenantKey: tenantKey,
+		Name:      "company_name",
+		Fields:    []datastore.IndexField{{Field: "name"}},
+	}); err != nil {
+		t.Fatalf("CreateIndex: %v", err)
+	}
 
 	resp, err := Build(ctx, Options{DatabaseURL: db.URL, TenantKey: tenantKey, ObjectName: "company"})
 	if err != nil {
@@ -66,6 +73,9 @@ func TestBuildWithPostgres(t *testing.T) {
 	}
 	if len(resp.Objects) != 1 || resp.Objects[0].Name != "company" || len(resp.Objects[0].Fields) != 1 {
 		t.Fatalf("objects = %#v", resp.Objects)
+	}
+	if len(resp.Objects[0].Indexes) != 1 || resp.Objects[0].Indexes[0].Name != "company_name" || !resp.Objects[0].Indexes[0].Physical.Exists || resp.Objects[0].Indexes[0].Physical.Drift {
+		t.Fatalf("indexes = %#v", resp.Objects[0].Indexes)
 	}
 	if resp.Objects[0].PhysicalTable == "" || resp.Objects[0].Fields[0].Columns[0] == "" {
 		t.Fatalf("missing physical names: %#v", resp.Objects[0])

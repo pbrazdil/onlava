@@ -48,14 +48,25 @@ curl -sS -X POST http://127.0.0.1:4000/data/objects/company/outbox-triggers \
   -H 'content-type: application/json' \
   -d '{"tenant_key":"fixture_tenant"}'
 
+curl -sS -X POST http://127.0.0.1:4000/data/objects/company/indexes \
+  -H 'content-type: application/json' \
+  -d '{"tenant_key":"fixture_tenant","name":"company_stage","fields":[{"field":"stage"}]}'
+
+curl -sS -X POST http://127.0.0.1:4000/data/objects/company/indexes/query \
+  -H 'content-type: application/json' \
+  -d '{"tenant_key":"fixture_tenant"}'
+
 curl -sS -X POST http://127.0.0.1:4000/data/objects/company/records \
   -H 'content-type: application/json' \
   -d '{"tenant_key":"fixture_tenant","values":{"name":"Acme","stage":"lead"}}'
 
 curl -sS -X POST http://127.0.0.1:4000/data/objects/company/records/query \
   -H 'content-type: application/json' \
-  -d '{"tenant_key":"fixture_tenant","query":{"select":["id","name","stage"],"filter":{"op":"eq","field":"stage","value":"lead"}}}'
+  -d '{"tenant_key":"fixture_tenant","query":{"select":["id","name","stage"],"filter":{"op":"eq","field":"stage","value":"lead"},"sort":[{"field":"stage"}],"limit":50}}'
 ```
+
+When the query response includes `next_cursor`, pass it back as
+`query.cursor` with the same object and sort shape to fetch the next page.
 
 Open an SSE stream for matching updates:
 

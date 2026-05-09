@@ -54,6 +54,7 @@ type ObjectSummary struct {
 	OutboxTriggerName     string         `json:"outbox_trigger_name,omitempty"`
 	OutboxTriggerPresent  bool           `json:"outbox_trigger_present"`
 	Fields                []FieldSummary `json:"fields"`
+	Indexes               []IndexSummary `json:"indexes"`
 }
 
 type FieldSummary struct {
@@ -61,6 +62,26 @@ type FieldSummary struct {
 	Label   string   `json:"label"`
 	Type    string   `json:"type"`
 	Columns []string `json:"columns"`
+}
+
+type IndexSummary struct {
+	Name         string              `json:"name"`
+	PhysicalName string              `json:"physical_name"`
+	Method       string              `json:"method"`
+	Unique       bool                `json:"unique"`
+	Fields       []IndexFieldSummary `json:"fields"`
+	Physical     PhysicalIndexState  `json:"physical"`
+}
+
+type IndexFieldSummary struct {
+	Name      string `json:"name"`
+	Direction string `json:"direction,omitempty"`
+	OpClass   string `json:"opclass,omitempty"`
+}
+
+type PhysicalIndexState struct {
+	Exists bool `json:"exists"`
+	Drift  bool `json:"drift"`
 }
 
 type MigrationSummary struct {
@@ -158,7 +179,7 @@ func schemasReady(ctx context.Context, db db) (bool, []string, error) {
 	if !records {
 		warnings = append(warnings, "records schema onlava_data_records does not exist")
 	}
-	for _, table := range []string{"tenants", "objects", "fields", "schema_migrations", "outbox_events"} {
+	for _, table := range []string{"tenants", "objects", "fields", "indexes", "index_fields", "schema_migrations", "outbox_events"} {
 		exists, err := tableExists(ctx, db, datastore.MetadataSchema, table)
 		if err != nil {
 			return false, nil, err
@@ -248,6 +269,7 @@ func loadObjects(ctx context.Context, db db, opts Options) ([]ObjectSummary, err
 			return nil, err
 		}
 		object.Fields = []FieldSummary{}
+		object.Indexes = []IndexSummary{}
 		objects = append(objects, object)
 		byID[object.ID] = len(objects) - 1
 	}
@@ -282,7 +304,76 @@ func loadObjects(ctx context.Context, db db, opts Options) ([]ObjectSummary, err
 			objects[index].Fields = append(objects[index].Fields, field)
 		}
 	}
-	return objects, fieldRows.Err()
+	if err := fieldRows.Err(); err != nil {
+		return nil, err
+	}
+	indexRows, err := db.Query(ctx, `
+		select i.object_id::text, i.name, i.physical_name, i.method, i.is_unique,
+		       exists (
+		         select 1
+		         from pg_index pi
+		         join pg_class idx on idx.oid = pi.indexrelid
+		         join pg_class tbl on tbl.oid = pi.indrelid
+		         join pg_namespace n on n.oid = tbl.relnamespace
+		         where n.nspname = $3
+		           and tbl.relname = o.table_name
+		           and idx.relname = i.physical_name
+		       ) as physical_exists
+		from onlava_data.indexes i
+		join onlava_data.objects o on o.id = i.object_id
+		join onlava_data.tenants t on t.id = i.tenant_id
+		where ($1::text = '' or t.key = $1)
+		  and ($2::text = '' or o.name_singular = $2)
+		order by t.key, o.name_singular, i.name
+	`, strings.TrimSpace(opts.TenantKey), strings.TrimSpace(opts.ObjectName), datastore.RecordsSchema)
+	if err != nil {
+		return nil, fmt.Errorf("inspect data indexes: %w", err)
+	}
+	defer indexRows.Close()
+	indexPositions := map[string][2]int{}
+	for indexRows.Next() {
+		var objectID string
+		var physicalExists bool
+		var item IndexSummary
+		if err := indexRows.Scan(&objectID, &item.Name, &item.PhysicalName, &item.Method, &item.Unique, &physicalExists); err != nil {
+			return nil, err
+		}
+		item.Fields = []IndexFieldSummary{}
+		item.Physical = PhysicalIndexState{Exists: physicalExists, Drift: !physicalExists}
+		if objectIndex, ok := byID[objectID]; ok {
+			objects[objectIndex].Indexes = append(objects[objectIndex].Indexes, item)
+			indexPositions[item.PhysicalName] = [2]int{objectIndex, len(objects[objectIndex].Indexes) - 1}
+		}
+	}
+	if err := indexRows.Err(); err != nil {
+		return nil, err
+	}
+	indexFieldRows, err := db.Query(ctx, `
+		select i.physical_name, f.name, ix.direction, ix.opclass
+		from onlava_data.index_fields ix
+		join onlava_data.indexes i on i.id = ix.index_id
+		join onlava_data.fields f on f.id = ix.field_id
+		join onlava_data.objects o on o.id = i.object_id
+		join onlava_data.tenants t on t.id = i.tenant_id
+		where ($1::text = '' or t.key = $1)
+		  and ($2::text = '' or o.name_singular = $2)
+		order by t.key, o.name_singular, i.name, ix.position
+	`, strings.TrimSpace(opts.TenantKey), strings.TrimSpace(opts.ObjectName))
+	if err != nil {
+		return nil, fmt.Errorf("inspect data index fields: %w", err)
+	}
+	defer indexFieldRows.Close()
+	for indexFieldRows.Next() {
+		var physicalName string
+		var field IndexFieldSummary
+		if err := indexFieldRows.Scan(&physicalName, &field.Name, &field.Direction, &field.OpClass); err != nil {
+			return nil, err
+		}
+		if position, ok := indexPositions[physicalName]; ok {
+			objects[position[0]].Indexes[position[1]].Fields = append(objects[position[0]].Indexes[position[1]].Fields, field)
+		}
+	}
+	return objects, indexFieldRows.Err()
 }
 
 func loadMigrations(ctx context.Context, db db, opts Options) (MigrationSummary, error) {

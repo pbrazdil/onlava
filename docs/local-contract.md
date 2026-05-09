@@ -247,13 +247,15 @@ Beta dynamic data platform:
 - The first slice stores metadata and outbox rows in `onlava_data` and physical dynamic record tables in `onlava_data_records`.
 - Objects and scalar/composite fields are metadata-defined and backed by real PostgreSQL tables and columns.
 - User-managed select and multi-select fields use `text` and `text[]` plus metadata options, not PostgreSQL enum types.
+- Apps may call `store.CreateIndex(ctx, actor, objectName, data.CreateIndexRequest{...})` and `store.ListIndexes(ctx, actor, objectName, data.ListIndexesRequest{...})` for metadata-backed PostgreSQL indexes. The first index surface supports btree scalar indexes, compound btree indexes, and explicit GIN indexes for multi-select and JSON fields.
 - Record queries are compiled from metadata to parameterized SQL; user input must not become SQL identifiers.
+- Record queries use keyset cursor pagination when `query.cursor` is set. `RecordPage.NextCursor` is a base64url-encoded opaque cursor tied to the object, schema version, and effective sort shape; callers must reuse the same sort shape when fetching the next page.
 - Record mutations write outbox events in the same transaction.
 - Live updates use SSE over ordinary raw onlava endpoints plus the PostgreSQL outbox sequence for reconnect/replay.
 - Apps may call `store.EnableOutboxTriggers(ctx, actor, tenantKey, objectName)` to enable per-object trigger-backed outbox rows for direct SQL or DB Studio changes.
 - Explicit onlava record mutations still write precise outbox events themselves; trigger-backed outbox skips those transactions to avoid duplicate events.
 - Trigger-backed direct SQL events use logical field names in `before`, `after`, `diff`, and `changed_fields` where field metadata exists. Actor IDs come from transaction-local `onlava.actor_id` when set, otherwise they are empty.
-- `onlava inspect data --json --database-url <postgres-url>` reports data tenants, objects, fields, migration state, and outbox state without dumping user records.
+- `onlava inspect data --json --database-url <postgres-url>` reports data tenants, objects, fields, indexes, migration state, and outbox state without dumping user records.
 - `onlava inspect data --json --database-url <postgres-url> --tenant <tenant-key> --object <object-name>` filters the same infrastructure view to one data tenant/object.
 
 Standard auth:

@@ -60,6 +60,10 @@
         "fields": {
           "type": "array",
           "items": { "$ref": "#/$defs/field" }
+        },
+        "indexes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/index" }
         }
       },
       "additionalProperties": false
@@ -75,6 +79,41 @@
           "type": "array",
           "items": { "type": "string" }
         }
+      },
+      "additionalProperties": false
+    },
+    "index": {
+      "type": "object",
+      "required": ["name", "physical_name", "method", "unique", "fields", "physical"],
+      "properties": {
+        "name": { "type": "string" },
+        "physical_name": { "type": "string" },
+        "method": { "type": "string" },
+        "unique": { "type": "boolean" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/index_field" }
+        },
+        "physical": { "$ref": "#/$defs/physical_index" }
+      },
+      "additionalProperties": false
+    },
+    "index_field": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "direction": { "type": "string" },
+        "opclass": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "physical_index": {
+      "type": "object",
+      "required": ["exists", "drift"],
+      "properties": {
+        "exists": { "type": "boolean" },
+        "drift": { "type": "boolean" }
       },
       "additionalProperties": false
     },

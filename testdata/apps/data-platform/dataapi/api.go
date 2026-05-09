@@ -84,6 +84,22 @@ func (s *Service) EnableOutboxTriggers(ctx context.Context, object string, req *
 	return s.store.EnableOutboxTriggers(ctx, data.ActorFromContext(ctx), req.TenantKey, object)
 }
 
+//onlava:api auth path=/data/objects/:object/indexes method=POST
+func (s *Service) CreateIndex(ctx context.Context, object string, req *data.CreateIndexRequest) (*data.Index, error) {
+	if req == nil {
+		return nil, errs.B().Code(errs.InvalidArgument).Msg("request is required").Err()
+	}
+	return s.store.CreateIndex(ctx, data.ActorFromContext(ctx), object, *req)
+}
+
+//onlava:api auth path=/data/objects/:object/indexes/query method=POST
+func (s *Service) ListIndexes(ctx context.Context, object string, req *data.ListIndexesRequest) ([]data.Index, error) {
+	if req == nil {
+		return nil, errs.B().Code(errs.InvalidArgument).Msg("request is required").Err()
+	}
+	return s.store.ListIndexes(ctx, data.ActorFromContext(ctx), object, *req)
+}
+
 //onlava:api auth path=/data/objects/:object/records/query method=POST
 func (s *Service) QueryRecords(ctx context.Context, object string, req *data.QueryRecordsRequest) (*data.RecordPage, error) {
 	if req == nil {
