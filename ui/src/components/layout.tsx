@@ -1,14 +1,22 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import type { CSSProperties } from "react";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { DashboardProvider, useDashboard } from "../lib/dashboard-context";
 import { cn } from "../lib/utils";
+import {
+  AppShell,
+  appShellAppMenuButtonClass,
+  appShellIconButtonClass,
+  appShellNavItemClass,
+  appShellTopbarActionClass,
+} from "./layouts/AppShell";
 
 const APP_NAV_ITEMS = [
   { kind: "route", to: "/$appId/requests", label: "API Explorer", icon: IconPanelStack },
   { kind: "route", to: "/$appId/envs/local/api", label: "Service Catalog", icon: IconNodes },
   { kind: "ghost", label: "Infra", icon: IconLayers },
   { kind: "ghost", label: "Flow", icon: IconFlow },
+  { kind: "route", to: "/$appId/data", label: "Data", icon: IconDataObjects },
   { kind: "route", to: "/$appId/db", label: "DB Explorer", icon: IconDatabase },
   { kind: "route", to: "/$appId/pubsub", label: "Pub/Sub", icon: IconFlow },
   { kind: "ghost", label: "Snippets", icon: IconSnippets },
@@ -56,15 +64,8 @@ function DashboardShell({ appId }: { appId: string }) {
   }, []);
 
   return (
-    <div
-      data-onlava-ui="AppShell"
-      className="h-screen overflow-hidden bg-background text-foreground"
-      style={{ "--header-height": "52px" } as CSSProperties}
-    >
-      <header
-        data-slot="topbar"
-        className="fixed top-0 z-50 flex w-full items-center border-b border-topnav-border bg-topnav text-topnav-foreground"
-      >
+    <AppShell
+      topbar={
         <div className="flex w-full items-center gap-3 px-3" style={{ height: "var(--header-height)" }}>
           <div className="flex min-w-0 items-center gap-4">
             <div className="relative flex min-w-0 text-left" ref={menuRef}>
@@ -89,7 +90,7 @@ function DashboardShell({ appId }: { appId: string }) {
               <button
                 type="button"
                 onClick={() => setMenuOpen((value) => !value)}
-                className="flex h-8 cursor-pointer items-center gap-0 overflow-hidden rounded-md px-2 py-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus:outline-none"
+                className={appShellAppMenuButtonClass()}
                 title={statusTooltip(status?.compileError, status?.compiling, status?.running, connected)}
               >
                 <span className="truncate text-sm font-medium">{appName}</span>
@@ -134,7 +135,7 @@ function DashboardShell({ appId }: { appId: string }) {
                     <button
                       key={item.label}
                       type="button"
-                      className="flex flex-row items-center rounded-md px-2 py-2 text-sm h-8 gap-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors opacity-90"
+                      className={appShellNavItemClass(false, true)}
                       onClick={(event) => event.preventDefault()}
                     >
                       <Icon className="h-3.5 w-3.5 opacity-80" />
@@ -149,10 +150,7 @@ function DashboardShell({ appId }: { appId: string }) {
                     key={item.to}
                     to={item.to}
                     params={{ appId }}
-                    className={cn(
-                      "flex flex-row items-center rounded-md px-2 py-2 text-sm h-8 gap-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
-                      active && "bg-sidebar-accent text-sidebar-accent-foreground",
-                    )}
+                    className={appShellNavItemClass(active)}
                   >
                     {Icon ? <Icon className="h-3.5 w-3.5 opacity-80" /> : null}
                     <span className="font-medium">{item.label}</span>
@@ -165,7 +163,7 @@ function DashboardShell({ appId }: { appId: string }) {
             <a
               href="#"
               onClick={(event) => event.preventDefault()}
-              className="flex h-8 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus:outline-none"
+              className={appShellTopbarActionClass()}
             >
               <IconCloud className="h-3.5 w-3.5 text-amber-400" />
               <span>Cloud Dashboard</span>
@@ -176,26 +174,27 @@ function DashboardShell({ appId }: { appId: string }) {
             <HeaderIconButton label="" icon={<IconSidebar className="h-4 w-4" />} />
           </div>
         </div>
-      </header>
-      <div data-slot="body" style={{ height: "100vh", overflow: "hidden", paddingTop: "var(--header-height)" }}>
-        {status?.compileError ? (
+      }
+      compileError={
+        status?.compileError ? (
           <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
             <strong>Compile error</strong> {status.compileError}
           </div>
-        ) : null}
-        <Outlet />
-      </div>
-    </div>
+        ) : null
+      }
+    >
+      <Outlet />
+    </AppShell>
   );
 }
 
-function HeaderIconButton({ icon, label }: { icon: React.ReactNode; label: string }) {
+function HeaderIconButton({ icon, label }: { icon: ReactNode; label: string }) {
   return (
     <button
       type="button"
       aria-label={label || undefined}
       title={label || undefined}
-      className="inline-flex items-center justify-center rounded-md size-9 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+      className={appShellIconButtonClass()}
     >
       {icon}
       {label ? <span className="sr-only">{label}</span> : null}
@@ -221,6 +220,10 @@ function IconFlow({ className }: { className?: string }) {
 
 function IconDatabase({ className }: { className?: string }) {
   return <svg viewBox="0 0 16 16" fill="none" className={className}><ellipse cx="8" cy="4" rx="4.5" ry="2" stroke="currentColor" strokeWidth="1.2"/><path d="M3.5 4v5c0 1.1 2 2 4.5 2s4.5-.9 4.5-2V4m-9 2.5c0 1.1 2 2 4.5 2s4.5-.9 4.5-2" stroke="currentColor" strokeWidth="1.2"/></svg>;
+}
+
+function IconDataObjects({ className }: { className?: string }) {
+  return <svg viewBox="0 0 16 16" fill="none" className={className}><rect x="2.5" y="3" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="9.5" y="3" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.2"/><rect x="6" y="10" width="4" height="3.5" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M6.5 5h3M8 7v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>;
 }
 
 function IconSnippets({ className }: { className?: string }) {

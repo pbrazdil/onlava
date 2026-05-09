@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/primitives/Button";
 import { useDashboard } from "../lib/dashboard-context";
 import { cn } from "../lib/utils";
 import {
@@ -281,14 +282,14 @@ export function PubSubPage() {
                   {pubsub?.updated_at ? new Date(pubsub.updated_at).toLocaleTimeString() : "none"}
                 </div>
               </div>
-              <button
-                type="button"
+              <Button
+                tone="danger"
+                size="sm"
                 onClick={() => void clearQueues()}
                 disabled={!rpc || clearing || topics.length === 0}
-                className="rounded-md border border-red-950/80 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-300 hover:border-red-700 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {clearing ? "Clearing..." : "Clear queued jobs"}
-              </button>
+              </Button>
               <div className="flex rounded-md border border-border bg-sidebar/60 p-1">
                 {chartPeriods.map((item) => (
                   <button

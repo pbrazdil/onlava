@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { forwardRef, useEffect, useMemo, useRef } from "react";
+import { Button } from "@/components/primitives/Button";
 import { cn, formatDurationNanos, formatTime, processOutputText, renderMetadataPath, tryParseJSON } from "../lib/utils";
 import type { ApiCallResponse, APIEncodingRPC, ServiceRPC, StoredRequest } from "../lib/types";
 import type { RequestTab } from "../lib/api-explorer";
@@ -159,15 +160,14 @@ export function CompactRequestEditor({
               <IconSave className="h-4 w-4" />
             </button>
           </div>
-          <button
-            type="button"
+          <Button
             data-testid="call-api-button"
-            className="inline-flex h-9 w-20 items-center justify-center rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:pointer-events-none disabled:opacity-50"
+            className="w-20"
             disabled={disabled}
             onClick={onCall}
           >
             Call
-          </button>
+          </Button>
         </div>
       </div>
     </div>

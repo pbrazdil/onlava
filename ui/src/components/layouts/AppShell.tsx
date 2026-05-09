@@ -25,3 +25,23 @@ export function AppShell({ topbar, children, compileError, className }: AppShell
     </div>
   );
 }
+
+export function appShellNavItemClass(active = false, muted = false): string {
+  return cn(
+    "flex h-8 flex-row items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+    active && "bg-sidebar-accent text-sidebar-accent-foreground",
+    muted && "opacity-90",
+  );
+}
+
+export function appShellTopbarActionClass(): string {
+  return "flex h-8 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus:outline-none";
+}
+
+export function appShellIconButtonClass(): string {
+  return "inline-flex size-9 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+}
+
+export function appShellAppMenuButtonClass(): string {
+  return "flex h-8 cursor-pointer items-center gap-0 overflow-hidden rounded-md px-2 py-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus:outline-none";
+}

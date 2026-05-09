@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/primitives/Button";
 import { useDashboard } from "../lib/dashboard-context";
 import { cn } from "../lib/utils";
 import type { EndpointOption, ServiceRPC, StoredRequest, StoredRequestInput } from "../lib/types";
@@ -151,9 +152,10 @@ export function EndpointSelector({
 
   return (
     <div className="w-full" data-endpoint-selector="">
-      <button
-        type="button"
-        className="flex h-10 w-full items-center justify-between rounded-md border border-border bg-background px-3 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:cursor-not-allowed"
+      <Button
+        tone="secondary"
+        size="lg"
+        className="w-full justify-between px-3 text-left"
         disabled={endpoints.length === 0}
         onClick={() => (open ? onClose() : onOpen())}
       >
@@ -162,7 +164,7 @@ export function EndpointSelector({
           <span className="text-xs text-muted-foreground">{shortcut}</span>
           <IconChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </div>
-      </button>
+      </Button>
       {open ? (
         <div className="mt-2 w-full overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg">
           <input
