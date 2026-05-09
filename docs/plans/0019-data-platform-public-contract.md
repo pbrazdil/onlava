@@ -1,0 +1,165 @@
+# Data Platform Public Contract
+
+This ExecPlan is a living document. Update Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective as work proceeds.
+
+## Purpose / Big Picture
+
+The `github.com/pbrazdil/onlava/data` package is currently beta. This plan hardens its public contract so apps and agents can depend on it safely.
+
+The goal:
+
+```text
+beta data package
+      |
+      v
+documented API
+      |
+      v
+typed errors
+      |
+      v
+compatibility tests
+      |
+      v
+stable-ish v0 surface
+```
+
+## Progress
+
+- [ ] Audit public `data` package.
+- [ ] Add docs.
+- [ ] Add typed errors.
+- [ ] Add compatibility tests.
+- [ ] Add examples.
+- [ ] Update local contract.
+
+## Surprises & Discoveries
+
+Record discoveries here.
+
+## Decision Log
+
+Record decisions here.
+
+## Outcomes & Retrospective
+
+Fill when complete.
+
+## Context and Orientation
+
+Relevant files:
+
+```text
+data/data.go
+internal/objectstore/*
+docs/local-contract.md
+docs/data-platform.md
+testdata/apps/data-platform
+```
+
+## Scope
+
+Stabilize:
+
+```text
+Store
+Actor
+Permissions
+Object
+Field
+Record
+Query
+Filter
+Sort
+Event
+Create/Update/Delete/Query APIs
+ServeEvents
+```
+
+Do not stabilize:
+
+```text
+internal objectstore details
+physical table names as app contract
+migration internals
+trigger internals
+```
+
+## Milestones
+
+### Milestone 1: API audit
+
+Identify awkward aliases and internal leaks.
+
+### Milestone 2: Typed errors
+
+Add coded errors for:
+
+```text
+object_not_found
+field_not_found
+invalid_filter
+permission_denied
+migration_failed
+schema_drift
+invalid_cursor
+```
+
+### Milestone 3: Docs
+
+Add:
+
+```text
+docs/data-platform.md
+examples/data-platform/
+```
+
+### Milestone 4: Compatibility tests
+
+Snapshot public API examples and expected JSON behavior.
+
+## Interfaces and Dependencies
+
+- Stable or beta public API lives only under `github.com/pbrazdil/onlava/data`.
+- Internal objectstore implementation details must remain internal.
+- Error types should compose with existing onlava error conventions where possible.
+- Examples must compile without private package imports.
+
+## Plan of Work
+
+Audit public types first, remove accidental internal leaks, then add typed errors and examples. Update the local contract only after tests prove the documented API.
+
+## Concrete Steps
+
+1. Inventory exported `data` identifiers.
+2. Decide which identifiers are stable, beta, or internal leaks.
+3. Add typed errors and mapping tests.
+4. Add docs and examples.
+5. Add compatibility tests.
+6. Update `docs/local-contract.md`.
+
+## Validation and Acceptance
+
+```sh
+go test ./data ./internal/objectstore
+go test ./...
+go install ./cmd/onlava
+onlava harness self --json --write
+```
+
+Acceptance criteria:
+
+```text
+- public data docs exist
+- examples compile
+- typed errors are exposed
+- local-contract classifies stable/beta boundaries clearly
+```
+
+## Idempotence and Recovery
+
+Public API cleanup should avoid churn in app-facing names. If a breaking change is needed, record it in the Decision Log and update examples in the same change.
+
+## Artifacts and Notes
+
+Expected artifacts include `docs/data-platform.md`, examples, typed error tests, and local-contract updates.
