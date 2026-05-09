@@ -19,5 +19,6 @@
     },
     "types": ["vitest/globals"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/components/registry"]
 }

@@ -489,3 +489,23 @@ Shipped:
 - Self-harness checks required installed-skill capability mentions such as `onlava inspect data --json`, `onlava harness ui --json`, `github.com/pbrazdil/onlava/data`, the `@onlava` registry, and `onlava harness self --json --write`.
 - `docs/knowledge.json` is checked for important docs including `SKILL.md`, the app cookbook, the data-platform runbook, the UI agent contract, and the local contract.
 - Regression coverage for stale `SKILL.md` detection.
+
+## ONLV Direct onlava Registry Adoption
+
+- Status: completed
+- Owner: onlava dashboard / ONLV Pulse
+- Completed: 2026-05-10
+- Quality: B+
+- ExecPlan: [0031 ONLV Direct onlava Registry Adoption](0031-onlv-direct-onlava-registry-adoption.md)
+
+Shipped:
+
+- Pulse-compatible primitive registry source under `ui/src/components/registry/primitives`.
+- Individual `@onlava/*` primitive registry items plus the aggregate `@onlava/primitives` item.
+- ONLV Pulse mirrored registry outputs under `apps/pulse/src/components/primitives`.
+- Pulse app-facing imports moved away from raw `@/components/ui/*` and local product-layout compatibility imports.
+- ONLV primitive barrel now explicitly exports registry-owned primitive files instead of re-exporting `../ui`.
+- Removed unused Pulse generic compatibility shims and the old local `components/ui` source tree, and updated Pulse agent instructions to use registry-owned primitives/layouts.
+- Added `.ts` public entrypoint re-exports for migrated primitives that Vite may still request during hot reload.
+- `apps/pulse/scripts/check-onlava-ui-registry.mjs`, wired into `bun run typecheck`, to prevent future drift back to local raw shadcn imports.
+- Pulse visual harness remained stable with 24/24 snapshots passing.

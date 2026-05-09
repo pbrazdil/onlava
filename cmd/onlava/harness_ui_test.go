@@ -127,6 +127,36 @@ const req = require("@radix-ui/react-dialog");
 	}
 }
 
+func TestUIStaticRegistrySourcesMayUseLowLevelDependencies(t *testing.T) {
+	root := newUIStaticFixture(t)
+	writeFile(t, filepath.Join(root, "ui", "src", "components", "registry", "primitives", "dialog.tsx"), `
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { cva } from "class-variance-authority";
+import { Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export const dialogClass = cva("rounded-md");
+export function Dialog() {
+  return <DialogPrimitive.Root><Check className={cn("size-4")} /></DialogPrimitive.Root>;
+}
+`)
+	writeFile(t, filepath.Join(root, "ui", "registry", "onlava", "dialog.json"), `{
+  "name": "dialog",
+  "type": "registry:component",
+  "files": [{"source": "src/components/registry/primitives/dialog.tsx", "target": "@components/primitives/dialog.tsx", "type": "registry:component"}]
+}`)
+	var summary uiStaticSummary
+	diagnostics := checkUIStatic(root, &summary)
+	for _, diag := range diagnostics {
+		if strings.Contains(diag.Message, "Radix imports") ||
+			strings.Contains(diag.Message, "styling utility import") ||
+			strings.Contains(diag.Message, "lucide-react imports") ||
+			strings.Contains(diag.Message, "long className") {
+			t.Fatalf("registry source should be allowed to use low-level UI dependencies, got %#v", diagnostics)
+		}
+	}
+}
+
 func TestUIClassNameDiagnosticsCatchExpressions(t *testing.T) {
 	longClass := strings.Repeat("grid ", 50)
 	text := `

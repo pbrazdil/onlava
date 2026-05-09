@@ -398,6 +398,7 @@ func checkUISourceBoundaries(uiRoot string, summary *uiStaticSummary) ([]checkDi
 func uiForbiddenImportDiagnostic(uiRoot, path, rel, spec string) (checkDiagnostic, bool) {
 	allowLowLevel := strings.HasPrefix(rel, "src/components/primitives/") ||
 		strings.HasPrefix(rel, "src/components/layouts/") ||
+		strings.HasPrefix(rel, "src/components/registry/") ||
 		strings.HasPrefix(rel, "src/components/vendor/shadcn/")
 	if strings.Contains(spec, "/components/ui") || strings.HasPrefix(spec, "@/components/ui") {
 		return uiBoundaryDiag(path, "import from legacy components/ui is forbidden: "+spec, "Import from @/components/primitives or @/components/layouts."), true
@@ -413,7 +414,7 @@ func uiForbiddenImportDiagnostic(uiRoot, path, rel, spec string) (checkDiagnosti
 			return uiBoundaryDiag(path, "styling utility import is only allowed in onlava primitives/layouts/vendor: "+spec, "Expose a typed primitive or layout instead."), true
 		}
 	case "lucide-react":
-		if rel != "src/components/primitives/icons.tsx" && !strings.HasPrefix(rel, "src/components/layouts/") {
+		if !allowLowLevel && rel != "src/components/primitives/icons.tsx" && !strings.HasPrefix(rel, "src/components/layouts/") {
 			return uiBoundaryDiag(path, "lucide-react imports must go through an onlava icons wrapper", "Create or use @/components/primitives/icons."), true
 		}
 	case "radix-ui":
@@ -441,6 +442,7 @@ func uiBoundaryDiag(path, message, suggestion string) checkDiagnostic {
 func uiClassNameDiagnostics(uiRoot, path, rel, text string) []checkDiagnostic {
 	if strings.HasPrefix(rel, "src/components/primitives/") ||
 		strings.HasPrefix(rel, "src/components/layouts/") ||
+		strings.HasPrefix(rel, "src/components/registry/") ||
 		strings.HasPrefix(rel, "src/components/vendor/shadcn/") {
 		return nil
 	}
