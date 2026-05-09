@@ -337,7 +337,8 @@ func TestPostgresCreateObjectAndFieldAreIdempotent(t *testing.T) {
 }
 
 func TestPostgresConcurrentCreatesAreIdempotent(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_concurrent_%d", time.Now().UnixNano())
 	t.Cleanup(func() {

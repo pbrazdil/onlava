@@ -232,6 +232,8 @@ func (s *Store) loadFields(ctx context.Context, tenantID, objectID string) (map[
 	defer rows.Close()
 
 	fields := map[string]*Field{}
+	fieldsByID := map[string]*Field{}
+	fieldIDs := []string{}
 	for rows.Next() {
 		var field Field
 		var fieldType string
@@ -257,14 +259,23 @@ func (s *Store) loadFields(ctx context.Context, tenantID, objectID string) (map[
 				return nil, fmt.Errorf("decode field %s columns: %w", field.Name, err)
 			}
 		}
+		fields[field.Name] = &field
+		fieldsByID[field.ID] = &field
+		fieldIDs = append(fieldIDs, field.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for _, fieldID := range fieldIDs {
+		field := fieldsByID[fieldID]
 		options, err := s.loadFieldOptions(ctx, tenantID, field.ID)
 		if err != nil {
 			return nil, err
 		}
 		field.Options = options
-		fields[field.Name] = &field
 	}
-	return fields, rows.Err()
+	return fields, nil
 }
 
 func (s *Store) loadFieldOptions(ctx context.Context, tenantID, fieldID string) ([]FieldOption, error) {
