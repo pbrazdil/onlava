@@ -279,6 +279,8 @@ func dbValueForColumn(field *Field, column PhysicalColumn, raw any) columnValue 
 	value := raw
 	cast := ""
 	switch column.SQLType {
+	case "uuid":
+		cast = "uuid"
 	case "jsonb":
 		data, _ := json.Marshal(raw)
 		value = string(data)

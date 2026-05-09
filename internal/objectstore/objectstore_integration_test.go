@@ -478,6 +478,209 @@ func TestPostgresCreateIndexAndCursorPagination(t *testing.T) {
 	}
 }
 
+func TestPostgresRelationFieldsAndQueries(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_relation_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject(company): %v", err)
+	}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "deal", NamePlural: "deals"}); err != nil {
+		t.Fatalf("CreateObject(deal): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(company.name): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldSelect, Options: []FieldOptionRequest{{Value: "customer"}, {Value: "lead"}}}); err != nil {
+		t.Fatalf("CreateField(company.stage): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "deal", CreateFieldRequest{TenantKey: tenantKey, Name: "title", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(deal.title): %v", err)
+	}
+	companyField, err := store.CreateField(ctx, actor, "deal", CreateFieldRequest{
+		TenantKey:      tenantKey,
+		Name:           "company",
+		Type:           FieldRelation,
+		RelationObject: "company",
+		Relation:       RelationSettings{Kind: RelationManyToOne, OnDelete: RelationDeleteRestrict},
+	})
+	if err != nil {
+		t.Fatalf("CreateField(deal.company): %v", err)
+	}
+	relatedField, err := store.CreateField(ctx, actor, "deal", CreateFieldRequest{
+		TenantKey:      tenantKey,
+		Name:           "related_companies",
+		Type:           FieldRelation,
+		RelationObject: "company",
+		Relation:       RelationSettings{Kind: RelationManyToMany},
+	})
+	if err != nil {
+		t.Fatalf("CreateField(deal.related_companies): %v", err)
+	}
+	if relationKindForField(companyField) != RelationManyToOne || companyField.RelationObjectID == "" || len(companyField.Columns) != 1 {
+		t.Fatalf("many-to-one relation field = %#v", companyField)
+	}
+	if relationKindForField(relatedField) != RelationManyToMany || len(relatedField.Columns) != 0 || stringSetting(relatedField.Settings, "join_table_name") == "" {
+		t.Fatalf("many-to-many relation field = %#v", relatedField)
+	}
+	dealState, err := store.loadState(ctx, tenantKey, "deal")
+	if err != nil {
+		t.Fatalf("loadState(deal): %v", err)
+	}
+	if err := store.verifyRelationField(ctx, pool, dealState.Object.TableName, dealState.Fields["company"]); err != nil {
+		t.Fatalf("verify many-to-one relation: %v", err)
+	}
+	if err := store.verifyRelationField(ctx, pool, dealState.Object.TableName, dealState.Fields["related_companies"]); err != nil {
+		t.Fatalf("verify many-to-many relation: %v", err)
+	}
+
+	company, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{
+		TenantKey: tenantKey,
+		Values: Record{
+			"name":  "Acme",
+			"stage": "customer",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord(company): %v", err)
+	}
+	companyID, _ := company.Record["id"].(string)
+	if companyID == "" {
+		t.Fatalf("company id missing: %#v", company.Record)
+	}
+	if _, err := store.CreateRecord(ctx, actor, "deal", CreateRecordRequest{
+		TenantKey: tenantKey,
+		Values: Record{
+			"title":   "Expansion",
+			"company": "00000000-0000-0000-0000-000000000999",
+		},
+	}); err == nil {
+		t.Fatalf("CreateRecord(deal invalid FK) succeeded, want foreign key error")
+	}
+	if _, err := store.CreateRecord(ctx, actor, "deal", CreateRecordRequest{
+		TenantKey: tenantKey,
+		Values: Record{
+			"title":   "Expansion",
+			"company": companyID,
+		},
+	}); err != nil {
+		t.Fatalf("CreateRecord(deal): %v", err)
+	}
+	page, err := store.QueryRecords(ctx, actor, "deal", QueryRecordsRequest{
+		TenantKey: tenantKey,
+		Query: Query{
+			Select: []string{"title", "company.name"},
+			Filter: &Filter{Op: "eq", Field: "company.stage", Value: "customer"},
+			Sort:   []Sort{{Field: "company.name"}},
+			Limit:  10,
+		},
+	})
+	if err != nil {
+		t.Fatalf("QueryRecords(relation path): %v", err)
+	}
+	if len(page.Records) != 1 || page.Records[0]["title"] != "Expansion" || page.Records[0]["company.name"] != "Acme" {
+		t.Fatalf("relation query page = %#v", page)
+	}
+}
+
+func TestPostgresSavedViews(t *testing.T) {
+	ctx := context.Background()
+	pool, store := openPostgresStore(t)
+	tenantKey := fmt.Sprintf("tenant_view_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+	if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{TenantKey: tenantKey, TenantName: "Tenant", NameSingular: "company", NamePlural: "companies"}); err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "name", Type: FieldText}); err != nil {
+		t.Fatalf("CreateField(name): %v", err)
+	}
+	if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{TenantKey: tenantKey, Name: "stage", Type: FieldSelect, Options: []FieldOptionRequest{{Value: "lead"}, {Value: "won"}}}); err != nil {
+		t.Fatalf("CreateField(stage): %v", err)
+	}
+	if _, err := store.CreateView(ctx, actor, "company", CreateViewRequest{
+		TenantKey:  tenantKey,
+		Name:       "won_companies",
+		Columns:    []string{"name", "stage"},
+		Filter:     &Filter{Op: "eq", Field: "stage", Value: "won"},
+		Sort:       []Sort{{Field: "name"}},
+		Limit:      10,
+		Visibility: ViewVisibilityShared,
+	}); err != nil {
+		t.Fatalf("CreateView: %v", err)
+	}
+	if _, err := store.CreateView(ctx, actor, "company", CreateViewRequest{
+		TenantKey: tenantKey,
+		Name:      "bad_view",
+		Columns:   []string{"missing"},
+	}); err == nil {
+		t.Fatalf("CreateView(invalid) succeeded, want validation error")
+	}
+	for _, item := range []struct {
+		name  string
+		stage string
+	}{
+		{name: "Acme", stage: "won"},
+		{name: "Beta", stage: "lead"},
+	} {
+		if _, err := store.CreateRecord(ctx, actor, "company", CreateRecordRequest{
+			TenantKey: tenantKey,
+			Values: Record{
+				"name":  item.name,
+				"stage": item.stage,
+			},
+		}); err != nil {
+			t.Fatalf("CreateRecord(%s): %v", item.name, err)
+		}
+	}
+	views, err := store.ListViews(ctx, actor, "company", ListViewsRequest{TenantKey: tenantKey})
+	if err != nil {
+		t.Fatalf("ListViews: %v", err)
+	}
+	if len(views) != 1 || views[0].Name != "won_companies" || views[0].Visibility != ViewVisibilityShared {
+		t.Fatalf("views = %#v", views)
+	}
+	page, err := store.QueryView(ctx, actor, "company", "won_companies", QueryViewRequest{TenantKey: tenantKey})
+	if err != nil {
+		t.Fatalf("QueryView: %v", err)
+	}
+	if len(page.Records) != 1 || page.Records[0]["name"] != "Acme" {
+		t.Fatalf("QueryView page = %#v", page)
+	}
+	updated, err := store.UpdateView(ctx, actor, "company", "won_companies", UpdateViewRequest{
+		TenantKey: tenantKey,
+		Name:      "all_companies",
+		Columns:   []string{"name"},
+		Limit:     1,
+	})
+	if err != nil {
+		t.Fatalf("UpdateView: %v", err)
+	}
+	if updated.Name != "all_companies" || len(updated.Columns) != 1 {
+		t.Fatalf("updated view = %#v", updated)
+	}
+	if err := store.DeleteView(ctx, actor, "company", "all_companies", DeleteViewRequest{TenantKey: tenantKey}); err != nil {
+		t.Fatalf("DeleteView: %v", err)
+	}
+	views, err = store.ListViews(ctx, actor, "company", ListViewsRequest{TenantKey: tenantKey})
+	if err != nil {
+		t.Fatalf("ListViews(after delete): %v", err)
+	}
+	if len(views) != 0 {
+		t.Fatalf("views after delete = %#v", views)
+	}
+}
+
 func TestPostgresConcurrentCreatesAreIdempotent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
@@ -943,6 +1146,11 @@ func cleanupPostgresTenant(ctx context.Context, pool *pgxpool.Pool, tenantKey st
 		from `+qualifiedIdent(MetadataSchema, "objects")+` o
 		join `+qualifiedIdent(MetadataSchema, "tenants")+` t on t.id = o.tenant_id
 		where t.key = $1
+		union
+		select f.settings->>'join_table_name'
+		from `+qualifiedIdent(MetadataSchema, "fields")+` f
+		join `+qualifiedIdent(MetadataSchema, "tenants")+` t on t.id = f.tenant_id
+		where t.key = $1 and coalesce(f.settings->>'join_table_name', '') <> ''
 	`, tenantKey)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
@@ -979,7 +1187,7 @@ func cleanupPostgresTenant(ctx context.Context, pool *pgxpool.Pool, tenantKey st
 		}
 	}
 	for _, tableName := range tableNames {
-		if _, err := pool.Exec(ctx, `drop table if exists `+qualifiedIdent(RecordsSchema, tableName)); err != nil {
+		if _, err := pool.Exec(ctx, `drop table if exists `+qualifiedIdent(RecordsSchema, tableName)+` cascade`); err != nil {
 			return err
 		}
 	}

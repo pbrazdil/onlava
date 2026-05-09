@@ -76,6 +76,14 @@ func physicalIndexName(indexID, indexName string) string {
 	return physicalNameWithSuffix(indexName, shortIdentifierSuffix(indexID))
 }
 
+func physicalJoinTableName(fieldID, sourceObject, fieldName string) string {
+	return physicalNameWithSuffix(sourceObject+"_"+fieldName+"_join", shortIdentifierSuffix(fieldID))
+}
+
+func physicalConstraintName(fieldID, prefix, fieldName string) string {
+	return physicalNameWithSuffix(prefix+"_"+fieldName, shortIdentifierSuffix(fieldID))
+}
+
 func physicalNameWithSuffix(base, suffix string) string {
 	if suffix == "" {
 		sum := sha256.Sum256([]byte(base))

@@ -55,13 +55,23 @@ type ObjectSummary struct {
 	OutboxTriggerPresent  bool           `json:"outbox_trigger_present"`
 	Fields                []FieldSummary `json:"fields"`
 	Indexes               []IndexSummary `json:"indexes"`
+	Views                 []ViewSummary  `json:"views"`
 }
 
 type FieldSummary struct {
-	Name    string   `json:"name"`
-	Label   string   `json:"label"`
-	Type    string   `json:"type"`
-	Columns []string `json:"columns"`
+	Name     string           `json:"name"`
+	Label    string           `json:"label"`
+	Type     string           `json:"type"`
+	Columns  []string         `json:"columns"`
+	Relation *RelationSummary `json:"relation,omitempty"`
+}
+
+type RelationSummary struct {
+	Object        string `json:"object"`
+	Kind          string `json:"kind"`
+	InverseField  string `json:"inverse_field,omitempty"`
+	OnDelete      string `json:"on_delete"`
+	JoinTableName string `json:"join_table_name,omitempty"`
 }
 
 type IndexSummary struct {
@@ -82,6 +92,17 @@ type IndexFieldSummary struct {
 type PhysicalIndexState struct {
 	Exists bool `json:"exists"`
 	Drift  bool `json:"drift"`
+}
+
+type ViewSummary struct {
+	Name       string          `json:"name"`
+	Type       string          `json:"type"`
+	Columns    []string        `json:"columns"`
+	Filter     json.RawMessage `json:"filter,omitempty"`
+	Sort       json.RawMessage `json:"sort,omitempty"`
+	Limit      int             `json:"limit,omitempty"`
+	Visibility string          `json:"visibility"`
+	OwnerID    string          `json:"owner_id,omitempty"`
 }
 
 type MigrationSummary struct {
@@ -179,7 +200,7 @@ func schemasReady(ctx context.Context, db db) (bool, []string, error) {
 	if !records {
 		warnings = append(warnings, "records schema onlava_data_records does not exist")
 	}
-	for _, table := range []string{"tenants", "objects", "fields", "indexes", "index_fields", "schema_migrations", "outbox_events"} {
+	for _, table := range []string{"tenants", "objects", "fields", "indexes", "index_fields", "views", "view_fields", "schema_migrations", "outbox_events"} {
 		exists, err := tableExists(ctx, db, objectstore.MetadataSchema, table)
 		if err != nil {
 			return false, nil, err
@@ -270,6 +291,7 @@ func loadObjects(ctx context.Context, db db, opts Options) ([]ObjectSummary, err
 		}
 		object.Fields = []FieldSummary{}
 		object.Indexes = []IndexSummary{}
+		object.Views = []ViewSummary{}
 		objects = append(objects, object)
 		byID[object.ID] = len(objects) - 1
 	}
@@ -280,10 +302,12 @@ func loadObjects(ctx context.Context, db db, opts Options) ([]ObjectSummary, err
 		return objects, nil
 	}
 	fieldRows, err := db.Query(ctx, `
-		select f.object_id::text, f.name, f.label, f.type, f.storage_columns
+		select f.object_id::text, f.name, f.label, f.type, f.storage_columns,
+		       coalesce(ro.name_singular, ''), f.settings
 		from onlava_data.fields f
 		join onlava_data.objects o on o.id = f.object_id
 		join onlava_data.tenants t on t.id = f.tenant_id
+		left join onlava_data.objects ro on ro.id = f.relation_object_id
 		where ($1::text = '' or t.key = $1)
 		  and ($2::text = '' or o.name_singular = $2)
 		order by t.key, o.name_singular, f.name
@@ -296,10 +320,13 @@ func loadObjects(ctx context.Context, db db, opts Options) ([]ObjectSummary, err
 		var objectID string
 		var field FieldSummary
 		var columnsJSON []byte
-		if err := fieldRows.Scan(&objectID, &field.Name, &field.Label, &field.Type, &columnsJSON); err != nil {
+		var relationObject string
+		var settingsJSON []byte
+		if err := fieldRows.Scan(&objectID, &field.Name, &field.Label, &field.Type, &columnsJSON, &relationObject, &settingsJSON); err != nil {
 			return nil, err
 		}
 		field.Columns = columnNames(columnsJSON)
+		field.Relation = relationSummary(field.Type, relationObject, settingsJSON)
 		if index, ok := byID[objectID]; ok {
 			objects[index].Fields = append(objects[index].Fields, field)
 		}
@@ -373,7 +400,64 @@ func loadObjects(ctx context.Context, db db, opts Options) ([]ObjectSummary, err
 			objects[position[0]].Indexes[position[1]].Fields = append(objects[position[0]].Indexes[position[1]].Fields, field)
 		}
 	}
-	return objects, indexFieldRows.Err()
+	if err := indexFieldRows.Err(); err != nil {
+		return nil, err
+	}
+	viewRows, err := db.Query(ctx, `
+		select v.object_id::text, v.name, v.type, v.filter, v.sort, v.limit_count, v.visibility, v.owner_id
+		from onlava_data.views v
+		join onlava_data.objects o on o.id = v.object_id
+		join onlava_data.tenants t on t.id = v.tenant_id
+		where ($1::text = '' or t.key = $1)
+		  and ($2::text = '' or o.name_singular = $2)
+		order by t.key, o.name_singular, v.name
+	`, strings.TrimSpace(opts.TenantKey), strings.TrimSpace(opts.ObjectName))
+	if err != nil {
+		return nil, fmt.Errorf("inspect data views: %w", err)
+	}
+	defer viewRows.Close()
+	viewPositions := map[string][2]int{}
+	for viewRows.Next() {
+		var objectID string
+		var view ViewSummary
+		var filterJSON, sortJSON []byte
+		if err := viewRows.Scan(&objectID, &view.Name, &view.Type, &filterJSON, &sortJSON, &view.Limit, &view.Visibility, &view.OwnerID); err != nil {
+			return nil, err
+		}
+		view.Filter = rawJSONOrNil(filterJSON)
+		view.Sort = rawJSONOrNil(sortJSON)
+		if objectIndex, ok := byID[objectID]; ok {
+			objects[objectIndex].Views = append(objects[objectIndex].Views, view)
+			viewPositions[objectID+"."+view.Name] = [2]int{objectIndex, len(objects[objectIndex].Views) - 1}
+		}
+	}
+	if err := viewRows.Err(); err != nil {
+		return nil, err
+	}
+	viewFieldRows, err := db.Query(ctx, `
+		select v.object_id::text, v.name, vf.field_name
+		from onlava_data.view_fields vf
+		join onlava_data.views v on v.id = vf.view_id
+		join onlava_data.objects o on o.id = v.object_id
+		join onlava_data.tenants t on t.id = v.tenant_id
+		where ($1::text = '' or t.key = $1)
+		  and ($2::text = '' or o.name_singular = $2)
+		order by t.key, o.name_singular, v.name, vf.position
+	`, strings.TrimSpace(opts.TenantKey), strings.TrimSpace(opts.ObjectName))
+	if err != nil {
+		return nil, fmt.Errorf("inspect data view fields: %w", err)
+	}
+	defer viewFieldRows.Close()
+	for viewFieldRows.Next() {
+		var objectID, viewName, field string
+		if err := viewFieldRows.Scan(&objectID, &viewName, &field); err != nil {
+			return nil, err
+		}
+		if position, ok := viewPositions[objectID+"."+viewName]; ok {
+			objects[position[0]].Views[position[1]].Columns = append(objects[position[0]].Views[position[1]].Columns, field)
+		}
+	}
+	return objects, viewFieldRows.Err()
 }
 
 func loadMigrations(ctx context.Context, db db, opts Options) (MigrationSummary, error) {
@@ -454,6 +538,47 @@ func columnNames(data []byte) []string {
 		}
 	}
 	return out
+}
+
+func relationSummary(fieldType, relationObject string, settingsJSON []byte) *RelationSummary {
+	if fieldType != string(objectstore.FieldRelation) {
+		return nil
+	}
+	var settings map[string]any
+	_ = json.Unmarshal(settingsJSON, &settings)
+	kind := stringSetting(settings, "relation_kind")
+	if kind == "" {
+		kind = string(objectstore.RelationManyToOne)
+	}
+	onDelete := stringSetting(settings, "on_delete")
+	if onDelete == "" {
+		onDelete = string(objectstore.RelationDeleteRestrict)
+	}
+	return &RelationSummary{
+		Object:        relationObject,
+		Kind:          kind,
+		InverseField:  stringSetting(settings, "inverse_field"),
+		OnDelete:      onDelete,
+		JoinTableName: stringSetting(settings, "join_table_name"),
+	}
+}
+
+func rawJSONOrNil(data []byte) json.RawMessage {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	return json.RawMessage(trimmed)
+}
+
+func stringSetting(settings map[string]any, key string) string {
+	if settings == nil {
+		return ""
+	}
+	if value, ok := settings[key].(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
 }
 
 func stringArray(data []byte) []string {

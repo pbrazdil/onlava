@@ -10,40 +10,51 @@ import (
 )
 
 type (
-	DB                   = objectstore.DB
-	Options              = objectstore.Options
-	Tenant               = objectstore.Tenant
-	Object               = objectstore.Object
-	Field                = objectstore.Field
-	FieldType            = objectstore.FieldType
-	PhysicalColumn       = objectstore.PhysicalColumn
-	FieldOption          = objectstore.FieldOption
-	FieldOptionRequest   = objectstore.FieldOptionRequest
-	IndexMethod          = objectstore.IndexMethod
-	Index                = objectstore.Index
-	IndexField           = objectstore.IndexField
-	CreateIndexRequest   = objectstore.CreateIndexRequest
-	ListIndexesRequest   = objectstore.ListIndexesRequest
-	Actor                = objectstore.Actor
-	CreateObjectRequest  = objectstore.CreateObjectRequest
-	CreateFieldRequest   = objectstore.CreateFieldRequest
-	CreateRecordRequest  = objectstore.CreateRecordRequest
-	UpdateRecordRequest  = objectstore.UpdateRecordRequest
-	DeleteRecordRequest  = objectstore.DeleteRecordRequest
-	QueryRecordsRequest  = objectstore.QueryRecordsRequest
-	Record               = objectstore.Record
-	RecordResponse       = objectstore.RecordResponse
-	DeleteRecordResponse = objectstore.DeleteRecordResponse
-	RecordPage           = objectstore.RecordPage
-	Query                = objectstore.Query
-	Filter               = objectstore.Filter
-	Sort                 = objectstore.Sort
-	SubscriptionRequest  = objectstore.SubscriptionRequest
-	Event                = objectstore.Event
-	Permissions          = objectstore.Permissions
-	AllowAllPermissions  = objectstore.AllowAllPermissions
-	ObjectRef            = objectstore.ObjectRef
-	FieldRef             = objectstore.FieldRef
+	DB                     = objectstore.DB
+	Options                = objectstore.Options
+	Tenant                 = objectstore.Tenant
+	Object                 = objectstore.Object
+	Field                  = objectstore.Field
+	FieldType              = objectstore.FieldType
+	PhysicalColumn         = objectstore.PhysicalColumn
+	FieldOption            = objectstore.FieldOption
+	FieldOptionRequest     = objectstore.FieldOptionRequest
+	IndexMethod            = objectstore.IndexMethod
+	Index                  = objectstore.Index
+	IndexField             = objectstore.IndexField
+	CreateIndexRequest     = objectstore.CreateIndexRequest
+	ListIndexesRequest     = objectstore.ListIndexesRequest
+	Actor                  = objectstore.Actor
+	CreateObjectRequest    = objectstore.CreateObjectRequest
+	CreateFieldRequest     = objectstore.CreateFieldRequest
+	RelationKind           = objectstore.RelationKind
+	RelationDeleteBehavior = objectstore.RelationDeleteBehavior
+	RelationSettings       = objectstore.RelationSettings
+	CreateRecordRequest    = objectstore.CreateRecordRequest
+	UpdateRecordRequest    = objectstore.UpdateRecordRequest
+	DeleteRecordRequest    = objectstore.DeleteRecordRequest
+	QueryRecordsRequest    = objectstore.QueryRecordsRequest
+	ViewType               = objectstore.ViewType
+	ViewVisibility         = objectstore.ViewVisibility
+	View                   = objectstore.View
+	CreateViewRequest      = objectstore.CreateViewRequest
+	UpdateViewRequest      = objectstore.UpdateViewRequest
+	ListViewsRequest       = objectstore.ListViewsRequest
+	DeleteViewRequest      = objectstore.DeleteViewRequest
+	QueryViewRequest       = objectstore.QueryViewRequest
+	Record                 = objectstore.Record
+	RecordResponse         = objectstore.RecordResponse
+	DeleteRecordResponse   = objectstore.DeleteRecordResponse
+	RecordPage             = objectstore.RecordPage
+	Query                  = objectstore.Query
+	Filter                 = objectstore.Filter
+	Sort                   = objectstore.Sort
+	SubscriptionRequest    = objectstore.SubscriptionRequest
+	Event                  = objectstore.Event
+	Permissions            = objectstore.Permissions
+	AllowAllPermissions    = objectstore.AllowAllPermissions
+	ObjectRef              = objectstore.ObjectRef
+	FieldRef               = objectstore.FieldRef
 )
 
 type Store struct {
@@ -51,76 +62,119 @@ type Store struct {
 }
 
 const (
-	FieldText        = objectstore.FieldText
-	FieldRichText    = objectstore.FieldRichText
-	FieldNumber      = objectstore.FieldNumber
-	FieldNumeric     = objectstore.FieldNumeric
-	FieldCurrency    = objectstore.FieldCurrency
-	FieldBoolean     = objectstore.FieldBoolean
-	FieldDate        = objectstore.FieldDate
-	FieldDatetime    = objectstore.FieldDatetime
-	FieldUUID        = objectstore.FieldUUID
-	FieldSelect      = objectstore.FieldSelect
-	FieldMultiSelect = objectstore.FieldMultiSelect
-	FieldRating      = objectstore.FieldRating
-	FieldJSON        = objectstore.FieldJSON
-	FieldRawJSON     = objectstore.FieldRawJSON
-	FieldFiles       = objectstore.FieldFiles
-	FieldFullName    = objectstore.FieldFullName
-	FieldAddress     = objectstore.FieldAddress
-	FieldEmails      = objectstore.FieldEmails
-	FieldPhones      = objectstore.FieldPhones
-	FieldRelation    = objectstore.FieldRelation
-	IndexMethodBTree = objectstore.IndexMethodBTree
-	IndexMethodGIN   = objectstore.IndexMethodGIN
+	FieldText              = objectstore.FieldText
+	FieldRichText          = objectstore.FieldRichText
+	FieldNumber            = objectstore.FieldNumber
+	FieldNumeric           = objectstore.FieldNumeric
+	FieldCurrency          = objectstore.FieldCurrency
+	FieldBoolean           = objectstore.FieldBoolean
+	FieldDate              = objectstore.FieldDate
+	FieldDatetime          = objectstore.FieldDatetime
+	FieldUUID              = objectstore.FieldUUID
+	FieldSelect            = objectstore.FieldSelect
+	FieldMultiSelect       = objectstore.FieldMultiSelect
+	FieldRating            = objectstore.FieldRating
+	FieldJSON              = objectstore.FieldJSON
+	FieldRawJSON           = objectstore.FieldRawJSON
+	FieldFiles             = objectstore.FieldFiles
+	FieldFullName          = objectstore.FieldFullName
+	FieldAddress           = objectstore.FieldAddress
+	FieldEmails            = objectstore.FieldEmails
+	FieldPhones            = objectstore.FieldPhones
+	FieldRelation          = objectstore.FieldRelation
+	IndexMethodBTree       = objectstore.IndexMethodBTree
+	IndexMethodGIN         = objectstore.IndexMethodGIN
+	RelationManyToOne      = objectstore.RelationManyToOne
+	RelationManyToMany     = objectstore.RelationManyToMany
+	RelationDeleteRestrict = objectstore.RelationDeleteRestrict
+	RelationDeleteSetNull  = objectstore.RelationDeleteSetNull
+	RelationDeleteCascade  = objectstore.RelationDeleteCascade
+	ViewTypeTable          = objectstore.ViewTypeTable
+	ViewTypeKanban         = objectstore.ViewTypeKanban
+	ViewTypeCalendar       = objectstore.ViewTypeCalendar
+	ViewVisibilityPrivate  = objectstore.ViewVisibilityPrivate
+	ViewVisibilityShared   = objectstore.ViewVisibilityShared
 )
 
 func Open(ctx context.Context, db DB, opts Options) (*Store, error) {
 	inner, err := objectstore.Open(ctx, db, opts)
 	if err != nil {
-		return nil, err
+		return nil, wrapError("Open", err)
 	}
 	return &Store{inner: inner}, nil
 }
 
 func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectRequest) (*Object, error) {
-	return s.inner.CreateObject(ctx, actor, req)
+	out, err := s.inner.CreateObject(ctx, actor, req)
+	return out, wrapError("CreateObject", err)
 }
 
 func (s *Store) CreateField(ctx context.Context, actor Actor, object string, req CreateFieldRequest) (*Field, error) {
-	return s.inner.CreateField(ctx, actor, object, req)
+	out, err := s.inner.CreateField(ctx, actor, object, req)
+	return out, wrapError("CreateField", err)
 }
 
 func (s *Store) EnableOutboxTriggers(ctx context.Context, actor Actor, tenantKey string, object string) (*Object, error) {
-	return s.inner.EnableOutboxTriggers(ctx, actor, tenantKey, object)
+	out, err := s.inner.EnableOutboxTriggers(ctx, actor, tenantKey, object)
+	return out, wrapError("EnableOutboxTriggers", err)
 }
 
 func (s *Store) CreateIndex(ctx context.Context, actor Actor, object string, req CreateIndexRequest) (*Index, error) {
-	return s.inner.CreateIndex(ctx, actor, object, req)
+	out, err := s.inner.CreateIndex(ctx, actor, object, req)
+	return out, wrapError("CreateIndex", err)
 }
 
 func (s *Store) ListIndexes(ctx context.Context, actor Actor, object string, req ListIndexesRequest) ([]Index, error) {
-	return s.inner.ListIndexes(ctx, actor, object, req)
+	out, err := s.inner.ListIndexes(ctx, actor, object, req)
+	return out, wrapError("ListIndexes", err)
 }
 
 func (s *Store) CreateRecord(ctx context.Context, actor Actor, object string, req CreateRecordRequest) (*RecordResponse, error) {
-	return s.inner.CreateRecord(ctx, actor, object, req)
+	out, err := s.inner.CreateRecord(ctx, actor, object, req)
+	return out, wrapError("CreateRecord", err)
 }
 
 func (s *Store) UpdateRecord(ctx context.Context, actor Actor, object string, id string, req UpdateRecordRequest) (*RecordResponse, error) {
-	return s.inner.UpdateRecord(ctx, actor, object, id, req)
+	out, err := s.inner.UpdateRecord(ctx, actor, object, id, req)
+	return out, wrapError("UpdateRecord", err)
 }
 
 func (s *Store) DeleteRecord(ctx context.Context, actor Actor, object string, id string, req DeleteRecordRequest) (*DeleteRecordResponse, error) {
-	return s.inner.DeleteRecord(ctx, actor, object, id, req)
+	out, err := s.inner.DeleteRecord(ctx, actor, object, id, req)
+	return out, wrapError("DeleteRecord", err)
 }
 
 func (s *Store) QueryRecords(ctx context.Context, actor Actor, object string, req QueryRecordsRequest) (*RecordPage, error) {
-	return s.inner.QueryRecords(ctx, actor, object, req)
+	out, err := s.inner.QueryRecords(ctx, actor, object, req)
+	return out, wrapError("QueryRecords", err)
+}
+
+func (s *Store) CreateView(ctx context.Context, actor Actor, object string, req CreateViewRequest) (*View, error) {
+	out, err := s.inner.CreateView(ctx, actor, object, req)
+	return out, wrapError("CreateView", err)
+}
+
+func (s *Store) UpdateView(ctx context.Context, actor Actor, object string, view string, req UpdateViewRequest) (*View, error) {
+	out, err := s.inner.UpdateView(ctx, actor, object, view, req)
+	return out, wrapError("UpdateView", err)
+}
+
+func (s *Store) ListViews(ctx context.Context, actor Actor, object string, req ListViewsRequest) ([]View, error) {
+	out, err := s.inner.ListViews(ctx, actor, object, req)
+	return out, wrapError("ListViews", err)
+}
+
+func (s *Store) DeleteView(ctx context.Context, actor Actor, object string, view string, req DeleteViewRequest) error {
+	return wrapError("DeleteView", s.inner.DeleteView(ctx, actor, object, view, req))
+}
+
+func (s *Store) QueryView(ctx context.Context, actor Actor, object string, view string, req QueryViewRequest) (*RecordPage, error) {
+	out, err := s.inner.QueryView(ctx, actor, object, view, req)
+	return out, wrapError("QueryView", err)
 }
 
 func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWriter, req *http.Request) error {
-	return s.inner.ServeEvents(ctx, actor, w, req)
+	return wrapError("ServeEvents", s.inner.ServeEvents(ctx, actor, w, req))
 }
 
 func ActorFromContext(context.Context) Actor {

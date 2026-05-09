@@ -64,6 +64,10 @@
         "indexes": {
           "type": "array",
           "items": { "$ref": "#/$defs/index" }
+        },
+        "views": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/view" }
         }
       },
       "additionalProperties": false
@@ -78,7 +82,20 @@
         "columns": {
           "type": "array",
           "items": { "type": "string" }
-        }
+        },
+        "relation": { "$ref": "#/$defs/relation" }
+      },
+      "additionalProperties": false
+    },
+    "relation": {
+      "type": "object",
+      "required": ["object", "kind", "on_delete"],
+      "properties": {
+        "object": { "type": "string" },
+        "kind": { "type": "string" },
+        "inverse_field": { "type": "string" },
+        "on_delete": { "type": "string" },
+        "join_table_name": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -114,6 +131,27 @@
       "properties": {
         "exists": { "type": "boolean" },
         "drift": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "view": {
+      "type": "object",
+      "required": ["name", "type", "columns", "visibility"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "columns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "filter": { "type": ["object", "null"] },
+        "sort": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "limit": { "type": "integer" },
+        "visibility": { "type": "string" },
+        "owner_id": { "type": "string" }
       },
       "additionalProperties": false
     },

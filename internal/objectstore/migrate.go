@@ -137,22 +137,29 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 	if err != nil {
 		return nil, err
 	}
+	nullable := true
+	if req.Nullable != nil {
+		nullable = *req.Nullable
+	}
 	if _, exists := state.Fields[req.Name]; exists {
 		existing := state.Fields[req.Name]
 		if err := s.perms.CanWriteField(ctx, actor, fieldRef(state, existing)); err != nil {
 			return nil, err
 		}
-		if err := fieldMatchesRequest(existing, req, fieldType); err != nil {
+		settings, relationObjectID, _, err := s.fieldSettings(ctx, state, existing.ID, fieldType, nullable, req)
+		if err != nil {
+			return nil, err
+		}
+		if err := fieldMatchesRequest(existing, req, fieldType, settings, relationObjectID); err != nil {
 			return nil, err
 		}
 		if err := s.verifyFieldColumns(ctx, s.db, state.Object.TableName, existing.Columns); err != nil {
 			return nil, fmt.Errorf("field %s.%s exists but physical schema drift was detected: %w", objectName, existing.Name, err)
 		}
+		if err := s.verifyRelationField(ctx, s.db, state.Object.TableName, existing); err != nil {
+			return nil, fmt.Errorf("field %s.%s exists but relationship schema drift was detected: %w", objectName, existing.Name, err)
+		}
 		return existing, nil
-	}
-	nullable := true
-	if req.Nullable != nil {
-		nullable = *req.Nullable
 	}
 	fieldID, err := newUUID()
 	if err != nil {
@@ -162,9 +169,12 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 	if err != nil {
 		return nil, err
 	}
-	settings := req.Settings
-	if settings == nil {
-		settings = map[string]any{}
+	settings, relationObjectID, relation, err := s.fieldSettings(ctx, state, fieldID, fieldType, nullable, req)
+	if err != nil {
+		return nil, err
+	}
+	if relation != nil && relation.Kind == RelationManyToMany {
+		columns = nil
 	}
 	field := &Field{
 		ID:               fieldID,
@@ -178,7 +188,7 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 		IsNullable:       nullable,
 		IsUnique:         req.Unique,
 		IsArray:          req.Array,
-		RelationObjectID: "",
+		RelationObjectID: relationObjectID,
 		Settings:         settings,
 		Columns:          columns,
 		CreatedAt:        s.now(),
@@ -194,6 +204,11 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 	fromVersion := state.Object.SchemaVersion
 	toVersion := fromVersion + 1
 	ddl := addFieldDDL(state.Object.TableName, field)
+	relationDDL, err := relationFieldDDL(state.Object.TableName, field, relation)
+	if err != nil {
+		return nil, err
+	}
+	ddl = append(ddl, relationDDL...)
 	migrationID, err := s.startMigration(ctx, state.Tenant.ID, state.Object.ID, fromVersion, toVersion, ddl)
 	if err != nil {
 		return nil, err
@@ -218,8 +233,8 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 				id, tenant_id, object_id, name, label, type, is_custom, is_system,
 				is_nullable, is_unique, is_array, relation_object_id, settings,
 				storage_columns, created_at, updated_at
-			) values ($1, $2, $3, $4, $5, $6, true, false, $7, $8, $9, null, $10, $11, $12, $12)
-		`, field.ID, field.TenantID, field.ObjectID, field.Name, field.Label, string(field.Type), field.IsNullable, field.IsUnique, field.IsArray, string(settingsData), string(columnsData), field.CreatedAt); err != nil {
+			) values ($1, $2, $3, $4, $5, $6, true, false, $7, $8, $9, $10, $11, $12, $13, $13)
+		`, field.ID, field.TenantID, field.ObjectID, field.Name, field.Label, string(field.Type), field.IsNullable, field.IsUnique, field.IsArray, nullableUUID(field.RelationObjectID), string(settingsData), string(columnsData), field.CreatedAt); err != nil {
 			return fmt.Errorf("insert field metadata %s.%s: %w", state.Object.NameSingular, field.Name, err)
 		}
 		for index, optionReq := range req.Options {
@@ -246,6 +261,9 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 		if err := s.verifyFieldColumns(ctx, tx, state.Object.TableName, field.Columns); err != nil {
 			return err
 		}
+		if err := s.verifyRelationField(ctx, tx, state.Object.TableName, field); err != nil {
+			return err
+		}
 		var outboxErr error
 		event, outboxErr = s.insertOutbox(ctx, tx, outboxDraft{
 			TenantID:      state.Tenant.ID,
@@ -267,8 +285,9 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 		if isUniqueViolation(err) {
 			if freshState, loadErr := s.loadState(ctx, req.TenantKey, objectName); loadErr == nil {
 				if existing := freshState.Fields[req.Name]; existing != nil {
-					if permErr := s.perms.CanWriteField(ctx, actor, fieldRef(freshState, existing)); permErr == nil && fieldMatchesRequest(existing, req, fieldType) == nil {
-						if verifyErr := s.verifyFieldColumns(ctx, s.db, freshState.Object.TableName, existing.Columns); verifyErr == nil {
+					settings, relationObjectID, _, settingsErr := s.fieldSettings(ctx, freshState, existing.ID, fieldType, nullable, req)
+					if permErr := s.perms.CanWriteField(ctx, actor, fieldRef(freshState, existing)); settingsErr == nil && permErr == nil && fieldMatchesRequest(existing, req, fieldType, settings, relationObjectID) == nil {
+						if verifyErr := s.verifyFieldColumns(ctx, s.db, freshState.Object.TableName, existing.Columns); verifyErr == nil && s.verifyRelationField(ctx, s.db, freshState.Object.TableName, existing) == nil {
 							_ = s.finishMigration(ctx, migrationID, "skipped", "field already exists")
 							return existing, nil
 						}
@@ -498,7 +517,7 @@ func objectMatchesRequest(existing *Object, req CreateObjectRequest) error {
 	return nil
 }
 
-func fieldMatchesRequest(existing *Field, req CreateFieldRequest, fieldType FieldType) error {
+func fieldMatchesRequest(existing *Field, req CreateFieldRequest, fieldType FieldType, settings map[string]any, relationObjectID string) error {
 	if existing == nil {
 		return fmt.Errorf("field metadata is missing")
 	}
@@ -507,10 +526,6 @@ func fieldMatchesRequest(existing *Field, req CreateFieldRequest, fieldType Fiel
 		nullable = *req.Nullable
 	}
 	label := firstNonEmpty(req.Label, defaultLabel(req.Name))
-	settings := req.Settings
-	if settings == nil {
-		settings = map[string]any{}
-	}
 	switch {
 	case existing.Type != fieldType:
 		return fmt.Errorf("field %s already exists with type %s, not %s", existing.Name, existing.Type, fieldType)
@@ -522,6 +537,8 @@ func fieldMatchesRequest(existing *Field, req CreateFieldRequest, fieldType Fiel
 		return fmt.Errorf("field %s already exists with unique=%v, not %v", existing.Name, existing.IsUnique, req.Unique)
 	case existing.IsArray != req.Array:
 		return fmt.Errorf("field %s already exists with array=%v, not %v", existing.Name, existing.IsArray, req.Array)
+	case existing.RelationObjectID != relationObjectID:
+		return fmt.Errorf("field %s already exists with different relation object", existing.Name)
 	case !jsonEqual(existing.Settings, settings):
 		return fmt.Errorf("field %s already exists with different settings", existing.Name)
 	case !fieldOptionsMatch(existing.Options, req.Options):

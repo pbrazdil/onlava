@@ -131,6 +131,24 @@ func TestDDLGenerationUsesRealColumns(t *testing.T) {
 	if indexDDL != wantIndex {
 		t.Fatalf("createIndexDDL = %q, want %q", indexDDL, wantIndex)
 	}
+	relationField := &Field{
+		ID:      "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+		Name:    "company",
+		Type:    FieldRelation,
+		Columns: []PhysicalColumn{{Name: "company__dddddddddddd", SQLType: "uuid", Nullable: true}},
+	}
+	relationDDL, err := relationFieldDDL(tableName, relationField, &relationConfig{
+		Kind:     RelationManyToOne,
+		Target:   &Object{TableName: "account__222222222222"},
+		OnDelete: RelationDeleteRestrict,
+	})
+	if err != nil {
+		t.Fatalf("relationFieldDDL: %v", err)
+	}
+	wantRelation := `alter table "onlava_data_records"."company__111111111111" add constraint "fk_company__dddddddddddd" foreign key ("company__dddddddddddd") references "onlava_data_records"."account__222222222222" (id) on delete restrict`
+	if len(relationDDL) != 1 || relationDDL[0] != wantRelation {
+		t.Fatalf("relationFieldDDL = %#v, want %q", relationDDL, wantRelation)
+	}
 }
 
 func TestPhysicalNamesUseStableReadableSuffixes(t *testing.T) {
@@ -219,9 +237,9 @@ func TestCompileQueryAppliesKeysetCursor(t *testing.T) {
 		t.Fatalf("compileQuery() error = %v", err)
 	}
 	for _, want := range []string{
-		`("arr__fieldarr" < $2)`,
-		`("arr__fieldarr" = $2 and id::text > $3)`,
-		`order by "arr__fieldarr" desc, id::text asc`,
+		`(r."arr__fieldarr" < $2)`,
+		`(r."arr__fieldarr" = $2 and r.id::text > $3)`,
+		`order by r."arr__fieldarr" desc, r.id::text asc`,
 		`limit $4`,
 	} {
 		if !strings.Contains(compiled.SQL, want) {
@@ -248,6 +266,32 @@ func TestCompileQueryRejectsCursorShapeMismatch(t *testing.T) {
 	_, err = compileQuery(state, Query{Sort: []Sort{{Field: "arr"}}, Cursor: cursor})
 	if err == nil || !strings.Contains(err.Error(), "cursor sort shape") {
 		t.Fatalf("compileQuery error = %v, want cursor sort shape mismatch", err)
+	}
+}
+
+func TestCompileQuerySupportsManyToOneRelationPath(t *testing.T) {
+	state := relationTestState()
+	compiled, err := compileQuery(state, Query{
+		Select: []string{"company.name"},
+		Filter: &Filter{Op: "eq", Field: "company.stage", Value: "customer"},
+		Sort:   []Sort{{Field: "company.name"}},
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("compileQuery() error = %v", err)
+	}
+	for _, want := range []string{
+		`to_jsonb((select t."name__fieldname" from "onlava_data_records"."company__target" t where t.tenant_id = r.tenant_id and t.id = r."company__fieldcompany" and t.deleted_at is null)) as "company.name"`,
+		`(select t."stage__fieldstage" from "onlava_data_records"."company__target" t where t.tenant_id = r.tenant_id and t.id = r."company__fieldcompany" and t.deleted_at is null) = $2`,
+		`order by (select t."name__fieldname" from "onlava_data_records"."company__target" t where t.tenant_id = r.tenant_id and t.id = r."company__fieldcompany" and t.deleted_at is null) asc, r.id::text asc`,
+		`limit $3`,
+	} {
+		if !strings.Contains(compiled.SQL, want) {
+			t.Fatalf("compileQuery SQL missing %q:\n%s", want, compiled.SQL)
+		}
+	}
+	if len(compiled.Args) != 3 || compiled.Args[1] != "customer" {
+		t.Fatalf("compileQuery args = %#v", compiled.Args)
 	}
 }
 
@@ -480,4 +524,28 @@ func testState() *metadataState {
 			},
 		},
 	}
+}
+
+func relationTestState() *metadataState {
+	state := &metadataState{
+		Tenant: &Tenant{ID: "00000000-0000-0000-0000-000000000001", Key: "test"},
+		Object: &Object{ID: "00000000-0000-0000-0000-000000000010", TenantID: "00000000-0000-0000-0000-000000000001", NameSingular: "deal", TableName: "deal__source", SchemaVersion: 1},
+		Fields: map[string]*Field{
+			"company": {
+				ID:               "field-company",
+				Name:             "company",
+				Type:             FieldRelation,
+				RelationObjectID: "00000000-0000-0000-0000-000000000002",
+				Settings:         map[string]any{"relation_kind": string(RelationManyToOne)},
+				Columns:          []PhysicalColumn{{Name: "company__fieldcompany", SQLType: "uuid", Nullable: true}},
+			},
+		},
+	}
+	state.Relations = map[string]*relationTarget{
+		"company": {
+			Object: &Object{ID: "00000000-0000-0000-0000-000000000002", TenantID: state.Tenant.ID, NameSingular: "company", TableName: "company__target", SchemaVersion: 1},
+			Fields: testState().Fields,
+		},
+	}
+	return state
 }

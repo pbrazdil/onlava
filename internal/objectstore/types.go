@@ -197,8 +197,30 @@ type CreateFieldRequest struct {
 	Unique         bool                 `json:"unique,omitempty"`
 	Array          bool                 `json:"array,omitempty"`
 	RelationObject string               `json:"relation_object,omitempty"`
+	Relation       RelationSettings     `json:"relation,omitempty"`
 	Settings       map[string]any       `json:"settings,omitempty"`
 	Options        []FieldOptionRequest `json:"options,omitempty"`
+}
+
+type RelationKind string
+
+const (
+	RelationManyToOne  RelationKind = "many_to_one"
+	RelationManyToMany RelationKind = "many_to_many"
+)
+
+type RelationDeleteBehavior string
+
+const (
+	RelationDeleteRestrict RelationDeleteBehavior = "restrict"
+	RelationDeleteSetNull  RelationDeleteBehavior = "set_null"
+	RelationDeleteCascade  RelationDeleteBehavior = "cascade"
+)
+
+type RelationSettings struct {
+	Kind         RelationKind           `json:"kind,omitempty"`
+	InverseField string                 `json:"inverse_field,omitempty"`
+	OnDelete     RelationDeleteBehavior `json:"on_delete,omitempty"`
 }
 
 type CreateRecordRequest struct {
@@ -218,6 +240,78 @@ type DeleteRecordRequest struct {
 type QueryRecordsRequest struct {
 	TenantKey string `json:"tenant_key"`
 	Query     Query  `json:"query"`
+}
+
+type ViewType string
+
+const (
+	ViewTypeTable    ViewType = "table"
+	ViewTypeKanban   ViewType = "kanban"
+	ViewTypeCalendar ViewType = "calendar"
+)
+
+type ViewVisibility string
+
+const (
+	ViewVisibilityPrivate ViewVisibility = "private"
+	ViewVisibilityShared  ViewVisibility = "shared"
+)
+
+type View struct {
+	ID         string         `json:"id"`
+	TenantID   string         `json:"tenant_id"`
+	ObjectID   string         `json:"object_id"`
+	Name       string         `json:"name"`
+	Type       ViewType       `json:"type"`
+	Columns    []string       `json:"columns"`
+	Filter     *Filter        `json:"filter,omitempty"`
+	Sort       []Sort         `json:"sort,omitempty"`
+	Limit      int            `json:"limit,omitempty"`
+	Visibility ViewVisibility `json:"visibility"`
+	OwnerID    string         `json:"owner_id,omitempty"`
+	Layout     map[string]any `json:"layout,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+}
+
+type CreateViewRequest struct {
+	TenantKey  string         `json:"tenant_key"`
+	Name       string         `json:"name"`
+	Type       ViewType       `json:"type,omitempty"`
+	Columns    []string       `json:"columns,omitempty"`
+	Filter     *Filter        `json:"filter,omitempty"`
+	Sort       []Sort         `json:"sort,omitempty"`
+	Limit      int            `json:"limit,omitempty"`
+	Visibility ViewVisibility `json:"visibility,omitempty"`
+	OwnerID    string         `json:"owner_id,omitempty"`
+	Layout     map[string]any `json:"layout,omitempty"`
+}
+
+type UpdateViewRequest struct {
+	TenantKey  string         `json:"tenant_key"`
+	Name       string         `json:"name,omitempty"`
+	Type       ViewType       `json:"type,omitempty"`
+	Columns    []string       `json:"columns,omitempty"`
+	Filter     *Filter        `json:"filter,omitempty"`
+	Sort       []Sort         `json:"sort,omitempty"`
+	Limit      int            `json:"limit,omitempty"`
+	Visibility ViewVisibility `json:"visibility,omitempty"`
+	OwnerID    string         `json:"owner_id,omitempty"`
+	Layout     map[string]any `json:"layout,omitempty"`
+}
+
+type ListViewsRequest struct {
+	TenantKey string `json:"tenant_key"`
+}
+
+type DeleteViewRequest struct {
+	TenantKey string `json:"tenant_key"`
+}
+
+type QueryViewRequest struct {
+	TenantKey string `json:"tenant_key"`
+	Cursor    string `json:"cursor,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
 }
 
 type Record map[string]any
@@ -287,7 +381,13 @@ type Event struct {
 }
 
 type metadataState struct {
-	Tenant *Tenant
+	Tenant    *Tenant
+	Object    *Object
+	Fields    map[string]*Field
+	Relations map[string]*relationTarget
+}
+
+type relationTarget struct {
 	Object *Object
 	Fields map[string]*Field
 }

@@ -118,6 +118,33 @@ func (s *Store) bootstrap(ctx context.Context) error {
 			updated_at timestamptz not null,
 			unique (tenant_id, index_id, position)
 		)`,
+		`create table if not exists ` + qualifiedIdent(MetadataSchema, "views") + ` (
+			id uuid primary key,
+			tenant_id uuid not null references ` + qualifiedIdent(MetadataSchema, "tenants") + `(id) on delete cascade,
+			object_id uuid not null references ` + qualifiedIdent(MetadataSchema, "objects") + `(id) on delete cascade,
+			name text not null,
+			type text not null,
+			filter jsonb null,
+			sort jsonb not null default '[]'::jsonb,
+			limit_count integer not null default 100,
+			visibility text not null default 'private',
+			owner_id text not null default '',
+			layout jsonb not null default '{}'::jsonb,
+			created_at timestamptz not null,
+			updated_at timestamptz not null,
+			unique (tenant_id, object_id, name)
+		)`,
+		`create table if not exists ` + qualifiedIdent(MetadataSchema, "view_fields") + ` (
+			id uuid primary key,
+			tenant_id uuid not null references ` + qualifiedIdent(MetadataSchema, "tenants") + `(id) on delete cascade,
+			view_id uuid not null references ` + qualifiedIdent(MetadataSchema, "views") + `(id) on delete cascade,
+			field_name text not null,
+			position integer not null,
+			created_at timestamptz not null,
+			updated_at timestamptz not null,
+			unique (tenant_id, view_id, position),
+			unique (tenant_id, view_id, field_name)
+		)`,
 		`create table if not exists ` + qualifiedIdent(MetadataSchema, "schema_migrations") + ` (
 			id uuid primary key,
 			tenant_id uuid not null,
@@ -214,10 +241,15 @@ func (s *Store) loadState(ctx context.Context, tenantKey, objectName string) (*m
 	if err != nil {
 		return nil, err
 	}
+	relations, err := s.loadRelationTargets(ctx, tenant.ID, fields)
+	if err != nil {
+		return nil, err
+	}
 	return &metadataState{
-		Tenant: tenant,
-		Object: object,
-		Fields: fields,
+		Tenant:    tenant,
+		Object:    object,
+		Fields:    fields,
+		Relations: relations,
 	}, nil
 }
 
@@ -241,6 +273,44 @@ func (s *Store) loadObject(ctx context.Context, tenantID, objectName string) (*O
 		return nil, fmt.Errorf("load data object %q: %w", objectName, err)
 	}
 	return &obj, nil
+}
+
+func (s *Store) loadObjectByID(ctx context.Context, tenantID, objectID string) (*Object, error) {
+	var obj Object
+	err := s.db.QueryRow(ctx, `
+		select id::text, tenant_id::text, name_singular, name_plural, table_name,
+		       label_singular, label_plural, is_custom, is_system, schema_version,
+		       outbox_triggers_enabled, created_at, updated_at
+		from `+qualifiedIdent(MetadataSchema, "objects")+`
+		where tenant_id = $1 and id = $2
+	`, tenantID, objectID).Scan(
+		&obj.ID, &obj.TenantID, &obj.NameSingular, &obj.NamePlural, &obj.TableName,
+		&obj.LabelSingular, &obj.LabelPlural, &obj.IsCustom, &obj.IsSystem, &obj.SchemaVersion,
+		&obj.OutboxTriggersEnabled, &obj.CreatedAt, &obj.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load data object %q: %w", objectID, err)
+	}
+	return &obj, nil
+}
+
+func (s *Store) loadRelationTargets(ctx context.Context, tenantID string, fields map[string]*Field) (map[string]*relationTarget, error) {
+	relations := map[string]*relationTarget{}
+	for name, field := range fields {
+		if field.Type != FieldRelation || strings.TrimSpace(field.RelationObjectID) == "" {
+			continue
+		}
+		object, err := s.loadObjectByID(ctx, tenantID, field.RelationObjectID)
+		if err != nil {
+			return nil, fmt.Errorf("load relation target for field %s: %w", field.Name, err)
+		}
+		targetFields, err := s.loadFields(ctx, tenantID, object.ID)
+		if err != nil {
+			return nil, fmt.Errorf("load relation target fields for %s: %w", field.Name, err)
+		}
+		relations[name] = &relationTarget{Object: object, Fields: targetFields}
+	}
+	return relations, nil
 }
 
 func (s *Store) loadFields(ctx context.Context, tenantID, objectID string) (map[string]*Field, error) {

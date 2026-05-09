@@ -11,6 +11,7 @@ import (
 
 const defaultQueryLimit = 100
 const maxQueryLimit = 1000
+const querySourceAlias = "r"
 
 type resultColumn struct {
 	Alias  string
@@ -138,21 +139,30 @@ func compileQuery(state *metadataState, query Query) (*compiledQuery, error) {
 		cols = append(cols, expr+" as "+quoteIdent(name))
 		resultCols = append(resultCols, resultColumn{Alias: name, Field: name})
 	}
-	addSystem("id", `to_jsonb(id::text)`)
-	addSystem("created_at", `to_jsonb(created_at)`)
-	addSystem("updated_at", `to_jsonb(updated_at)`)
+	addSystem("id", `to_jsonb(`+querySourceAlias+`.id::text)`)
+	addSystem("created_at", `to_jsonb(`+querySourceAlias+`.created_at)`)
+	addSystem("updated_at", `to_jsonb(`+querySourceAlias+`.updated_at)`)
 	for _, fieldName := range selected {
+		if strings.Contains(fieldName, ".") {
+			expr, err := relationSelectExpression(state, fieldName)
+			if err != nil {
+				return nil, err
+			}
+			cols = append(cols, expr+` as `+quoteIdent(fieldName))
+			resultCols = append(resultCols, resultColumn{Alias: fieldName, Field: fieldName})
+			continue
+		}
 		field := state.Fields[fieldName]
 		for _, column := range field.Columns {
 			alias := column.Name
 			if !isCompositeField(field.Type) && column.Part == "" {
 				alias = field.Name
 			}
-			cols = append(cols, `to_jsonb(`+quoteIdent(column.Name)+`) as `+quoteIdent(alias))
+			cols = append(cols, `to_jsonb(`+querySourceAlias+`.`+quoteIdent(column.Name)+`) as `+quoteIdent(alias))
 			resultCols = append(resultCols, resultColumn{Alias: alias, Field: field.Name, Part: column.Part})
 		}
 	}
-	where := []string{`tenant_id = $1`, `deleted_at is null`}
+	where := []string{querySourceAlias + `.tenant_id = $1`, querySourceAlias + `.deleted_at is null`}
 	if query.Filter != nil {
 		filterSQL, err := compileFilter(state, query.Filter, &args)
 		if err != nil {
@@ -183,7 +193,7 @@ func compileQuery(state *metadataState, query Query) (*compiledQuery, error) {
 	}
 	args = append(args, limit+1)
 	sql := `select ` + strings.Join(cols, ", ") +
-		` from ` + qualifiedIdent(RecordsSchema, state.Object.TableName) +
+		` from ` + qualifiedIdent(RecordsSchema, state.Object.TableName) + ` ` + querySourceAlias +
 		` where ` + strings.Join(where, " and ") +
 		` order by ` + orderBy +
 		fmt.Sprintf(` limit $%d`, len(args))
@@ -213,6 +223,14 @@ func selectedFields(state *metadataState, requested []string) ([]string, error) 
 	for _, name := range requested {
 		name = strings.TrimSpace(name)
 		if name == "" || seen[name] {
+			continue
+		}
+		if strings.Contains(name, ".") {
+			if _, _, err := relationPathColumn(state, name); err != nil {
+				return nil, err
+			}
+			seen[name] = true
+			names = append(names, name)
 			continue
 		}
 		if _, ok := state.Fields[name]; !ok {
@@ -318,9 +336,12 @@ func filterColumn(state *metadataState, name string) (string, *Field, error) {
 	name = strings.TrimSpace(name)
 	switch name {
 	case "id":
-		return "id::text", nil, nil
+		return querySourceAlias + ".id::text", nil, nil
 	case "created_at", "updated_at":
-		return quoteIdent(name), nil, nil
+		return querySourceAlias + "." + quoteIdent(name), nil, nil
+	}
+	if strings.Contains(name, ".") {
+		return relationPathColumn(state, name)
 	}
 	field, ok := state.Fields[name]
 	if !ok {
@@ -331,6 +352,64 @@ func filterColumn(state *metadataState, name string) (string, *Field, error) {
 	}
 	if len(field.Columns) != 1 {
 		return "", nil, fmt.Errorf("filter field %q has no single physical column", name)
+	}
+	return querySourceAlias + "." + quoteIdent(field.Columns[0].Name), field, nil
+}
+
+func relationPathColumn(state *metadataState, path string) (string, *Field, error) {
+	relationName, targetFieldName, ok := strings.Cut(strings.TrimSpace(path), ".")
+	if !ok || relationName == "" || targetFieldName == "" || strings.Contains(targetFieldName, ".") {
+		return "", nil, fmt.Errorf("relation path %q must be field.target_field", path)
+	}
+	relationField := state.Fields[relationName]
+	if relationField == nil || relationField.Type != FieldRelation {
+		return "", nil, fmt.Errorf("relation path %q starts with non-relation field", path)
+	}
+	if relationKindForField(relationField) != RelationManyToOne {
+		return "", nil, fmt.Errorf("relation path %q only supports many_to_one fields in this version", path)
+	}
+	if len(relationField.Columns) != 1 {
+		return "", nil, fmt.Errorf("relation field %q has no single physical column", relationName)
+	}
+	target := state.Relations[relationName]
+	if target == nil {
+		return "", nil, fmt.Errorf("relation field %q target metadata is missing", relationName)
+	}
+	targetColumn, targetField, err := targetColumnForPath(target, targetFieldName)
+	if err != nil {
+		return "", nil, err
+	}
+	expr := `(select t.` + targetColumn + ` from ` + qualifiedIdent(RecordsSchema, target.Object.TableName) + ` t` +
+		` where t.tenant_id = ` + querySourceAlias + `.tenant_id` +
+		` and t.id = ` + querySourceAlias + `.` + quoteIdent(relationField.Columns[0].Name) +
+		` and t.deleted_at is null)`
+	return expr, targetField, nil
+}
+
+func relationSelectExpression(state *metadataState, path string) (string, error) {
+	column, _, err := relationPathColumn(state, path)
+	if err != nil {
+		return "", err
+	}
+	return `to_jsonb(` + column + `)`, nil
+}
+
+func targetColumnForPath(target *relationTarget, fieldName string) (string, *Field, error) {
+	switch fieldName {
+	case "id":
+		return "id::text", nil, nil
+	case "created_at", "updated_at":
+		return quoteIdent(fieldName), nil, nil
+	}
+	field := target.Fields[fieldName]
+	if field == nil {
+		return "", nil, fmt.Errorf("relation target field %q does not exist on object %s", fieldName, target.Object.NameSingular)
+	}
+	if isCompositeField(field.Type) {
+		return "", nil, fmt.Errorf("relation target field %q is composite and cannot be queried in this version", fieldName)
+	}
+	if len(field.Columns) != 1 {
+		return "", nil, fmt.Errorf("relation target field %q has no single physical column", fieldName)
 	}
 	return quoteIdent(field.Columns[0].Name), field, nil
 }

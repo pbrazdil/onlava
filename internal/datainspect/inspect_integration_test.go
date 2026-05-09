@@ -53,12 +53,30 @@ func TestBuildWithPostgres(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateField: %v", err)
 	}
+	if _, err := store.CreateField(ctx, actor, "company", objectstore.CreateFieldRequest{
+		TenantKey:      tenantKey,
+		Name:           "parent",
+		Type:           objectstore.FieldRelation,
+		RelationObject: "company",
+		Relation:       objectstore.RelationSettings{Kind: objectstore.RelationManyToOne},
+	}); err != nil {
+		t.Fatalf("CreateField(parent relation): %v", err)
+	}
 	if _, err := store.CreateIndex(ctx, actor, "company", objectstore.CreateIndexRequest{
 		TenantKey: tenantKey,
 		Name:      "company_name",
 		Fields:    []objectstore.IndexField{{Field: "name"}},
 	}); err != nil {
 		t.Fatalf("CreateIndex: %v", err)
+	}
+	if _, err := store.CreateView(ctx, actor, "company", objectstore.CreateViewRequest{
+		TenantKey:  tenantKey,
+		Name:       "company_table",
+		Columns:    []string{"name"},
+		Limit:      25,
+		Visibility: objectstore.ViewVisibilityShared,
+	}); err != nil {
+		t.Fatalf("CreateView: %v", err)
 	}
 
 	resp, err := Build(ctx, Options{DatabaseURL: db.URL, TenantKey: tenantKey, ObjectName: "company"})
@@ -71,11 +89,23 @@ func TestBuildWithPostgres(t *testing.T) {
 	if len(resp.Tenants) != 1 || resp.Tenants[0].Key != tenantKey {
 		t.Fatalf("tenants = %#v", resp.Tenants)
 	}
-	if len(resp.Objects) != 1 || resp.Objects[0].Name != "company" || len(resp.Objects[0].Fields) != 1 {
+	if len(resp.Objects) != 1 || resp.Objects[0].Name != "company" || len(resp.Objects[0].Fields) != 2 {
 		t.Fatalf("objects = %#v", resp.Objects)
+	}
+	var relation *RelationSummary
+	for _, field := range resp.Objects[0].Fields {
+		if field.Name == "parent" {
+			relation = field.Relation
+		}
+	}
+	if relation == nil || relation.Object != "company" || relation.Kind != string(objectstore.RelationManyToOne) {
+		t.Fatalf("relation inspect = %#v", relation)
 	}
 	if len(resp.Objects[0].Indexes) != 1 || resp.Objects[0].Indexes[0].Name != "company_name" || !resp.Objects[0].Indexes[0].Physical.Exists || resp.Objects[0].Indexes[0].Physical.Drift {
 		t.Fatalf("indexes = %#v", resp.Objects[0].Indexes)
+	}
+	if len(resp.Objects[0].Views) != 1 || resp.Objects[0].Views[0].Name != "company_table" || resp.Objects[0].Views[0].Columns[0] != "name" {
+		t.Fatalf("views = %#v", resp.Objects[0].Views)
 	}
 	if resp.Objects[0].PhysicalTable == "" || resp.Objects[0].Fields[0].Columns[0] == "" {
 		t.Fatalf("missing physical names: %#v", resp.Objects[0])
