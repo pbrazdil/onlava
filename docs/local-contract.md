@@ -315,9 +315,11 @@ onlava harness self --json --write
 - output is a single JSON document
 - output conforms to `onlava.harness.self.v1`
 - it validates the onlava repo itself instead of a target app
-- it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, DB Studio UI typecheck/build, UI freshness checks, `go install ./cmd/onlava`, and installed binary freshness checks
+- it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, UI static architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, DB Studio UI typecheck/build, UI freshness checks, `go install ./cmd/onlava`, and installed binary freshness checks
 - architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source files over 2500 lines
 - architecture checks warn on non-generated source files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
+- UI static architecture checks fail on raw shadcn install scripts, non-`@onlava` registries, legacy `components/ui` imports, direct vendor shadcn imports from screens, and direct Radix/styling utility imports outside onlava primitives/layouts/vendor
+- UI static architecture checks warn on long or advanced `className` literals outside onlava primitives/layouts/vendor while the dashboard is migrated into the stricter slot-layout model
 - `--write` persists the same result to `.onlava/harness/self-latest.json`
 
 Release gate:

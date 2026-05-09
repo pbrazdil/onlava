@@ -94,6 +94,18 @@
       "tags": ["harness", "agents", "testing"]
     },
     {
+      "path": "docs/ui-agent-contract.md",
+      "title": "onlava UI Agent Contract",
+      "owner": "onlava dashboard",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-05-09",
+      "review_after": "2026-06-08",
+      "summary": "Rules for composing dashboard and app UI from onlava-owned primitives, layouts, and the @onlava registry instead of direct shadcn usage.",
+      "tags": ["ui", "agents", "shadcn", "registry", "guardrails"]
+    },
+    {
       "path": "docs/PRD-1-pubsub.md",
       "title": "Pub/Sub PRD",
       "owner": "onlava runtime",
