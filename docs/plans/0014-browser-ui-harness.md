@@ -23,26 +23,32 @@ return screenshots, console logs, network failures, DOM marker status
 
 ## Progress
 
-- [ ] Create this ExecPlan and link from `docs/plans/active.md`.
-- [ ] Decide browser runner approach.
-- [ ] Add `onlava harness ui --json`.
-- [ ] Visit dashboard home and core routes.
-- [ ] Capture screenshots.
-- [ ] Capture console errors and failed network requests.
-- [ ] Emit versioned JSON.
-- [ ] Add docs/schema/tests.
+- [x] (2026-05-09) Created this ExecPlan and linked it from `docs/plans/active.md`.
+- [x] (2026-05-09) Decided on `chromedp` for the first browser runner.
+- [x] (2026-05-09) Added `onlava harness ui --json`.
+- [x] (2026-05-09) Added core dashboard route visits for home, API Explorer, service catalog, traces, Data Explorer, and DB Explorer.
+- [x] (2026-05-09) Captured route screenshots under `.onlava/harness/ui/screenshots/`.
+- [x] (2026-05-09) Captured console errors and failed network requests as JSONL artifacts.
+- [x] (2026-05-09) Emitted `onlava.harness.ui.v1` JSON.
+- [x] (2026-05-09) Added schema, local-contract docs, and command tests.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- The dashboard already has stable `AppShell` and `DataExplorerLayout` markers, so the first browser harness can verify useful route health without adding route-specific markers everywhere.
+- The harness can use a temporary `onlava dev --json` subprocess with an isolated dashboard port. That keeps the command app-facing without wiring browser checks into the long-lived dev supervisor.
 
 ## Decision Log
 
-Record decisions here.
+- Decision: use `chromedp` rather than Playwright or a shell wrapper for the first pass.
+  Rationale: it keeps the browser runner inside Go, captures screenshots/console/network events directly, and avoids introducing a Node-side browser test harness into the CLI path.
+- Decision: keep `onlava harness ui --json` out of the default `onlava harness self --json --write` path.
+  Rationale: browser discovery is heavier and more environment-sensitive than static and build checks; users and agents should invoke it explicitly.
+- Decision: allow `--dashboard-url` for reuse of an existing dashboard.
+  Rationale: it makes debugging a running local session fast and avoids restarting apps when the dashboard is already up.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+The first UI harness is intentionally narrow but real: it can start or reuse a dashboard, visit core routes in a browser, assert DOM markers, capture screenshots, record console errors and network failures, and return a versioned JSON result. Future work can add richer route-specific markers and visual diffs without changing the command shape.
 
 ## Context and Orientation
 
@@ -129,10 +135,10 @@ Visit:
 ```text
 dashboard home
 API Explorer
+service catalog
 traces
-metrics
 data explorer
-DB Studio route if configured
+DB Explorer route
 ```
 
 Assert stable DOM markers:

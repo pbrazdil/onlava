@@ -25,6 +25,123 @@ Shipped:
 - `PageToolbar` layout and `@onlava/page-toolbar` registry item.
 - Optional sidebar/inspector/event-stream slots no longer create empty fixed-width layout columns.
 
+## Dashboard Data Explorer
+
+- Status: completed
+- Owner: onlava dashboard
+- Completed: 2026-05-09
+- Quality: B+
+- ExecPlan: [0013 Dashboard Data Explorer](0013-dashboard-data-explorer.md)
+
+Shipped:
+
+- Dashboard `/$appId/data` route.
+- Data Explorer page composed from onlava `DataExplorerLayout`, `PageToolbar`, and primitives.
+- Dashboard RPC bridge for data inspect, metadata-validated record queries, and outbox event tail reads.
+- Tenant/object/field/index/migration/trigger/outbox inspection panels.
+- Record table with limit and JSON filter controls.
+- Focused backend and UI coverage for the new bridge and route surface.
+
+## Browser UI Harness
+
+- Status: completed
+- Owner: onlava dashboard
+- Completed: 2026-05-09
+- Quality: B
+- ExecPlan: [0014 Browser UI Harness](0014-browser-ui-harness.md)
+
+Shipped:
+
+- `onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]`.
+- `onlava.harness.ui.v1` JSON schema.
+- Temporary `onlava dev --json` startup path with isolated app/dashboard ports when no dashboard URL is provided.
+- Browser route checks for dashboard home, API Explorer, service catalog, traces, Data Explorer, and DB Explorer.
+- Screenshot artifacts plus console and network JSONL artifacts under `.onlava/harness/ui/`.
+- Focused command tests using a fake browser runner so normal Go tests do not require Chrome.
+
+## Dashboard Slot-Layout Migration
+
+- Status: completed
+- Owner: onlava dashboard
+- Completed: 2026-05-09
+- Quality: B+
+- ExecPlan: [0015 Dashboard Slot-Layout Migration](0015-dashboard-slot-layout-migration.md)
+
+Shipped:
+
+- Dashboard shell now composes `AppShell` instead of duplicating shell structure and style ownership.
+- Top navigation class recipes live in the onlava layout layer.
+- API Explorer and Pub/Sub route actions now use the onlava `Button` primitive.
+- `AppShell` render coverage for stable layout markers and styling helpers.
+- Self-harness UI static architecture check reports 0 className warnings.
+
+## Data Platform Indexes and Cursor Pagination
+
+- Status: completed
+- Owner: onlava data platform
+- Completed: 2026-05-09
+- Quality: B+
+- ExecPlan: [0016 Data Platform Indexes and Cursor Pagination](0016-data-platform-indexes-and-cursor-pagination.md)
+
+Shipped:
+
+- `onlava_data.indexes` and `onlava_data.index_fields` metadata tables.
+- Public `data.Store.CreateIndex` and `data.Store.ListIndexes` APIs.
+- PostgreSQL btree and GIN physical index creation through migration rows and advisory locks.
+- `onlava inspect data` index output with physical existence and drift status.
+- Keyset cursor pagination with `id` tie-breaker, encoded cursor state, and sort-shape rejection.
+- PostgreSQL-backed coverage for index creation, inspect output, and cursor pagination.
+
+## Data Platform Relationships
+
+- Status: completed
+- Owner: onlava data platform
+- Completed: 2026-05-09
+- Quality: B
+- ExecPlan: [0017 Data Platform Relationships](0017-data-platform-relationships.md)
+
+Shipped:
+
+- Public relation settings for dynamic data fields.
+- `many_to_one` relation fields backed by UUID columns and PostgreSQL foreign keys.
+- `many_to_many` relation fields backed by physical join tables.
+- One-hop `many_to_one` relation path support for filters, sorts, and selected fields.
+- Inspect data relation output for target object, relation kind, delete behavior, inverse field, and join table metadata.
+- PostgreSQL-backed tests for FK enforcement, join-table creation, relation-path queries, and inspect output.
+
+## Data Platform Saved Views
+
+- Status: completed
+- Owner: onlava data platform
+- Completed: 2026-05-09
+- Quality: B
+- ExecPlan: [0018 Data Platform Saved Views](0018-data-platform-saved-views.md)
+
+Shipped:
+
+- `onlava_data.views` and `onlava_data.view_fields` metadata tables.
+- Public saved-view API through `data.Store`.
+- Query-by-view execution through the existing metadata SQL compiler.
+- Inspect data output for saved views.
+- Data Explorer saved view selector.
+- PostgreSQL-backed tests for persistence, validation, query execution, updates, deletes, and inspect output.
+
+## Data Platform Public Contract
+
+- Status: completed
+- Owner: onlava data platform
+- Completed: 2026-05-09
+- Quality: B
+- ExecPlan: [0019 Data Platform Public Contract](0019-data-platform-public-contract.md)
+
+Shipped:
+
+- `docs/data-platform.md` as the human-facing beta data package guide.
+- Public `data.Error`, `data.ErrorCode`, and `data.CodeOf(err)` helpers.
+- Public contract notes for indexes, relations, saved views, cursors, live events, triggers, and error codes.
+- Compile-only `examples/data-platform` package.
+- Focused public package tests for error classification.
+
 ## onlava UI Registry and Agent Guardrails
 
 - Status: completed

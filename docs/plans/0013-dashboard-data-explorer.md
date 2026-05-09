@@ -23,25 +23,33 @@ This plan should use the onlava UI contract: primitives from `ui/src/components/
 ## Progress
 
 - [x] (2026-05-09) Created this ExecPlan and linked it from `docs/plans/active.md`.
-- [ ] Read `docs/ui-agent-contract.md`, `docs/local-contract.md`, `internal/objectstore`, `internal/datainspect`, and current dashboard routes.
-- [ ] Add dashboard route for data explorer.
-- [ ] Add data inspect/query API bridge.
-- [ ] Render tenants, objects, fields, migrations, trigger state, and outbox summary.
-- [ ] Add record query table.
-- [ ] Add outbox event tail.
-- [ ] Add tests and validation.
+- [x] (2026-05-09) Read `docs/ui-agent-contract.md`, `docs/local-contract.md`, `internal/objectstore`, `internal/datainspect`, and current dashboard routes.
+- [x] (2026-05-09) Added dashboard `/data` route.
+- [x] (2026-05-09) Added dashboard RPC methods for data inspect, record query, and outbox event tail reads.
+- [x] (2026-05-09) Rendered tenants, objects, fields, indexes, migrations, trigger state, and outbox summary.
+- [x] (2026-05-09) Added record query table with limit and JSON filter controls.
+- [x] (2026-05-09) Added outbox event tail for the selected tenant/object.
+- [x] (2026-05-09) Added backend and UI tests; validation completed.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- `internal/datainspect` already had enough infrastructure state for the dashboard view, including indexes and trigger drift. The dashboard did not need a separate metadata model.
+- The record query bridge needs an `objectstore.Store` because the public query API depends on metadata validation and compiled SQL. That path bootstraps the data schemas if missing, while the inspect RPC remains a read-only metadata inspection path.
 
 ## Decision Log
 
-Record decisions here.
+- Decision: use dashboard JSON-RPC methods instead of shelling out to `onlava inspect data`.
+  Rationale: the dashboard already has an app-aware RPC channel and can discover the app database URL through the supervisor.
+- Decision: query records through `internal/objectstore` rather than adding dashboard-only SQL.
+  Rationale: this preserves metadata validation, permission hooks, field reassembly, and query compiler behavior.
+- Decision: read outbox tail rows directly for the dashboard.
+  Rationale: the event tail is an infrastructure debugging view, not an app mutation/query path, and it should stay small and read-only.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+The dashboard now has a developer-facing Data Explorer reachable at `/$appId/data`. It shows data tenants and objects, infrastructure state, records for a selected object, and recent outbox events while composing the page from onlava layouts and primitives.
+
+This is intentionally not a CRM UI. The useful next step is the browser/UI harness so the new layout markers can be verified by an agent-run browser check instead of only static tests.
 
 ## Context and Orientation
 

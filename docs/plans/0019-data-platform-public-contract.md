@@ -26,24 +26,29 @@ stable-ish v0 surface
 
 ## Progress
 
-- [ ] Audit public `data` package.
-- [ ] Add docs.
-- [ ] Add typed errors.
-- [ ] Add compatibility tests.
-- [ ] Add examples.
-- [ ] Update local contract.
+- [x] Audit public `data` package.
+- [x] Add docs.
+- [x] Add typed errors.
+- [x] Add compatibility tests.
+- [x] Add examples.
+- [x] Update local contract.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- The public package is still mostly aliases over objectstore types. That is acceptable for beta, but docs now make the supported app-facing surface explicit.
+- A lightweight wrapper error layer was enough for coarse app handling without changing the internal objectstore error flow.
 
 ## Decision Log
 
-Record decisions here.
+- Kept `github.com/pbrazdil/onlava/data` classified as beta, not stable, because relationships and saved views are still actively evolving.
+- Added public `data.CodeOf(err)` and `*data.Error` for coarse error classification instead of a larger typed error hierarchy.
+- Added a compile-only example package under `examples/data-platform` rather than a runnable sample requiring PostgreSQL credentials.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Added `docs/data-platform.md`, docs index/knowledge entries, public error codes, error classification tests, and a compiling example.
+- Updated `docs/local-contract.md` to cover relation fields, saved views, and public data error handling.
+- `go test -count=1 ./data ./examples/data-platform` and `go test -count=1 ./internal/objectstore` pass.
 
 ## Context and Orientation
 

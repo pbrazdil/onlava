@@ -7,7 +7,7 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
-- [0013 Dashboard Data Explorer](0013-dashboard-data-explorer.md)
+- [0020 Data Platform Search](0020-data-platform-search.md)
 
 ## Agent-Friendly Local Runtime
 

@@ -17,25 +17,30 @@ route file
 
 ## Progress
 
-- [ ] Create this ExecPlan and link from `docs/plans/active.md`.
-- [ ] Count current UI static className warnings.
-- [ ] Pick first routes to migrate.
-- [ ] Add missing layout primitives.
-- [ ] Migrate routes without visual redesign.
-- [ ] Reduce warnings.
-- [ ] Add route render tests.
+- [x] Create this ExecPlan and link from `docs/plans/active.md`.
+- [x] Count current UI static className warnings.
+- [x] Pick first routes to migrate.
+- [x] Add missing layout primitives.
+- [x] Migrate routes without visual redesign.
+- [x] Reduce warnings.
+- [x] Add route render tests.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- The self-harness UI static check started with 4 className warnings in dashboard shell and route files, and ended with 0 className warnings.
+- The dashboard shell already had an `AppShell` layout available, so the safest migration was to consume that layout instead of introducing a new route shell abstraction.
 
 ## Decision Log
 
-Record decisions here.
+- Moved repeated top navigation class recipes into `ui/src/components/layouts/AppShell.tsx`, keeping route/shell composition code free of long className literals.
+- Replaced route-owned action buttons in API Explorer and Pub/Sub with the onlava `Button` primitive instead of adding new one-off components.
+- Added a focused `AppShell` render test to cover stable slot markers and layout-owned styling helpers.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Completed the first dashboard slot-layout migration pass without a visual redesign.
+- `onlava harness self --json --write` reports `class_warnings: 0` for `ui static architecture`.
+- The migration leaves broader route decomposition for future work, but the current guardrail warning baseline is clean.
 
 ## Context and Orientation
 

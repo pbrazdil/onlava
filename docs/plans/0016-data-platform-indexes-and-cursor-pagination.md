@@ -23,25 +23,30 @@ dashboard/data clients can scale beyond first-page queries
 
 ## Progress
 
-- [ ] Create ExecPlan and link from `docs/plans/active.md`.
-- [ ] Add index metadata tables.
-- [ ] Add public data index API.
-- [ ] Add physical index migrations.
-- [ ] Add inspect data index output.
-- [ ] Add keyset cursor pagination.
-- [ ] Add tests.
+- [x] Create ExecPlan and link from `docs/plans/active.md`.
+- [x] Add index metadata tables.
+- [x] Add public data index API.
+- [x] Add physical index migrations.
+- [x] Add inspect data index output.
+- [x] Add keyset cursor pagination.
+- [x] Add tests.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- The implementation was already present in the tree when this plan became active: `internal/objectstore/indexes.go`, cursor support in `internal/objectstore/query.go`, inspect output, public data aliases, and PostgreSQL-backed tests were in place.
+- Uncached DB-backed verification passes with the testcontainers-backed PostgreSQL path.
 
 ## Decision Log
 
-Record decisions here.
+- Kept the existing small public API: `CreateIndex` and `ListIndexes`.
+- Kept index creation as schema migrations protected by existing object advisory locks.
+- Kept cursor pagination as keyset pagination with a mandatory `id` tie-breaker and cursor sort-shape validation.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Completed index metadata, physical index creation, inspect visibility, and stable cursor pagination.
+- `go test -count=1 ./internal/objectstore` and `go test -count=1 ./internal/datainspect` pass against PostgreSQL.
+- The inspect schema includes logical index metadata plus physical index existence/drift state.
 
 ## Context and Orientation
 

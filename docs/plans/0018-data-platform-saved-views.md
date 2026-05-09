@@ -17,24 +17,29 @@ object
 
 ## Progress
 
-- [ ] Create ExecPlan.
-- [ ] Add saved view metadata tables.
-- [ ] Add public API.
-- [ ] Add query execution by view.
-- [ ] Add dashboard integration.
-- [ ] Add tests.
+- [x] Create ExecPlan.
+- [x] Add saved view metadata tables.
+- [x] Add public API.
+- [x] Add query execution by view.
+- [x] Add dashboard integration.
+- [x] Add tests.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- Saved view query validation could reuse the existing objectstore query compiler directly, including relation path validation from the previous plan.
+- Inspect output is the simplest dashboard bridge for saved views; the Data Explorer can select a view without a new dashboard RPC method.
 
 ## Decision Log
 
-Record decisions here.
+- Stored view columns in `onlava_data.view_fields` as metadata-resolved field names, including relation paths, rather than field IDs only.
+- Kept the first public API name-based per object: `CreateView`, `UpdateView`, `ListViews`, `DeleteView`, and `QueryView`.
+- Reserved `kanban` and `calendar` view types in metadata, but the first UI treats saved views as table query shapes.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Completed metadata tables, public data package aliases/methods, query-by-view execution, inspect output, and Data Explorer view selection.
+- Invalid saved view columns/filters fail before persistence through the existing query compiler.
+- `go test -count=1 ./internal/objectstore`, `go test -count=1 ./internal/datainspect ./data`, and `cd ui && bun run typecheck` pass for this slice.
 
 ## Context and Orientation
 

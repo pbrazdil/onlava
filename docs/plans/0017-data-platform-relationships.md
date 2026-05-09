@@ -23,25 +23,31 @@ CRM-style object graph
 
 ## Progress
 
-- [ ] Create ExecPlan and link from active.md.
-- [ ] Design relationship metadata.
-- [ ] Implement many-to-one.
-- [ ] Implement inverse one-to-many metadata.
-- [ ] Implement many-to-many join tables.
-- [ ] Add relationship filters and selects.
-- [ ] Add tests.
+- [x] Create ExecPlan and link from active.md.
+- [x] Design relationship metadata.
+- [x] Implement many-to-one.
+- [x] Implement inverse one-to-many metadata.
+- [x] Implement many-to-many join tables.
+- [x] Add relationship filters and selects.
+- [x] Add tests.
 
 ## Surprises & Discoveries
 
-Record discoveries here.
+- The existing `relation_object_id` field metadata column was enough for the first public shape; relation details fit in field settings without adding another metadata table.
+- The query compiler could support one-hop many-to-one relation paths with metadata-resolved scalar subqueries, avoiding a broader join-planner refactor in this pass.
 
 ## Decision Log
 
-Record decisions here.
+- Default relation kind is `many_to_one`; default delete behavior is `restrict`.
+- `many_to_one` relation fields create a real UUID column and PostgreSQL foreign key.
+- `many_to_many` relation fields create a real join table and inspectable metadata, but record-level many-to-many mutation helpers remain outside the stable app-facing contract.
+- Relation path queries are limited to one-hop many-to-one paths such as `company.name` for now.
 
 ## Outcomes & Retrospective
 
-Fill when complete.
+- Completed relationship metadata, many-to-one FK DDL, many-to-many join-table DDL, one-hop relation query paths, inspect output, and PostgreSQL-backed tests.
+- `go test ./...`, UI typecheck, and UI tests pass after the relationship changes.
+- The next relationship expansion should add ergonomic record mutation helpers for many-to-many fields and deeper relationship paths if product work needs them.
 
 ## Context and Orientation
 
