@@ -20,6 +20,8 @@ const (
 )
 
 var allowedDirectGoDeps = map[string]string{
+	"github.com/chromedp/cdproto":                                  "Chrome DevTools Protocol event types for the optional browser UI harness",
+	"github.com/chromedp/chromedp":                                 "Go-native browser automation for `onlava harness ui --json` screenshots and route checks",
 	"github.com/fsnotify/fsnotify":                                 "file watching for onlava dev live rebuilds",
 	"github.com/golang-jwt/jwt/v5":                                 "JWT signing and verification for standard auth",
 	"github.com/google/uuid":                                       "UUID generation and parsing for standard auth database records",

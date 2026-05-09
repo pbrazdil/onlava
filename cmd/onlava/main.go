@@ -72,6 +72,7 @@ func usageError() error {
     onlava check [--app-root <path>] [--json]
     onlava harness [--app-root <path>] [--json] [--write]
     onlava harness self [--repo-root <path>] [--json] [--write]
+    onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
     onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]
     onlava inspect docs --json [--repo-root <path>]
     onlava inspect data --json --database-url <postgres-url> [--tenant <key>] [--object <name>]

@@ -69,6 +69,9 @@ func runOnlavaHarness(ctx context.Context, stdout io.Writer, args []string) erro
 	if len(args) > 0 && args[0] == "self" {
 		return runOnlavaHarnessSelf(ctx, stdout, args[1:])
 	}
+	if len(args) > 0 && args[0] == "ui" {
+		return runOnlavaHarnessUI(ctx, stdout, args[1:])
+	}
 
 	opts, err := parseHarnessArgs(args)
 	if err != nil {
