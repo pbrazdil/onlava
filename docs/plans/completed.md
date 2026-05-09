@@ -6,6 +6,24 @@ Completed means implemented or shipped at least once. It does not imply stable
 v0 support. Use [../local-contract.md](../local-contract.md) as the source of
 truth for stable, beta, dev-only, and compatibility-mode classification.
 
+## onlava UI Registry and Agent Guardrails
+
+- Status: completed
+- Owner: onlava dashboard
+- Completed: 2026-05-09
+- Quality: B+
+- ExecPlan: [0011 onlava UI Registry and Agent Guardrails](0011-onlava-ui-registry-and-agent-guardrails.md)
+
+Shipped:
+
+- `@onlava/*` shadcn registry configuration under `ui/components.json`.
+- Guarded `bun run shadcn:add @onlava/<item>` wrapper with local registry serving and dry-run-first behavior.
+- onlava-owned UI primitives and slot layouts under `ui/src/components/primitives` and `ui/src/components/layouts`.
+- Initial registry items for dashboard/data layouts plus ONLV-ported button/card/dialog/input/product surface/filter/sidebar components.
+- `docs/ui-agent-contract.md`.
+- Self-harness UI static architecture checks for registry/script/import boundaries and className migration warnings.
+- ONLV Pulse screen imports switched to onlava-facing primitives/layout paths while preserving current rendered UI.
+
 ## onlava Go Runner Phase 1
 
 - Status: completed
