@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "ui/src/components/primitives/Dialog.tsx",
-      "source": "../../src/components/primitives/Dialog.tsx",
+      "source": "src/components/primitives/Dialog.tsx",
       "type": "registry:component",
       "target": "@components/primitives/Dialog.tsx"
     }

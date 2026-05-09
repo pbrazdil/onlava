@@ -7,7 +7,7 @@
   "files": [
     {
       "path": "ui/src/components/primitives/Card.tsx",
-      "source": "../../src/components/primitives/Card.tsx",
+      "source": "src/components/primitives/Card.tsx",
       "type": "registry:component",
       "target": "@components/primitives/Card.tsx"
     }

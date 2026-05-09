@@ -40,6 +40,12 @@
       "description": "Slot-based layout for dynamic object data explorers."
     },
     {
+      "name": "page-toolbar",
+      "type": "registry:block",
+      "title": "Page Toolbar",
+      "description": "Typed page toolbar layout for primary and secondary actions."
+    },
+    {
       "name": "product-surface",
       "type": "registry:block",
       "title": "Product Surface",

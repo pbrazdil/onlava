@@ -9,8 +9,7 @@ import process from "node:process";
 const args = process.argv.slice(2);
 const projectRoot = process.cwd();
 const registryRoot = path.resolve(projectRoot, process.env.ONLAVA_SHADCN_REGISTRY_ROOT ?? path.join("registry", "onlava"));
-const allowedOptionsWithValue = new Set(["--cwd", "-c"]);
-const rejectedOptions = new Set(["--all", "-a", "--path", "-p"]);
+const shadcnVersion = process.env.ONLAVA_SHADCN_VERSION ?? "shadcn@4.7.0";
 
 if (args.length === 0) {
   console.error("usage: bun run shadcn:add @onlava/<item> [...]");
@@ -56,9 +55,16 @@ if (parsed.overwrite && process.env.ONLAVA_SHADCN_OVERWRITE !== "1") {
   process.exit(1);
 }
 
-const server = await startRegistryServer(registryRoot);
+let server;
 try {
-  const base = ["shadcn@latest", "add", "--yes", ...args.filter((arg) => arg !== "--dry-run")];
+  server = await startRegistryServer(registryRoot);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+
+try {
+  const base = [shadcnVersion, "add", "--yes", ...args.filter((arg) => arg !== "--dry-run")];
   const dryRun = await run("bunx", [...base, "--dry-run"]);
   if (dryRun !== 0) {
     process.exit(dryRun);
@@ -97,18 +103,8 @@ function parseArgs(input) {
       overwrite = true;
       continue;
     }
-    if (rejectedOptions.has(arg)) {
-      return { error: `Refusing unsupported shadcn option: ${arg}` };
-    }
-    if (allowedOptionsWithValue.has(arg)) {
-      i += 1;
-      if (i >= input.length) {
-        return { error: `Missing value for ${arg}` };
-      }
-      continue;
-    }
     if (arg.startsWith("-")) {
-      continue;
+      return { error: `Refusing unsupported shadcn option: ${arg}` };
     }
     items.push(arg);
   }
@@ -143,16 +139,13 @@ async function startRegistryServer(root) {
   await new Promise((resolve, reject) => {
     server.once("error", (error) => {
       if (error && error.code === "EADDRINUSE") {
-        resolve();
+        reject(new Error("port 4873 is already in use; refusing to use an unknown registry server"));
         return;
       }
       reject(error);
     });
     server.listen(4873, "127.0.0.1", resolve);
   });
-  if (!server.listening) {
-    return { close: (done) => done() };
-  }
   return server;
 }
 
@@ -162,8 +155,8 @@ function loadRegistryItem(filePath, root) {
     if (!file.source || file.content) {
       return file;
     }
-    const sourcePath = path.resolve(root, file.source);
     const sourceRoot = path.resolve(root, "../..");
+    const sourcePath = path.resolve(sourceRoot, file.source);
     if (!sourcePath.startsWith(sourceRoot + path.sep)) {
       throw new Error(`registry source escapes registry source root: ${file.source}`);
     }
