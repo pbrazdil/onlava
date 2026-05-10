@@ -3,7 +3,7 @@
   "name": "tooltip",
   "type": "registry:component",
   "title": "Tooltip",
-  "description": "Pulse-compatible onlava Tooltip primitive.",
+  "description": "approved onlava Tooltip primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/tooltip.tsx",

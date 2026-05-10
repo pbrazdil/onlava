@@ -3,7 +3,7 @@
   "name": "drawer",
   "type": "registry:component",
   "title": "Drawer",
-  "description": "Pulse-compatible onlava Drawer primitive.",
+  "description": "approved onlava Drawer primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/drawer.tsx",

@@ -3,7 +3,7 @@
   "name": "menubar",
   "type": "registry:component",
   "title": "Menubar",
-  "description": "Pulse-compatible onlava Menubar primitive.",
+  "description": "approved onlava Menubar primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/menubar.tsx",

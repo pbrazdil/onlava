@@ -3,7 +3,7 @@
   "name": "input-otp",
   "type": "registry:component",
   "title": "Input OTP",
-  "description": "Pulse-compatible onlava Input OTP primitive.",
+  "description": "approved onlava Input OTP primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/input-otp.tsx",

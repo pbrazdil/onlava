@@ -3,7 +3,7 @@
   "name": "aspect-ratio",
   "type": "registry:component",
   "title": "Aspect Ratio",
-  "description": "Pulse-compatible onlava Aspect Ratio primitive.",
+  "description": "approved onlava Aspect Ratio primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/aspect-ratio.tsx",

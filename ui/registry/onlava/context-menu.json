@@ -3,7 +3,7 @@
   "name": "context-menu",
   "type": "registry:component",
   "title": "Context Menu",
-  "description": "Pulse-compatible onlava Context Menu primitive.",
+  "description": "approved onlava Context Menu primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/context-menu.tsx",

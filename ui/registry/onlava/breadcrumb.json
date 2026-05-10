@@ -3,7 +3,7 @@
   "name": "breadcrumb",
   "type": "registry:component",
   "title": "Breadcrumb",
-  "description": "Pulse-compatible onlava Breadcrumb primitive.",
+  "description": "approved onlava Breadcrumb primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/breadcrumb.tsx",

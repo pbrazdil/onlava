@@ -3,7 +3,7 @@
   "name": "textarea",
   "type": "registry:component",
   "title": "Textarea",
-  "description": "Pulse-compatible onlava Textarea primitive.",
+  "description": "approved onlava Textarea primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/textarea.tsx",

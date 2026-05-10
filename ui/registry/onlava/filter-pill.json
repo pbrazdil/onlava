@@ -3,7 +3,7 @@
   "name": "filter-pill",
   "type": "registry:component",
   "title": "Filter Pill",
-  "description": "Pulse-compatible onlava Filter Pill primitive.",
+  "description": "approved onlava Filter Pill primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/filter-pill.ts",

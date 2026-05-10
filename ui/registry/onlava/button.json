@@ -3,7 +3,7 @@
   "name": "button",
   "type": "registry:component",
   "title": "Button",
-  "description": "Pulse-compatible onlava Button primitive.",
+  "description": "approved onlava Button primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/button.tsx",

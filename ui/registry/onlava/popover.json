@@ -3,7 +3,7 @@
   "name": "popover",
   "type": "registry:component",
   "title": "Popover",
-  "description": "Pulse-compatible onlava Popover primitive.",
+  "description": "approved onlava Popover primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/popover.tsx",

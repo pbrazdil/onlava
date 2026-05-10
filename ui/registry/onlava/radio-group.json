@@ -3,7 +3,7 @@
   "name": "radio-group",
   "type": "registry:component",
   "title": "Radio Group",
-  "description": "Pulse-compatible onlava Radio Group primitive.",
+  "description": "approved onlava Radio Group primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/radio-group.tsx",

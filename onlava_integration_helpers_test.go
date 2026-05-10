@@ -87,7 +87,7 @@ func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, front
 		"ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
 	)
 	if frontendAddr != "" {
-		env = append(env, "ONLAVA_FRONTEND_PULSE_ADDR="+frontendAddr)
+		env = append(env, "ONLAVA_FRONTEND_WEB_ADDR="+frontendAddr)
 	}
 	return env
 }

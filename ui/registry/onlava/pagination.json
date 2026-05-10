@@ -3,7 +3,7 @@
   "name": "pagination",
   "type": "registry:component",
   "title": "Pagination",
-  "description": "Pulse-compatible onlava Pagination primitive.",
+  "description": "approved onlava Pagination primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/pagination.tsx",

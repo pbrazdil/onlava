@@ -3,7 +3,7 @@
   "name": "progress",
   "type": "registry:component",
   "title": "Progress",
-  "description": "Pulse-compatible onlava Progress primitive.",
+  "description": "approved onlava Progress primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/progress.tsx",

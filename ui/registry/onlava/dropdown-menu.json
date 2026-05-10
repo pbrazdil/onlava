@@ -3,7 +3,7 @@
   "name": "dropdown-menu",
   "type": "registry:component",
   "title": "Dropdown Menu",
-  "description": "Pulse-compatible onlava Dropdown Menu primitive.",
+  "description": "approved onlava Dropdown Menu primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/dropdown-menu.tsx",

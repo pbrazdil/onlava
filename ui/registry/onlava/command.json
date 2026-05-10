@@ -3,7 +3,7 @@
   "name": "command",
   "type": "registry:component",
   "title": "Command",
-  "description": "Pulse-compatible onlava Command primitive.",
+  "description": "approved onlava Command primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/command.tsx",

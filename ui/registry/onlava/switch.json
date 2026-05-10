@@ -3,7 +3,7 @@
   "name": "switch",
   "type": "registry:component",
   "title": "Switch",
-  "description": "Pulse-compatible onlava Switch primitive.",
+  "description": "approved onlava Switch primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/switch.tsx",

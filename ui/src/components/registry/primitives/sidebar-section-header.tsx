@@ -25,17 +25,17 @@ export function SidebarSectionHeader({
 }: SidebarSectionHeaderProps) {
 	return (
 		<div className="flex items-center justify-between gap-2 px-2 py-1.5">
-			<div className="flex min-w-0 items-center gap-2 text-[12px] font-semibold text-[var(--pulse-sidebar-active-text)]">
-				<Icon className="size-4 shrink-0 text-[var(--pulse-icon-muted)]" />
+			<div className="flex min-w-0 items-center gap-2 text-[12px] font-semibold text-app-sidebar-active-text">
+				<Icon className="size-4 shrink-0 text-app-icon-muted" />
 				{title}
 			</div>
 			<div className="flex items-center gap-1">
 				<button
 					type="button"
 					className={cn(
-						"flex size-7 items-center justify-center rounded-md text-[var(--pulse-sidebar-muted)] transition-colors",
-						"hover:bg-[var(--pulse-sidebar-hover-bg)] hover:text-[var(--pulse-sidebar-active-text)]",
-						"focus-visible:ring-2 focus-visible:ring-[var(--pulse-focus-soft)] focus-visible:outline-none",
+						"flex size-7 items-center justify-center rounded-md text-app-sidebar-muted transition-colors",
+						"hover:bg-app-sidebar-hover hover:text-app-sidebar-active-text",
+						"focus-visible:ring-2 focus-visible:ring-app-focus-soft focus-visible:outline-none",
 					)}
 					aria-label={addLabel}
 					onClick={onAdd}
@@ -44,7 +44,7 @@ export function SidebarSectionHeader({
 				</button>
 				<button
 					type="button"
-					className="flex size-7 items-center justify-center rounded-md text-[var(--pulse-sidebar-muted)] transition-colors hover:bg-[var(--pulse-sidebar-hover-bg)] hover:text-[var(--pulse-sidebar-active-text)] focus-visible:ring-2 focus-visible:ring-[var(--pulse-focus-soft)] focus-visible:outline-none"
+					className="flex size-7 items-center justify-center rounded-md text-app-sidebar-muted transition-colors hover:bg-app-sidebar-hover hover:text-app-sidebar-active-text focus-visible:ring-2 focus-visible:ring-app-focus-soft focus-visible:outline-none"
 					aria-label={optionsLabel}
 					onClick={onOptions}
 				>

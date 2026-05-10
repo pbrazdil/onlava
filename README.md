@@ -157,9 +157,9 @@ Example proxy config:
     "console_host": "console.myteam.localhost",
     "mcp_host": "mcp.myteam.localhost",
     "frontends": {
-      "pulse": {
-        "host": "pulse.myteam.localhost",
-        "root": "apps/pulse"
+      "web": {
+        "host": "web.myteam.localhost",
+        "root": "apps/web"
       },
       "blog": {
         "host": "blog.myteam.localhost",

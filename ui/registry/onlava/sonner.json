@@ -3,7 +3,7 @@
   "name": "sonner",
   "type": "registry:component",
   "title": "Sonner",
-  "description": "Pulse-compatible onlava Sonner primitive.",
+  "description": "approved onlava Sonner primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/sonner.tsx",

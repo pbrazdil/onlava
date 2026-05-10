@@ -211,7 +211,7 @@ func TestRunConsoleJSONPhaseAndBanner(t *testing.T) {
 		Dashboard: "https://console.jsonapp.localhost/jsonapp",
 		MCP:       "https://mcp.jsonapp.localhost/sse?appID=jsonapp",
 		Frontends: map[string]string{
-			"pulse": "https://pulse.jsonapp.localhost",
+			"web": "https://web.jsonapp.localhost",
 		},
 	})
 

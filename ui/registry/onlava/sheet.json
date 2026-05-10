@@ -3,7 +3,7 @@
   "name": "sheet",
   "type": "registry:component",
   "title": "Sheet",
-  "description": "Pulse-compatible onlava Sheet primitive.",
+  "description": "approved onlava Sheet primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/sheet.tsx",

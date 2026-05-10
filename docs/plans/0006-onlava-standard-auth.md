@@ -40,7 +40,7 @@ The user-visible behavior should remain stable for ONLV: existing frontend calls
 - [x] (2026-05-08 21:39Z) Moved and generalized the ONLV auth service into `github.com/pbrazdil/onlava/auth`: JWT validation, password hashing, email signup/login, refresh sessions, organizations, invites, impersonation, Google OAuth, auth events, and local dev bootstrap. The concrete request auth payload is `auth.AuthData`; `auth.CurrentAuthData()` avoids app-side type assertions.
 - [x] (2026-05-08 21:39Z) Added standard auth module support to `.onlava.json`, generated app startup, inspect output, and TypeScript client generation. Apps can enable standard auth with `"auth": {"enabled": true}` and do not need wrapper endpoints.
 - [x] (2026-05-08 21:39Z) Added `testdata/apps/standard-auth` and an integration test proving built-in `/users/dev-bootstrap` mints a token accepted by a normal `//onlava:api auth` endpoint.
-- [x] (2026-05-08 21:51Z) Updated ONLV to enable onlava standard auth from `.onlava.json`, switched app services from `clean.tech/auth` to `github.com/pbrazdil/onlava/auth`, removed ONLV-owned auth service files, removed `users.DevBootstrap`, removed auth sqlc generation, and regenerated the Pulse TypeScript client.
+- [x] (2026-05-08 21:51Z) Updated ONLV to enable onlava standard auth from `.onlava.json`, switched app services from `clean.tech/auth` to `github.com/pbrazdil/onlava/auth`, removed ONLV-owned auth service files, removed `users.DevBootstrap`, removed auth sqlc generation, and regenerated the app TypeScript client.
 - [x] (2026-05-08 21:51Z) Validated the ONLV cutover with `go test ./...`, `onlava check --json`, `onlava inspect routes --json`, `onlava harness --json --write`, `bun run build`, `bun run build:electron`, and a runtime smoke test of `/users/dev-bootstrap`.
 - [x] (2026-05-08 22:45Z) Added `docs/runbooks/standard-auth-migration.md` for copying existing `users` / `tenants` auth state into `onlava_auth` before any production rollout that must preserve existing users and sessions.
 
@@ -56,7 +56,7 @@ The user-visible behavior should remain stable for ONLV: existing frontend calls
 - The ONLV auth schema used `uuidv7()` defaults that depend on ONLV database utilities. The onlava auth schema removes those defaults because the standard auth service already generates UUIDs in Go and should not require ONLV helper functions.
 - A pure startup-time DB connection would make local dev-token auth impossible without a database. The standard module now connects lazily for DB-backed endpoints, while `/users/dev-bootstrap` and JWT validation can work without opening PostgreSQL.
 - ONLV still has an app-owned `tenants` package for non-auth application configuration and domain table foreign keys. The auth-owned membership and organization endpoints moved to onlava standard auth; the generated client no longer exposes ONLV-local tenant mutation endpoints.
-- `bun run typecheck` in `apps/pulse` is still blocked by the existing `apps/viewer` / duplicate `@types/three` mismatch. `bun run build` and `bun run build:electron` passed after the auth client regeneration.
+- `bun run typecheck` in `apps/app` is still blocked by the existing `apps/viewer` / duplicate `@types/three` mismatch. `bun run build` and `bun run build:electron` passed after the auth client regeneration.
 
 ## Decision Log
 
@@ -114,25 +114,25 @@ The onlava standard-auth module is implemented and ONLV now consumes it through 
 
 Validation completed:
 
-- `go test ./...` in `/Users/petrbrazdil/Repos/pulse`
-- `go install ./cmd/onlava` in `/Users/petrbrazdil/Repos/pulse`
-- `onlava harness self --json --write` in `/Users/petrbrazdil/Repos/pulse`
+- `go test ./...` in `/path/to/onlava`
+- `go install ./cmd/onlava` in `/path/to/onlava`
+- `onlava harness self --json --write` in `/path/to/onlava`
 - `onlava check --app-root testdata/apps/standard-auth --json`
 - `onlava gen client --app-root testdata/apps/standard-auth --lang typescript`
 - `go test ./...` in `/Users/petrbrazdil/Repos/onlv`
 - `onlava check --json --app-root /Users/petrbrazdil/Repos/onlv`
 - `onlava inspect routes --json --app-root /Users/petrbrazdil/Repos/onlv`
 - `onlava harness --json --write --app-root /Users/petrbrazdil/Repos/onlv`
-- `bun run build` and `bun run build:electron` in `/Users/petrbrazdil/Repos/onlv/apps/pulse`
+- `bun run build` and `bun run build:electron` in `/Users/petrbrazdil/Repos/onlv/apps/app`
 - Runtime smoke test: ONLV `onlava run` served standard `users.DevBootstrap`; an authenticated request entered the console handler with `uid=dev-mcp`.
 
 Remaining rollout work: production deployments that need existing user/session preservation must execute and verify `docs/runbooks/standard-auth-migration.md` before removing legacy tables from any production database. The code path no longer depends on the legacy ONLV auth package.
 
 ## Context and Orientation
 
-Primary repository: `github.com/pbrazdil/onlava`, local path `/Users/petrbrazdil/Repos/pulse`.
+Primary repository: `github.com/pbrazdil/onlava`, local path `/path/to/onlava`.
 
-Consumer repository for migration: ONLV app, local path `/Users/petrbrazdil/Repos/onlv`. ONLV uses `replace github.com/pbrazdil/onlava => ../pulse`, so it can validate local onlava changes before publishing.
+Consumer repository for migration: ONLV app, local path `/Users/petrbrazdil/Repos/onlv`. ONLV uses `replace github.com/pbrazdil/onlava => ../onlava`, so it can validate local onlava changes before publishing.
 
 Relevant onlava files:
 
@@ -155,7 +155,7 @@ Relevant ONLV files to move or remove:
 - `users/dev_auth.go`.
 - `users/db/schema.hcl`, `users/db/queries.sql`, `users/db/gen/*`, if no remaining ONLV-owned users service needs them.
 - `atlas.hcl`, `sqlc.yaml`, `justfile`: remove auth/users entries after onlava owns auth schema generation.
-- `apps/pulse/src/auth/*`, `apps/pulse/src/pulse-client.ts`: update only as required by generated client or cookie/name changes.
+- `apps/app/src/auth/*`, `apps/app/src/app-client.ts`: update only as required by generated client or cookie/name changes.
 - ONLV service imports of `clean.tech/auth` in `contacts`, `tasks`, `invoices`, `tenants`, `console`, `sync`, and `pkg/db/audit_context.go`.
 
 Current ONLV auth endpoint inventory:
@@ -210,7 +210,7 @@ Add an onlava fixture app that enables standard auth, uses a temporary PostgreSQ
 
 Milestone 6: Migrate ONLV to onlava auth.
 
-Update ONLV `.onlava.json` and imports to use standard onlava auth. Remove or retire local auth/users DB ownership and endpoint logic. Add a database migration path from existing ONLV `users` / `tenants` schema data into the onlava auth schema. Regenerate the Pulse TypeScript client and verify the Pulse login/dev-token flows in the Browser.
+Update ONLV `.onlava.json` and imports to use standard onlava auth. Remove or retire local auth/users DB ownership and endpoint logic. Add a database migration path from existing ONLV `users` / `tenants` schema data into the onlava auth schema. Regenerate the app TypeScript client and verify the app login/dev-token flows in the Browser.
 
 Milestone 7: Documentation, cleanup, and release readiness.
 
@@ -251,11 +251,11 @@ Then port the service logic. Prefer a clean implementation over a blind copy. Pr
 
 Then integrate the standard module with build/codegen. The generated app should know standard auth endpoints exist for inspect and client generation. Avoid a runtime-only registration path that makes endpoints invisible to `onlava inspect`, generated TypeScript, and the development dashboard. If implementation pressure makes a runtime-only prototype tempting, keep it behind a branch or prototype package and do not migrate ONLV until inspect/clientgen see the endpoints.
 
-Finally migrate ONLV. Switch ONLV services that currently type-assert `pulseauth.Data()` to `*clean.tech/auth.Data` so they instead use either `*onlavaauth.AuthData` or helper functions from the new top surface. Update audit context to understand the new auth data type. Remove ONLV auth endpoints only after `onlava check` still reports the expected routes and the generated Pulse client still includes the auth service methods.
+Finally migrate ONLV. Switch ONLV services that currently type-assert `pulseauth.Data()` to `*clean.tech/auth.Data` so they instead use either `*onlavaauth.AuthData` or helper functions from the new top surface. Update audit context to understand the new auth data type. Remove ONLV auth endpoints only after `onlava check` still reports the expected routes and the generated app client still includes the auth service methods.
 
 ## Concrete Steps
 
-1. In `/Users/petrbrazdil/Repos/pulse`, create onlava auth DB tooling:
+1. In `/path/to/onlava`, create onlava auth DB tooling:
 
    - Add `atlas.hcl` with a dev env that can inspect/apply `auth/db/schema.hcl`.
    - Add `sqlc.yaml` with a PostgreSQL entry for `auth/db/gen/schema.sql` and `auth/db/queries.sql`, generating package `authdb` to `auth/db/gen`.
@@ -266,7 +266,7 @@ Finally migrate ONLV. Switch ONLV services that currently type-assert `pulseauth
 2. Generate and commit auth DB artifacts:
 
    ```sh
-   # from /Users/petrbrazdil/Repos/pulse
+   # from /path/to/onlava
    atlas schema inspect --env dev --schema onlava_auth --format '{{ sql . }}' > auth/db/gen/schema.sql
    sqlc generate
    gofmt -w auth db internal
@@ -297,7 +297,7 @@ Finally migrate ONLV. Switch ONLV services that currently type-assert `pulseauth
    - Extend `.onlava.json` parsing in `internal/app` to include auth config.
    - Extend `internal/model.App` or a parallel standard-module model to represent generated auth endpoints and the generated auth handler.
    - Extend `internal/codegen/generator.go` to register standard auth endpoints and the standard auth handler.
-   - Extend `internal/inspect`, `internal/devmeta`, and TypeScript client generation so standard auth endpoints appear in inspect JSON and `apps/pulse/src/pulse-client.ts`.
+   - Extend `internal/inspect`, `internal/devmeta`, and TypeScript client generation so standard auth endpoints appear in inspect JSON and `apps/app/src/app-client.ts`.
    - Ensure observability names are stable, probably service `auth` and endpoint names matching current ONLV names where possible.
 
 6. Add onlava tests and fixtures:
@@ -314,7 +314,7 @@ Finally migrate ONLV. Switch ONLV services that currently type-assert `pulseauth
    - Migrate existing data from ONLV `users` and `tenants` schemas into `onlava_auth`. Keep a rollback path until the migrated login flow is verified.
    - Replace ONLV imports of `clean.tech/auth` with `github.com/pbrazdil/onlava/auth` types/helpers or a tiny local alias package only if absolutely needed during migration.
    - Remove ONLV `auth/`, `users/dev_auth.go`, and auth/users HCL/sqlc entries after routes and tests pass.
-   - Regenerate `apps/pulse/src/pulse-client.ts` with `just gen-pulse-client`.
+   - Regenerate `apps/app/src/app-client.ts` with `just gen-app-client`.
 
 8. Update docs:
 
@@ -329,7 +329,7 @@ Finally migrate ONLV. Switch ONLV services that currently type-assert `pulseauth
 onlava validation:
 
 ```sh
-# from /Users/petrbrazdil/Repos/pulse
+# from /path/to/onlava
 gofmt -w auth internal runtime testdata
 go test ./...
 go install ./cmd/onlava
@@ -340,7 +340,7 @@ onlava check --app-root testdata/apps/auth-platform --json
 PostgreSQL auth integration validation:
 
 ```sh
-# from /Users/petrbrazdil/Repos/pulse
+# from /path/to/onlava
 ONLAVA_TEST_DATABASE_URL='postgres://...' go test ./auth ./internal/... -run Auth
 ```
 
@@ -351,7 +351,7 @@ ONLV validation:
 ```sh
 # from /Users/petrbrazdil/Repos/onlv
 onlava check --json
-just gen-pulse-client
+just gen-app-client
 go test ./...
 onlava harness --json --write
 ```
@@ -359,20 +359,20 @@ onlava harness --json --write
 Frontend validation:
 
 ```sh
-# from /Users/petrbrazdil/Repos/onlv/apps/pulse
+# from /Users/petrbrazdil/Repos/onlv/apps/app
 bun run typecheck
 bun run build
 ```
 
-If `bun run typecheck` is blocked by the existing `apps/viewer` / `@types/three` mismatch when run through a broader command, record that explicitly and still run the Pulse-local build/typecheck command that isolates the auth change.
+If `bun run typecheck` is blocked by the existing `apps/viewer` / `@types/three` mismatch when run through a broader command, record that explicitly and still run the app-local build/typecheck command that isolates the auth change.
 
 Browser acceptance:
 
 - Start ONLV through `onlava dev`.
-- Open `https://pulse.onlv.localhost/dev-auth?redirect=/dev/data&user=dev-token&tenant=00000000-0000-0000-0000-000000000001`.
+- Open `https://app.onlv.localhost/dev-auth?redirect=/dev/data&user=dev-token&tenant=00000000-0000-0000-0000-000000000001`.
 - Confirm `/users/dev-bootstrap` mints a token only in local mode.
 - Confirm authenticated API calls include the onlava auth data.
-- Confirm email signup/login, refresh, logout, `/auth/me`, organization switch, and impersonation flows still work in Pulse.
+- Confirm email signup/login, refresh, logout, `/auth/me`, organization switch, and impersonation flows still work in ONLV app.
 - Confirm the local dev-token flow still works after a full browser reload.
 
 This plan is complete only when:
@@ -426,7 +426,7 @@ Expected ONLV cleanup artifacts:
 - Removed `auth/db` and `users/db` ownership if no remaining ONLV-owned user service needs them
 - Updated `atlas.hcl`, `sqlc.yaml`, and `justfile`
 - Updated imports in app services from `clean.tech/auth` to onlava auth surface
-- Regenerated `apps/pulse/src/pulse-client.ts`
+- Regenerated `apps/app/src/app-client.ts`
 - Updated `.onlava/harness/latest.json`
 
 Open questions to resolve during implementation:

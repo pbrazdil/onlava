@@ -155,10 +155,10 @@ Shipped:
 - `@onlava/*` shadcn registry configuration under `ui/components.json`.
 - Guarded `bun run shadcn:add @onlava/<item>` wrapper with local registry serving and dry-run-first behavior.
 - onlava-owned UI primitives and slot layouts under `ui/src/components/primitives` and `ui/src/components/layouts`.
-- Initial registry items for dashboard/data layouts plus ONLV-ported button/card/dialog/input/product surface/filter/sidebar components.
+- Initial registry items for dashboard/data layouts plus ONLV-ported button/card/dialog/input/app surface/filter/sidebar components.
 - `docs/ui-agent-contract.md`.
 - Self-harness UI static architecture checks for registry/script/import boundaries and className migration warnings.
-- ONLV Pulse screen imports switched to onlava-facing primitives/layout paths while preserving current rendered UI.
+- ONLV app screen imports switched to onlava-facing primitives/layout paths while preserving current rendered UI.
 
 ## onlava Go Runner Phase 1
 
@@ -493,19 +493,19 @@ Shipped:
 ## ONLV Direct onlava Registry Adoption
 
 - Status: completed
-- Owner: onlava dashboard / ONLV Pulse
+- Owner: onlava dashboard / ONLV app
 - Completed: 2026-05-10
 - Quality: B+
 - ExecPlan: [0031 ONLV Direct onlava Registry Adoption](0031-onlv-direct-onlava-registry-adoption.md)
 
 Shipped:
 
-- Pulse-compatible primitive registry source under `ui/src/components/registry/primitives`.
+- onlava-approved primitive registry source under `ui/src/components/registry/primitives`.
 - Individual `@onlava/*` primitive registry items plus the aggregate `@onlava/primitives` item.
-- ONLV Pulse mirrored registry outputs under `apps/pulse/src/components/primitives`.
-- Pulse app-facing imports moved away from raw `@/components/ui/*` and local product-layout compatibility imports.
+- ONLV app mirrored registry outputs under `apps/app/src/components/primitives`.
+- ONLV app-facing imports moved away from raw `@/components/ui/*` and local product-layout compatibility imports.
 - ONLV primitive barrel now explicitly exports registry-owned primitive files instead of re-exporting `../ui`.
-- Removed unused Pulse generic compatibility shims and the old local `components/ui` source tree, and updated Pulse agent instructions to use registry-owned primitives/layouts.
+- Removed unused ONLV app generic compatibility shims and the old local `components/ui` source tree, and updated ONLV app agent instructions to use registry-owned primitives/layouts.
 - Added `.ts` public entrypoint re-exports for migrated primitives that Vite may still request during hot reload.
-- `apps/pulse/scripts/check-onlava-ui-registry.mjs`, wired into `bun run typecheck`, to prevent future drift back to local raw shadcn imports.
-- Pulse visual harness remained stable with 24/24 snapshots passing.
+- `apps/app/scripts/check-onlava-ui-registry.mjs`, wired into `bun run typecheck`, to prevent future drift back to local raw shadcn imports.
+- ONLV app visual harness remained stable with 24/24 snapshots passing.

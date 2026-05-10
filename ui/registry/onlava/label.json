@@ -3,7 +3,7 @@
   "name": "label",
   "type": "registry:component",
   "title": "Label",
-  "description": "Pulse-compatible onlava Label primitive.",
+  "description": "approved onlava Label primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/label.tsx",

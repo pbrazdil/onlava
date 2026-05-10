@@ -3,7 +3,7 @@
   "name": "navigation-menu",
   "type": "registry:component",
   "title": "Navigation Menu",
-  "description": "Pulse-compatible onlava Navigation Menu primitive.",
+  "description": "approved onlava Navigation Menu primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/navigation-menu.tsx",

@@ -65,7 +65,7 @@ Card
 Dialog
 DashboardPage
 DataExplorerLayout
-ProductSurface
+AppSurface
 FilterPill
 SidebarItem
 ```

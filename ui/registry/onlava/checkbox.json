@@ -3,7 +3,7 @@
   "name": "checkbox",
   "type": "registry:component",
   "title": "Checkbox",
-  "description": "Pulse-compatible onlava Checkbox primitive.",
+  "description": "approved onlava Checkbox primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/checkbox.tsx",

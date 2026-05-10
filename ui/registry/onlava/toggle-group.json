@@ -3,7 +3,7 @@
   "name": "toggle-group",
   "type": "registry:component",
   "title": "Toggle Group",
-  "description": "Pulse-compatible onlava Toggle Group primitive.",
+  "description": "approved onlava Toggle Group primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/toggle-group.tsx",

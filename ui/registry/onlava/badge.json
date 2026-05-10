@@ -3,7 +3,7 @@
   "name": "badge",
   "type": "registry:component",
   "title": "Badge",
-  "description": "Pulse-compatible onlava Badge primitive.",
+  "description": "approved onlava Badge primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/badge.tsx",

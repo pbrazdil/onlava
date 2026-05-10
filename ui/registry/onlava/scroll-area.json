@@ -3,7 +3,7 @@
   "name": "scroll-area",
   "type": "registry:component",
   "title": "Scroll Area",
-  "description": "Pulse-compatible onlava Scroll Area primitive.",
+  "description": "approved onlava Scroll Area primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/scroll-area.tsx",

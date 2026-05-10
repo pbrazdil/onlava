@@ -3,7 +3,7 @@
   "name": "tabs",
   "type": "registry:component",
   "title": "Tabs",
-  "description": "Pulse-compatible onlava Tabs primitive.",
+  "description": "approved onlava Tabs primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/tabs.tsx",

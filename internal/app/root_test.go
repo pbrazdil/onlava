@@ -8,7 +8,7 @@ import (
 
 func TestDiscoverRootAcceptsLegacyID(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"id":"legacy-app","proxy":{"workspace":"acme","api_host":"api.acme.localhost","console_host":"console.acme.localhost","mcp_host":"mcp.acme.localhost","frontends":{"pulse":{"host":"pulse.acme.localhost","root":"apps/pulse","upstream":"127.0.0.1:5173"}}},"observability":{"logs":{"exclude_endpoints":["sync.*"]},"tracing":{"include_endpoints":["tenants.Config"]}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"id":"legacy-app","proxy":{"workspace":"acme","api_host":"api.acme.localhost","console_host":"console.acme.localhost","mcp_host":"mcp.acme.localhost","frontends":{"web":{"host":"web.acme.localhost","root":"apps/web","upstream":"127.0.0.1:5173"}}},"observability":{"logs":{"exclude_endpoints":["sync.*"]},"tracing":{"include_endpoints":["tenants.Config"]}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -28,8 +28,8 @@ func TestDiscoverRootAcceptsLegacyID(t *testing.T) {
 	if cfg.Proxy.APIHost != "api.acme.localhost" {
 		t.Fatalf("cfg.Proxy.APIHost = %q, want %q", cfg.Proxy.APIHost, "api.acme.localhost")
 	}
-	if cfg.Proxy.Frontends["pulse"].Host != "pulse.acme.localhost" {
-		t.Fatalf("cfg.Proxy.Frontends[pulse].Host = %q, want %q", cfg.Proxy.Frontends["pulse"].Host, "pulse.acme.localhost")
+	if cfg.Proxy.Frontends["web"].Host != "web.acme.localhost" {
+		t.Fatalf("cfg.Proxy.Frontends[web].Host = %q, want %q", cfg.Proxy.Frontends["web"].Host, "web.acme.localhost")
 	}
 	if len(cfg.Observability.Logs.ExcludeEndpoints) != 1 || cfg.Observability.Logs.ExcludeEndpoints[0] != "sync.*" {
 		t.Fatalf("cfg.Observability.Logs.ExcludeEndpoints = %v", cfg.Observability.Logs.ExcludeEndpoints)

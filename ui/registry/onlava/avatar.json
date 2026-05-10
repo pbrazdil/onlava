@@ -3,7 +3,7 @@
   "name": "avatar",
   "type": "registry:component",
   "title": "Avatar",
-  "description": "Pulse-compatible onlava Avatar primitive.",
+  "description": "approved onlava Avatar primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/avatar.tsx",

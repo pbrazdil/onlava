@@ -3,7 +3,7 @@
   "name": "hover-card",
   "type": "registry:component",
   "title": "Hover Card",
-  "description": "Pulse-compatible onlava Hover Card primitive.",
+  "description": "approved onlava Hover Card primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/hover-card.tsx",

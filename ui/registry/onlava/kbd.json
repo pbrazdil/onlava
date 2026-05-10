@@ -3,7 +3,7 @@
   "name": "kbd",
   "type": "registry:component",
   "title": "Kbd",
-  "description": "Pulse-compatible onlava Kbd primitive.",
+  "description": "approved onlava Kbd primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/kbd.tsx",

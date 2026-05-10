@@ -3,7 +3,7 @@
   "name": "input-group",
   "type": "registry:component",
   "title": "Input Group",
-  "description": "Pulse-compatible onlava Input Group primitive.",
+  "description": "approved onlava Input Group primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/input-group.tsx",

@@ -3,7 +3,7 @@
   "name": "input",
   "type": "registry:component",
   "title": "Input",
-  "description": "Pulse-compatible onlava Input primitive.",
+  "description": "approved onlava Input primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/input.tsx",

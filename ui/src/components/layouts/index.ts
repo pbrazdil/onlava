@@ -2,4 +2,4 @@ export * from "./AppShell";
 export * from "./DashboardPage";
 export * from "./DataExplorerLayout";
 export * from "./PageToolbar";
-export * from "./ProductSurface";
+export * from "./AppSurface";

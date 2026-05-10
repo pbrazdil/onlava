@@ -3,7 +3,7 @@
   "name": "empty",
   "type": "registry:component",
   "title": "Empty",
-  "description": "Pulse-compatible onlava Empty primitive.",
+  "description": "approved onlava Empty primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/empty.tsx",

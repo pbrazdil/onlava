@@ -402,7 +402,7 @@ bun run shadcn:add @onlava/<item>
 
 The wrapper rejects non-`@onlava` items, URLs, unsafe flags, and unknown local registry servers. Read `docs/ui-agent-contract.md` before changing UI.
 
-ONLV/Pulse layout migration work should move generic layout source of truth into onlava layouts and registry items while preserving ONLV visuals. Keep ONLV product logic in ONLV.
+ONLV app layout migration work should move generic layout source of truth into onlava layouts and registry items while preserving ONLV visuals. Keep ONLV product logic in ONLV.
 
 ## TypeScript Client Generation
 

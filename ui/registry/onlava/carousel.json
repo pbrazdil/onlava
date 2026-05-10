@@ -3,7 +3,7 @@
   "name": "carousel",
   "type": "registry:component",
   "title": "Carousel",
-  "description": "Pulse-compatible onlava Carousel primitive.",
+  "description": "approved onlava Carousel primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/carousel.tsx",

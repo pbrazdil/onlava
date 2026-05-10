@@ -3,7 +3,7 @@
   "name": "accordion",
   "type": "registry:component",
   "title": "Accordion",
-  "description": "Pulse-compatible onlava Accordion primitive.",
+  "description": "approved onlava Accordion primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/accordion.tsx",

@@ -3,7 +3,7 @@
   "name": "alert",
   "type": "registry:component",
   "title": "Alert",
-  "description": "Pulse-compatible onlava Alert primitive.",
+  "description": "approved onlava Alert primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/alert.tsx",

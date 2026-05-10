@@ -3,7 +3,7 @@
   "name": "table",
   "type": "registry:component",
   "title": "Table",
-  "description": "Pulse-compatible onlava Table primitive.",
+  "description": "approved onlava Table primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/table.tsx",

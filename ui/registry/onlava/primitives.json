@@ -3,7 +3,7 @@
   "name": "primitives",
   "type": "registry:component",
   "title": "Primitives Barrel",
-  "description": "Complete Pulse-compatible onlava primitives surface for apps that want the full approved registry output.",
+  "description": "Complete approved onlava primitives surface for apps that want the full approved registry output.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/accordion.tsx",

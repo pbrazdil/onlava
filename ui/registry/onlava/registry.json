@@ -7,97 +7,97 @@
       "name": "accordion",
       "type": "registry:component",
       "title": "Accordion",
-      "description": "Pulse-compatible onlava Accordion primitive."
+      "description": "approved onlava Accordion primitive."
     },
     {
       "name": "alert",
       "type": "registry:component",
       "title": "Alert",
-      "description": "Pulse-compatible onlava Alert primitive."
+      "description": "approved onlava Alert primitive."
     },
     {
       "name": "alert-dialog",
       "type": "registry:component",
       "title": "Alert Dialog",
-      "description": "Pulse-compatible onlava Alert Dialog primitive."
+      "description": "approved onlava Alert Dialog primitive."
     },
     {
       "name": "aspect-ratio",
       "type": "registry:component",
       "title": "Aspect Ratio",
-      "description": "Pulse-compatible onlava Aspect Ratio primitive."
+      "description": "approved onlava Aspect Ratio primitive."
     },
     {
       "name": "avatar",
       "type": "registry:component",
       "title": "Avatar",
-      "description": "Pulse-compatible onlava Avatar primitive."
+      "description": "approved onlava Avatar primitive."
     },
     {
       "name": "badge",
       "type": "registry:component",
       "title": "Badge",
-      "description": "Pulse-compatible onlava Badge primitive."
+      "description": "approved onlava Badge primitive."
     },
     {
       "name": "breadcrumb",
       "type": "registry:component",
       "title": "Breadcrumb",
-      "description": "Pulse-compatible onlava Breadcrumb primitive."
+      "description": "approved onlava Breadcrumb primitive."
     },
     {
       "name": "button",
       "type": "registry:component",
       "title": "Button",
-      "description": "Pulse-compatible onlava Button primitive."
+      "description": "approved onlava Button primitive."
     },
     {
       "name": "button-group",
       "type": "registry:component",
       "title": "Button Group",
-      "description": "Pulse-compatible onlava Button Group primitive."
+      "description": "approved onlava Button Group primitive."
     },
     {
       "name": "calendar",
       "type": "registry:component",
       "title": "Calendar",
-      "description": "Pulse-compatible onlava Calendar primitive."
+      "description": "approved onlava Calendar primitive."
     },
     {
       "name": "card",
       "type": "registry:component",
       "title": "Card",
-      "description": "Pulse-compatible onlava Card primitive."
+      "description": "approved onlava Card primitive."
     },
     {
       "name": "carousel",
       "type": "registry:component",
       "title": "Carousel",
-      "description": "Pulse-compatible onlava Carousel primitive."
+      "description": "approved onlava Carousel primitive."
     },
     {
       "name": "checkbox",
       "type": "registry:component",
       "title": "Checkbox",
-      "description": "Pulse-compatible onlava Checkbox primitive."
+      "description": "approved onlava Checkbox primitive."
     },
     {
       "name": "collapsible",
       "type": "registry:component",
       "title": "Collapsible",
-      "description": "Pulse-compatible onlava Collapsible primitive."
+      "description": "approved onlava Collapsible primitive."
     },
     {
       "name": "command",
       "type": "registry:component",
       "title": "Command",
-      "description": "Pulse-compatible onlava Command primitive."
+      "description": "approved onlava Command primitive."
     },
     {
       "name": "context-menu",
       "type": "registry:component",
       "title": "Context Menu",
-      "description": "Pulse-compatible onlava Context Menu primitive."
+      "description": "approved onlava Context Menu primitive."
     },
     {
       "name": "dashboard-page",
@@ -115,97 +115,97 @@
       "name": "dialog",
       "type": "registry:component",
       "title": "Dialog",
-      "description": "Pulse-compatible onlava Dialog primitive."
+      "description": "approved onlava Dialog primitive."
     },
     {
       "name": "drawer",
       "type": "registry:component",
       "title": "Drawer",
-      "description": "Pulse-compatible onlava Drawer primitive."
+      "description": "approved onlava Drawer primitive."
     },
     {
       "name": "dropdown-menu",
       "type": "registry:component",
       "title": "Dropdown Menu",
-      "description": "Pulse-compatible onlava Dropdown Menu primitive."
+      "description": "approved onlava Dropdown Menu primitive."
     },
     {
       "name": "empty",
       "type": "registry:component",
       "title": "Empty",
-      "description": "Pulse-compatible onlava Empty primitive."
+      "description": "approved onlava Empty primitive."
     },
     {
       "name": "field",
       "type": "registry:component",
       "title": "Field",
-      "description": "Pulse-compatible onlava Field primitive."
+      "description": "approved onlava Field primitive."
     },
     {
       "name": "filter-pill",
       "type": "registry:component",
       "title": "Filter Pill",
-      "description": "Pulse-compatible onlava Filter Pill primitive."
+      "description": "approved onlava Filter Pill primitive."
     },
     {
       "name": "form",
       "type": "registry:component",
       "title": "Form",
-      "description": "Pulse-compatible onlava Form primitive."
+      "description": "approved onlava Form primitive."
     },
     {
       "name": "hover-card",
       "type": "registry:component",
       "title": "Hover Card",
-      "description": "Pulse-compatible onlava Hover Card primitive."
+      "description": "approved onlava Hover Card primitive."
     },
     {
       "name": "input",
       "type": "registry:component",
       "title": "Input",
-      "description": "Pulse-compatible onlava Input primitive."
+      "description": "approved onlava Input primitive."
     },
     {
       "name": "input-group",
       "type": "registry:component",
       "title": "Input Group",
-      "description": "Pulse-compatible onlava Input Group primitive."
+      "description": "approved onlava Input Group primitive."
     },
     {
       "name": "input-otp",
       "type": "registry:component",
       "title": "Input OTP",
-      "description": "Pulse-compatible onlava Input OTP primitive."
+      "description": "approved onlava Input OTP primitive."
     },
     {
       "name": "item",
       "type": "registry:component",
       "title": "Item",
-      "description": "Pulse-compatible onlava Item primitive."
+      "description": "approved onlava Item primitive."
     },
     {
       "name": "kbd",
       "type": "registry:component",
       "title": "Kbd",
-      "description": "Pulse-compatible onlava Kbd primitive."
+      "description": "approved onlava Kbd primitive."
     },
     {
       "name": "label",
       "type": "registry:component",
       "title": "Label",
-      "description": "Pulse-compatible onlava Label primitive."
+      "description": "approved onlava Label primitive."
     },
     {
       "name": "menubar",
       "type": "registry:component",
       "title": "Menubar",
-      "description": "Pulse-compatible onlava Menubar primitive."
+      "description": "approved onlava Menubar primitive."
     },
     {
       "name": "navigation-menu",
       "type": "registry:component",
       "title": "Navigation Menu",
-      "description": "Pulse-compatible onlava Navigation Menu primitive."
+      "description": "approved onlava Navigation Menu primitive."
     },
     {
       "name": "page-toolbar",
@@ -217,151 +217,151 @@
       "name": "pagination",
       "type": "registry:component",
       "title": "Pagination",
-      "description": "Pulse-compatible onlava Pagination primitive."
+      "description": "approved onlava Pagination primitive."
     },
     {
       "name": "popover",
       "type": "registry:component",
       "title": "Popover",
-      "description": "Pulse-compatible onlava Popover primitive."
+      "description": "approved onlava Popover primitive."
     },
     {
       "name": "primitives",
       "type": "registry:component",
       "title": "Primitives Barrel",
-      "description": "Registry-owned barrel for Pulse-compatible onlava primitives."
+      "description": "Registry-owned barrel for approved onlava primitives."
     },
     {
-      "name": "product-surface",
+      "name": "app-surface",
       "type": "registry:block",
-      "title": "Product Surface",
-      "description": "Ported ONLV product surface layout primitives."
+      "title": "App Surface",
+      "description": "Onlava-owned app surface layout primitives."
     },
     {
       "name": "progress",
       "type": "registry:component",
       "title": "Progress",
-      "description": "Pulse-compatible onlava Progress primitive."
+      "description": "approved onlava Progress primitive."
     },
     {
       "name": "radio-group",
       "type": "registry:component",
       "title": "Radio Group",
-      "description": "Pulse-compatible onlava Radio Group primitive."
+      "description": "approved onlava Radio Group primitive."
     },
     {
       "name": "resizable",
       "type": "registry:component",
       "title": "Resizable",
-      "description": "Pulse-compatible onlava Resizable primitive."
+      "description": "approved onlava Resizable primitive."
     },
     {
       "name": "scroll-area",
       "type": "registry:component",
       "title": "Scroll Area",
-      "description": "Pulse-compatible onlava Scroll Area primitive."
+      "description": "approved onlava Scroll Area primitive."
     },
     {
       "name": "select",
       "type": "registry:component",
       "title": "Select",
-      "description": "Pulse-compatible onlava Select primitive."
+      "description": "approved onlava Select primitive."
     },
     {
       "name": "separator",
       "type": "registry:component",
       "title": "Separator",
-      "description": "Pulse-compatible onlava Separator primitive."
+      "description": "approved onlava Separator primitive."
     },
     {
       "name": "sheet",
       "type": "registry:component",
       "title": "Sheet",
-      "description": "Pulse-compatible onlava Sheet primitive."
+      "description": "approved onlava Sheet primitive."
     },
     {
       "name": "sidebar",
       "type": "registry:component",
       "title": "Sidebar",
-      "description": "Pulse-compatible onlava Sidebar primitive."
+      "description": "approved onlava Sidebar primitive."
     },
     {
       "name": "sidebar-item",
       "type": "registry:component",
       "title": "Sidebar Item",
-      "description": "Pulse-compatible onlava Sidebar Item primitive."
+      "description": "approved onlava Sidebar Item primitive."
     },
     {
       "name": "sidebar-section-header",
       "type": "registry:component",
       "title": "Sidebar Section Header",
-      "description": "Pulse-compatible onlava Sidebar Section Header primitive."
+      "description": "approved onlava Sidebar Section Header primitive."
     },
     {
       "name": "skeleton",
       "type": "registry:component",
       "title": "Skeleton",
-      "description": "Pulse-compatible onlava Skeleton primitive."
+      "description": "approved onlava Skeleton primitive."
     },
     {
       "name": "slider",
       "type": "registry:component",
       "title": "Slider",
-      "description": "Pulse-compatible onlava Slider primitive."
+      "description": "approved onlava Slider primitive."
     },
     {
       "name": "sonner",
       "type": "registry:component",
       "title": "Sonner",
-      "description": "Pulse-compatible onlava Sonner primitive."
+      "description": "approved onlava Sonner primitive."
     },
     {
       "name": "spinner",
       "type": "registry:component",
       "title": "Spinner",
-      "description": "Pulse-compatible onlava Spinner primitive."
+      "description": "approved onlava Spinner primitive."
     },
     {
       "name": "switch",
       "type": "registry:component",
       "title": "Switch",
-      "description": "Pulse-compatible onlava Switch primitive."
+      "description": "approved onlava Switch primitive."
     },
     {
       "name": "table",
       "type": "registry:component",
       "title": "Table",
-      "description": "Pulse-compatible onlava Table primitive."
+      "description": "approved onlava Table primitive."
     },
     {
       "name": "tabs",
       "type": "registry:component",
       "title": "Tabs",
-      "description": "Pulse-compatible onlava Tabs primitive."
+      "description": "approved onlava Tabs primitive."
     },
     {
       "name": "textarea",
       "type": "registry:component",
       "title": "Textarea",
-      "description": "Pulse-compatible onlava Textarea primitive."
+      "description": "approved onlava Textarea primitive."
     },
     {
       "name": "toggle",
       "type": "registry:component",
       "title": "Toggle",
-      "description": "Pulse-compatible onlava Toggle primitive."
+      "description": "approved onlava Toggle primitive."
     },
     {
       "name": "toggle-group",
       "type": "registry:component",
       "title": "Toggle Group",
-      "description": "Pulse-compatible onlava Toggle Group primitive."
+      "description": "approved onlava Toggle Group primitive."
     },
     {
       "name": "tooltip",
       "type": "registry:component",
       "title": "Tooltip",
-      "description": "Pulse-compatible onlava Tooltip primitive."
+      "description": "approved onlava Tooltip primitive."
     }
   ]
 }

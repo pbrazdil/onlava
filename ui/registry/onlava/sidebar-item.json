@@ -3,7 +3,7 @@
   "name": "sidebar-item",
   "type": "registry:component",
   "title": "Sidebar Item",
-  "description": "Pulse-compatible onlava Sidebar Item primitive.",
+  "description": "approved onlava Sidebar Item primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/sidebar-item.ts",

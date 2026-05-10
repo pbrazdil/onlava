@@ -3,7 +3,7 @@
   "name": "button-group",
   "type": "registry:component",
   "title": "Button Group",
-  "description": "Pulse-compatible onlava Button Group primitive.",
+  "description": "approved onlava Button Group primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/button-group.tsx",

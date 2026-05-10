@@ -3,7 +3,7 @@
   "name": "collapsible",
   "type": "registry:component",
   "title": "Collapsible",
-  "description": "Pulse-compatible onlava Collapsible primitive.",
+  "description": "approved onlava Collapsible primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/collapsible.tsx",

@@ -3,7 +3,7 @@
   "name": "slider",
   "type": "registry:component",
   "title": "Slider",
-  "description": "Pulse-compatible onlava Slider primitive.",
+  "description": "approved onlava Slider primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/slider.tsx",

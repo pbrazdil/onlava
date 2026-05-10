@@ -3,7 +3,7 @@
   "name": "form",
   "type": "registry:component",
   "title": "Form",
-  "description": "Pulse-compatible onlava Form primitive.",
+  "description": "approved onlava Form primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/form.tsx",

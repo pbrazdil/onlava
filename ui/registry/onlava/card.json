@@ -3,7 +3,7 @@
   "name": "card",
   "type": "registry:component",
   "title": "Card",
-  "description": "Pulse-compatible onlava Card primitive.",
+  "description": "approved onlava Card primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/card.tsx",

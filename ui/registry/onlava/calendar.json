@@ -3,7 +3,7 @@
   "name": "calendar",
   "type": "registry:component",
   "title": "Calendar",
-  "description": "Pulse-compatible onlava Calendar primitive.",
+  "description": "approved onlava Calendar primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/calendar.tsx",

@@ -3,7 +3,7 @@
   "name": "field",
   "type": "registry:component",
   "title": "Field",
-  "description": "Pulse-compatible onlava Field primitive.",
+  "description": "approved onlava Field primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/field.tsx",

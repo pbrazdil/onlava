@@ -3,7 +3,7 @@
   "name": "select",
   "type": "registry:component",
   "title": "Select",
-  "description": "Pulse-compatible onlava Select primitive.",
+  "description": "approved onlava Select primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/select.tsx",

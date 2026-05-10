@@ -16,7 +16,7 @@ func TestPrintRuntimeBanner(t *testing.T) {
 		ConsoleURL: "https://console.test.localhost",
 		MCPBaseURL: "https://mcp.test.localhost",
 		FrontendURLs: map[string]string{
-			"pulse": "https://pulse.test.localhost",
+			"web": "https://web.test.localhost",
 		},
 		DBStudioURL: "http://127.0.0.1:4002",
 	})
@@ -30,8 +30,8 @@ func TestPrintRuntimeBanner(t *testing.T) {
 		"https://console.test.localhost",
 		"MCP SSE URL:",
 		"https://mcp.test.localhost/sse?appID=testapp",
-		"Frontend pulse URL:",
-		"https://pulse.test.localhost",
+		"Frontend web URL:",
+		"https://web.test.localhost",
 		"Drizzle Studio URL:",
 		"http://127.0.0.1:4002",
 	} {

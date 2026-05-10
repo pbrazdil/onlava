@@ -3,7 +3,7 @@
   "name": "item",
   "type": "registry:component",
   "title": "Item",
-  "description": "Pulse-compatible onlava Item primitive.",
+  "description": "approved onlava Item primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/item.tsx",

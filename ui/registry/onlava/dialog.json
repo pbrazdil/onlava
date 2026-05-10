@@ -3,7 +3,7 @@
   "name": "dialog",
   "type": "registry:component",
   "title": "Dialog",
-  "description": "Pulse-compatible onlava Dialog primitive.",
+  "description": "approved onlava Dialog primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/dialog.tsx",

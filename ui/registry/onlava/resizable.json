@@ -3,7 +3,7 @@
   "name": "resizable",
   "type": "registry:component",
   "title": "Resizable",
-  "description": "Pulse-compatible onlava Resizable primitive.",
+  "description": "approved onlava Resizable primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/resizable.tsx",

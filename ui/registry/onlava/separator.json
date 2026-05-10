@@ -3,7 +3,7 @@
   "name": "separator",
   "type": "registry:component",
   "title": "Separator",
-  "description": "Pulse-compatible onlava Separator primitive.",
+  "description": "approved onlava Separator primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/separator.tsx",

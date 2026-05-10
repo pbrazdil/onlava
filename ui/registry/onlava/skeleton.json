@@ -3,7 +3,7 @@
   "name": "skeleton",
   "type": "registry:component",
   "title": "Skeleton",
-  "description": "Pulse-compatible onlava Skeleton primitive.",
+  "description": "approved onlava Skeleton primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/skeleton.tsx",

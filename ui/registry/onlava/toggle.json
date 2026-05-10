@@ -3,7 +3,7 @@
   "name": "toggle",
   "type": "registry:component",
   "title": "Toggle",
-  "description": "Pulse-compatible onlava Toggle primitive.",
+  "description": "approved onlava Toggle primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/toggle.tsx",

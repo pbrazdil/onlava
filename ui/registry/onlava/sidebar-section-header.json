@@ -3,7 +3,7 @@
   "name": "sidebar-section-header",
   "type": "registry:component",
   "title": "Sidebar Section Header",
-  "description": "Pulse-compatible onlava Sidebar Section Header primitive.",
+  "description": "approved onlava Sidebar Section Header primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/sidebar-section-header.ts",

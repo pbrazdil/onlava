@@ -3,7 +3,7 @@
   "name": "spinner",
   "type": "registry:component",
   "title": "Spinner",
-  "description": "Pulse-compatible onlava Spinner primitive.",
+  "description": "approved onlava Spinner primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/spinner.tsx",

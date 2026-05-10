@@ -3,7 +3,7 @@
   "name": "alert-dialog",
   "type": "registry:component",
   "title": "Alert Dialog",
-  "description": "Pulse-compatible onlava Alert Dialog primitive.",
+  "description": "approved onlava Alert Dialog primitive.",
   "files": [
     {
       "path": "ui/src/components/registry/primitives/alert-dialog.tsx",

@@ -62,8 +62,8 @@ The ONLV UI must not visually change as part of this migration. Existing ONLV co
 - The shadcn MCP server can browse, search, and install from configured registries, including namespaced and private registries. MCP may help discovery, but onlava's guardrails still need to enforce allowed namespaces and import boundaries.
 - Current `ui/package.json` has no Tailwind, shadcn, Radix, CVA, lucide, or Tailwind merge dependencies. This is a good point to add guardrails before those libraries appear.
 - The existing onlava dashboard still has route-level Tailwind-style class strings. The new static check hard-fails import/script/registry violations now and reports current className drift as warnings while the dashboard is migrated into primitives/layouts.
-- ONLV Pulse already had a large shadcn/Radix component set. To avoid visual churn, the first ONLV update adds an onlava-facing `components/primitives` barrel and layout/primitives re-export paths, then switches app screens off `@/components/ui` and `@/components/pulse/*` without replacing rendered component implementations.
-- `bun run typecheck` in ONLV Pulse currently fails in the sibling viewer TypeScript graph because two `@types/three` versions disagree about `WebGLRenderer` and geometry types. `onlava check --json` and `go test ./...` pass; the TypeScript failure is unrelated to the import-path rewrite.
+- ONLV app already had a large shadcn/Radix component set. To avoid visual churn, the first ONLV update adds an onlava-facing `components/primitives` barrel and layout/primitives re-export paths, then switches app screens off `@/components/ui` and `@/components/app/*` without replacing rendered component implementations.
+- `bun run typecheck` in ONLV app currently fails in the sibling viewer TypeScript graph because two `@types/three` versions disagree about `WebGLRenderer` and geometry types. `onlava check --json` and `go test ./...` pass; the TypeScript failure is unrelated to the import-path rewrite.
 - `onlava harness --json --write` in ONLV reached app inspection successfully but failed on `inspect traces` and `inspect metrics` with `SQLITE_BUSY`, likely because a local dev process held the dashboard SQLite database lock.
 
 ## Decision Log
@@ -105,10 +105,10 @@ Shipped:
 - `ui/components.json` with the approved `@onlava` registry namespace and vendor alias target.
 - `ui/scripts/onlava-shadcn.mjs`, a wrapper that accepts only `@onlava/*`, rejects URLs/local paths/raw overwrite, serves the local registry during the command, and runs a dry-run before applying changes.
 - Initial onlava UI primitives and layouts under `ui/src/components/primitives` and `ui/src/components/layouts`.
-- Registry items for `button`, `card`, `dialog`, `input`, `dashboard-page`, `data-explorer-layout`, `product-surface`, `filter-pill`, and `sidebar-item`.
+- Registry items for `button`, `card`, `dialog`, `input`, `dashboard-page`, `data-explorer-layout`, `app-surface`, `filter-pill`, and `sidebar-item`.
 - `docs/ui-agent-contract.md` and docs/local-contract/harness documentation for the new guardrails.
 - A self-harness `ui static architecture` step that hard-fails raw shadcn script usage, non-`@onlava` registries, legacy `components/ui` imports from screens, direct vendor shadcn imports from screens, and direct Radix/styling utility imports outside primitives/layouts/vendor.
-- ONLV Pulse import references updated to use `@/components/primitives` and `@/components/layouts/*` re-export surfaces instead of direct `@/components/ui` or `@/components/pulse/*` screen imports.
+- ONLV app import references updated to use `@/components/primitives` and `@/components/layouts/*` re-export surfaces instead of direct `@/components/ui` or `@/components/app/*` screen imports.
 
 Retrospective:
 
@@ -376,7 +376,7 @@ Frontend/browser validation when practical:
 
 ```text
 - Start ONLV with the normal local command.
-- Open the Pulse routes that use ported components.
+- Open the ONLV app routes that use ported components.
 - Confirm visible UI is unchanged.
 - Confirm no console errors and no failed network requests.
 ```
