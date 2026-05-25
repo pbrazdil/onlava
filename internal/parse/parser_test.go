@@ -81,6 +81,49 @@ func Call(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func TestParseAllowsNestedPackageServiceStruct(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/nestedservice\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
+	writeFile(t, dir, ".onlava.json", `{"name":"nestedservice"}`)
+	writeFile(t, dir, "solar/projects/api.go", `package projects
+
+import "context"
+
+//onlava:service
+type Service struct{}
+
+type ListProjectsResponse struct {
+	Items []string
+}
+
+//onlava:api public method=GET path=/tenants/:tenant_id/projects
+func (s *Service) ListProjects(ctx context.Context, tenant_id string) (*ListProjectsResponse, error) {
+	return &ListProjectsResponse{}, nil
+}
+`)
+
+	app, err := parse.App(dir, "nestedservice")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	if len(app.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(app.Services))
+	}
+	svc := app.Services[0]
+	if svc.Name != "projects" {
+		t.Fatalf("service name = %q, want %q", svc.Name, "projects")
+	}
+	if svc.RootRelDir != filepath.Join("solar", "projects") {
+		t.Fatalf("service root = %q, want %q", svc.RootRelDir, filepath.Join("solar", "projects"))
+	}
+	if svc.Struct == nil || svc.Struct.TypeName != "Service" {
+		t.Fatalf("expected Service struct, got %+v", svc.Struct)
+	}
+	if len(svc.Endpoints) != 1 || svc.Endpoints[0].Name != "ListProjects" {
+		t.Fatalf("unexpected endpoints: %+v", svc.Endpoints)
+	}
+}
+
 func TestParseRejectsPathParamMismatch(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/pathmismatch\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")

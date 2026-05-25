@@ -53,6 +53,7 @@ func App(root, name string) (*model.App, error) {
 	byRelDir := make(map[string]*model.Package)
 	serviceByRoot := make(map[string]*model.Service)
 	serviceNames := make(map[string]*model.Service)
+	explicitServiceRoots := make(map[string]bool)
 
 	for _, pkg := range pkgs {
 		paths := syntaxFilePaths(pkg)
@@ -84,6 +85,9 @@ func App(root, name string) (*model.App, error) {
 		}
 		app.Packages = append(app.Packages, mpkg)
 		byRelDir[relDir] = mpkg
+		if packageDeclaresService(mpkg) {
+			explicitServiceRoots[relDir] = true
+		}
 	}
 
 	slices.SortFunc(app.Packages, func(a, b *model.Package) int {
@@ -95,7 +99,7 @@ func App(root, name string) (*model.App, error) {
 	var middlewares []*model.Middleware
 
 	for _, pkg := range app.Packages {
-		serviceRoot := serviceRootForDir(pkg.RelDir)
+		serviceRoot := serviceRootForPackage(pkg.RelDir, explicitServiceRoots)
 		serviceName := discoverServiceName(pkg, serviceRoot, byRelDir)
 		svc := serviceByRoot[serviceRoot]
 		if svc == nil {
@@ -135,10 +139,6 @@ func App(root, name string) (*model.App, error) {
 					ss, err := parseServiceStruct(pkg, file, node)
 					if err != nil {
 						errs = append(errs, err.Error())
-						continue
-					}
-					if pkg.RelDir != pkg.Service.RootRelDir {
-						errs = append(errs, fmt.Sprintf("service struct %s cannot be declared in nested package %s", ss.TypeName, pkg.RelDir))
 						continue
 					}
 					if pkg.Service.Struct != nil {
@@ -330,6 +330,22 @@ func pruneEmptyServices(services []*model.Service) []*model.Service {
 		pruned = append(pruned, svc)
 	}
 	return pruned
+}
+
+func packageDeclaresService(pkg *model.Package) bool {
+	for _, file := range pkg.Files {
+		for _, decl := range file.AST.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			dir := parseDirective(gen.Doc)
+			if dir != nil && dir.name == "service" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *directive) (*model.Endpoint, error) {
@@ -619,6 +635,36 @@ func serviceRootForDir(relDir string) string {
 	}
 	first, _, _ := strings.Cut(relDir, string(os.PathSeparator))
 	return first
+}
+
+func serviceRootForPackage(relDir string, explicitRoots map[string]bool) string {
+	root := serviceRootForDir(relDir)
+	for explicit := range explicitRoots {
+		if explicit == "." {
+			if relDir == "." {
+				return "."
+			}
+			continue
+		}
+		if !sameOrDescendantDir(relDir, explicit) {
+			continue
+		}
+		if root == "." || len(explicit) > len(root) {
+			root = explicit
+		}
+	}
+	return root
+}
+
+func sameOrDescendantDir(relDir, root string) bool {
+	if relDir == root {
+		return true
+	}
+	if root == "." {
+		return false
+	}
+	prefix := root + string(os.PathSeparator)
+	return strings.HasPrefix(relDir, prefix)
 }
 
 func discoverServiceName(pkg *model.Package, root string, byRelDir map[string]*model.Package) string {
