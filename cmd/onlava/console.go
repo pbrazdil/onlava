@@ -108,15 +108,26 @@ func (c *runConsole) RebuildDetected(paths []string) {
 	c.printf(c.out, "\n")
 }
 
-func (c *runConsole) InitialBuildFailed(err error) {
+func (c *runConsole) InitialBuildFailed(err error, urls runURLs) {
 	if c.json && err != nil {
 		c.Event("build.error", map[string]any{
 			"stage": "initial",
 			"error": err.Error(),
 		})
+		data := runURLData(urls, c.verbose)
+		data["stage"] = "initial"
+		data["error"] = err.Error()
+		c.Event("run.failed", data)
 		return
 	}
 	c.printError("initial build failed", err)
+	if err == nil {
+		return
+	}
+	if urls.Dashboard != "" {
+		c.printf(c.err, "  Development Dashboard URL: %s\n", urls.Dashboard)
+	}
+	c.printf(c.err, "  onlava dev is still running and will rebuild after file changes.\n\n")
 }
 
 func (c *runConsole) RebuildFailed(err error) {
@@ -132,26 +143,7 @@ func (c *runConsole) RebuildFailed(err error) {
 
 func (c *runConsole) Banner(urls runURLs) {
 	if c.json {
-		data := map[string]any{
-			"api_url":       urls.API,
-			"dashboard_url": urls.Dashboard,
-			"mcp_url":       urls.MCP,
-			"frontend_urls": urls.Frontends,
-			"db_studio_url": urls.DBStudio,
-		}
-		if c.verbose {
-			if urls.Temporal != "" {
-				data["temporal_url"] = urls.Temporal
-			}
-			data["victoria_urls"] = urls.Victoria
-		}
-		if urls.Grafana != nil {
-			data["grafana"] = urls.Grafana
-			if urls.Grafana.URL != "" {
-				data["grafana_url"] = urls.Grafana.URL
-			}
-		}
-		c.Event("run.ready", data)
+		c.Event("run.ready", runURLData(urls, c.verbose))
 		return
 	}
 	c.printf(c.out, "\n  %s\n\n", c.palette.Bold("onlava development server running!"))
@@ -192,6 +184,29 @@ func (c *runConsole) Banner(urls runURLs) {
 		}
 	}
 	c.printf(c.out, "\n")
+}
+
+func runURLData(urls runURLs, verbose bool) map[string]any {
+	data := map[string]any{
+		"api_url":       urls.API,
+		"dashboard_url": urls.Dashboard,
+		"mcp_url":       urls.MCP,
+		"frontend_urls": urls.Frontends,
+		"db_studio_url": urls.DBStudio,
+	}
+	if verbose {
+		if urls.Temporal != "" {
+			data["temporal_url"] = urls.Temporal
+		}
+		data["victoria_urls"] = urls.Victoria
+	}
+	if urls.Grafana != nil {
+		data["grafana"] = urls.Grafana
+		if urls.Grafana.URL != "" {
+			data["grafana_url"] = urls.Grafana.URL
+		}
+	}
+	return data
 }
 
 func sortedKeys(values map[string]string) []string {

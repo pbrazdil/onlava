@@ -48,20 +48,20 @@ export function AppListPage() {
     };
   }, []);
 
-  const onlineApps = useMemo(
-    () => (apps ?? []).filter((app) => !app.offline),
+  const immediatelyUsefulApps = useMemo(
+    () => (apps ?? []).filter((app) => !app.offline || app.compileError),
     [apps],
   );
 
   useEffect(() => {
-    if (onlineApps.length === 1) {
+    if (immediatelyUsefulApps.length === 1) {
       void navigate({
         to: "/$appId",
-        params: { appId: onlineApps[0].id },
+        params: { appId: immediatelyUsefulApps[0].id },
         replace: true,
       });
     }
-  }, [navigate, onlineApps]);
+  }, [navigate, immediatelyUsefulApps]);
 
   return (
     <div className="overflow-hidden min-h-screen flex flex-col w-full">
@@ -105,8 +105,22 @@ export function AppListPage() {
                 )}
               >
                 <span className="flex items-center gap-2">
-                  <figure className={cn("h-2 w-2 rounded-full", app.offline ? "bg-transparent border border-border" : "bg-success")} />
-                  <span className="font-medium">{app.name}</span>
+                  <figure
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      app.compileError
+                        ? "bg-red-500"
+                        : app.offline
+                          ? "bg-transparent border border-border"
+                          : "bg-success",
+                    )}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{app.name}</span>
+                    {app.compileError ? (
+                      <span className="block truncate text-xs text-red-500">Compile error</span>
+                    ) : null}
+                  </span>
                 </span>
                 <span aria-hidden="true">›</span>
               </Link>

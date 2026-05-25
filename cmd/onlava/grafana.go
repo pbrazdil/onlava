@@ -16,18 +16,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devtools"
 )
 
 const (
 	grafanaDefaultHost      = "127.0.0.1"
 	grafanaDefaultPort      = 3000
-	grafanaDefaultVersion   = "12.2.1"
 	grafanaHealthPath       = "/api/health"
 	grafanaReadyTimeout     = 3 * time.Minute
 	grafanaMetricsUID       = "onlava-victoriametrics"
@@ -86,6 +85,14 @@ func startGrafanaForDev(ctx context.Context, appRoot string, victoria *victoriaS
 	cfg := newGrafanaConfig(appRoot, victoria)
 	if !cfg.Enabled {
 		return &grafanaComponent{cfg: cfg, state: grafanaState(cfg, "disabled", "Grafana disabled by ONLAVA_DEV_GRAFANA=0")}, nil
+	}
+	if err := ensureLocalStateDirIgnored(cfg.RootDir); err != nil {
+		msg := fmt.Sprintf("could not write Grafana local ignore marker: %v", err)
+		if cfg.Required {
+			return &grafanaComponent{cfg: cfg, state: grafanaState(cfg, "unavailable", msg)}, err
+		}
+		warnGrafana(console, "%s", msg)
+		return &grafanaComponent{cfg: cfg, state: grafanaState(cfg, "degraded", msg)}, nil
 	}
 	if cfg.MetricsURL == "" && cfg.LogsURL == "" && cfg.TracesURL == "" {
 		msg := "Victoria sidecars are disabled or unavailable; Grafana provisioning has no local datasources"
@@ -195,13 +202,14 @@ func startGrafanaForDev(ctx context.Context, appRoot string, victoria *victoriaS
 
 func newGrafanaConfig(appRoot string, victoria *victoriaStack) grafanaConfig {
 	mode := grafanaDevMode()
+	versions := devtools.PinnedVersions()
 	root := grafanaRootDir(appRoot)
 	port := intEnvOrDefault("ONLAVA_GRAFANA_PORT", grafanaDefaultPort)
 	cfg := grafanaConfig{
 		Enabled:           mode != grafanaModeDisabled,
 		Required:          mode == grafanaModeRequired,
 		Download:          grafanaDownloadEnabled(),
-		Version:           envOrDefault("ONLAVA_GRAFANA_VERSION", grafanaDefaultVersion),
+		Version:           envOrDefault("ONLAVA_GRAFANA_VERSION", versions.Grafana.Version),
 		RootDir:           root,
 		Port:              port,
 		URL:               fmt.Sprintf("http://%s:%d", grafanaDefaultHost, port),
@@ -266,7 +274,7 @@ func grafanaPluginPreinstall() string {
 	if value := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC")); value != "" {
 		return value
 	}
-	return "victoriametrics-metrics-datasource,victoriametrics-logs-datasource"
+	return devtools.GrafanaPluginPreinstallSync()
 }
 
 func explicitGrafanaPort() bool {
@@ -396,25 +404,11 @@ func grafanaHomeForBinary(path, root string) string {
 }
 
 func downloadedGrafanaBinary(cfg grafanaConfig) (string, string) {
-	homeRoot := filepath.Join(cfg.RootDir, "home")
-	entries, err := os.ReadDir(homeRoot)
-	if err != nil {
-		return "", ""
-	}
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			names = append(names, entry.Name())
-		}
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(names)))
-	for _, name := range names {
-		home := filepath.Join(homeRoot, name)
-		for _, binary := range []string{"grafana", "grafana-server"} {
-			path := filepath.Join(home, "bin", binary)
-			if isExecutableFile(path) {
-				return path, home
-			}
+	home := filepath.Join(cfg.RootDir, "home", "grafana-"+cfg.Version)
+	for _, binary := range []string{"grafana", "grafana-server"} {
+		path := filepath.Join(home, "bin", binary)
+		if isExecutableFile(path) {
+			return path, home
 		}
 	}
 	return "", ""

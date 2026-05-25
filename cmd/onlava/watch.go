@@ -79,7 +79,7 @@ func runWithWatch(addr string, verbose, jsonMode bool, appRoot string) error {
 	}
 
 	if err := supervisor.RebuildAndRestart(ctx, true, snapshot, nil); err != nil {
-		supervisor.console.InitialBuildFailed(err)
+		supervisor.console.InitialBuildFailed(err, supervisor.runURLs())
 	}
 
 	watcher, err := newFileChangeWatcher(root)

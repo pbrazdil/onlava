@@ -37,6 +37,9 @@ func TestGrafanaConfigDefaults(t *testing.T) {
 	if cfg.RootDir != filepath.Join(root, ".onlava", "grafana") {
 		t.Fatalf("root dir = %q", cfg.RootDir)
 	}
+	if cfg.Version != "13.0.1+security-01" {
+		t.Fatalf("version = %q", cfg.Version)
+	}
 	if cfg.MetricsURL != "http://127.0.0.1:8428" || cfg.LogsURL != "http://127.0.0.1:9428" {
 		t.Fatalf("victoria URLs = %q/%q", cfg.MetricsURL, cfg.LogsURL)
 	}
@@ -51,7 +54,7 @@ func TestRenderGrafanaProvisioning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(ini), "http_addr = 127.0.0.1") || !strings.Contains(string(ini), "preinstall_sync = victoriametrics-metrics-datasource,victoriametrics-logs-datasource") {
+	if !strings.Contains(string(ini), "http_addr = 127.0.0.1") || !strings.Contains(string(ini), "preinstall_sync = victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1") {
 		t.Fatalf("unexpected grafana.ini:\n%s", ini)
 	}
 
@@ -90,6 +93,32 @@ func TestWriteGrafanaProvisioning(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s: %v", path, err)
 		}
+	}
+}
+
+func TestDownloadedGrafanaBinaryRequiresConfiguredVersion(t *testing.T) {
+	cfg := newGrafanaConfig(t.TempDir(), fakeVictoriaStack())
+	oldPath := filepath.Join(cfg.RootDir, "home", "grafana-12.2.1", "bin", "grafana")
+	if err := os.MkdirAll(filepath.Dir(oldPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if path, home := downloadedGrafanaBinary(cfg); path != "" || home != "" {
+		t.Fatalf("unexpected wrong-version binary %q/%q", path, home)
+	}
+
+	wantPath := filepath.Join(cfg.RootDir, "home", "grafana-"+cfg.Version, "bin", "grafana")
+	if err := os.MkdirAll(filepath.Dir(wantPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wantPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gotPath, gotHome := downloadedGrafanaBinary(cfg)
+	if gotPath != wantPath || gotHome != filepath.Join(cfg.RootDir, "home", "grafana-"+cfg.Version) {
+		t.Fatalf("downloadedGrafanaBinary = %q/%q, want %q", gotPath, gotHome, wantPath)
 	}
 }
 

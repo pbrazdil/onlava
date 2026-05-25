@@ -3,6 +3,7 @@ export interface AppSummary {
   name: string;
   app_root: string;
   offline: boolean;
+  compileError?: string;
 }
 
 export interface AppStatus {

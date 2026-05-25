@@ -235,6 +235,9 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 			"listen_addr": s.addr,
 		})
 	}
+	if err := ensureOnlavaLocalStateIgnored(s.root); err != nil {
+		return err
+	}
 	if err := s.persistStatus(ctx); err != nil {
 		return err
 	}
@@ -407,16 +410,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		})
 	}
 	if initial {
-		s.console.Banner(runURLs{
-			API:       s.apiURL(),
-			Dashboard: s.dashboardURL(),
-			MCP:       s.mcpURL(),
-			Frontends: s.frontendURLs(),
-			DBStudio:  s.dbStudioURL,
-			Temporal:  s.temporal.URL(),
-			Victoria:  s.victoria.URLs(),
-			Grafana:   s.appStatus().Grafana,
-		})
+		s.console.Banner(s.runURLs())
 	}
 	return nil
 }
@@ -570,6 +564,13 @@ func appEnvWithDotEnv(base []string, root string, names ...string) ([]string, er
 	return envfile.AppendMissing(base, values), nil
 }
 
+func appEnvWithRequiredDotEnv(base []string, root string, names ...string) ([]string, error) {
+	if err := requireDotEnv(root); err != nil {
+		return nil, err
+	}
+	return appEnvWithDotEnv(base, root, names...)
+}
+
 func stripANSI(data []byte) []byte {
 	if len(data) == 0 {
 		return nil
@@ -661,11 +662,32 @@ func isExpectedExit(err error) bool {
 }
 
 func validateLocalSecretsFiles(root string) error {
+	if err := requireDotEnv(root); err != nil {
+		return err
+	}
 	for _, name := range []string{".env", ".env.local"} {
 		path := filepath.Join(root, name)
 		if _, err := os.Stat(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
+		if _, err := envfile.ParseFile(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requireDotEnv(root string) error {
+	path := filepath.Join(root, ".env")
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("missing required local env file: %s\ncreate .env in the app root before starting onlava locally; process environment values may still override values from the file", path)
+	}
+	if err != nil {
+		return fmt.Errorf("check required local env file %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("required local env file is a directory: %s", path)
 	}
 	return nil
 }
@@ -915,6 +937,19 @@ func frontendURLs(routes localproxy.Routes) map[string]string {
 	return urls
 }
 
+func (s *devSupervisor) runURLs() runURLs {
+	return runURLs{
+		API:       s.apiURL(),
+		Dashboard: s.dashboardURL(),
+		MCP:       s.mcpURL(),
+		Frontends: s.frontendURLs(),
+		DBStudio:  s.dbStudioURL,
+		Temporal:  s.temporal.URL(),
+		Victoria:  s.victoria.URLs(),
+		Grafana:   s.appStatus().Grafana,
+	}
+}
+
 func (s *devSupervisor) handleCompileError(ctx context.Context, metadata, apiEncoding json.RawMessage, err error) error {
 	s.setCompiling(false, err.Error())
 	if len(metadata) > 0 || len(apiEncoding) > 0 {
@@ -960,17 +995,19 @@ func (s *devSupervisor) listApps(ctx context.Context) ([]map[string]any, error) 
 	if err != nil {
 		status := s.appStatus()
 		return []map[string]any{{
-			"id":       status.AppID,
-			"name":     status.AppID,
-			"app_root": status.AppRoot,
-			"offline":  !status.Running,
+			"id":           status.AppID,
+			"name":         status.AppID,
+			"app_root":     status.AppRoot,
+			"offline":      !status.Running,
+			"compileError": status.CompileError,
 		}}, nil
 	}
 	return []map[string]any{{
-		"id":       app.ID,
-		"name":     app.Name,
-		"app_root": app.Root,
-		"offline":  !app.Running,
+		"id":           app.ID,
+		"name":         app.Name,
+		"app_root":     app.Root,
+		"offline":      !app.Running,
+		"compileError": app.CompileError,
 	}}, nil
 }
 

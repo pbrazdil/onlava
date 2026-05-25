@@ -36,13 +36,15 @@ Environment controls:
 ONLAVA_DEV_GRAFANA=auto|1|0
 ONLAVA_DEV_GRAFANA_DOWNLOAD=1|0
 ONLAVA_GRAFANA_BIN=/path/to/grafana
-ONLAVA_GRAFANA_VERSION=12.2.1
+ONLAVA_GRAFANA_VERSION=13.0.1+security-01
 ONLAVA_GRAFANA_PORT=3000
 ONLAVA_GRAFANA_DIR=.onlava/grafana
-ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource,victoriametrics-logs-datasource
+ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1
 ```
 
-`auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `ONLAVA_DEV_GRAFANA=1` makes Grafana required for `onlava dev` startup.
+`auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `ONLAVA_DEV_GRAFANA=1` makes Grafana required for `onlava dev` startup. When automatic downloads are enabled, the Grafana archive is extracted under `.onlava/grafana/home/grafana-<version>/`; `onlava dev` also writes local ignore markers so downloaded binaries and local state stay out of git.
+
+Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `internal/devtools/versions.json`. Environment variables override those pins for local testing.
 
 Reset local Grafana state with:
 

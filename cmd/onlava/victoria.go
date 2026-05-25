@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/devtools"
 )
 
 const victoriaDefaultHost = "127.0.0.1"
@@ -66,6 +68,10 @@ func startVictoriaStack(ctx context.Context, appRoot string, console *runConsole
 	root := victoriaRootDir(appRoot)
 	binDir := filepath.Join(root, "bin")
 	download := victoriaDownloadEnabled()
+	if err := ensureLocalStateDirIgnored(root); err != nil {
+		warnVictoria(console, "Victoria local state unavailable: %v", err)
+		return nil
+	}
 
 	stack := &victoriaStack{}
 	for _, spec := range victoriaComponentSpecs() {
@@ -115,6 +121,7 @@ func victoriaRootDir(appRoot string) string {
 }
 
 func victoriaComponentSpecs() []victoriaComponentSpec {
+	versions := devtools.PinnedVersions()
 	return []victoriaComponentSpec{
 		{
 			Name:              "metrics",
@@ -123,7 +130,7 @@ func victoriaComponentSpecs() []victoriaComponentSpec {
 			ArchiveSlug:       "victoria-metrics",
 			BinaryName:        "victoria-metrics-prod",
 			ExtraBinaries:     []string{"victoria-metrics"},
-			Version:           envOrDefault("ONLAVA_VICTORIA_METRICS_VERSION", "v1.141.0"),
+			Version:           envOrDefault("ONLAVA_VICTORIA_METRICS_VERSION", versions.Victoria.Metrics.Version),
 			DefaultPort:       intEnvOrDefault("ONLAVA_VICTORIA_METRICS_PORT", 8428),
 			EndpointPath:      "/opentelemetry/v1/metrics",
 			URLPath:           "/vmui",
@@ -140,7 +147,7 @@ func victoriaComponentSpecs() []victoriaComponentSpec {
 			ArchiveSlug:       "victoria-logs",
 			BinaryName:        "victoria-logs-prod",
 			ExtraBinaries:     []string{"victoria-logs"},
-			Version:           envOrDefault("ONLAVA_VICTORIA_LOGS_VERSION", "v1.50.0"),
+			Version:           envOrDefault("ONLAVA_VICTORIA_LOGS_VERSION", versions.Victoria.Logs.Version),
 			DefaultPort:       intEnvOrDefault("ONLAVA_VICTORIA_LOGS_PORT", 9428),
 			EndpointPath:      "/insert/opentelemetry/v1/logs",
 			URLPath:           "/select/vmui",
@@ -157,7 +164,7 @@ func victoriaComponentSpecs() []victoriaComponentSpec {
 			ArchiveSlug:       "victoria-traces",
 			BinaryName:        "victoria-traces-prod",
 			ExtraBinaries:     []string{"victoria-traces"},
-			Version:           envOrDefault("ONLAVA_VICTORIA_TRACES_VERSION", "v0.8.1"),
+			Version:           envOrDefault("ONLAVA_VICTORIA_TRACES_VERSION", versions.Victoria.Traces.Version),
 			DefaultPort:       intEnvOrDefault("ONLAVA_VICTORIA_TRACES_PORT", 10428),
 			EndpointPath:      "/insert/opentelemetry/v1/traces",
 			URLPath:           "/select/vmui",

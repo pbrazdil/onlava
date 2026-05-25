@@ -82,7 +82,8 @@ type: victoriametrics-logs-datasource
 ```
 
 * VictoriaTraces does not need a custom plugin for the first integration because it exposes a Jaeger-compatible select endpoint that Grafana can use through the built-in Jaeger datasource.
-* Grafana OSS tarballs are still available through the legacy `https://dl.grafana.com/oss/release/grafana-<version>.<os>-<arch>.tar.gz` shape for the default `12.2.1` release, including macOS ARM64.
+* Grafana OSS tarballs are still available through the legacy `https://dl.grafana.com/oss/release/grafana-<version>.<os>-<arch>.tar.gz` shape for the default `13.0.1+security-01` release, including macOS ARM64.
+* Managed Grafana, Grafana plugin, and Victoria sidecar versions now live in the embedded `internal/devtools/versions.json` pin file instead of being scattered across supervisor code.
 * The dashboard app status path was the right place to expose Grafana state because existing UI polling and process notifications already converge there.
 * First-run Grafana startup can exceed 45 seconds because Grafana installs datasource plugins synchronously before reporting healthy. The readiness timeout must be long enough for a cold plugin install path while still surfacing a clear degraded state when startup really fails.
 
@@ -314,7 +315,7 @@ org_role = Viewer
 disable_login_form = true
 
 [plugins]
-preinstall_sync = victoriametrics-metrics-datasource,victoriametrics-logs-datasource
+preinstall_sync = victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1
 ```
 
 For local dev, anonymous Viewer is enough if dashboards are provisioned and immutable. Use Admin only if the implementation intentionally supports developers editing and exporting dashboards from the local instance.

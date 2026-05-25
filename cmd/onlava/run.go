@@ -150,7 +150,11 @@ func headlessRuntimeRole(cfg app.Config) string {
 }
 
 func appProcessEnv(root string, cfg app.Config, logFormat string, envName string, extra ...string) ([]string, error) {
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), root)
+	envLoader := appEnvWithRequiredDotEnv
+	if strings.EqualFold(strings.TrimSpace(envName), "production") {
+		envLoader = appEnvWithDotEnv
+	}
+	baseEnv, err := envLoader(os.Environ(), root)
 	if err != nil {
 		return nil, err
 	}

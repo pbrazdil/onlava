@@ -145,9 +145,11 @@ function DashboardShell({ appId }: { appId: string }) {
                           <figure
                             className={cn(
                               "h-2 w-2 rounded-full shrink-0",
-                              item.offline
-                                ? "border border-border bg-transparent"
-                                : "bg-success",
+                              item.compileError
+                                ? "bg-red-500"
+                                : item.offline
+                                  ? "border border-border bg-transparent"
+                                  : "bg-success",
                             )}
                           />
                           <span className="truncate font-medium">

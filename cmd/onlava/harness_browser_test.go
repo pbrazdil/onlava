@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +64,23 @@ func TestHarnessUICommandWithDashboardURLAndFakeRunner(t *testing.T) {
 func TestParseHarnessUIArgsRejectsUnknownFlags(t *testing.T) {
 	if _, err := parseHarnessUIArgs([]string{"--wat"}); err == nil {
 		t.Fatal("expected unknown flag error")
+	}
+}
+
+func TestHarnessUIDevProcessScanDevOutputReportsCompileError(t *testing.T) {
+	proc := &harnessUIDevProcess{output: &safeLineTail{limit: 10}}
+	ready := make(chan harnessUIDevSignal, 1)
+	proc.scanDevOutput(strings.NewReader(`{"type":"process.compile-error","data":{"error":"fatal error: 'torch/torch.h' file not found"}}`+"\n"), ready)
+
+	select {
+	case signal := <-ready:
+		if signal.err == nil {
+			t.Fatal("expected compile-error signal")
+		}
+		if !strings.Contains(signal.err.Error(), "torch/torch.h") {
+			t.Fatalf("signal error = %v", signal.err)
+		}
+	default:
+		t.Fatal("expected readiness waiter signal")
 	}
 }

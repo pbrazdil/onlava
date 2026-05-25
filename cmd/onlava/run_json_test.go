@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -380,6 +381,31 @@ func TestRunConsoleHidesVictoriaUnlessVerbose(t *testing.T) {
 	verbose.Banner(urls)
 	if !bytes.Contains(verboseOut.Bytes(), []byte("VictoriaMetrics URL:")) || !bytes.Contains(verboseOut.Bytes(), []byte("http://127.0.0.1:8428")) {
 		t.Fatalf("verbose banner missing Victoria details:\n%s", verboseOut.String())
+	}
+}
+
+func TestRunConsoleInitialBuildFailedEmitsRunFailed(t *testing.T) {
+	var out bytes.Buffer
+	console := newRunConsole(&out, &out, false, true, "jsonapp", "/tmp/jsonapp")
+	console.InitialBuildFailed(fmt.Errorf("compile failed"), runURLs{
+		API:       "https://api.jsonapp.localhost",
+		Dashboard: "https://console.jsonapp.localhost/jsonapp",
+		MCP:       "https://mcp.jsonapp.localhost/sse?appID=jsonapp",
+	})
+
+	lines := bytes.Split(bytes.TrimSpace(out.Bytes()), []byte("\n"))
+	if len(lines) != 2 {
+		t.Fatalf("event count = %d, want 2\n%s", len(lines), out.String())
+	}
+	var event runEvent
+	if err := json.Unmarshal(lines[1], &event); err != nil {
+		t.Fatalf("json.Unmarshal(run.failed): %v\n%s", err, lines[1])
+	}
+	if event.Type != "run.failed" {
+		t.Fatalf("event type = %q, want run.failed", event.Type)
+	}
+	if event.Data["error"] != "compile failed" || event.Data["dashboard_url"] != "https://console.jsonapp.localhost/jsonapp" {
+		t.Fatalf("run.failed data = %+v", event.Data)
 	}
 }
 

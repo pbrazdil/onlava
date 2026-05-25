@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +71,39 @@ func TestAppEnvWithDotEnvCanLoadLocalOverride(t *testing.T) {
 	}
 	if !containsString(env, "C=from-local") {
 		t.Fatalf("env missing .env.local value: %v", env)
+	}
+}
+
+func TestAppEnvWithRequiredDotEnvFailsWhenMissing(t *testing.T) {
+	root := t.TempDir()
+	_, err := appEnvWithRequiredDotEnv(nil, root)
+	if err == nil {
+		t.Fatal("appEnvWithRequiredDotEnv returned nil error")
+	}
+	if !strings.Contains(err.Error(), "missing required local env file") || !strings.Contains(err.Error(), filepath.Join(root, ".env")) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateLocalSecretsFilesRequiresDotEnv(t *testing.T) {
+	root := t.TempDir()
+	err := validateLocalSecretsFiles(root)
+	if err == nil {
+		t.Fatal("validateLocalSecretsFiles returned nil error")
+	}
+	if !strings.Contains(err.Error(), "missing required local env file") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestAppProcessEnvAllowsMissingDotEnvForProduction(t *testing.T) {
+	root := t.TempDir()
+	env, err := appProcessEnv(root, app.Config{Name: "demo"}, "json", "production")
+	if err != nil {
+		t.Fatalf("appProcessEnv production returned error: %v", err)
+	}
+	if !containsString(env, "ONLAVA_ENV=production") || !containsString(env, "ONLAVA_RUNTIME_ENV=production") {
+		t.Fatalf("production env missing markers: %v", env)
 	}
 }
 

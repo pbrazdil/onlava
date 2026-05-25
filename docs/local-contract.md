@@ -264,21 +264,24 @@ Local observability:
   - VictoriaTraces: `/insert/opentelemetry/v1/traces`
 - Dashboard trace reads and `onlava inspect traces|metrics --json` prefer Victoria data and fall back to SQLite data.
 - Victoria sidecars are supervised by `onlava dev`, store data under `.onlava/victoria/` by default, and are stopped with the dev supervisor.
-- `ONLAVA_DEV_VICTORIA=0` disables Victoria sidecars. `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` disables automatic binary downloads.
+- `ONLAVA_DEV_VICTORIA=0` disables Victoria sidecars. `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` disables automatic binary downloads. When enabled, missing Victoria binaries are downloaded into `.onlava/victoria/bin/`.
 - Victoria binary names, versions, ports, storage layout, download behavior, and Victoria query semantics are beta. They are documented so local development is debuggable, but they are not part of the stable v0 runtime contract.
-- Grafana is supervised by `onlava dev`, binds to loopback, stores generated config and provisioning under `.onlava/grafana/`, and is stopped with the dev supervisor when onlava started it.
+- Grafana is supervised by `onlava dev`, binds to loopback, stores generated config, provisioning, downloaded binaries, and plugin state under `.onlava/grafana/`, and is stopped with the dev supervisor when onlava started it.
 - Grafana controls are `ONLAVA_DEV_GRAFANA=auto|1|0`, `ONLAVA_DEV_GRAFANA_DOWNLOAD=1|0`, `ONLAVA_GRAFANA_BIN`, `ONLAVA_GRAFANA_VERSION`, `ONLAVA_GRAFANA_PORT`, `ONLAVA_GRAFANA_DIR`, and `ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC`.
+- Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `internal/devtools/versions.json`; environment variables override those pins for local testing.
 - Grafana provisioning uses datasource UIDs `onlava-victoriametrics`, `onlava-victorialogs`, and `onlava-victoriatraces-jaeger`, plus dashboard UIDs `onlava-dev-overview`, `onlava-dev-logs`, and `onlava-dev-endpoint`.
 - Missing Grafana does not stop app startup in `auto` mode. `ONLAVA_DEV_GRAFANA=1` makes Grafana startup required.
+- `onlava dev` writes local ignore markers under `.onlava/` and the Grafana/Victoria state roots so downloaded binaries, local databases, logs, generated build outputs, and other machine-local state are not accidentally committed by target apps.
 
 Secrets and environment:
 
 - Process environment always wins over values loaded from local files.
 - The stable runtime path reads `.env` from the app root for local secret population when a value is not already present in the process environment.
+- Local startup requires `.env` to exist in the app root. If `.env` is missing, `onlava dev`, local `onlava run`, and local `onlava worker` fail before serving with a clear error. `.env.local` is optional.
 - `onlava dev` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
 - `onlava dev` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
 - Missing declared secrets warn in local development mode.
-- `onlava run --env production` fails before serving if any declared secret is missing from the process environment or `.env`.
+- `onlava run --env production` can use process environment without a `.env` file, and fails before serving if any declared secret is missing.
 - `.env`, `.env.*`, and secret-bearing local files are not copied into build workspaces.
 
 Beta dynamic data platform:

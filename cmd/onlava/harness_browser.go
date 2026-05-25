@@ -280,7 +280,7 @@ func startHarnessUIDevProcess(ctx context.Context, appRoot string) (*harnessUIDe
 		done:         make(chan error, 1),
 		output:       &safeLineTail{limit: 80},
 	}
-	ready := make(chan struct{}, 1)
+	ready := make(chan harnessUIDevSignal, 1)
 	go proc.scanDevOutput(stdout, ready)
 	go proc.scanDevOutput(stderr, nil)
 	go func() {
@@ -294,7 +294,11 @@ func startHarnessUIDevProcess(ctx context.Context, appRoot string) (*harnessUIDe
 	return proc, nil
 }
 
-func (p *harnessUIDevProcess) scanDevOutput(r io.Reader, ready chan<- struct{}) {
+type harnessUIDevSignal struct {
+	err error
+}
+
+func (p *harnessUIDevProcess) scanDevOutput(r io.Reader, ready chan<- harnessUIDevSignal) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -303,16 +307,25 @@ func (p *harnessUIDevProcess) scanDevOutput(r io.Reader, ready chan<- struct{}) 
 			continue
 		}
 		var event runEvent
-		if err := json.Unmarshal([]byte(line), &event); err == nil && event.Type == "run.ready" {
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		switch event.Type {
+		case "run.ready":
 			select {
-			case ready <- struct{}{}:
+			case ready <- harnessUIDevSignal{}:
+			default:
+			}
+		case "run.failed", "build.error", "process.compile-error":
+			select {
+			case ready <- harnessUIDevSignal{err: fmt.Errorf("onlava dev failed before dashboard was ready: %s", runEventError(event))}:
 			default:
 			}
 		}
 	}
 }
 
-func (p *harnessUIDevProcess) waitReady(ctx context.Context, ready <-chan struct{}) error {
+func (p *harnessUIDevProcess) waitReady(ctx context.Context, ready <-chan harnessUIDevSignal) error {
 	timer := time.NewTimer(90 * time.Second)
 	defer timer.Stop()
 	for {
@@ -321,7 +334,10 @@ func (p *harnessUIDevProcess) waitReady(ctx context.Context, ready <-chan struct
 			return ctx.Err()
 		case err := <-p.done:
 			return fmt.Errorf("onlava dev exited before dashboard was ready: %v\n%s", err, p.output.String())
-		case <-ready:
+		case signal := <-ready:
+			if signal.err != nil {
+				return fmt.Errorf("%w\n%s", signal.err, p.output.String())
+			}
 			if err := waitForHTTP(ctx, p.dashboardURL, 10*time.Second); err != nil {
 				return fmt.Errorf("dashboard did not become reachable: %w\n%s", err, p.output.String())
 			}
@@ -330,6 +346,17 @@ func (p *harnessUIDevProcess) waitReady(ctx context.Context, ready <-chan struct
 			return fmt.Errorf("timed out waiting for onlava dev readiness\n%s", p.output.String())
 		}
 	}
+}
+
+func runEventError(event runEvent) string {
+	if value, ok := event.Data["error"].(string); ok && strings.TrimSpace(value) != "" {
+		return value
+	}
+	data, err := json.Marshal(event.Data)
+	if err != nil || len(data) == 0 {
+		return event.Type
+	}
+	return string(data)
 }
 
 func (p *harnessUIDevProcess) Stop() {
