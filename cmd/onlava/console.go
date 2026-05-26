@@ -151,6 +151,11 @@ func (c *runConsole) Banner(urls runURLs) {
 	if len("Frontend URL:") > width {
 		width = len("Frontend URL:")
 	}
+	for _, label := range []string{"Temporal UI URL:", "Grafana URL:"} {
+		if len(label) > width {
+			width = len(label)
+		}
+	}
 	if c.verbose && len("VictoriaMetrics URL:") > width {
 		width = len("VictoriaMetrics URL:")
 	}
@@ -166,10 +171,10 @@ func (c *runConsole) Banner(urls runURLs) {
 	if urls.Grafana != nil && urls.Grafana.URL != "" {
 		c.printf(c.out, "  %-*s  %s\n", width, "Grafana URL:", urls.Grafana.URL)
 	}
+	if urls.Temporal != "" {
+		c.printf(c.out, "  %-*s  %s\n", width, "Temporal UI URL:", urls.Temporal)
+	}
 	if c.verbose {
-		if urls.Temporal != "" {
-			c.printf(c.out, "  %-*s  %s\n", width, "Temporal UI URL:", urls.Temporal)
-		}
 		for _, item := range []struct {
 			label string
 			key   string
@@ -194,10 +199,10 @@ func runURLData(urls runURLs, verbose bool) map[string]any {
 		"frontend_urls": urls.Frontends,
 		"db_studio_url": urls.DBStudio,
 	}
+	if urls.Temporal != "" {
+		data["temporal_url"] = urls.Temporal
+	}
 	if verbose {
-		if urls.Temporal != "" {
-			data["temporal_url"] = urls.Temporal
-		}
 		data["victoria_urls"] = urls.Victoria
 	}
 	if urls.Grafana != nil {
