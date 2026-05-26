@@ -40,6 +40,9 @@ func TestGrafanaConfigDefaults(t *testing.T) {
 	if cfg.Version != "13.0.1+security-01" {
 		t.Fatalf("version = %q", cfg.Version)
 	}
+	if cfg.Port != grafanaDefaultPort || cfg.URL != "http://127.0.0.1:10429" {
+		t.Fatalf("grafana addr = %d/%q", cfg.Port, cfg.URL)
+	}
 	if cfg.MetricsURL != "http://127.0.0.1:8428" || cfg.LogsURL != "http://127.0.0.1:9428" {
 		t.Fatalf("victoria URLs = %q/%q", cfg.MetricsURL, cfg.LogsURL)
 	}

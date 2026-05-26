@@ -111,7 +111,7 @@ func TestRoutesFor(t *testing.T) {
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
 		TemporalUpstream:  "127.0.0.1:8233",
-		GrafanaUpstream:   "127.0.0.1:3000",
+		GrafanaUpstream:   "127.0.0.1:10429",
 		Frontends: []FrontendConfig{
 			{Name: "web", Host: "web.acme.localhost", Upstream: "127.0.0.1:5178"},
 		},
@@ -153,7 +153,7 @@ func TestRoutesForExplicitHosts(t *testing.T) {
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
 		TemporalUpstream:  "127.0.0.1:8233",
-		GrafanaUpstream:   "127.0.0.1:3000",
+		GrafanaUpstream:   "127.0.0.1:10429",
 		Frontends: []FrontendConfig{
 			{Name: "web", Host: "web.custom.localhost", Upstream: "127.0.0.1:5178"},
 		},
@@ -185,7 +185,7 @@ func TestRouteTableIncludesExpectedHosts(t *testing.T) {
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
 		TemporalUpstream:  "127.0.0.1:8233",
-		GrafanaUpstream:   "127.0.0.1:3000",
+		GrafanaUpstream:   "127.0.0.1:10429",
 		Frontends: []FrontendConfig{
 			{Name: "blog", Host: "blog.acme.localhost", Upstream: "127.0.0.1:5179"},
 			{Name: "web", Host: "web.acme.localhost", Upstream: "127.0.0.1:5178"},
@@ -199,7 +199,7 @@ func TestRouteTableIncludesExpectedHosts(t *testing.T) {
 		{host: "console.acme.localhost", upstream: "127.0.0.1:9401"},
 		{host: "mcp.acme.localhost", upstream: "127.0.0.1:9401"},
 		{host: "temporal.acme.localhost", upstream: "127.0.0.1:8233"},
-		{host: "grafana.acme.localhost", upstream: "127.0.0.1:3000"},
+		{host: "grafana.acme.localhost", upstream: "127.0.0.1:10429"},
 		{host: "blog.acme.localhost", path: "/__onlava/config", upstream: "127.0.0.1:4000"},
 		{host: "blog.acme.localhost", upstream: "127.0.0.1:5179", rewriteHost: true},
 		{host: "web.acme.localhost", path: "/__onlava/config", upstream: "127.0.0.1:4000"},
@@ -222,7 +222,7 @@ func TestCertificateSubjects(t *testing.T) {
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
 		TemporalUpstream:  "127.0.0.1:8233",
-		GrafanaUpstream:   "127.0.0.1:3000",
+		GrafanaUpstream:   "127.0.0.1:10429",
 		Frontends: []FrontendConfig{
 			{Name: "blog", Host: "blog.acme.localhost", Upstream: "127.0.0.1:5179"},
 			{Name: "web", Host: "web.acme.localhost", Upstream: "127.0.0.1:5178"},

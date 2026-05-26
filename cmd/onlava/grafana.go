@@ -26,7 +26,7 @@ import (
 
 const (
 	grafanaDefaultHost      = "127.0.0.1"
-	grafanaDefaultPort      = 3000
+	grafanaDefaultPort      = 10429
 	grafanaHealthPath       = "/api/health"
 	grafanaReadyTimeout     = 3 * time.Minute
 	grafanaMetricsUID       = "onlava-victoriametrics"
