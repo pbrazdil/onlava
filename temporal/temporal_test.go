@@ -256,10 +256,11 @@ func TestWorkflowIdentityConstructorsRejectEmptyValues(t *testing.T) {
 }
 
 func TestTemporalStartWorkflowOptions(t *testing.T) {
+	customKeyword := NewSearchAttributeKeyKeyword("CustomKeywordField")
 	opts := applyStartOptions(WorkflowConfig{
 		TaskQueue:                "cfg.go",
 		WorkflowExecutionTimeout: time.Hour,
-	}, WithTaskQueue("orders.go"), WithMemo(map[string]any{"tenant": "acme"}), WithSearchAttributes(map[string]any{"CustomKeywordField": "orders"}), WithRunTimeout(time.Minute), WithTaskTimeout(10*time.Second), WithPinnedBuildID("build-2"), WithWorkflowIDConflictPolicy(WorkflowIDConflictUseExisting), WithWorkflowIDReusePolicy(WorkflowIDReuseRejectDuplicate))
+	}, WithTaskQueue("orders.go"), WithMemo(map[string]any{"tenant": "acme"}), WithSearchAttributes(NewSearchAttributes(customKeyword.ValueSet("orders"))), WithRunTimeout(time.Minute), WithTaskTimeout(10*time.Second), WithPinnedBuildID("build-2"), WithWorkflowIDConflictPolicy(WorkflowIDConflictUseExisting), WithWorkflowIDReusePolicy(WorkflowIDReuseRejectDuplicate))
 
 	info := onlavaruntime.TemporalRuntimeInfo{
 		TaskQueuePrefix: "onlava.orders",
@@ -275,8 +276,9 @@ func TestTemporalStartWorkflowOptions(t *testing.T) {
 	if start.WorkflowExecutionTimeout != time.Hour || start.WorkflowRunTimeout != time.Minute || start.WorkflowTaskTimeout != 10*time.Second {
 		t.Fatalf("timeouts = %s %s %s", start.WorkflowExecutionTimeout, start.WorkflowRunTimeout, start.WorkflowTaskTimeout)
 	}
-	if start.Memo["tenant"] != "acme" || start.SearchAttributes["CustomKeywordField"] != "orders" {
-		t.Fatalf("metadata = %#v %#v", start.Memo, start.SearchAttributes)
+	gotKeyword, ok := start.TypedSearchAttributes.GetKeyword(customKeyword)
+	if start.Memo["tenant"] != "acme" || !ok || gotKeyword != "orders" || start.SearchAttributes != nil {
+		t.Fatalf("metadata = %#v deprecated=%#v typed=%#v", start.Memo, start.SearchAttributes, start.TypedSearchAttributes.GetUntypedValues())
 	}
 	pinned, ok := start.VersioningOverride.(*temporalclient.PinnedVersioningOverride)
 	if !ok {
@@ -287,8 +289,8 @@ func TestTemporalStartWorkflowOptions(t *testing.T) {
 	}
 
 	start.Memo["tenant"] = "mutated"
-	start.SearchAttributes["CustomKeywordField"] = "mutated"
-	if opts.Memo["tenant"] != "acme" || opts.SearchAttributes["CustomKeywordField"] != "orders" {
+	gotOptKeyword, ok := opts.SearchAttributes.GetKeyword(customKeyword)
+	if opts.Memo["tenant"] != "acme" || !ok || gotOptKeyword != "orders" {
 		t.Fatalf("start options should clone metadata maps")
 	}
 }

@@ -16,7 +16,7 @@ import (
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/activity"
 	temporalclient "go.temporal.io/sdk/client"
-	temporalerror "go.temporal.io/sdk/temporal"
+	sdktemporal "go.temporal.io/sdk/temporal"
 	temporalworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
@@ -48,7 +48,7 @@ type WorkflowIdentity struct {
 type StartWorkflowOptions struct {
 	TaskQueue                string
 	Memo                     map[string]any
-	SearchAttributes         map[string]any
+	SearchAttributes         SearchAttributes
 	WorkflowExecutionTimeout time.Duration
 	WorkflowRunTimeout       time.Duration
 	WorkflowTaskTimeout      time.Duration
@@ -58,6 +58,18 @@ type StartWorkflowOptions struct {
 }
 
 type StartOption func(*StartWorkflowOptions)
+
+type (
+	SearchAttributes              = sdktemporal.SearchAttributes
+	SearchAttributeUpdate         = sdktemporal.SearchAttributeUpdate
+	SearchAttributeKeyString      = sdktemporal.SearchAttributeKeyString
+	SearchAttributeKeyKeyword     = sdktemporal.SearchAttributeKeyKeyword
+	SearchAttributeKeyBool        = sdktemporal.SearchAttributeKeyBool
+	SearchAttributeKeyInt64       = sdktemporal.SearchAttributeKeyInt64
+	SearchAttributeKeyFloat64     = sdktemporal.SearchAttributeKeyFloat64
+	SearchAttributeKeyTime        = sdktemporal.SearchAttributeKeyTime
+	SearchAttributeKeyKeywordList = sdktemporal.SearchAttributeKeyKeywordList
+)
 
 type WorkflowIDConflictPolicy string
 
@@ -355,9 +367,41 @@ func WithMemo(memo map[string]any) StartOption {
 	}
 }
 
-func WithSearchAttributes(attrs map[string]any) StartOption {
+func NewSearchAttributeKeyString(name string) SearchAttributeKeyString {
+	return sdktemporal.NewSearchAttributeKeyString(name)
+}
+
+func NewSearchAttributeKeyKeyword(name string) SearchAttributeKeyKeyword {
+	return sdktemporal.NewSearchAttributeKeyKeyword(name)
+}
+
+func NewSearchAttributeKeyBool(name string) SearchAttributeKeyBool {
+	return sdktemporal.NewSearchAttributeKeyBool(name)
+}
+
+func NewSearchAttributeKeyInt64(name string) SearchAttributeKeyInt64 {
+	return sdktemporal.NewSearchAttributeKeyInt64(name)
+}
+
+func NewSearchAttributeKeyFloat64(name string) SearchAttributeKeyFloat64 {
+	return sdktemporal.NewSearchAttributeKeyFloat64(name)
+}
+
+func NewSearchAttributeKeyTime(name string) SearchAttributeKeyTime {
+	return sdktemporal.NewSearchAttributeKeyTime(name)
+}
+
+func NewSearchAttributeKeyKeywordList(name string) SearchAttributeKeyKeywordList {
+	return sdktemporal.NewSearchAttributeKeyKeywordList(name)
+}
+
+func NewSearchAttributes(attributes ...SearchAttributeUpdate) SearchAttributes {
+	return sdktemporal.NewSearchAttributes(attributes...)
+}
+
+func WithSearchAttributes(attrs SearchAttributes) StartOption {
 	return func(opts *StartWorkflowOptions) {
-		opts.SearchAttributes = cloneStringAnyMap(attrs)
+		opts.SearchAttributes = attrs
 	}
 }
 
@@ -709,7 +753,6 @@ func applyStartOptions(cfg WorkflowConfig, options ...StartOption) StartWorkflow
 		}
 	}
 	opts.Memo = cloneStringAnyMap(opts.Memo)
-	opts.SearchAttributes = cloneStringAnyMap(opts.SearchAttributes)
 	return opts
 }
 
@@ -722,7 +765,7 @@ func temporalStartWorkflowOptions(workflowName string, identity WorkflowIdentity
 		ID:                       workflowIDFromIdentity(workflowName, identity),
 		TaskQueue:                taskQueue,
 		Memo:                     cloneStringAnyMap(opts.Memo),
-		SearchAttributes:         cloneStringAnyMap(opts.SearchAttributes),
+		TypedSearchAttributes:    opts.SearchAttributes,
 		WorkflowExecutionTimeout: opts.WorkflowExecutionTimeout,
 		WorkflowRunTimeout:       opts.WorkflowRunTimeout,
 		WorkflowTaskTimeout:      opts.WorkflowTaskTimeout,
@@ -824,11 +867,11 @@ func defaultWorkerTaskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
 	return strings.TrimSuffix(prefix, ".") + ".worker.go"
 }
 
-func retryPolicy(policy RetryPolicy) *temporalerror.RetryPolicy {
+func retryPolicy(policy RetryPolicy) *sdktemporal.RetryPolicy {
 	if retryPolicyIsZero(policy) {
 		return nil
 	}
-	return &temporalerror.RetryPolicy{
+	return &sdktemporal.RetryPolicy{
 		InitialInterval:        policy.InitialInterval,
 		BackoffCoefficient:     policy.BackoffCoefficient,
 		MaximumInterval:        policy.MaximumInterval,
