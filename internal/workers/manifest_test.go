@@ -61,6 +61,71 @@ func TestValidateWorkerManifestRejectsIncompatibleQueueSharing(t *testing.T) {
 	}
 }
 
+func TestValidateWorkerManifestV2AcceptsQueueRegistrations(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "email.json", `{
+  "schema_version": "onlava.worker.manifest.v2",
+  "app": "orders",
+  "language": "python",
+  "build_id": "sha-python",
+  "payload_codec": "onlava-json-v1",
+  "temporal": {"namespace": "default"},
+  "task_queues": [
+    {
+      "name": "onlava.orders.activity.email",
+      "activities": ["email.Send/v1"],
+      "workflows": [],
+      "registration_hash": "sha256:abc123"
+    }
+  ],
+  "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
+}`)
+
+	result := Validate(root, "orders")
+	if !result.OK || len(result.Manifests) != 1 {
+		t.Fatalf("validation = %#v", result)
+	}
+	manifest := result.Manifests[0]
+	if manifest.SchemaVersion != ManifestSchemaVersionV2 || len(manifest.TaskQueueRegistrations) != 1 {
+		t.Fatalf("manifest summary = %#v", manifest)
+	}
+	if len(manifest.TaskQueues) != 1 || manifest.TaskQueues[0] != "onlava.orders.activity.email" {
+		t.Fatalf("task queues = %#v", manifest.TaskQueues)
+	}
+}
+
+func TestValidateWorkerManifestV2RejectsRegistrationHashMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "python.json", `{
+  "schema_version": "onlava.worker.manifest.v2",
+  "app": "orders",
+  "language": "python",
+  "build_id": "sha-python",
+  "payload_codec": "onlava-json-v1",
+  "temporal": {"namespace": "default"},
+  "task_queues": [{"name": "onlava.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "sha256:abc"}],
+  "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
+}`)
+	writeManifest(t, root, "typescript.json", `{
+  "schema_version": "onlava.worker.manifest.v2",
+  "app": "orders",
+  "language": "typescript",
+  "build_id": "sha-ts",
+  "payload_codec": "onlava-json-v1",
+  "temporal": {"namespace": "default"},
+  "task_queues": [{"name": "onlava.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "sha256:def"}],
+  "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
+}`)
+
+	result := Validate(root, "orders")
+	if result.OK {
+		t.Fatalf("expected validation failure: %#v", result)
+	}
+	if len(result.Diagnostics) != 1 || !strings.Contains(result.Diagnostics[0].Message, "registration hash") {
+		t.Fatalf("diagnostics = %#v", result.Diagnostics)
+	}
+}
+
 func TestValidateWorkerManifestRejectsUnknownActivitiesWhenKnownSetProvided(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "python.json", `{

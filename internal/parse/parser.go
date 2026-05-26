@@ -97,6 +97,7 @@ func App(root, name string) (*model.App, error) {
 	for _, pkg := range app.Packages {
 		pkg.Runtime = discoverRuntimeDeclarations(pkg)
 		app.Runtime = append(app.Runtime, pkg.Runtime...)
+		errs = append(errs, validateTemporalRuntimeCalls(pkg)...)
 	}
 
 	var rawEndpoints []*model.Endpoint
@@ -886,13 +887,16 @@ func discoverRuntimeDeclarations(pkg *model.Package) []*model.RuntimeDeclaration
 			if !ok {
 				return true
 			}
+			taskQueue, taskQueueExplicit := runtimeDeclarationTaskQueue(pkg, call, kind, aliases)
 			decls = append(decls, &model.RuntimeDeclaration{
-				Package:  pkg,
-				File:     file,
-				Kind:     kind,
-				Name:     runtimeDeclarationName(pkg, call, nameArg),
-				CallName: sel.Sel.Name,
-				TokenPos: call.Lparen,
+				Package:           pkg,
+				File:              file,
+				Kind:              kind,
+				Name:              runtimeDeclarationName(pkg, call, nameArg),
+				CallName:          sel.Sel.Name,
+				TokenPos:          call.Lparen,
+				TaskQueue:         taskQueue,
+				TaskQueueExplicit: taskQueueExplicit,
 			})
 			return true
 		})
@@ -910,6 +914,145 @@ func discoverRuntimeDeclarations(pkg *model.Package) []*model.RuntimeDeclaration
 		return 0
 	})
 	return decls
+}
+
+func runtimeDeclarationTaskQueue(pkg *model.Package, call *ast.CallExpr, kind model.RuntimeDeclarationKind, aliases map[string]string) (string, bool) {
+	switch kind {
+	case model.RuntimeDeclarationTemporalWorkflow:
+		if len(call.Args) <= 1 {
+			return "", false
+		}
+		return temporalConfigTaskQueue(pkg, call.Args[1], "WorkflowConfig", aliases)
+	case model.RuntimeDeclarationTemporalActivity:
+		if len(call.Args) <= 1 {
+			return "", false
+		}
+		return temporalConfigTaskQueue(pkg, call.Args[1], "ActivityConfig", aliases)
+	default:
+		return "", false
+	}
+}
+
+func temporalConfigTaskQueue(pkg *model.Package, expr ast.Expr, typeName string, aliases map[string]string) (string, bool) {
+	lit, ok := expr.(*ast.CompositeLit)
+	if !ok || !isTemporalConfigType(lit.Type, typeName, aliases) {
+		return "", false
+	}
+	for _, elt := range lit.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.Ident)
+		if !ok || key.Name != "TaskQueue" {
+			continue
+		}
+		value, ok := literalStringValue(pkg, kv.Value)
+		if !ok {
+			return "", false
+		}
+		return strings.TrimSpace(value), true
+	}
+	return "", false
+}
+
+func validateTemporalRuntimeCalls(pkg *model.Package) []string {
+	if pkg == nil || pkg.GoPkg == nil {
+		return nil
+	}
+	var errs []string
+	for _, file := range pkg.Files {
+		aliases := runtimeImportAliases(file.AST)
+		if len(aliases) == 0 {
+			continue
+		}
+		ast.Inspect(file.AST, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := selectorFromRuntimeCall(call.Fun)
+			if !ok {
+				return true
+			}
+			ident, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if aliases[ident.Name] != "github.com/pbrazdil/onlava/temporal" {
+				return true
+			}
+			switch sel.Sel.Name {
+			case "NewActivity":
+				if len(call.Args) > 1 && temporalActivityConfigLiteralHasEmptyTaskQueue(pkg, call.Args[1], aliases) {
+					errs = append(errs, sourceDiagnostic(pkg, call.Lparen, "temporal.NewActivity requires temporal.ActivityConfig.TaskQueue"))
+				}
+			case "Start":
+				if len(call.Args) == 3 {
+					errs = append(errs, sourceDiagnostic(pkg, call.Lparen, "temporal.Start requires a workflow identity argument such as temporal.WorkflowID(id) or temporal.WorkflowIDPrefix(prefix)"))
+				}
+			}
+			return true
+		})
+	}
+	return errs
+}
+
+func temporalActivityConfigLiteralHasEmptyTaskQueue(pkg *model.Package, expr ast.Expr, aliases map[string]string) bool {
+	lit, ok := expr.(*ast.CompositeLit)
+	if !ok || !isTemporalConfigType(lit.Type, "ActivityConfig", aliases) {
+		return false
+	}
+	if len(lit.Elts) == 0 {
+		return true
+	}
+	for _, elt := range lit.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.Ident)
+		if !ok || key.Name != "TaskQueue" {
+			continue
+		}
+		value, ok := literalStringValue(pkg, kv.Value)
+		return ok && value == ""
+	}
+	return true
+}
+
+func isTemporalConfigType(expr ast.Expr, typeName string, aliases map[string]string) bool {
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != typeName {
+		return false
+	}
+	ident, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return aliases[ident.Name] == "github.com/pbrazdil/onlava/temporal"
+}
+
+func literalStringValue(pkg *model.Package, expr ast.Expr) (string, bool) {
+	if pkg != nil && pkg.GoPkg != nil {
+		if tv, ok := pkg.GoPkg.TypesInfo.Types[expr]; ok && tv.Value != nil && tv.Value.Kind() == constant.String {
+			return constant.StringVal(tv.Value), true
+		}
+	}
+	if lit, ok := expr.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+		return strings.Trim(lit.Value, "\"`"), true
+	}
+	return "", false
+}
+
+func sourceDiagnostic(pkg *model.Package, pos token.Pos, message string) string {
+	if pkg != nil && pkg.GoPkg != nil && pkg.GoPkg.Fset != nil {
+		position := pkg.GoPkg.Fset.Position(pos)
+		if position.Filename != "" {
+			return fmt.Sprintf("%s:%d:%d: %s", position.Filename, position.Line, position.Column, message)
+		}
+	}
+	return message
 }
 
 func runtimeImportAliases(file *ast.File) map[string]string {

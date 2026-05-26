@@ -84,7 +84,7 @@ type Out struct{ ID string }
 var _ = temporal.NewWorkflow[In, Out]("orders.Fulfill/v1", temporal.WorkflowConfig{}, func(ctx temporal.WorkflowContext, in In) (Out, error) {
 	return Out{ID: in.ID}, nil
 })
-var _ = temporal.NewActivity[In, Out]("orders.Capture/v1", temporal.ActivityConfig{}, func(ctx context.Context, in In) (Out, error) {
+var _ = temporal.NewActivity[In, Out]("orders.Capture/v1", temporal.ActivityConfig{TaskQueue: "orders.activities.go"}, func(ctx context.Context, in In) (Out, error) {
 	return Out{ID: in.ID}, nil
 })
 var _ = cron.NewJob("tick", cron.JobConfig{
@@ -106,6 +106,9 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 		if decl.Package == nil || decl.File == nil || decl.CallName == "" {
 			t.Fatalf("incomplete runtime declaration: %#v", decl)
 		}
+		if decl.Kind == model.RuntimeDeclarationTemporalActivity && (!decl.TaskQueueExplicit || decl.TaskQueue != "orders.activities.go") {
+			t.Fatalf("activity task queue = %q explicit=%v", decl.TaskQueue, decl.TaskQueueExplicit)
+		}
 	}
 	want := map[model.RuntimeDeclarationKind]string{
 		model.RuntimeDeclarationTemporalWorkflow: "orders.Fulfill/v1",
@@ -116,6 +119,77 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 		if got[kind] != name {
 			t.Fatalf("runtime declaration %s = %q, want %q (all: %#v)", kind, got[kind], name, got)
 		}
+	}
+}
+
+func TestParseRejectsEmptyTemporalActivityTaskQueue(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/emptyactivityqueue\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
+	writeFile(t, dir, ".onlava.json", `{"name":"emptyactivityqueue"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import "context"
+
+//onlava:api public
+func Ping(ctx context.Context) error { return nil }
+`)
+	writeFile(t, dir, "jobs/runtime.go", `package jobs
+
+import (
+	"context"
+
+	"github.com/pbrazdil/onlava/temporal"
+)
+
+type In struct{}
+type Out struct{}
+
+var _ = temporal.NewActivity[In, Out]("orders.Capture/v1", temporal.ActivityConfig{}, func(ctx context.Context, in In) (Out, error) {
+	return Out{}, nil
+})
+var _ = temporal.NewActivity[In, Out]("orders.Refund/v1", temporal.ActivityConfig{TaskQueue: ""}, func(ctx context.Context, in In) (Out, error) {
+	return Out{}, nil
+})
+`)
+
+	_, err := parse.App(dir, "emptyactivityqueue")
+	if err == nil {
+		t.Fatal("expected empty activity task queue error")
+	}
+	if got := err.Error(); strings.Count(got, "temporal.NewActivity requires temporal.ActivityConfig.TaskQueue") != 2 {
+		t.Fatalf("expected two activity task queue diagnostics, got %v", err)
+	}
+}
+
+func TestParseRejectsLegacyTemporalStartCall(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/legacystart\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
+	writeFile(t, dir, ".onlava.json", `{"name":"legacystart"}`)
+	writeFile(t, dir, "svc/api.go", `package svc
+
+import (
+	"context"
+
+	"github.com/pbrazdil/onlava/temporal"
+)
+
+type In struct{}
+type Out struct{}
+
+var wf = temporal.NewWorkflow[In, Out]("orders.Fulfill/v1", temporal.WorkflowConfig{}, func(ctx temporal.WorkflowContext, in In) (Out, error) {
+	return Out{}, nil
+})
+
+//onlava:api public
+func Ping(ctx context.Context) error {
+	_, err := temporal.Start(ctx, wf, In{})
+	return err
+}
+`)
+
+	_, err := parse.App(dir, "legacystart")
+	if err == nil || !strings.Contains(err.Error(), "temporal.Start requires a workflow identity argument") {
+		t.Fatalf("expected legacy temporal.Start diagnostic, got %v", err)
 	}
 }
 
