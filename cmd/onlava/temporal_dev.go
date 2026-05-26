@@ -252,3 +252,15 @@ func temporalUIURL(info onlavaruntime.TemporalRuntimeInfo) string {
 	}
 	return fmt.Sprintf("http://%s", net.JoinHostPort(host, strconv.Itoa(port+1000)))
 }
+
+func temporalUIUpstreamForConfig(cfg app.Config) string {
+	info := onlavaruntime.ResolveTemporalConfig(cfg.Name, temporalRuntimeConfigFromApp(cfg.Temporal))
+	if info.Mode != onlavaruntime.DefaultTemporalMode {
+		return ""
+	}
+	host, port, err := splitTemporalAddress(info.Address)
+	if err != nil {
+		return ""
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port+1000))
+}

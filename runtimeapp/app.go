@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -125,14 +127,36 @@ func startLocalHTTPSProxy(cfg runtime.AppConfig) (*localproxy.Proxy, error) {
 		APIHost:           cfg.ProxyAPIHost,
 		ConsoleHost:       cfg.ProxyConsoleHost,
 		MCPHost:           cfg.ProxyMCPHost,
+		TemporalHost:      cfg.ProxyTemporalHost,
+		GrafanaHost:       cfg.ProxyGrafanaHost,
 		APIUpstream:       cfg.ListenAddr,
 		DashboardUpstream: strings.TrimSpace(os.Getenv("ONLAVA_DEV_DASHBOARD_ADDR")),
+		TemporalUpstream:  standaloneTemporalUIUpstream(cfg),
 		Frontends:         localproxy.ResolveFrontends(mustGetwd(), runtimeProxyFrontends(cfg.ProxyFrontends)),
 	})
 	if proxyCfg.Workspace == "" && proxyCfg.APIHost == "" {
 		return nil, nil
 	}
 	return localproxy.Start(proxyCfg)
+}
+
+func standaloneTemporalUIUpstream(cfg runtime.AppConfig) string {
+	info := runtime.ResolveTemporalConfig(cfg.Name, cfg.Temporal)
+	if info.Mode != runtime.DefaultTemporalMode {
+		return ""
+	}
+	host, portText, err := net.SplitHostPort(strings.TrimSpace(info.Address))
+	if err != nil {
+		return ""
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port <= 0 || port > 65535 {
+		return ""
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port+1000))
 }
 
 func runtimeProxyFrontends(frontends map[string]runtime.ProxyFrontendConfig) []localproxy.FrontendConfig {

@@ -228,6 +228,10 @@ func TestGrafanaStateIncludesStableLinks(t *testing.T) {
 	if len(state.Dashboards) != 3 {
 		t.Fatalf("dashboards = %+v", state.Dashboards)
 	}
+	proxied := grafanaStateWithBaseURL(state, "https://grafana.acme.localhost")
+	if proxied.URL != "https://grafana.acme.localhost" || !strings.Contains(proxied.OverviewURL, "https://grafana.acme.localhost/d/"+grafanaOverviewUID) {
+		t.Fatalf("proxied state URLs = %+v", proxied)
+	}
 }
 
 func fakeVictoriaStack() *victoriaStack {

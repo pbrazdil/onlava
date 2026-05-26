@@ -312,6 +312,12 @@ func appConfigLiteral(appModel *model.App, cfg appcfg.Config) string {
 	if cfg.Proxy.MCPHost != "" {
 		fields = append(fields, fmt.Sprintf("ProxyMCPHost: %q", cfg.Proxy.MCPHost))
 	}
+	if cfg.Proxy.TemporalHost != "" {
+		fields = append(fields, fmt.Sprintf("ProxyTemporalHost: %q", cfg.Proxy.TemporalHost))
+	}
+	if cfg.Proxy.GrafanaHost != "" {
+		fields = append(fields, fmt.Sprintf("ProxyGrafanaHost: %q", cfg.Proxy.GrafanaHost))
+	}
 	if literal := proxyFrontendsLiteral(cfg.Proxy.Frontends); literal != "" {
 		fields = append(fields, "ProxyFrontends: "+literal)
 	}

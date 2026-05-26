@@ -630,6 +630,20 @@ func grafanaDashboardURL(baseURL, uid string) string {
 	return strings.TrimRight(baseURL, "/") + "/d/" + url.PathEscape(uid)
 }
 
+func grafanaStateWithBaseURL(state devdash.GrafanaState, baseURL string) devdash.GrafanaState {
+	if baseURL == "" || !state.Enabled || state.URL == "" {
+		return state
+	}
+	state.URL = baseURL
+	state.OverviewURL = grafanaDashboardURL(baseURL, grafanaOverviewUID)
+	state.LogsURL = grafanaDashboardURL(baseURL, grafanaLogsDashboardUID)
+	state.EndpointURL = grafanaDashboardURL(baseURL, grafanaEndpointUID)
+	for i := range state.Dashboards {
+		state.Dashboards[i].URL = grafanaDashboardURL(baseURL, state.Dashboards[i].UID)
+	}
+	return state
+}
+
 func (g *grafanaComponent) State() devdash.GrafanaState {
 	if g == nil {
 		return grafanaState(grafanaConfig{}, "disabled", "Grafana not started")

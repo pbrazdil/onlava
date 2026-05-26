@@ -24,6 +24,8 @@ func proxyRoutes(cfg Config) (routeTable, error) {
 	apiHost := resolvedHost(cfg.APIHost, cfg.Workspace, "api")
 	consoleHost := resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console")
 	mcpHost := resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp")
+	temporalHost := resolvedHost(cfg.TemporalHost, cfg.Workspace, "temporal")
+	grafanaHost := resolvedHost(cfg.GrafanaHost, cfg.Workspace, "grafana")
 
 	var routes routeTable
 	appendRoute := func(host, upstream string, rewriteHost bool, path string) error {
@@ -45,6 +47,16 @@ func proxyRoutes(cfg Config) (routeTable, error) {
 			return nil, err
 		}
 		if err := appendRoute(mcpHost, cfg.DashboardUpstream, false, ""); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.TemporalUpstream != "" {
+		if err := appendRoute(temporalHost, cfg.TemporalUpstream, false, ""); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.GrafanaUpstream != "" {
+		if err := appendRoute(grafanaHost, cfg.GrafanaUpstream, false, ""); err != nil {
 			return nil, err
 		}
 	}
@@ -156,6 +168,12 @@ func routeSubjects(cfg Config) []string {
 	if cfg.DashboardUpstream != "" {
 		add(resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console"))
 		add(resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp"))
+	}
+	if cfg.TemporalUpstream != "" {
+		add(resolvedHost(cfg.TemporalHost, cfg.Workspace, "temporal"))
+	}
+	if cfg.GrafanaUpstream != "" {
+		add(resolvedHost(cfg.GrafanaHost, cfg.Workspace, "grafana"))
 	}
 	for _, frontend := range cfg.Frontends {
 		if frontend.Upstream != "" {

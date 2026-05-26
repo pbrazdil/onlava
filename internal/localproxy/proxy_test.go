@@ -110,6 +110,8 @@ func TestRoutesFor(t *testing.T) {
 		Workspace:         "acme",
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
+		TemporalUpstream:  "127.0.0.1:8233",
+		GrafanaUpstream:   "127.0.0.1:3000",
 		Frontends: []FrontendConfig{
 			{Name: "web", Host: "web.acme.localhost", Upstream: "127.0.0.1:5178"},
 		},
@@ -123,6 +125,12 @@ func TestRoutesFor(t *testing.T) {
 	}
 	if routes.MCPBaseURL != "https://mcp.acme.localhost:9443" {
 		t.Fatalf("MCPBaseURL = %q", routes.MCPBaseURL)
+	}
+	if routes.TemporalURL != "https://temporal.acme.localhost:9443" {
+		t.Fatalf("TemporalURL = %q", routes.TemporalURL)
+	}
+	if routes.GrafanaURL != "https://grafana.acme.localhost:9443" {
+		t.Fatalf("GrafanaURL = %q", routes.GrafanaURL)
 	}
 	if routes.Frontends["web"].URL != "https://web.acme.localhost:9443" {
 		t.Fatalf("FrontendURL = %q", routes.Frontends["web"].URL)
@@ -140,8 +148,12 @@ func TestRoutesForExplicitHosts(t *testing.T) {
 		APIHost:           "api.custom.localhost",
 		ConsoleHost:       "console.custom.localhost",
 		MCPHost:           "mcp.custom.localhost",
+		TemporalHost:      "temporal.custom.localhost",
+		GrafanaHost:       "grafana.custom.localhost",
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
+		TemporalUpstream:  "127.0.0.1:8233",
+		GrafanaUpstream:   "127.0.0.1:3000",
 		Frontends: []FrontendConfig{
 			{Name: "web", Host: "web.custom.localhost", Upstream: "127.0.0.1:5178"},
 		},
@@ -156,6 +168,12 @@ func TestRoutesForExplicitHosts(t *testing.T) {
 	if routes.MCPBaseURL != "https://mcp.custom.localhost:9443" {
 		t.Fatalf("MCPBaseURL = %q", routes.MCPBaseURL)
 	}
+	if routes.TemporalURL != "https://temporal.custom.localhost:9443" {
+		t.Fatalf("TemporalURL = %q", routes.TemporalURL)
+	}
+	if routes.GrafanaURL != "https://grafana.custom.localhost:9443" {
+		t.Fatalf("GrafanaURL = %q", routes.GrafanaURL)
+	}
 	if routes.Frontends["web"].URL != "https://web.custom.localhost:9443" {
 		t.Fatalf("FrontendURL = %q", routes.Frontends["web"].URL)
 	}
@@ -166,6 +184,8 @@ func TestRouteTableIncludesExpectedHosts(t *testing.T) {
 		Workspace:         "acme",
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
+		TemporalUpstream:  "127.0.0.1:8233",
+		GrafanaUpstream:   "127.0.0.1:3000",
 		Frontends: []FrontendConfig{
 			{Name: "blog", Host: "blog.acme.localhost", Upstream: "127.0.0.1:5179"},
 			{Name: "web", Host: "web.acme.localhost", Upstream: "127.0.0.1:5178"},
@@ -178,6 +198,8 @@ func TestRouteTableIncludesExpectedHosts(t *testing.T) {
 		{host: "api.acme.localhost", upstream: "127.0.0.1:4000"},
 		{host: "console.acme.localhost", upstream: "127.0.0.1:9401"},
 		{host: "mcp.acme.localhost", upstream: "127.0.0.1:9401"},
+		{host: "temporal.acme.localhost", upstream: "127.0.0.1:8233"},
+		{host: "grafana.acme.localhost", upstream: "127.0.0.1:3000"},
 		{host: "blog.acme.localhost", path: "/__onlava/config", upstream: "127.0.0.1:4000"},
 		{host: "blog.acme.localhost", upstream: "127.0.0.1:5179", rewriteHost: true},
 		{host: "web.acme.localhost", path: "/__onlava/config", upstream: "127.0.0.1:4000"},
@@ -199,6 +221,8 @@ func TestCertificateSubjects(t *testing.T) {
 		Workspace:         "acme",
 		APIUpstream:       "127.0.0.1:4000",
 		DashboardUpstream: "127.0.0.1:9401",
+		TemporalUpstream:  "127.0.0.1:8233",
+		GrafanaUpstream:   "127.0.0.1:3000",
 		Frontends: []FrontendConfig{
 			{Name: "blog", Host: "blog.acme.localhost", Upstream: "127.0.0.1:5179"},
 			{Name: "web", Host: "web.acme.localhost", Upstream: "127.0.0.1:5178"},
@@ -208,6 +232,8 @@ func TestCertificateSubjects(t *testing.T) {
 		"api.acme.localhost",
 		"console.acme.localhost",
 		"mcp.acme.localhost",
+		"temporal.acme.localhost",
+		"grafana.acme.localhost",
 		"blog.acme.localhost",
 		"web.acme.localhost",
 	}
@@ -345,10 +371,14 @@ func TestProxyRoutesAndRedirects(t *testing.T) {
 
 	api := newEchoServer(t, "api")
 	dashboard := newEchoServer(t, "dashboard")
+	temporal := newEchoServer(t, "temporal")
+	grafana := newEchoServer(t, "grafana")
 	webFrontend := newEchoServer(t, "web")
 	blogFrontend := newEchoServer(t, "blog")
 	defer api.Close()
 	defer dashboard.Close()
+	defer temporal.Close()
+	defer grafana.Close()
 	defer webFrontend.Close()
 	defer blogFrontend.Close()
 
@@ -358,6 +388,8 @@ func TestProxyRoutesAndRedirects(t *testing.T) {
 		Workspace:         "acme",
 		APIUpstream:       api.URL,
 		DashboardUpstream: dashboard.URL,
+		TemporalUpstream:  temporal.URL,
+		GrafanaUpstream:   grafana.URL,
 		Frontends: []FrontendConfig{
 			{Name: "blog", Host: "blog.acme.localhost", Upstream: blogFrontend.URL},
 			{Name: "web", Host: "web.acme.localhost", Upstream: webFrontend.URL},
@@ -387,6 +419,14 @@ func TestProxyRoutesAndRedirects(t *testing.T) {
 	mcpEcho := getEcho(t, client, fmt.Sprintf("https://mcp.acme.localhost:%d/sse", httpsPort))
 	if mcpEcho.Server != "dashboard" || mcpEcho.Host != fmt.Sprintf("mcp.acme.localhost:%d", httpsPort) {
 		t.Fatalf("mcp echo = %+v", mcpEcho)
+	}
+	temporalEcho := getEcho(t, client, fmt.Sprintf("https://temporal.acme.localhost:%d/namespaces/default/workflows", httpsPort))
+	if temporalEcho.Server != "temporal" || temporalEcho.Host != fmt.Sprintf("temporal.acme.localhost:%d", httpsPort) {
+		t.Fatalf("temporal echo = %+v", temporalEcho)
+	}
+	grafanaEcho := getEcho(t, client, fmt.Sprintf("https://grafana.acme.localhost:%d/d/onlava-dev-overview", httpsPort))
+	if grafanaEcho.Server != "grafana" || grafanaEcho.Host != fmt.Sprintf("grafana.acme.localhost:%d", httpsPort) {
+		t.Fatalf("grafana echo = %+v", grafanaEcho)
 	}
 
 	configEcho := getEcho(t, client, fmt.Sprintf("https://web.acme.localhost:%d/__onlava/config", httpsPort))

@@ -782,6 +782,20 @@ func (s *devSupervisor) mcpURL() string {
 	return "http://" + devdash.ListenAddr() + "/sse?appID=" + url.QueryEscape(s.activeAppID())
 }
 
+func (s *devSupervisor) temporalURL() string {
+	if s.proxy != nil && s.proxy.Routes().TemporalURL != "" {
+		return s.proxy.Routes().TemporalURL
+	}
+	return s.temporal.URL()
+}
+
+func (s *devSupervisor) grafanaUpstream() string {
+	if s == nil || s.grafana == nil {
+		return ""
+	}
+	return s.grafana.URL()
+}
+
 func (s *devSupervisor) frontendURLs() map[string]string {
 	if s.proxy != nil {
 		return frontendURLs(s.proxy.Routes())
@@ -886,8 +900,12 @@ func (s *devSupervisor) startLocalProxy() error {
 		APIHost:           s.cfg.Proxy.APIHost,
 		ConsoleHost:       s.cfg.Proxy.ConsoleHost,
 		MCPHost:           s.cfg.Proxy.MCPHost,
+		TemporalHost:      s.cfg.Proxy.TemporalHost,
+		GrafanaHost:       s.cfg.Proxy.GrafanaHost,
 		APIUpstream:       s.addr,
 		DashboardUpstream: devdash.ListenAddr(),
+		TemporalUpstream:  temporalUIUpstreamForConfig(s.cfg),
+		GrafanaUpstream:   s.grafanaUpstream(),
 		Frontends:         localproxy.ResolveFrontends(s.root, localProxyFrontends(s.cfg.Proxy.Frontends)),
 		Verbose:           s.console != nil && s.console.verbose,
 	})
@@ -899,6 +917,14 @@ func (s *devSupervisor) startLocalProxy() error {
 		return err
 	}
 	s.proxy = proxy
+	if s.grafana != nil && proxy.Routes().GrafanaURL != "" {
+		state := grafanaStateWithBaseURL(s.grafana.State(), proxy.Routes().GrafanaURL)
+		s.setGrafanaState(state)
+		s.dashboard.notify(&devdash.Notification{
+			Method: "grafana/status",
+			Params: state,
+		})
+	}
 	return nil
 }
 
@@ -944,7 +970,7 @@ func (s *devSupervisor) runURLs() runURLs {
 		MCP:       s.mcpURL(),
 		Frontends: s.frontendURLs(),
 		DBStudio:  s.dbStudioURL,
-		Temporal:  s.temporal.URL(),
+		Temporal:  s.temporalURL(),
 		Victoria:  s.victoria.URLs(),
 		Grafana:   s.appStatus().Grafana,
 	}

@@ -29,9 +29,13 @@ type Config struct {
 	APIHost           string
 	ConsoleHost       string
 	MCPHost           string
+	TemporalHost      string
+	GrafanaHost       string
 	Frontends         []FrontendConfig
 	APIUpstream       string
 	DashboardUpstream string
+	TemporalUpstream  string
+	GrafanaUpstream   string
 	HTTPPort          int
 	HTTPSPort         int
 	SkipInstallTrust  bool
@@ -46,13 +50,17 @@ type FrontendConfig struct {
 }
 
 type Routes struct {
-	APIHost     string
-	ConsoleHost string
-	MCPHost     string
-	Frontends   map[string]FrontendRoute
-	APIURL      string
-	ConsoleURL  string
-	MCPBaseURL  string
+	APIHost      string
+	ConsoleHost  string
+	MCPHost      string
+	TemporalHost string
+	GrafanaHost  string
+	Frontends    map[string]FrontendRoute
+	APIURL       string
+	ConsoleURL   string
+	MCPBaseURL   string
+	TemporalURL  string
+	GrafanaURL   string
 }
 
 type FrontendRoute struct {
@@ -177,6 +185,8 @@ func frontendRootPath(appRoot string, frontend FrontendConfig) string {
 func BuildConfig(cfg Config) Config {
 	cfg.APIUpstream = normalizeUpstream(cfg.APIUpstream)
 	cfg.DashboardUpstream = normalizeUpstream(cfg.DashboardUpstream)
+	cfg.TemporalUpstream = normalizeUpstream(cfg.TemporalUpstream)
+	cfg.GrafanaUpstream = normalizeUpstream(cfg.GrafanaUpstream)
 	for i := range cfg.Frontends {
 		cfg.Frontends[i].Name = sanitizeLabel(cfg.Frontends[i].Name)
 		cfg.Frontends[i].Host = normalizeHost(cfg.Frontends[i].Host)
@@ -358,6 +368,8 @@ func normalizeConfig(cfg Config) Config {
 	cfg.APIHost = normalizeHost(cfg.APIHost)
 	cfg.ConsoleHost = normalizeHost(cfg.ConsoleHost)
 	cfg.MCPHost = normalizeHost(cfg.MCPHost)
+	cfg.TemporalHost = normalizeHost(cfg.TemporalHost)
+	cfg.GrafanaHost = normalizeHost(cfg.GrafanaHost)
 	if cfg.HTTPPort <= 0 {
 		cfg.HTTPPort = defaultHTTPPort
 	}
@@ -366,6 +378,8 @@ func normalizeConfig(cfg Config) Config {
 	}
 	cfg.APIUpstream = normalizeUpstream(cfg.APIUpstream)
 	cfg.DashboardUpstream = normalizeUpstream(cfg.DashboardUpstream)
+	cfg.TemporalUpstream = normalizeUpstream(cfg.TemporalUpstream)
+	cfg.GrafanaUpstream = normalizeUpstream(cfg.GrafanaUpstream)
 	for i := range cfg.Frontends {
 		cfg.Frontends[i].Name = sanitizeLabel(cfg.Frontends[i].Name)
 		cfg.Frontends[i].Host = normalizeHost(cfg.Frontends[i].Host)
@@ -379,11 +393,15 @@ func routesFor(cfg Config) Routes {
 	apiHost := resolvedHost(cfg.APIHost, cfg.Workspace, "api")
 	consoleHost := resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console")
 	mcpHost := resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp")
+	temporalHost := resolvedHost(cfg.TemporalHost, cfg.Workspace, "temporal")
+	grafanaHost := resolvedHost(cfg.GrafanaHost, cfg.Workspace, "grafana")
 	routes := Routes{
-		APIHost:     apiHost,
-		ConsoleHost: consoleHost,
-		MCPHost:     mcpHost,
-		Frontends:   map[string]FrontendRoute{},
+		APIHost:      apiHost,
+		ConsoleHost:  consoleHost,
+		MCPHost:      mcpHost,
+		TemporalHost: temporalHost,
+		GrafanaHost:  grafanaHost,
+		Frontends:    map[string]FrontendRoute{},
 	}
 	if apiHost != "" {
 		routes.APIURL = hostURL(apiHost, cfg.HTTPSPort)
@@ -395,6 +413,12 @@ func routesFor(cfg Config) Routes {
 		if mcpHost != "" {
 			routes.MCPBaseURL = hostURL(mcpHost, cfg.HTTPSPort)
 		}
+	}
+	if cfg.TemporalUpstream != "" && temporalHost != "" {
+		routes.TemporalURL = hostURL(temporalHost, cfg.HTTPSPort)
+	}
+	if cfg.GrafanaUpstream != "" && grafanaHost != "" {
+		routes.GrafanaURL = hostURL(grafanaHost, cfg.HTTPSPort)
 	}
 	for _, frontend := range cfg.Frontends {
 		if frontend.Host == "" || frontend.Upstream == "" {
