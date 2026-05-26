@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
@@ -14,19 +16,25 @@ import (
 )
 
 const (
-	DefaultTemporalAddress       = "127.0.0.1:7233"
-	DefaultTemporalAddressEnv    = "TEMPORAL_ADDRESS"
-	DefaultTemporalNamespace     = "default"
-	DefaultTemporalNamespaceEnv  = "TEMPORAL_NAMESPACE"
-	DefaultTemporalBuildID       = "dev"
-	DefaultTemporalBuildIDEnv    = "ONLAVA_BUILD_ID"
-	DefaultTemporalDeploymentEnv = "ONLAVA_TEMPORAL_DEPLOYMENT_NAME"
-	DefaultTemporalVersioningEnv = "ONLAVA_TEMPORAL_VERSIONING_BEHAVIOR"
-	DefaultTemporalVersioning    = "pinned"
-	DefaultTemporalMode          = "local"
-	DefaultTemporalConnectWait   = 5 * time.Second
-	DefaultTemporalLocalDBFile   = ".onlava/temporal/dev.sqlite"
-	defaultTemporalTaskQueuePart = "onlava"
+	DefaultTemporalAddress          = "127.0.0.1:7233"
+	DefaultTemporalAddressEnv       = "TEMPORAL_ADDRESS"
+	DefaultTemporalNamespace        = "default"
+	DefaultTemporalNamespaceEnv     = "TEMPORAL_NAMESPACE"
+	DefaultTemporalBuildID          = "dev"
+	DefaultTemporalBuildIDEnv       = "ONLAVA_BUILD_ID"
+	DefaultTemporalDeploymentEnv    = "ONLAVA_TEMPORAL_DEPLOYMENT_NAME"
+	DefaultTemporalVersioningEnv    = "ONLAVA_TEMPORAL_VERSIONING_BEHAVIOR"
+	DefaultTemporalVersioning       = "pinned"
+	DefaultTemporalPayloadCodec     = "onlava-json-v1"
+	DefaultTemporalAPIKeyEnv        = "TEMPORAL_API_KEY"
+	DefaultTemporalTLSServerNameEnv = "TEMPORAL_TLS_SERVER_NAME"
+	DefaultTemporalTLSCACertFileEnv = "TEMPORAL_TLS_CA_CERT_FILE"
+	DefaultTemporalTLSCertFileEnv   = "TEMPORAL_TLS_CERT_FILE"
+	DefaultTemporalTLSKeyFileEnv    = "TEMPORAL_TLS_KEY_FILE"
+	DefaultTemporalMode             = "local"
+	DefaultTemporalConnectWait      = 5 * time.Second
+	DefaultTemporalLocalDBFile      = ".onlava/temporal/dev.sqlite"
+	defaultTemporalTaskQueuePart    = "onlava"
 )
 
 const (
@@ -40,7 +48,18 @@ type TemporalConfig struct {
 	Namespace       string
 	AddressEnv      string
 	TaskQueuePrefix string
+	PayloadCodec    string
+	APIKeyEnv       string
+	TLS             TemporalTLSConfig
 	Local           TemporalLocalConfig
+}
+
+type TemporalTLSConfig struct {
+	Enabled           bool
+	ServerNameEnv     string
+	CACertFileEnv     string
+	ClientCertFileEnv string
+	ClientKeyFileEnv  string
 }
 
 type TemporalLocalConfig struct {
@@ -57,6 +76,19 @@ type TemporalRuntimeInfo struct {
 	Namespace        string
 	NamespaceEnvSet  bool
 	TaskQueuePrefix  string
+	PayloadCodec     string
+	APIKeyEnv        string
+	APIKeyEnvSet     bool
+	TLSEnabled       bool
+	TLSServerName    string
+	TLSServerNameEnv string
+	TLSServerNameSet bool
+	TLSCACertFileEnv string
+	TLSCACertFileSet bool
+	TLSCertFileEnv   string
+	TLSCertFileSet   bool
+	TLSKeyFileEnv    string
+	TLSKeyFileSet    bool
 	DeploymentName   string
 	DeploymentEnv    string
 	DeploymentEnvSet bool
@@ -112,6 +144,36 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 	if taskQueuePrefix == "" {
 		taskQueuePrefix = defaultTemporalTaskQueuePrefix(appName)
 	}
+	payloadCodec := strings.TrimSpace(cfg.PayloadCodec)
+	if payloadCodec == "" {
+		payloadCodec = DefaultTemporalPayloadCodec
+	}
+	apiKeyEnv := strings.TrimSpace(cfg.APIKeyEnv)
+	if apiKeyEnv == "" {
+		apiKeyEnv = DefaultTemporalAPIKeyEnv
+	}
+	_, apiKeyEnvSet := envValue(apiKeyEnv)
+	tlsServerNameEnv := strings.TrimSpace(cfg.TLS.ServerNameEnv)
+	if tlsServerNameEnv == "" {
+		tlsServerNameEnv = DefaultTemporalTLSServerNameEnv
+	}
+	tlsServerName, tlsServerNameSet := envValue(tlsServerNameEnv)
+	tlsCAEnv := strings.TrimSpace(cfg.TLS.CACertFileEnv)
+	if tlsCAEnv == "" {
+		tlsCAEnv = DefaultTemporalTLSCACertFileEnv
+	}
+	_, tlsCASet := envValue(tlsCAEnv)
+	tlsCertEnv := strings.TrimSpace(cfg.TLS.ClientCertFileEnv)
+	if tlsCertEnv == "" {
+		tlsCertEnv = DefaultTemporalTLSCertFileEnv
+	}
+	_, tlsCertSet := envValue(tlsCertEnv)
+	tlsKeyEnv := strings.TrimSpace(cfg.TLS.ClientKeyFileEnv)
+	if tlsKeyEnv == "" {
+		tlsKeyEnv = DefaultTemporalTLSKeyFileEnv
+	}
+	_, tlsKeySet := envValue(tlsKeyEnv)
+	tlsEnabled := cfg.TLS.Enabled || tlsServerNameSet || tlsCASet || tlsCertSet || tlsKeySet
 	deploymentName, deploymentEnvSet := envValue(DefaultTemporalDeploymentEnv)
 	if deploymentName == "" {
 		deploymentName = defaultTemporalDeploymentName(taskQueuePrefix)
@@ -140,6 +202,19 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 		Namespace:        namespace,
 		NamespaceEnvSet:  namespaceEnvSet,
 		TaskQueuePrefix:  taskQueuePrefix,
+		PayloadCodec:     payloadCodec,
+		APIKeyEnv:        apiKeyEnv,
+		APIKeyEnvSet:     apiKeyEnvSet,
+		TLSEnabled:       tlsEnabled,
+		TLSServerName:    tlsServerName,
+		TLSServerNameEnv: tlsServerNameEnv,
+		TLSServerNameSet: tlsServerNameSet,
+		TLSCACertFileEnv: tlsCAEnv,
+		TLSCACertFileSet: tlsCASet,
+		TLSCertFileEnv:   tlsCertEnv,
+		TLSCertFileSet:   tlsCertSet,
+		TLSKeyFileEnv:    tlsKeyEnv,
+		TLSKeyFileSet:    tlsKeySet,
 		DeploymentName:   deploymentName,
 		DeploymentEnv:    DefaultTemporalDeploymentEnv,
 		DeploymentEnvSet: deploymentEnvSet,
@@ -213,21 +288,90 @@ func CheckTemporalConnection(ctx context.Context, appName string, cfg TemporalCo
 	}
 }
 
+func DialTemporal(ctx context.Context, info TemporalRuntimeInfo) (temporalclient.Client, error) {
+	return dialTemporal(ctx, info)
+}
+
 func dialTemporal(ctx context.Context, info TemporalRuntimeInfo) (temporalclient.Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	options, err := temporalClientOptions(info)
+	if err != nil {
+		return nil, err
+	}
 	dialCtx, cancel := context.WithTimeout(ctx, DefaultTemporalConnectWait)
 	defer cancel()
-	client, err := temporalclient.DialContext(dialCtx, temporalclient.Options{
-		HostPort:  info.Address,
-		Namespace: info.Namespace,
-		Identity:  temporalIdentity(info),
-	})
+	client, err := temporalclient.DialContext(dialCtx, options)
 	if err != nil {
 		return nil, fmt.Errorf("temporal: connect to %s namespace %s: %w", info.Address, info.Namespace, err)
 	}
 	return client, nil
+}
+
+func temporalClientOptions(info TemporalRuntimeInfo) (temporalclient.Options, error) {
+	if err := validateTemporalPayloadCodec(info.PayloadCodec); err != nil {
+		return temporalclient.Options{}, err
+	}
+	options := temporalclient.Options{
+		HostPort:  info.Address,
+		Namespace: info.Namespace,
+		Identity:  temporalIdentity(info),
+	}
+	if apiKey, ok := envValue(info.APIKeyEnv); ok {
+		options.Credentials = temporalclient.NewAPIKeyStaticCredentials(apiKey)
+	}
+	tlsConfig, enabled, err := temporalTLSConfig(info)
+	if err != nil {
+		return temporalclient.Options{}, err
+	}
+	if enabled {
+		options.ConnectionOptions.TLS = tlsConfig
+	}
+	return options, nil
+}
+
+func validateTemporalPayloadCodec(profile string) error {
+	if strings.TrimSpace(profile) == DefaultTemporalPayloadCodec {
+		return nil
+	}
+	return fmt.Errorf("temporal: payload_codec must be %q", DefaultTemporalPayloadCodec)
+}
+
+func temporalTLSConfig(info TemporalRuntimeInfo) (*tls.Config, bool, error) {
+	caPath, caSet := envValue(info.TLSCACertFileEnv)
+	certPath, certSet := envValue(info.TLSCertFileEnv)
+	keyPath, keySet := envValue(info.TLSKeyFileEnv)
+	enabled := info.TLSEnabled || info.TLSServerNameSet || caSet || certSet || keySet
+	if !enabled {
+		return nil, false, nil
+	}
+	cfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: strings.TrimSpace(info.TLSServerName),
+	}
+	if caSet {
+		pem, err := os.ReadFile(caPath)
+		if err != nil {
+			return nil, false, fmt.Errorf("temporal: read TLS CA certificate from %s: %w", info.TLSCACertFileEnv, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, false, fmt.Errorf("temporal: TLS CA certificate from %s does not contain PEM certificates", info.TLSCACertFileEnv)
+		}
+		cfg.RootCAs = pool
+	}
+	if certSet != keySet {
+		return nil, false, fmt.Errorf("temporal: TLS client certificate and key must both be set with %s and %s", info.TLSCertFileEnv, info.TLSKeyFileEnv)
+	}
+	if certSet {
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			return nil, false, fmt.Errorf("temporal: load TLS client certificate from %s/%s: %w", info.TLSCertFileEnv, info.TLSKeyFileEnv, err)
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	}
+	return cfg, true, nil
 }
 
 func temporalIdentity(info TemporalRuntimeInfo) string {
@@ -280,18 +424,12 @@ func TemporalWorkflowVersioningBehavior(info TemporalRuntimeInfo) workflow.Versi
 	}
 }
 
-func TemporalWorkflowVersioningOverride(info TemporalRuntimeInfo) temporalclient.VersioningOverride {
-	switch normalizeTemporalVersioning(info.Versioning) {
-	case TemporalVersioningAutoUpgrade:
-		return &temporalclient.AutoUpgradeVersioningOverride{}
-	default:
-		return &temporalclient.PinnedVersioningOverride{
-			Version: temporalworker.WorkerDeploymentVersion{
-				DeploymentName: TemporalDeploymentName(info),
-				BuildID:        TemporalWorkerBuildID(info),
-			},
-		}
+func ShouldAutoPromoteTemporalWorkerDeployment(info TemporalRuntimeInfo) bool {
+	mode := strings.TrimSpace(info.Mode)
+	if mode == "" {
+		mode = DefaultTemporalMode
 	}
+	return strings.EqualFold(mode, DefaultTemporalMode)
 }
 
 func EnsureTemporalWorkerDeploymentCurrentVersion(ctx context.Context, client temporalclient.Client, info TemporalRuntimeInfo) error {
