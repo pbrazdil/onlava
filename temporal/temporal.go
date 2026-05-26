@@ -178,8 +178,8 @@ func NewActivity[I, O any](name string, cfg ActivityConfig, handler func(context
 	if handler == nil {
 		panic("temporal: activity handler must not be nil")
 	}
-	if strings.TrimSpace(cfg.TaskQueue) == "" {
-		panic("temporal: activity task queue must not be empty")
+	if err := validateActivityConfig(name, cfg); err != nil {
+		panic(err.Error())
 	}
 	a := &Activity[I, O]{name: name, config: cfg, handler: handler}
 	registerDeclaration(a)
@@ -886,6 +886,44 @@ func retryPolicyIsZero(policy RetryPolicy) bool {
 		policy.MaximumInterval == 0 &&
 		policy.MaximumAttempts == 0 &&
 		len(policy.NonRetryableErrorTypes) == 0
+}
+
+func validateActivityConfig(name string, cfg ActivityConfig) error {
+	if strings.TrimSpace(cfg.TaskQueue) == "" {
+		return fmt.Errorf("temporal: activity %s task queue must not be empty", name)
+	}
+	if cfg.StartToClose < 0 {
+		return fmt.Errorf("temporal: activity %s StartToClose cannot be negative", name)
+	}
+	if cfg.MaxConcurrency < 0 {
+		return fmt.Errorf("temporal: activity %s MaxConcurrency cannot be negative", name)
+	}
+	if err := validateRetryPolicy(name, cfg.RetryPolicy); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateRetryPolicy(name string, policy RetryPolicy) error {
+	if policy.InitialInterval < 0 {
+		return fmt.Errorf("temporal: activity %s retry InitialInterval cannot be negative", name)
+	}
+	if policy.BackoffCoefficient < 0 {
+		return fmt.Errorf("temporal: activity %s retry BackoffCoefficient cannot be negative", name)
+	}
+	if policy.MaximumInterval < 0 {
+		return fmt.Errorf("temporal: activity %s retry MaximumInterval cannot be negative", name)
+	}
+	if policy.MaximumAttempts < 0 {
+		return fmt.Errorf("temporal: activity %s retry MaximumAttempts cannot be negative", name)
+	}
+	if policy.InitialInterval > 0 && policy.MaximumInterval > 0 && policy.MaximumInterval < policy.InitialInterval {
+		return fmt.Errorf("temporal: activity %s retry MaximumInterval cannot be less than InitialInterval", name)
+	}
+	if policy.BackoffCoefficient == 0 && (policy.InitialInterval != 0 || policy.MaximumInterval != 0 || policy.MaximumAttempts != 0) {
+		return fmt.Errorf("temporal: activity %s retry BackoffCoefficient must be set when retry policy is configured", name)
+	}
+	return nil
 }
 
 func serviceKeyForType(t reflect.Type) string {

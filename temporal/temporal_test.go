@@ -355,6 +355,62 @@ func TestRetryPolicyConversion(t *testing.T) {
 	}
 }
 
+func TestNewActivityValidatesConfig(t *testing.T) {
+	restore := resetRegistryForTest()
+	defer restore()
+
+	for _, tt := range []struct {
+		name string
+		cfg  ActivityConfig
+		want string
+	}{
+		{
+			name: "missing task queue",
+			cfg:  ActivityConfig{},
+			want: "task queue must not be empty",
+		},
+		{
+			name: "negative timeout",
+			cfg:  ActivityConfig{TaskQueue: "orders.go", StartToClose: -time.Second},
+			want: "StartToClose cannot be negative",
+		},
+		{
+			name: "negative concurrency",
+			cfg:  ActivityConfig{TaskQueue: "orders.go", MaxConcurrency: -1},
+			want: "MaxConcurrency cannot be negative",
+		},
+		{
+			name: "missing backoff coefficient",
+			cfg: ActivityConfig{TaskQueue: "orders.go", RetryPolicy: RetryPolicy{
+				InitialInterval: time.Second,
+				MaximumAttempts: 2,
+			}},
+			want: "BackoffCoefficient must be set",
+		},
+		{
+			name: "maximum before initial",
+			cfg: ActivityConfig{TaskQueue: "orders.go", RetryPolicy: RetryPolicy{
+				InitialInterval:    time.Minute,
+				BackoffCoefficient: 2,
+				MaximumInterval:    time.Second,
+			}},
+			want: "MaximumInterval cannot be less than InitialInterval",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				got := recover()
+				if got == nil || !strings.Contains(fmt.Sprint(got), tt.want) {
+					t.Fatalf("panic = %v, want %q", got, tt.want)
+				}
+			}()
+			_ = NewActivity("orders.Invalid/v1", tt.cfg, func(context.Context, testWorkflowInput) (testWorkflowOutput, error) {
+				return testWorkflowOutput{}, nil
+			})
+		})
+	}
+}
+
 type methodActivityService struct {
 	value string
 }
