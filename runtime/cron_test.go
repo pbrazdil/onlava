@@ -124,6 +124,19 @@ func TestStableTemporalCronExecutionIDIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestTemporalCronRetryPolicySkipsNonPositiveInitialInterval(t *testing.T) {
+	if got := temporalCronRetryPolicy(CronRetryPolicy{MaximumAttempts: 3}); got != nil {
+		t.Fatalf("temporalCronRetryPolicy = %#v, want nil", got)
+	}
+	if got := temporalCronRetryPolicy(CronRetryPolicy{InitialInterval: -time.Second, MaximumAttempts: 3}); got != nil {
+		t.Fatalf("temporalCronRetryPolicy = %#v, want nil", got)
+	}
+	got := temporalCronRetryPolicy(CronRetryPolicy{InitialInterval: time.Second, MaximumAttempts: 3})
+	if got == nil || got.InitialInterval != time.Second || got.MaximumAttempts != 3 {
+		t.Fatalf("temporalCronRetryPolicy = %#v", got)
+	}
+}
+
 func TestTemporalCronScheduleOptionsDefaultPolicy(t *testing.T) {
 	job := &CronJob{
 		ID:     "tick",

@@ -551,6 +551,9 @@ func temporalCronRetryPolicy(policy CronRetryPolicy) *sdktemporal.RetryPolicy {
 	if cronRetryPolicyIsZero(policy) {
 		return nil
 	}
+	if policy.InitialInterval <= 0 {
+		return nil
+	}
 	return &sdktemporal.RetryPolicy{
 		InitialInterval:        policy.InitialInterval,
 		BackoffCoefficient:     policy.BackoffCoefficient,
