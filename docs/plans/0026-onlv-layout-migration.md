@@ -1,5 +1,8 @@
 # ONLV Layout Migration into onlava
 
+Status: canceled 2026-05-26. This plan is retained as historical context only
+and is no longer linked from the active plan index.
+
 This ExecPlan is a living document. Update Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective as work proceeds.
 
 ## Purpose / Big Picture
@@ -104,7 +107,8 @@ Known starting discoveries:
 
 ## Outcomes & Retrospective
 
-Fill this section when complete.
+Canceled on 2026-05-26 because the migration is no longer relevant. No further
+implementation work should be driven from this ExecPlan.
 
 ## Context and Orientation
 

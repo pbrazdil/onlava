@@ -7,7 +7,11 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
-- [0026 ONLV Layout Migration into onlava](0026-onlv-layout-migration.md)
+- [0035 Temporal Worker Production Hardening](0035-temporal-worker-production-hardening.md)
+  - Status: active
+  - Owner: onlava runtime / ONLV integration
+  - Created: 2026-05-26
+  - Focus: task-queue scoping, deterministic workflow starts, durable ONLV async flows, worker deployment promotion, cron policy, and manifest/connection hardening.
 
 ## Agent-Friendly Local Runtime
 
