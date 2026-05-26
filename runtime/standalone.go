@@ -7,7 +7,6 @@ type StandaloneDevInfo struct {
 	ConsoleURL   string
 	MCPBaseURL   string
 	FrontendURLs map[string]string
-	DBStudioURL  string
 }
 
 type StandaloneDevSession interface {

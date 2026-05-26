@@ -41,7 +41,6 @@ automatic rebuild/restart
 dashboard
 API explorer
 traces UI
-DB Studio
 local HTTPS proxy
 frontend proxy
 MCP server
@@ -56,7 +55,6 @@ Example:
 onlava dev
 onlava dev --dashboard
 onlava dev --proxy
-onlava dev --db-studio
 onlava dev --frontend http://localhost:5173
 
 This command may be magical. That is fine. Developers expect convenience here.
@@ -68,7 +66,6 @@ This should run the application, not the development platform.
 It should not include by default:
 
 dashboard
-DB Studio
 local HTTPS proxy
 trust-store installation
 MCP
@@ -104,7 +101,6 @@ I would avoid this:
 
 onlava run --dashboard
 onlava run --watch
-onlava run --db-studio
 
 Those should be onlava dev concerns.
 
@@ -129,8 +125,6 @@ runtime/app.go
   should not automatically start standalone dev services in production mode
 internal/localproxy
   should only be reachable through onlava dev --proxy or similar
-internal/dbstudio
-  should only be reachable through onlava dev / dashboard
 runtime/server.go
   should not mount dev/admin/pprof endpoints on the public app router by default
 
@@ -253,10 +247,9 @@ Stable:
   core runtime
 Beta/dev:
   onlava dev dashboard
-  DB Studio
   local HTTPS proxy
   MCP
   Temporal worker tooling
   cron UI
 
-So yes: onlava dev for development including dashboard, DB Studio, proxy, etc.; onlava run for production-like app execution; onlava build for the artifact you deploy.
+So yes: onlava dev for development including dashboard, proxy, etc.; onlava run for production-like app execution; onlava build for the artifact you deploy.

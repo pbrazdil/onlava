@@ -15,7 +15,6 @@ import (
 func buildCommand(args []string) error {
 	outputPath := ""
 	appRootFlag := ""
-	enableDBStudio := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--output", "-o":
@@ -30,8 +29,6 @@ func buildCommand(args []string) error {
 				return fmt.Errorf("missing value for --app-root")
 			}
 			appRootFlag = args[i]
-		case "--db-studio":
-			enableDBStudio = true
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -45,7 +42,6 @@ func buildCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg.EnableDBStudio = enableDBStudio
 	if outputPath == "" {
 		outputPath = filepath.Join(appRoot, defaultBuildBinaryName(cfg.Name))
 	} else if !filepath.IsAbs(outputPath) {

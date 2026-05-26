@@ -29,7 +29,7 @@ When this plan is complete, a fixture app under `testdata/apps/data-platform` ca
 ## Progress
 
 - [x] (2026-05-08 19:37Z) Created this ExecPlan and assigned historical ID 0005.
-- [x] (2026-05-08 19:37Z) Read `ARCHITECTURE.md`, `docs/local-contract.md`, `PLANS.md`, roadmap context from `PLAN.md`, `go.mod`, and representative runtime, pgxpool, pubsub, cron, inspect, devdash, dbstudio, localproxy, codegen, build, and testdata files.
+- [x] (2026-05-08 19:37Z) Read `ARCHITECTURE.md`, `docs/local-contract.md`, `PLANS.md`, roadmap context from `PLAN.md`, `go.mod`, and representative runtime, pgxpool, pubsub, cron, inspect, devdash, , localproxy, codegen, build, and testdata files.
 - [x] (2026-05-08 20:08Z) Defined `github.com/pbrazdil/onlava/data` as the small app-facing facade and `internal/objectstore` as the implementation boundary.
 - [x] (2026-05-08 20:08Z) Implemented metadata bootstrap, object table creation, field column creation, migration rows, advisory locks, and physical schema verification.
 - [x] (2026-05-08 20:08Z) Implemented metadata-resolved SQL query compilation with parameterized values, quoted metadata identifiers, filter validation, sort, selected fields, and permission row-filter merge.
@@ -58,7 +58,7 @@ When this plan is complete, a fixture app under `testdata/apps/data-platform` ca
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Use real PostgreSQL columns for scalar and composite fields instead of JSONB as the universal custom-field store.
-  Rationale: Real columns preserve database-native filtering, sorting, indexes, constraints, DB Studio visibility, and predictable query plans. JSONB remains appropriate for specific field types such as `json`, `raw_json`, and first-pass `files`.
+  Rationale: Real columns preserve database-native filtering, sorting, indexes, constraints visibility, and predictable query plans. JSONB remains appropriate for specific field types such as `json`, `raw_json`, and first-pass `files`.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Store user-managed select values as `text` and multi-select values as `text[]`, not PostgreSQL enum types.
@@ -78,7 +78,7 @@ When this plan is complete, a fixture app under `testdata/apps/data-platform` ca
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Do not implement trigger-backed outbox in the first pass, but shape the outbox so triggers can write the same rows later.
-  Rationale: Explicit mutation-layer outbox rows keep the vertical slice small. A later trigger-backed layer can close the DB Studio/direct SQL gap without changing live event payloads.
+  Rationale: Explicit mutation-layer outbox rows keep the vertical slice small. A later trigger-backed layer can close the direct SQL gap without changing live event payloads.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Use `onlava_data` for metadata/outbox tables and `onlava_data_records` for physical dynamic object tables in the first implementation.
@@ -124,7 +124,7 @@ Relevant existing packages:
 - `cron`: public cron registration around runtime jobs. No direct dependency is expected for this feature.
 - `internal/inspect`: stable JSON surfaces. Add inspect output only if a stable first-slice JSON contract is truly needed.
 - `internal/devdash`: dashboard store and local observability types. Do not make the dashboard store the source of truth for data metadata or events.
-- `internal/dbstudio`: discovers `DATABASE_URL`/`DatabaseURL` and starts DB Studio. Direct DB Studio edits to dynamic record tables will not emit live events until trigger-backed outbox exists.
+- `internal/`: discovers `DATABASE_URL`/`DatabaseURL` and starts . Direct  edits to dynamic record tables will not emit live events until trigger-backed outbox exists.
 - `internal/localproxy`: local HTTPS/frontend proxy. No direct change is expected.
 - `internal/codegen` and `internal/build`: generated app binary path. The fixture should use ordinary service code and public data APIs so codegen only sees normal endpoints.
 - `testdata/apps`: fixture apps use `.onlava.json`, `go.mod`, `replace github.com/pbrazdil/onlava => ../../..`, and ordinary onlava service packages.
@@ -357,10 +357,10 @@ Outbox event payload shape:
 }
 ```
 
-Direct SQL and DB Studio edits in the first version:
+Direct SQL edits in the first version:
 
 - Metadata changes should go through the data package so migrations, verification, schema versions, and outbox events are recorded.
-- Record changes made directly through SQL or DB Studio will update physical tables but will not guarantee outbox rows or live updates until trigger-backed outbox is implemented.
+- Record changes made directly through SQL or  will update physical tables but will not guarantee outbox rows or live updates until trigger-backed outbox is implemented.
 - Trigger-backed outbox should later attach to physical record tables and write the same `onlava_data.outbox_events` shape. It should be designed after explicit mutation-layer behavior is stable.
 
 Open implementation questions to resolve in the plan before coding each area:

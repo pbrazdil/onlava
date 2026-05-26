@@ -81,7 +81,7 @@ func parseRunArgs(args []string) (runOptions, error) {
 			default:
 				return runOptions{}, fmt.Errorf("invalid --log-format %q", args[i])
 			}
-		case "--verbose", "-v", "--json", "--dashboard", "--watch", "--db-studio", "--proxy":
+		case "--verbose", "-v", "--json", "--dashboard", "--watch", "--proxy":
 			return runOptions{}, fmt.Errorf("%s is a development flag; use `onlava dev`", args[i])
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag %q", args[i])
@@ -107,8 +107,6 @@ func runHeadless(addr string, opts runOptions) error {
 	if err != nil {
 		return err
 	}
-	cfg.EnableDBStudio = false
-
 	result, err := build.App(root, cfg)
 	if err != nil {
 		return err

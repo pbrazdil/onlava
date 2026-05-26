@@ -43,7 +43,7 @@ Success means the migration layer fails clearly and recovers predictably, live u
 
 - `0007` local PostgreSQL validation exposed that subscribing from seq 0 replays metadata outbox rows before `ready`. The vertical-slice test now subscribes from the record query watermark when it wants live-only behavior.
 - Root-level `go test ./testdata/...` does not cross into fixture app modules. Use `onlava check --app-root testdata/apps/data-platform --json` for fixture validation from the repository root.
-- Repeated create semantics need to verify physical schema before returning existing metadata. Otherwise idempotent retries can hide DB Studio/manual schema drift.
+- Repeated create semantics need to verify physical schema before returning existing metadata. Otherwise idempotent retries can hide manual schema drift.
 - SSE heartbeat is now covered by lowering the package heartbeat interval inside the integration test; production still uses the 25 second default.
 
 ## Decision Log
@@ -57,7 +57,7 @@ Success means the migration layer fails clearly and recovers predictably, live u
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Physical names must include a stable suffix or hash, not raw user names alone.
-  Rationale: Raw names collide, exceed PostgreSQL identifier length limits, and break on renames. Names should be readable enough for DB Studio but guaranteed stable and collision-resistant.
+  Rationale: Raw names collide, exceed PostgreSQL identifier length limits, and break on renames. Names should be readable enough for  but guaranteed stable and collision-resistant.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Public `data` API ergonomics belong in this hardening window.
@@ -65,7 +65,7 @@ Success means the migration layer fails clearly and recovers predictably, live u
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Use readable physical identifiers with stable short-ID suffixes.
-  Rationale: Object tables now use `<object_name>__<object_short_id>` and field columns use `<field_name[_part]>__<field_short_id>`. This keeps DB Studio readable while preventing collisions, preserving suffixes under PostgreSQL's 63-byte identifier limit, and avoiding raw user names as the only physical identity.
+  Rationale: Object tables now use `<object_name>__<object_short_id>` and field columns use `<field_name[_part]>__<field_short_id>`. This keeps  readable while preventing collisions, preserving suffixes under PostgreSQL's 63-byte identifier limit, and avoiding raw user names as the only physical identity.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Treat repeated object/field creation as idempotent only when the requested shape matches existing metadata and physical schema verification passes.
@@ -96,11 +96,11 @@ Shipped:
 Deferred:
 
 - Destructive field deletion remains unsupported instead of being implemented as DDL in this plan.
-- Trigger-backed outbox remains in `0009-trigger-backed-outbox.md`; direct SQL/DB Studio edits still need that plan to emit outbox rows.
+- Trigger-backed outbox remains in `0009-trigger-backed-outbox.md`; direct SQL edits still need that plan to emit outbox rows.
 
 Retrospective:
 
-The main lesson was that "idempotent" migration APIs must still verify PostgreSQL state. Returning existing metadata without checking the physical table or columns would have hidden drift introduced by manual DB Studio edits. The public `data` package now has a clearer facade, but it should stay intentionally small until trigger-backed outbox and index metadata settle.
+The main lesson was that "idempotent" migration APIs must still verify PostgreSQL state. Returning existing metadata without checking the physical table or columns would have hidden drift introduced by manual  edits. The public `data` package now has a clearer facade, but it should stay intentionally small until trigger-backed outbox and index metadata settle.
 
 ## Context and Orientation
 
@@ -137,7 +137,7 @@ Physical name goals:
 - no collisions
 - stable after label rename
 - max PostgreSQL identifier length compliance
-- readable enough in DB Studio
+- readable enough in 
 - deterministic reconstruction from metadata
 - safe with reserved words, quotes, semicolons, comments, unicode, and long names
 ```

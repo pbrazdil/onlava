@@ -73,18 +73,6 @@ jobs:
         working-directory: ui
         run: bun run build
 
-      - name: Install DB Studio dependencies
-        working-directory: dbstudio
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck DB Studio
-        working-directory: dbstudio
-        run: bun run typecheck
-
-      - name: Build DB Studio
-        working-directory: dbstudio
-        run: bun run build
-
   self-harness:
     name: Self Harness
     runs-on: ubuntu-latest
@@ -105,10 +93,6 @@ jobs:
 
       - name: Install dashboard dependencies
         working-directory: ui
-        run: bun install --frozen-lockfile
-
-      - name: Install DB Studio dependencies
-        working-directory: dbstudio
         run: bun install --frozen-lockfile
 
       - name: Install Onlava

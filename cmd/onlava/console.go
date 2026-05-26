@@ -29,7 +29,6 @@ type runURLs struct {
 	Dashboard string
 	MCP       string
 	Frontends map[string]string
-	DBStudio  string
 	Temporal  string
 	Victoria  map[string]string
 	Grafana   *devdash.GrafanaState
@@ -165,9 +164,6 @@ func (c *runConsole) Banner(urls runURLs) {
 	for _, name := range sortedKeys(urls.Frontends) {
 		c.printf(c.out, "  %-*s  %s\n", width, frontendLabel(name), urls.Frontends[name])
 	}
-	if urls.DBStudio != "" {
-		c.printf(c.out, "  %-*s  %s\n", width, "Drizzle Studio URL:", urls.DBStudio)
-	}
 	if urls.Grafana != nil && urls.Grafana.URL != "" {
 		c.printf(c.out, "  %-*s  %s\n", width, "Grafana URL:", urls.Grafana.URL)
 	}
@@ -197,7 +193,6 @@ func runURLData(urls runURLs, verbose bool) map[string]any {
 		"dashboard_url": urls.Dashboard,
 		"mcp_url":       urls.MCP,
 		"frontend_urls": urls.Frontends,
-		"db_studio_url": urls.DBStudio,
 	}
 	if urls.Temporal != "" {
 		data["temporal_url"] = urls.Temporal

@@ -1,6 +1,6 @@
 ---
 name: onlava
-description: Use when building, running, debugging, inspecting, or generating clients for onlava applications. onlava is a Go-native service runtime and CLI using .onlava.json, //onlava directives, typed endpoints, local dev supervision, logs, traces, metrics, DB Studio, psql, and TypeScript client generation.
+description: Use when building, running, debugging, inspecting, or generating clients for onlava applications. onlava is a Go-native service runtime and CLI using .onlava.json, //onlava directives, typed endpoints, local dev supervision, logs, traces, metrics, psql, and TypeScript client generation.
 ---
 
 # onlava
@@ -29,12 +29,12 @@ Read next when you need detail:
 - Go source is the app model. onlava discovers services, APIs, auth handlers, middleware, Temporal declarations, and cron jobs from code.
 - `onlava run` builds once and starts one headless local HTTP server in the API role.
 - `onlava worker` builds once and starts a beta worker-only runtime process for cron and native Temporal workers. `onlava worker bindings` validates external worker manifests and writes starter activity binding files.
-- `onlava dev` starts the full local development platform: app process, file watching, rebuild/restart supervision, dashboard, API explorer, MCP endpoint, DB Studio, logs, traces, metrics, Grafana, and optional HTTPS local domains.
+- `onlava dev` starts the full local development platform: app process, file watching, rebuild/restart supervision, dashboard, API explorer, MCP endpoint, logs, traces, metrics, Grafana, and optional HTTPS local domains.
 - Public and auth endpoints are reachable over external HTTP. Private endpoints are internal-only and called through generated helpers.
 - Typed endpoints decode path params, query params, headers, cookies, and JSON bodies into Go values, then encode typed responses.
 - Generated internal calls preserve routing, private access, and auth context instead of bypassing the runtime.
 - The beta `github.com/pbrazdil/onlava/data` package exposes metadata-defined dynamic objects backed by real PostgreSQL tables, columns, indexes, outbox rows, and live events.
-- The local dashboard includes API Explorer, traces, metrics, DB Studio, cron surfaces, Data Explorer, and browser-harness validation hooks.
+- The local dashboard includes API Explorer, traces, metrics, cron surfaces, Data Explorer, and browser-harness validation hooks.
 
 ## Minimal App
 
@@ -271,7 +271,7 @@ onlava dev --port 4000 --listen 127.0.0.1
 
 Use `onlava dev --json` for machine-readable JSONL events. Child stdout/stderr are emitted as structured process output events.
 
-`onlava dev` prints the API URL, dashboard URL, MCP SSE URL, and DB Studio URL when enabled. Use `-v` or `--verbose` when you also need Victoria sidecar URLs and sidecar lifecycle output.
+`onlava dev` prints the API URL, dashboard URL, and MCP SSE URL. Use `-v` or `--verbose` when you also need Victoria sidecar URLs and sidecar lifecycle output.
 
 Use `onlava dev --proxy` for local HTTPS/frontend domains from `.onlava.json` proxy config:
 
@@ -372,11 +372,9 @@ onlava psql [psql args...]
 
 Use `onlava inspect app --json` and `onlava inspect paths --json` to understand app configuration and local generated paths before debugging DB access.
 
-DB Studio is available through `onlava dev` when configured.
-
 ## Dashboard And Data Explorer
 
-The local dashboard is for development and inspection, not production hosting. Use it to inspect routes, endpoint calls, traces, logs, metrics, DB Studio, cron state, and the beta Data Explorer.
+The local dashboard is for development and inspection, not production hosting. Use it to inspect routes, endpoint calls, traces, logs, metrics, cron state, and the beta Data Explorer.
 
 Data Explorer is a developer-facing view over `onlava inspect data` semantics: tenants, objects, fields, records, migrations, outbox, triggers, indexes, relations, saved views, and search state. Treat it as a debugging surface; app code should still use `github.com/pbrazdil/onlava/data`.
 
@@ -441,7 +439,7 @@ onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--
 onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker [--task-queue <name>] [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava version [--json]
-onlava build [--app-root <path>] [-o <path>] [--db-studio]
+onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava harness [--app-root <path>] [--json] [--write]
 onlava harness ui [--app-root <path>] [--repo-root <path>] [--json] [--headed]

@@ -512,4 +512,4 @@ If cutover fails after traffic moves:
 - Password hashes are copied as opaque strings. onlava verifies Argon2id hashes and can upgrade hash parameters on successful login.
 - Refresh-session preservation only works when the new app can parse the same refresh cookie shape and uses the same refresh cookie name.
 - Access JWTs only survive cutover if the new app uses the same JWT secret and compatible claims. If not, users will need refresh or login.
-- Directly editing this data in DB Studio is production-sensitive. Use explicit SQL, backups, and verification queries.
+- Directly editing this data with SQL is production-sensitive. Use explicit SQL, backups, and verification queries.

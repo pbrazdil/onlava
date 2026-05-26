@@ -60,8 +60,8 @@ commands such as `dev`, `run`, `build`, `check`, `inspect`, `harness`, `logs`,
 `admin`, `test`, and `gen`.
 
 `onlava run` is the headless app execution path. `onlava dev` wraps the same app
-build/run loop with the local development platform: dashboard, proxy, DB Studio,
-live rebuild behavior, logs, traces, metrics, and process supervision.
+build/run loop with the local development platform: dashboard, proxy, live
+rebuild behavior, logs, traces, metrics, and process supervision.
 
 Architecture invariant: non-CLI packages must not import `cmd/onlava`. Shared
 logic belongs in `internal/` or a public package, depending on whether user apps
@@ -194,16 +194,15 @@ changes, update the corresponding schema and tests in the same change.
 Architecture invariant: wire compatibility is data-driven. Endpoint IDs, schema
 hashes, fallback behavior, and unsupported reasons should be deterministic.
 
-### `internal/devdash`, `internal/localproxy`, and `internal/dbstudio`
+### `internal/devdash` and `internal/localproxy`
 
 These packages support the local development platform around a running app.
 
 `internal/devdash` stores dashboard-visible state and observability data.
-`internal/localproxy` owns the local proxy layer. `internal/dbstudio` manages DB
-Studio process lifecycle. Victoria sidecars and Grafana are supervised from
-`cmd/onlava` as local development companions, with generated Grafana
-configuration and provisioning rooted under `.onlava/grafana/`. The dashboard
-server and UI embedding are orchestrated from `cmd/onlava`.
+`internal/localproxy` owns the local proxy layer. Victoria sidecars and Grafana
+are supervised from `cmd/onlava` as local development companions, with generated
+Grafana configuration and provisioning rooted under `.onlava/grafana/`. The
+dashboard server and UI embedding are orchestrated from `cmd/onlava`.
 
 Architecture invariant: development services should be optional around the app
 runtime. They can improve local ergonomics, but `onlava run` must remain a
@@ -226,11 +225,10 @@ directly to parameterized SQL. Do not introduce a dynamic ORM, generated structs
 per object, dynamic GraphQL schemas, or an external broker as the default local
 live-update backbone.
 
-### `ui` and `dbstudio`
+### `ui`
 
-`ui` is the onlava dashboard frontend. `dbstudio` is the DB Studio frontend
-wrapper. Both are TypeScript/React applications that are built and embedded for
-local development use.
+`ui` is the onlava dashboard frontend. It is a TypeScript/React application that
+is built and embedded for local development use.
 
 Architecture invariant: frontend state should come from CLI/dashboard APIs and
 stable inspect/observability data, not from duplicated guesses about parser or

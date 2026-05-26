@@ -47,15 +47,3 @@ updates:
       ui-dependencies:
         patterns:
           - "*"
-
-  - package-ecosystem: npm
-    directory: /dbstudio
-    schedule:
-      interval: weekly
-      day: monday
-      time: "09:00"
-    open-pull-requests-limit: 5
-    groups:
-      dbstudio-dependencies:
-        patterns:
-          - "*"

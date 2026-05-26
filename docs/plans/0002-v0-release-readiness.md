@@ -8,7 +8,7 @@ This plan follows the standard in [../../PLANS.md](../../PLANS.md). It is based 
 
 onlava is close to being a useful local-first runtime, but the current repository mixes stable app runtime behavior with development-platform behavior. The first production-ready release should be intentionally smaller, more boring, and easier to validate.
 
-The goal of this plan is to freeze a reliable v0 contract. Stable v0 should include the app config file, runtime commands, build artifacts, typed/raw HTTP endpoints, auth handler, service initialization and shutdown, private/internal calls, secrets from environment and `.env`, basic logs/traces, and machine-readable CLI outputs. Development conveniences such as dashboard, DB Studio, local HTTPS proxy, trust-store installation, MCP, Pub/Sub UI, and cron UI should be labeled dev-only or beta until their contracts are hardened.
+The goal of this plan is to freeze a reliable v0 contract. Stable v0 should include the app config file, runtime commands, build artifacts, typed/raw HTTP endpoints, auth handler, service initialization and shutdown, private/internal calls, secrets from environment and `.env`, basic logs/traces, and machine-readable CLI outputs. Development conveniences such as dashboard, local HTTPS proxy, trust-store installation, MCP, Pub/Sub UI, and cron UI should be labeled dev-only or beta until their contracts are hardened.
 
 The outcome should be observable from a clean checkout. A contributor should be able to run the documented release validation sequence and prove that the CLI builds, tests pass, generated artifacts are deterministic, stable APIs match docs, dev/admin endpoints are not exposed on the public app listener, secrets are not copied into build caches, and release archives do not contain local machine artifacts.
 
@@ -17,11 +17,11 @@ The outcome should be observable from a clean checkout. A contributor should be 
 - [x] (2026-04-27 16:34Z) Created this ExecPlan from `docs/PRD-3-release.md`.
 - [x] (2026-04-27 17:36Z) Defined the stable v0 surface and marked everything else dev-only, beta, or compatibility-mode in `docs/local-contract.md`.
 - [x] (2026-04-27 17:36Z) Confirmed the `onlava dev` / headless `onlava run` split is implemented and kept [0001-devrun-command-split.md](0001-devrun-command-split.md) as the detailed dependency.
-- [x] (2026-04-27 17:36Z) Confirmed current checkout has `ui/dist` and `dbstudio/dist`, added `onlava version --json`, and added `onlava.version.v1` schema.
+- [x] (2026-04-27 17:36Z) Confirmed current checkout has `ui/dist`, added `onlava version --json`, and added `onlava.version.v1` schema.
 - [x] (2026-04-27 17:36Z) Gated dev/admin/pprof endpoints behind explicit dev endpoint mode instead of registering them on the public app router by default.
 - [x] (2026-04-27 17:36Z) Made local HTTPS proxy and trust-store installation opt-in through `onlava dev --proxy` and `onlava dev --proxy --trust`.
 - [x] (2026-04-27 17:36Z) Documented onlava-native behavior as stable.
-- [x] (2026-04-27 15:48Z) Centralized `.env` parsing in `internal/envfile`, wired runtime secrets, dev supervisor child env, dashboard DB discovery, and DB Studio discovery through it, and documented precedence.
+- [x] (2026-04-27 15:48Z) Centralized `.env` parsing in `internal/envfile`, wired runtime secrets, dev supervisor child env, dashboard DB discovery, discovery through it, and documented precedence.
 - [x] (2026-04-27 17:36Z) Restricted build workspace copying so `.env`, `.env.*`, `.git`, `.onlava`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage` are not persisted in build caches.
 - [x] (2026-04-27 17:36Z) Added response JSON semantics tests for `json:"-"`, `omitempty`, embedded structs, headers, `onlava:"httpstatus"`, and custom marshalers.
 - [x] (2026-04-27 17:36Z) Aligned CLI usage, docs, schemas, and implementation for the release-hardening slice.
@@ -34,7 +34,7 @@ The outcome should be observable from a clean checkout. A contributor should be 
 
 Known audit findings from the PRD:
 
-- `onlava run` previously started development supervisor behavior, including dashboard, DB Studio, local HTTPS proxy, MCP, and file watching.
+- `onlava run` previously started development supervisor behavior, including dashboard, local HTTPS proxy, MCP, and file watching.
 - Generated app binaries could carry dev-platform behavior through `github.com/pbrazdil/onlava/runtimeapp`.
 - `runtime/server.go` mounted dev/admin/platform/pprof endpoints on the app router.
 - Local HTTPS proxy and trust-store behavior were enabled by default in development paths.
@@ -56,7 +56,7 @@ Implementation discoveries:
 ## Decision Log
 
 - Decision: Freeze a narrow stable v0 contract instead of freezing the whole current feature set.
-  Rationale: The runtime, dev supervisor, dashboard, proxy, DB Studio, Pub/Sub, cron, MCP, and migration compatibility are interwoven. A smaller stable surface reduces production risk.
+  Rationale: The runtime, dev supervisor, dashboard, proxy, Pub/Sub, cron, MCP, and migration compatibility are interwoven. A smaller stable surface reduces production risk.
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Treat the command split in [0001-devrun-command-split.md](0001-devrun-command-split.md) as a release-readiness dependency, not a duplicate workstream.
@@ -100,7 +100,7 @@ Implementation discoveries:
 Completed validation on 2026-04-27:
 
 - `python3 -m json.tool docs/knowledge.json >/dev/null` passed.
-- `test -f ui/dist/index.html && test -f dbstudio/dist/index.html` passed.
+- `test -f ui/dist/index.html` passed.
 - `go test ./...` passed.
 - `go test -race ./...` passed.
 - `golangci-lint run ./...` passed.
@@ -113,11 +113,11 @@ The v0 release-hardening slice now has explicit docs for stable/dev/beta/compati
 
 ## Context and Orientation
 
-The release-readiness source audit is stored in `docs/PRD-3-release.md`. It recommends not freezing the current feature set as-is. It names the main risk as the mixing of app runtime, development supervisor, dashboard, local HTTPS proxy, DB Studio, Pub/Sub, cron, and MCP.
+The release-readiness source audit is stored in `docs/PRD-3-release.md`. It recommends not freezing the current feature set as-is. It names the main risk as the mixing of app runtime, development supervisor, dashboard, local HTTPS proxy, Pub/Sub, cron, and MCP.
 
 The CLI dispatcher lives in `cmd/onlava/main.go`. The stable commands to freeze for v0 are expected to be `onlava run`, `onlava build`, `onlava check --json`, `onlava inspect ... --json`, `onlava logs --jsonl`, `onlava test`, and `onlava gen client`. `onlava dev` is the development-platform command after the command split.
 
-The current development supervisor lives in `cmd/onlava/dev_supervisor.go`. It owns dashboard, DB Studio, local proxy, MCP/dashboard endpoints, app child process lifecycle, file watching integration, process output capture, and dashboard state.
+The current development supervisor lives in `cmd/onlava/dev_supervisor.go`. It owns dashboard, local proxy, MCP/dashboard endpoints, app child process lifecycle, file watching integration, process output capture, and dashboard state.
 
 The file watcher lives in `cmd/onlava/watch.go`. It has historically watched only selected files such as `.onlava.json`, `.go`, `.cpp`, and `.h`, which may miss build-affecting files like `go.mod`, `go.sum`, `.env`, and `.env.local`.
 
@@ -168,7 +168,7 @@ After reproducibility, audit runtime routes. Move dev/admin endpoints out of `ru
 
 Then make local HTTPS proxy and trust installation opt-in. `onlava dev` may support `--proxy` and a separate explicit trust flag. Do not surprise users by mutating system trust stores. `onlava run` should never install trust roots.
 
-Then centralize `.env` and secrets loading. Replace duplicate parsers and loaders in runtime, supervisor, DB Studio, and tests with one package-level implementation. Document precedence and mode-specific missing-secret behavior.
+Then centralize `.env` and secrets loading. Replace duplicate parsers and loaders in runtime, supervisor, and tests with one package-level implementation. Document precedence and mode-specific missing-secret behavior.
 
 Then lock down build workspace copying. Replace broad file copying with an allowlist plus explicit asset inclusion behavior. Add tests that prove `.env`, `.env.local`, `.git`, `.onlava`, `node_modules`, `.DS_Store`, and `__MACOSX` are excluded.
 
@@ -188,7 +188,7 @@ Check clean checkout build assumptions:
 
     go install ./cmd/onlava
     test -f ui/dist/index.html
-    test -f dbstudio/dist/index.html
+    test -f ui/dist/index.html
 
 Update the canonical contract:
 
@@ -218,7 +218,7 @@ Run the full validation gate:
 
     scripts/release-gate.sh
 
-The script also runs `go install ./cmd/onlava`, `onlava harness self --json --write`, dashboard UI and DB Studio builds, a clean source-copy install, fixture smoke, optional external app smoke, public-router safety checks, production secrets checks, and artifact hygiene checks. Set `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` to include a read-only external onlava app in the gate.
+The script also runs `go install ./cmd/onlava`, `onlava harness self --json --write`, dashboard UI builds, a clean source-copy install, fixture smoke, optional external app smoke, public-router safety checks, production secrets checks, and artifact hygiene checks. Set `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` to include a read-only external onlava app in the gate.
 
 Record exact command results in `Outcomes & Retrospective` before marking this plan complete.
 
@@ -235,7 +235,7 @@ Release readiness is accepted when all of these are true:
 - `onlava version --json` exists or the lack of version command is explicitly deferred before release.
 - Stable, beta, dev-only, and compatibility-mode features are labeled in docs.
 - `onlava run` is headless and production-like.
-- `onlava dev` owns dashboard, DB Studio, local HTTPS proxy, frontend proxy, MCP, file watching, and development-only UI.
+- `onlava dev` owns dashboard, local HTTPS proxy, frontend proxy, MCP, file watching, and development-only UI.
 - The public app listener does not expose pprof, platform stats, Pub/Sub clear, dashboard report endpoints, or arbitrary credentialed CORS by default.
 - Local HTTPS proxy and trust-store installation are opt-in.
 - `.env`, `.env.local`, `.git`, `.onlava` runtime state, `node_modules`, `.DS_Store`, and `__MACOSX` are not copied into build workspaces or release archives.
@@ -295,7 +295,7 @@ Stable v0 candidates:
 Dev-only or beta candidates:
 
     dashboard
-    DB Studio
+
     local HTTPS proxy
     trust-store installation
     MCP server
@@ -311,7 +311,7 @@ Expected CLI interfaces to freeze:
 
     onlava dev [development flags]
     onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-    onlava build [--app-root <path>] [-o <path>] [--db-studio]
+    onlava build [--app-root <path>] [-o <path>] []
     onlava check --json [--app-root <path>]
     onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics|docs --json
     onlava logs --jsonl [--app-root <path>]
@@ -339,4 +339,4 @@ Expected implementation areas:
     internal/build
     internal/codegen
     internal/localproxy
-    internal/dbstudio
+    internal/

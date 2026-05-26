@@ -1114,7 +1114,7 @@ func TestPostgresTriggerBackedOutboxCapturesDirectSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	if err := setOutboxTxContext(ctx, tx, Actor{ID: "dbstudio"}, false); err != nil {
+	if err := setOutboxTxContext(ctx, tx, Actor{ID: "direct-sql"}, false); err != nil {
 		t.Fatalf("setOutboxTxContext: %v", err)
 	}
 	if _, err := tx.Exec(ctx, `update `+qualifiedIdent(RecordsSchema, state.Object.TableName)+`
@@ -1135,7 +1135,7 @@ func TestPostgresTriggerBackedOutboxCapturesDirectSQL(t *testing.T) {
 	if updateEvent == nil {
 		t.Fatalf("update event for record %s not found in %#v", recordID, events)
 	}
-	if updateEvent.Action != "updated" || updateEvent.ActorID != "dbstudio" || updateEvent.Before["stage"] != "lead" || updateEvent.After["stage"] != "won" {
+	if updateEvent.Action != "updated" || updateEvent.ActorID != "direct-sql" || updateEvent.Before["stage"] != "lead" || updateEvent.After["stage"] != "won" {
 		t.Fatalf("update event = %#v", updateEvent)
 	}
 	if !stringInSlice(updateEvent.ChangedFields, "stage") {

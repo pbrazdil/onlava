@@ -307,36 +307,6 @@ type Service struct{}
 	}
 }
 
-func TestGenerateMainEnablesDBStudioWhenConfigured(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module example.com/dbstudioapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
-	writeFile(t, dir, ".onlava.json", `{"name":"dbstudioapp"}`)
-	writeFile(t, dir, "svc/api.go", `package svc
-
-import "context"
-
-//onlava:api private
-func Run(ctx context.Context) error { return nil }
-`)
-
-	app, err := parse.App(dir, "dbstudioapp")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	out, err := codegen.GenerateWithConfig(app, appcfg.Config{EnableDBStudio: true})
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-
-	got := string(out.Generated["onlava_internal_main/main.go"])
-	if !strings.Contains(got, `_ "github.com/pbrazdil/onlava/runtimeapp"`) {
-		t.Fatalf("expected generated main to import runtimeapp for db studio, got:\n%s", got)
-	}
-	if !strings.Contains(got, "EnableDBStudio: true") {
-		t.Fatalf("expected generated main to enable db studio, got:\n%s", got)
-	}
-}
-
 func TestGenerateMainOmitsRuntimeAppByDefault(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/headlessapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")

@@ -258,8 +258,6 @@ func checkArchitectureGeneratedHygiene(repoRoot string, summary *architectureSum
 	}
 	requiredAttributes := []string{
 		"cmd/onlava/devdash_static/** -diff",
-		"dbstudio/reference/original/** -diff",
-		"dbstudio/reference/pretty/** -diff",
 		"ui/public/assets/** -diff",
 		"ui/dist/** -diff",
 	}
@@ -322,7 +320,6 @@ func architectureSkipDir(rel string) bool {
 		"oracle",
 		"node_modules",
 		"ui/node_modules",
-		"dbstudio/node_modules",
 	} {
 		if rel == prefix || strings.HasPrefix(rel, prefix+"/") {
 			return true
@@ -335,11 +332,8 @@ func architectureGeneratedOrVendored(rel string) bool {
 	rel = filepath.ToSlash(rel)
 	for _, prefix := range []string{
 		"cmd/onlava/devdash_static/",
-		"dbstudio/reference/original/",
-		"dbstudio/reference/pretty/",
 		"ui/public/assets/",
 		"ui/dist/",
-		"dbstudio/dist/",
 	} {
 		if strings.HasPrefix(rel, prefix) {
 			return true

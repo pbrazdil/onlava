@@ -6,13 +6,13 @@ onlava is a Go-native local runtime and toolchain for building service applicati
 
 Applications mark their root with `.onlava.json`, declare endpoints with `//onlava:` directives, and run as one local HTTP server. onlava handles service discovery, route registration, auth context, request decoding, generated internal calls, local development supervision, inspection, logs, traces, and TypeScript client generation.
 
-onlava is used in production. The stable v0 surface is intentionally small and Go-first; the local dashboard, DB Studio, MCP endpoint, Victoria observability sidecars, Grafana workbench, local HTTPS proxy, Temporal worker tooling, and cron UI are development-focused companion tools.
+onlava is used in production. The stable v0 surface is intentionally small and Go-first; the local dashboard, MCP endpoint, Victoria observability sidecars, Grafana workbench, local HTTPS proxy, Temporal worker tooling, and cron UI are development-focused companion tools.
 
 ## Why onlava?
 
 - **Go source is the app model.** Services, APIs, auth handlers, middleware, Temporal workflows and activities, and cron jobs are discovered from Go code.
 - **One local app server.** `onlava run` builds once and starts a headless, production-like HTTP server.
-- **Full local dev loop.** `onlava dev` adds file watching, rebuild/restart supervision, dashboard, API explorer, DB Studio, logs, traces, metrics, Grafana, and optional HTTPS local domains.
+- **Full local dev loop.** `onlava dev` adds file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
 - **Typed HTTP by default.** onlava decodes path params, query params, headers, cookies, and JSON bodies into Go structs, then encodes typed responses.
 - **Generated internal calls.** Endpoint-to-endpoint calls are rewritten to generated helpers so private access, auth context, and routing semantics are preserved.
 - **Inspectable by tools and agents.** `onlava inspect`, `onlava check`, `onlava logs`, and `onlava harness` expose machine-readable JSON contracts.
@@ -35,7 +35,7 @@ Available now:
 - local Grafana provisioning over Victoria observability sidecars
 - Temporal workflow/activity and cron local runtime support
 - local HTTPS/frontend proxy with optional trust-store installation
-- dashboard, API explorer, MCP endpoint, and DB Studio integration
+- dashboard, API explorer, and MCP endpoint
 - TypeScript client generation
 - JSON/wire benchmark fixture
 
@@ -44,7 +44,7 @@ Stable v0 API details live in [docs/local-contract.md](docs/local-contract.md). 
 ## Requirements
 
 - Go 1.26+
-- Bun, only when working on the dashboard UI, DB Studio UI, or the benchmark fixture
+- Bun, only when working on the dashboard UI or the benchmark fixture
 - `psql`, only when using `onlava psql`
 
 ## Install From Source
@@ -178,7 +178,7 @@ Example proxy config:
 onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]
 onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava version [--json]
-onlava build [--app-root <path>] [-o <path>] [--db-studio]
+onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava harness [--app-root <path>] [--json] [--write]
 onlava harness self [--repo-root <path>] [--json] [--write]

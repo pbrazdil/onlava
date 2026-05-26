@@ -73,8 +73,7 @@ The self harness validates the local onlava development loop:
 - `onlava inspect docs --json`
 - architecture checks for dependency policy, package boundaries, generated-file hygiene, and oversized source files
 - dashboard UI typecheck and build
-- DB Studio UI typecheck and build
-- dashboard and DB Studio build freshness
+- dashboard build freshness
 - `go install ./cmd/onlava`
 - installed `onlava` binary freshness against repo sources
 

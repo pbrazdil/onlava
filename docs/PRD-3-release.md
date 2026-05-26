@@ -1,4 +1,4 @@
-My verdict: do not freeze the current feature set as-is. Freeze a smaller, boring, reliable v0. onlava is close to having a strong local-first developer runtime, but right now the app runtime, dev supervisor, dashboard, local HTTPS proxy, DB Studio, Temporal workers, cron, and MCP are interwoven. That is the main production-readiness risk.
+My verdict: do not freeze the current feature set as-is. Freeze a smaller, boring, reliable v0. onlava is close to having a strong local-first developer runtime, but right now the app runtime, dev supervisor, dashboard, local HTTPS proxy, Temporal workers, cron, and MCP are interwoven. That is the main production-readiness risk.
 
 I could not run the full Go test suite here because go.mod requires Go 1.26.0 and this container has Go 1.23.2; Go attempted to auto-download 1.26.0, but network/DNS is blocked. So the findings below are from static source audit, not a green test run.
 
@@ -28,7 +28,6 @@ Everything else should either be explicitly beta or moved behind onlava dev:
 
 Beta / dev-only:
   dashboard
-  DB Studio
   local HTTPS proxy
   trust-store installation
   Temporal worker tooling
@@ -41,12 +40,12 @@ The current docs/local-contract.md already tries to freeze a local contract, whi
 
 This is the single highest-leverage rework.
 
-Right now onlava run creates a dev supervisor, starts the dashboard, starts DB Studio, and starts the local proxy path:
+Right now onlava run creates a dev supervisor, starts the dashboard, and starts the local proxy path:
 
 * cmd/onlava/watch.go:36-79 calls newDevSupervisor, supervisor.Start, and then rebuilds/restarts the app.
-* cmd/onlava/dev_supervisor.go:193-210 starts dashboard, DB Studio, and local HTTPS proxy.
+* cmd/onlava/dev_supervisor.go:193-210 starts dashboard and local HTTPS proxy.
 * internal/codegen/generator.go:185-193 generates app mains that import _ "github.com/pbrazdil/onlava/runtimeapp".
-* runtimeapp/app.go:12-18 imports internal DB Studio and local proxy packages and registers standalone dev behavior.
+* runtimeapp/app.go:12-18 imports internal local proxy packages and registers standalone dev behavior.
 * runtime/app.go:55-72 can start standalone dev services when the generated app binary is run directly.
 
 That means an app binary can carry dev-platform behavior. For production-ready v0, generated app binaries should run the app and nothing else.
@@ -57,13 +56,11 @@ onlava run
   deterministic app build/watch/supervise
   no dashboard by default
   no proxy by default
-  no DB Studio by default
   safe JSON events for agents
 onlava dev
   dashboard
   API explorer
   traces UI
-  DB Studio
   local HTTPS proxy
   frontend proxy
   MCP
@@ -174,7 +171,6 @@ There are several inconsistencies:
 
 * runtime/secrets.go:176-180 only loads .env.
 * cmd/onlava/dev_supervisor.go:505-529 also loads .env for child process env.
-* internal/dbstudio/dbstudio.go has its own .env parser.
 * cmd/onlava/dev_supervisor.go validates .env.local, but the main runtime loaders do not appear to load .env.local.
 * internal/codegen/generator.go:88-99 emits early secret population.
 * internal/codegen/generator.go:561-565 also emits secret population inside registration init.
@@ -186,7 +182,7 @@ process env wins
 .env next
 missing required secret behavior depends on mode
 
-Then use one parser/loader everywhere: runtime, supervisor, DB Studio, tests.
+Then use one parser/loader everywhere: runtime, supervisor, and tests.
 
 Also, decide whether missing secrets should be warnings or hard errors. For local dev, warnings are fine. For production builds/runs, missing required secrets should probably fail early.
 
@@ -336,7 +332,6 @@ Generated artifacts:
 I would not freeze these yet:
 
 dashboard as stable API
-DB Studio
 local HTTPS proxy
 trust-store installation
 MCP

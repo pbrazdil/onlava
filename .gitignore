@@ -7,16 +7,11 @@
 # Local dependencies and caches
 node_modules/
 /ui/node_modules/
-/dbstudio/node_modules/
 /ui/dist/
 /oracle/
 /coverage/
 /.DS_Store
 .direnv/
-/dbstudio/dist/
-/dbstudio/reference/pretty/
-/dbstudio/reference/original/index.js
-/dbstudio/reference/original/index.js.map
 
 # Local build and test outputs
 /dist/

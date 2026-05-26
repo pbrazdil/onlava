@@ -19,7 +19,7 @@ For complex features, multi-hour tasks, migrations, or significant refactors, cr
 
 # Summary
 
-Build an onlava-native Go-only local runtime that makes `onlava run` start a single HTTP server for onlava services, with strict onlava naming and no compatibility layer for non-onlava syntax. Use `onlava dev` for the full local development platform with dashboard, proxy, DB Studio, and live reload.
+Build an onlava-native Go-only local runtime that makes `onlava run` start a single HTTP server for onlava services, with strict onlava naming and no compatibility layer for non-onlava syntax. Use `onlava dev` for the full local development platform with dashboard, proxy, and live reload.
 
 # Public Surface
 

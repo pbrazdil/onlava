@@ -220,8 +220,8 @@ Shipped:
 
 Shipped:
 
-- `onlava dev` owns the development supervisor, dashboard, MCP, local proxy, DB Studio, watch/rebuild loop, and development logs.
-- `onlava run` builds once and starts the app headlessly without dashboard, local proxy, DB Studio, MCP, or file watching.
+- `onlava dev` owns the development supervisor, dashboard, MCP, local proxy, watch/rebuild loop, and development logs.
+- `onlava run` builds once and starts the app headlessly without dashboard, local proxy, MCP, or file watching.
 - Generated app binaries are headless by default unless development behavior is explicitly enabled.
 - Command parsing, tests, usage text, and local contract were updated for the split.
 
@@ -306,7 +306,7 @@ Follow-ups:
 
 - [0007 Data Platform Validation and Inspect](0007-data-platform-validation-and-inspect.md) for PostgreSQL CI and inspectability.
 - [0008 Data Platform Migration and Live Hardening](0008-data-platform-migration-and-live-hardening.md) for migration/live correctness.
-- [0009 Trigger-Backed Outbox](0009-trigger-backed-outbox.md) for direct SQL/DB Studio change capture after hardening.
+- [0009 Trigger-Backed Outbox](0009-trigger-backed-outbox.md) for direct SQL change capture after hardening.
 
 ## onlava Standard Auth
 
@@ -363,7 +363,7 @@ Shipped:
 
 Follow-ups:
 
-- [0009 Trigger-Backed Outbox](0009-trigger-backed-outbox.md) for direct SQL/DB Studio outbox events.
+- [0009 Trigger-Backed Outbox](0009-trigger-backed-outbox.md) for direct SQL outbox events.
 
 ## Trigger-Backed Outbox
 
@@ -375,7 +375,7 @@ Follow-ups:
 
 Shipped:
 
-- Optional per-object record-table triggers that capture direct SQL and DB Studio changes.
+- Optional per-object record-table triggers that capture direct SQL changes.
 - Shared `onlava_data.record_change_trigger()` function that writes logical events to `onlava_data.outbox_events`.
 - Transaction-local actor context and explicit-mutation skip flag to avoid duplicate events.
 - SSE polling/replay compatibility for trigger-created events.
@@ -417,7 +417,7 @@ Shipped:
 
 Follow-ups:
 
-- Direct SQL and DB Studio edits do not refresh search documents in this version. Add trigger-backed search refresh or explicit rebuild tooling before treating direct SQL search freshness as stable.
+- Direct SQL edits do not refresh search documents in this version. Add trigger-backed search refresh or explicit rebuild tooling before treating direct SQL search freshness as stable.
 
 ## Standard Auth x Data Tenant Permissions
 
@@ -491,7 +491,7 @@ Shipped:
 Shipped:
 
 - `docs/data-platform-runbook.md` for operational data-platform workflows.
-- Runbook coverage for object/field creation, options, composites, relations, indexes, saved views, CRUD, queries/cursors/search, SSE, trigger-backed outbox, import/export, standard-auth permissions, inspect output, migration recovery, drift debugging, DB Studio caveats, performance notes, and beta limitations.
+- Runbook coverage for object/field creation, options, composites, relations, indexes, saved views, CRUD, queries/cursors/search, SSE, trigger-backed outbox, import/export, standard-auth permissions, inspect output, migration recovery, drift debugging caveats, performance notes, and beta limitations.
 - Docs index and knowledge index entries for agent discovery.
 
 ## Documentation Drift Harness

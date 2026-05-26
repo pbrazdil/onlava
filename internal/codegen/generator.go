@@ -194,9 +194,6 @@ func generateMain(appModel *model.App, cfg appcfg.Config) ([]byte, error) {
 		buf.WriteString("\tonlavaauth \"github.com/pbrazdil/onlava/auth\"\n")
 	}
 	buf.WriteString("\tonlavaruntime \"github.com/pbrazdil/onlava/runtime\"\n")
-	if cfg.EnableDBStudio {
-		buf.WriteString("\t_ \"github.com/pbrazdil/onlava/runtimeapp\"\n")
-	}
 	for _, pkg := range appModel.Packages {
 		if hasResources(pkg) {
 			fmt.Fprintf(&buf, "\t_ %q\n", pkg.ImportPath)
@@ -299,9 +296,6 @@ func appConfigLiteral(appModel *model.App, cfg appcfg.Config) string {
 		fmt.Sprintf("Name: %q", appModel.Name),
 		fmt.Sprintf("Workspace: %q", workspace),
 		"ListenAddr: onlavaruntime.ListenAddrFromEnv()",
-	}
-	if cfg.EnableDBStudio {
-		fields = append(fields, "EnableDBStudio: true")
 	}
 	if cfg.Proxy.APIHost != "" {
 		fields = append(fields, fmt.Sprintf("ProxyAPIHost: %q", cfg.Proxy.APIHost))

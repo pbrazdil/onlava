@@ -86,7 +86,7 @@ func parseWorkerArgs(args []string) (workerOptions, error) {
 				return workerOptions{}, fmt.Errorf("--task-queue must not be empty")
 			}
 			opts.TaskQueues = append(opts.TaskQueues, queues...)
-		case "--port", "-p", "--listen", "--verbose", "-v", "--json", "--dashboard", "--watch", "--db-studio", "--proxy":
+		case "--port", "-p", "--listen", "--verbose", "-v", "--json", "--dashboard", "--watch", "--proxy":
 			return workerOptions{}, fmt.Errorf("%s is not supported by `onlava worker`", args[i])
 		default:
 			return workerOptions{}, fmt.Errorf("unknown flag %q", args[i])
@@ -135,8 +135,6 @@ func runWorker(opts workerOptions) error {
 	if err != nil {
 		return err
 	}
-	cfg.EnableDBStudio = false
-
 	result, err := build.App(root, cfg)
 	if err != nil {
 		return err

@@ -77,7 +77,7 @@ func usageError() error {
     onlava temporal deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
     onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
     onlava version [--json]
-    onlava build [--app-root <path>] [-o <path>] [--db-studio]
+    onlava build [--app-root <path>] [-o <path>]
     onlava check [--app-root <path>] [--json]
     onlava harness [--app-root <path>] [--json] [--write]
     onlava harness self [--repo-root <path>] [--json] [--write]

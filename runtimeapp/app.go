@@ -3,7 +3,6 @@ package runtimeapp
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pbrazdil/onlava/internal/dbstudio"
 	"github.com/pbrazdil/onlava/internal/localproxy"
 	"github.com/pbrazdil/onlava/runtime"
 )
@@ -24,7 +22,6 @@ func init() {
 type standaloneSession struct {
 	mu      sync.Mutex
 	proxy   *localproxy.Proxy
-	studio  *dbstudio.Instance
 	stopped bool
 }
 
@@ -39,11 +36,6 @@ func (s *standaloneSession) Close() error {
 	}
 	s.stopped = true
 	var errs []error
-	if s.studio != nil {
-		if err := s.studio.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
 	if s.proxy != nil {
 		if err := s.proxy.Close(); err != nil {
 			errs = append(errs, err)
@@ -52,17 +44,8 @@ func (s *standaloneSession) Close() error {
 	return errors.Join(errs...)
 }
 
-func (s *standaloneSession) setStudio(inst *dbstudio.Instance) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.stopped {
-		_ = inst.Close()
-		return
-	}
-	s.studio = inst
-}
-
 func startStandaloneDev(ctx context.Context, cfg runtime.AppConfig) (runtime.StandaloneDevSession, runtime.StandaloneDevInfo, error) {
+	_ = ctx
 	session := &standaloneSession{}
 	info := runtime.StandaloneDevInfo{}
 
@@ -76,34 +59,6 @@ func startStandaloneDev(ctx context.Context, cfg runtime.AppConfig) (runtime.Sta
 			info.ConsoleURL = routes.ConsoleURL
 			info.MCPBaseURL = routes.MCPBaseURL
 			info.FrontendURLs = standaloneFrontendURLs(routes)
-		}
-	}
-
-	if cfg.EnableDBStudio {
-		root := appRootFromEnvOrCWD()
-		studioCfg, ok, err := dbstudio.Discover(root)
-		if err != nil {
-			slog.Warn("db studio unavailable", "err", err)
-		} else if ok {
-			info.DBStudioURL = dbstudio.DefaultURL(dbstudio.DefaultPort)
-			go func() {
-				inst, startErr := dbstudio.Start(ctx, dbstudio.Options{
-					AppRoot: root,
-					AppID:   cfg.Name,
-					Config:  studioCfg,
-					Port:    dbstudio.DefaultPort,
-					Stdout:  osStdout(),
-					Stderr:  osStderr(),
-				})
-				if startErr != nil {
-					slog.Warn("db studio unavailable", "err", startErr)
-					return
-				}
-				if inst == nil {
-					return
-				}
-				session.setStudio(inst)
-			}()
 		}
 	}
 
@@ -214,7 +169,3 @@ func appRootFromEnvOrCWD() string {
 	}
 	return mustGetwd()
 }
-
-func osStdout() io.Writer { return os.Stdout }
-
-func osStderr() io.Writer { return os.Stderr }

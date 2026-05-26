@@ -24,7 +24,6 @@ import (
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/build"
 	"github.com/pbrazdil/onlava/internal/codegen"
-	"github.com/pbrazdil/onlava/internal/dbstudio"
 	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/devmeta"
 	"github.com/pbrazdil/onlava/internal/envfile"
@@ -50,9 +49,6 @@ type devSupervisor struct {
 
 	store       *devdash.Store
 	dashboard   *dashboardServer
-	dbStudio    *dbstudio.Instance
-	dbStudioUI  *dbStudioUIServer
-	dbStudioURL string
 	proxy       *localproxy.Proxy
 	temporal    *temporalDevServer
 	victoria    *victoriaStack
@@ -124,7 +120,6 @@ func (s *devSupervisor) Close() error {
 		}
 
 		app := s.detachCurrentApp()
-		dbStudio := s.currentDBStudio()
 		victoria := s.victoria
 		grafana := s.grafana
 		temporal := s.temporal
@@ -132,11 +127,6 @@ func (s *devSupervisor) Close() error {
 		var errs []error
 		if app != nil {
 			if err := app.interrupt(); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		if dbStudio != nil {
-			if err := dbStudio.Interrupt(); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -166,9 +156,6 @@ func (s *devSupervisor) Close() error {
 		}
 		if s.proxy != nil {
 			closers = append(closers, closer{name: "proxy", fn: s.proxy.Close})
-		}
-		if s.dbStudioUI != nil {
-			closers = append(closers, closer{name: "dbstudio-ui", fn: s.dbStudioUI.Close})
 		}
 
 		if len(closers) > 0 {
@@ -201,11 +188,6 @@ func (s *devSupervisor) Close() error {
 
 		if app != nil {
 			if err := app.waitOrKill(stopTimeout); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		if dbStudio != nil {
-			if err := dbStudio.WaitOrKill(5 * time.Second); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -256,9 +238,6 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 	s.victoria = startVictoriaStack(s.ctx, s.root, s.console)
 	if err := s.startGrafana(s.ctx); err != nil {
 		return err
-	}
-	if err := s.startDBStudio(s.ctx); err != nil {
-		slog.Warn("db studio unavailable", "err", err)
 	}
 	if err := s.startLocalProxy(); err != nil {
 		slog.Warn("local HTTPS proxy unavailable", "err", err)
@@ -827,12 +806,6 @@ func (s *devSupervisor) detachCurrentApp() *runningApp {
 	return current
 }
 
-func (s *devSupervisor) currentDBStudio() *dbstudio.Instance {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.dbStudio
-}
-
 func (s *devSupervisor) announceRebuild(paths []string) {
 	if s.console != nil {
 		s.console.RebuildDetected(paths)
@@ -878,47 +851,6 @@ func (s *devSupervisor) frontendURLs() map[string]string {
 	if s.proxy != nil {
 		return frontendURLs(s.proxy.Routes())
 	}
-	return nil
-}
-
-func (s *devSupervisor) startDBStudio(ctx context.Context) error {
-	cfg, ok, err := dbstudio.Discover(s.root)
-	if err != nil || !ok {
-		return err
-	}
-	s.dbStudioURL = dbStudioDirectURL(dbstudio.DefaultPort)
-	if uiDir, uiErr := prepareDBStudioUIDir(ctx, s.console); uiErr != nil {
-		slog.Warn("db studio UI unavailable", "err", uiErr)
-	} else if dbStudioUIAssetsAvailable(uiDir) {
-		uiServer := newDBStudioUIServer(uiDir)
-		if startErr := uiServer.Start(ctx); startErr != nil {
-			slog.Warn("db studio UI unavailable", "err", startErr)
-		} else {
-			s.dbStudioUI = uiServer
-			s.dbStudioURL = dbStudioUIURL(dbstudio.DefaultPort)
-		}
-	}
-	go func() {
-		inst, startErr := dbstudio.Start(ctx, dbstudio.Options{
-			AppRoot: s.root,
-			AppID:   s.activeAppID(),
-			Config:  cfg,
-			Port:    dbstudio.DefaultPort,
-			Verbose: s.console != nil && s.console.verbose,
-			Stdout:  os.Stdout,
-			Stderr:  os.Stderr,
-		})
-		if startErr != nil {
-			slog.Warn("db studio unavailable", "err", startErr)
-			return
-		}
-		if inst == nil {
-			return
-		}
-		s.mu.Lock()
-		s.dbStudio = inst
-		s.mu.Unlock()
-	}()
 	return nil
 }
 
@@ -1073,7 +1005,6 @@ func (s *devSupervisor) runURLs() runURLs {
 		Dashboard: s.dashboardURL(),
 		MCP:       s.mcpURL(),
 		Frontends: s.frontendURLs(),
-		DBStudio:  s.dbStudioURL,
 		Temporal:  s.temporalURL(),
 		Victoria:  s.victoria.URLs(),
 		Grafana:   s.appStatus().Grafana,

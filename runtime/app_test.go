@@ -18,7 +18,6 @@ func TestPrintRuntimeBanner(t *testing.T) {
 		FrontendURLs: map[string]string{
 			"web": "https://web.test.localhost",
 		},
-		DBStudioURL: "http://127.0.0.1:4002",
 	})
 
 	text := out.String()
@@ -32,8 +31,6 @@ func TestPrintRuntimeBanner(t *testing.T) {
 		"https://mcp.test.localhost/sse?appID=testapp",
 		"Frontend web URL:",
 		"https://web.test.localhost",
-		"Drizzle Studio URL:",
-		"http://127.0.0.1:4002",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("banner %q missing %q", text, want)

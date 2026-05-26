@@ -7,7 +7,7 @@ Thanks for helping improve onlava. Keep changes small, explicit, and easy to val
 Requirements:
 
 - Go 1.26+
-- Bun, only for dashboard UI, DB Studio UI, or benchmark changes
+- Bun, only for dashboard UI or benchmark changes
 - `psql`, only for `onlava psql` work
 
 Install the CLI from the repo root:
@@ -45,14 +45,6 @@ bun run typecheck
 bun run build
 ```
 
-For DB Studio UI changes:
-
-```sh
-cd dbstudio
-bun run typecheck
-bun run build
-```
-
 ## Pull Requests
 
 Before opening a pull request:
@@ -61,7 +53,7 @@ Before opening a pull request:
 - update docs when user-facing behavior changes
 - add or update tests at stable boundaries
 - keep dependencies minimal and justify new dependencies clearly
-- avoid committing local artifacts such as `.DS_Store`, `.onlava/`, logs, databases, generated cache directories, `ui/dist/`, `dbstudio/dist/`, or `dbstudio/reference/original/index.js`
+- avoid committing local artifacts such as `.DS_Store`, `.onlava/`, logs, databases, generated cache directories, or `ui/dist/`
 
 Good test boundaries include parser validation, generated code, runtime HTTP behavior, CLI JSON contracts, and fixture apps.
 

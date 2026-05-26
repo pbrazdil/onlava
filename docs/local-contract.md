@@ -82,7 +82,6 @@ Dev-only or beta surface:
 - `onlava harness ui --json`
 - dashboard and API Explorer
 - dashboard Data Explorer
-- DB Studio
 - MCP server
 - local HTTPS/frontend proxy
 - trust-store installation
@@ -214,7 +213,7 @@ onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--
 onlava temporal deployment ramp --build-id <id> --percentage <0-100> [--deployment <name>] [--ignore-missing-task-queues] [--allow-no-pollers] [--app-root <path>] [--json]
 onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
 onlava version [--json]
-onlava build [--app-root <path>] [-o <path>] [--db-studio]
+onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava harness [--app-root <path>] [--json] [--write]
 onlava harness self [--repo-root <path>] [--json] [--write]
@@ -251,18 +250,17 @@ Inspect rules:
 
 Command split:
 
-- `onlava dev` starts the local development platform: app process, dashboard, MCP endpoint, DB Studio when configured, file watching, and rebuild/restart supervision.
+- `onlava dev` starts the local development platform: app process, dashboard, MCP endpoint, file watching, and rebuild/restart supervision.
 - `onlava dev` also starts local VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana by default when their binaries can be found or downloaded. SQLite dashboard storage remains active for parity and fallback. This is a dev-only beta implementation detail, not a stable production API.
 - `onlava dev --proxy` enables the local HTTPS/frontend proxy.
 - `onlava dev --proxy --trust` allows local trust-store installation. Without `--trust`, the proxy skips trust installation.
-- `onlava run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, DB Studio, frontend proxy, or file watcher.
+- `onlava run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, frontend proxy, or file watcher.
 - `onlava run` starts the generated binary with `ONLAVA_ROLE=api`, so it serves HTTP APIs without registering worker-only workflow or activity handlers.
 - Cron declarations use Temporal Schedules when Temporal is enabled. `onlava run` reconciles schedules from the API role, while `onlava worker` runs the cron workflow/activity worker on `onlava.<app>.cron.go`. Temporal cron executions derive their onlava request start/idempotency metadata from the workflow scheduled start time.
 - `onlava worker` builds once and starts the app runtime in worker-only mode with no public HTTP server. In this beta implementation it runs cron and native Temporal workers; generated binaries use `ONLAVA_ROLE=worker`.
 - `onlava worker bindings` validates `.onlava/workers/*.json` manifests and writes language-specific activity starter files. Python manifests produce `onlava_worker.py`; TypeScript/JavaScript manifests produce `onlava_worker.ts`; unknown languages receive a normalized JSON binding file.
 - `onlava temporal deployment set-current`, `ramp`, and `drain` are the explicit operator commands for Temporal Worker Deployment routing changes in non-local environments. They use the app's Temporal connection settings, including TLS/API-key env vars.
 - `onlava build` produces the deployable binary and remains the preferred deployment artifact path.
-- Generated app binaries are headless by default. `onlava build --db-studio` is an explicit opt-in for the DB Studio integration.
 - `onlava harness ui --json` is an optional browser-backed dashboard check. It starts a temporary `onlava dev` process unless `--dashboard-url` points at an existing dashboard, visits core dashboard routes, checks stable `data-onlava-ui` markers, captures screenshots, and writes console/network artifacts under `.onlava/harness/ui/`.
 
 Runtime safety:
@@ -319,7 +317,7 @@ Beta dynamic data platform:
 - Record queries use keyset cursor pagination when `query.cursor` is set. `RecordPage.NextCursor` is a base64url-encoded opaque cursor tied to the object, schema version, and effective sort shape; callers must reuse the same sort shape when fetching the next page. Cursor pagination currently rejects nullable and relation sort fields because null-aware keyset semantics are not stable yet.
 - Record mutations write outbox events in the same transaction.
 - Live updates use SSE over ordinary raw onlava endpoints plus the PostgreSQL outbox sequence for reconnect/replay.
-- Apps may call `store.EnableOutboxTriggers(ctx, actor, tenantKey, objectName)` to enable per-object trigger-backed outbox rows for direct SQL or DB Studio changes.
+- Apps may call `store.EnableOutboxTriggers(ctx, actor, tenantKey, objectName)` to enable per-object trigger-backed outbox rows for direct SQL changes.
 - Explicit onlava record mutations still write precise outbox events themselves; trigger-backed outbox skips those transactions to avoid duplicate events.
 - Trigger-backed direct SQL events use logical field names in `before`, `after`, `diff`, and `changed_fields` where field metadata exists. Actor IDs come from transaction-local `onlava.actor_id` when set, otherwise they are empty.
 - `onlava inspect data --json --database-url <postgres-url>` reports data tenants, objects, fields, relation metadata, indexes, saved views, migration state, and outbox state without dumping user records.
@@ -383,7 +381,7 @@ onlava harness self --json --write
 - output is a single JSON document
 - output conforms to `onlava.harness.self.v1`
 - it validates the onlava repo itself instead of a target app
-- it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, UI static architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, DB Studio UI typecheck/build, UI freshness checks, `go install ./cmd/onlava`, and installed binary freshness checks
+- it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, UI static architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, UI freshness checks, `go install ./cmd/onlava`, and installed binary freshness checks
 - architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source files over 2500 lines
 - architecture checks warn on non-generated source files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
 - UI static architecture checks fail on raw shadcn install scripts, non-`@onlava` registries, unsafe registry item source/target declarations, legacy `components/ui` imports, direct vendor shadcn imports from screens, and direct Radix/styling utility imports outside onlava primitives/layouts/vendor
@@ -399,7 +397,7 @@ scripts/release-gate.sh
 ```
 
 - this is the high-signal pre-release gate, not the normal inner-loop developer check
-- it runs full Go tests, race tests, `golangci-lint`, dashboard UI and DB Studio typecheck/build, installed self-harness, clean source-copy install, fixture smoke, optional external app smoke, public-router safety checks, production secrets checks, and artifact hygiene checks
+- it runs full Go tests, race tests, `golangci-lint`, dashboard UI typecheck/build, installed self-harness, clean source-copy install, fixture smoke, optional external app smoke, public-router safety checks, production secrets checks, and artifact hygiene checks
 - `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` may point at a read-only onlava app for the optional external app smoke
 - `ONLAVA_RELEASE_GATE_LOG_DIR` may override the log directory; otherwise logs are written under `.onlava/release-gate/`
 - artifact hygiene is intentionally strict and fails on local release artifacts such as `.DS_Store` and `__MACOSX`

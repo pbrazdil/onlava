@@ -10,13 +10,12 @@ import (
 )
 
 type Config struct {
-	Name           string              `json:"name"`
-	ID             string              `json:"id"`
-	Proxy          ProxyConfig         `json:"proxy"`
-	Auth           AuthConfig          `json:"auth"`
-	Observability  ObservabilityConfig `json:"observability"`
-	Temporal       TemporalConfig      `json:"temporal"`
-	EnableDBStudio bool                `json:"-"`
+	Name          string              `json:"name"`
+	ID            string              `json:"id"`
+	Proxy         ProxyConfig         `json:"proxy"`
+	Auth          AuthConfig          `json:"auth"`
+	Observability ObservabilityConfig `json:"observability"`
+	Temporal      TemporalConfig      `json:"temporal"`
 }
 
 func (c Config) AppID() string {

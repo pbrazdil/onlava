@@ -128,9 +128,6 @@ ui_builds() {
   need bun
   run bun run typecheck
   run bun run build
-  cd "$ROOT/dbstudio"
-  run bun run typecheck
-  run bun run build
 }
 
 self_harness() {
@@ -253,7 +250,7 @@ artifact_hygiene() {
   cd "$ROOT"
   local bad
   bad="$(find . \
-    \( -path './.git' -o -path './.onlava' -o -path './.codex-tmp' -o -path './ui/node_modules' -o -path './dbstudio/node_modules' \) -prune \
+    \( -path './.git' -o -path './.onlava' -o -path './.codex-tmp' -o -path './ui/node_modules' \) -prune \
     -o \( -name '.DS_Store' -o -name '__MACOSX' \) -print)"
   if [[ -n "$bad" ]]; then
     printf '%s\n' "$bad"
@@ -289,7 +286,7 @@ main() {
   step "full go tests" full_go_tests
   step "race tests" race_tests
   step "go lint" lint_go
-  step "ui and dbstudio builds" ui_builds
+  step "ui build" ui_builds
   step "install onlava" install_onlava
   step "self harness" self_harness
   step "clean checkout install" clean_checkout_install

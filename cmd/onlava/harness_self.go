@@ -71,9 +71,6 @@ func runOnlavaHarnessSelf(ctx context.Context, stdout io.Writer, args []string) 
 		runHarnessExecStep(ctx, filepath.Join(repoRoot, "ui"), "dashboard ui typecheck", []string{"bun", "run", "typecheck"}),
 		runHarnessExecStep(ctx, filepath.Join(repoRoot, "ui"), "dashboard ui build", []string{"bun", "run", "build"}),
 		runHarnessFreshnessStep("dashboard ui fresh", filepath.Join(repoRoot, "ui"), dashboardUIBuildStale, "Run `bun run build` inside `ui/`, then rerun `onlava harness self --json`."),
-		runHarnessExecStep(ctx, filepath.Join(repoRoot, "dbstudio"), "db studio ui typecheck", []string{"bun", "run", "typecheck"}),
-		runHarnessExecStep(ctx, filepath.Join(repoRoot, "dbstudio"), "db studio ui build", []string{"bun", "run", "build"}),
-		runHarnessFreshnessStep("db studio ui fresh", filepath.Join(repoRoot, "dbstudio"), dbStudioUIBuildStale, "Run `bun run build` inside `dbstudio/`, then rerun `onlava harness self --json`."),
 		runHarnessExecStep(ctx, repoRoot, "install onlava binary", []string{"go", "install", "./cmd/onlava"}),
 		runHarnessOnlavaBinaryStep(repoRoot),
 	)
@@ -779,7 +776,6 @@ func buildHarnessSelfArtifacts(repoRoot string, selfWillExist bool) []harnessArt
 	artifacts := []harnessArtifact{
 		{Name: "self-harness", Path: ".onlava/harness/self-latest.json", SchemaVersion: "onlava.harness.self.v1"},
 		{Name: "dashboard-ui", Path: "ui/dist/index.html"},
-		{Name: "dbstudio-ui", Path: "dbstudio/dist/index.html"},
 	}
 	for i := range artifacts {
 		if artifacts[i].Name == "self-harness" && selfWillExist {

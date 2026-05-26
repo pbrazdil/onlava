@@ -56,7 +56,7 @@ Known starting discoveries:
 
 Completed on 2026-05-09.
 
-Added `docs/data-platform-runbook.md` with operational flows for opening stores, creating metadata, field options, composite fields, relations, indexes, saved views, record CRUD, queries/cursors/search, SSE events, trigger-backed outbox, import/export, standard-auth tenant permissions, inspect output, migration recovery, schema drift debugging, DB Studio caveats, performance notes, and known beta limitations. The runbook is linked from `docs/index.md` and tracked in `docs/knowledge.json`.
+Added `docs/data-platform-runbook.md` with operational flows for opening stores, creating metadata, field options, composite fields, relations, indexes, saved views, record CRUD, queries/cursors/search, SSE events, trigger-backed outbox, import/export, standard-auth tenant permissions, inspect output, migration recovery, schema drift debugging caveats, performance notes, and known beta limitations. The runbook is linked from `docs/index.md` and tracked in `docs/knowledge.json`.
 
 ## Context and Orientation
 
@@ -110,7 +110,7 @@ Runbook sections:
 14. Inspect data output
 15. Migration failure recovery
 16. Schema drift debugging
-17. DB Studio/direct SQL caveats
+17. direct SQL caveats
 18. Performance notes
 19. Known beta limitations
 ```
@@ -158,7 +158,7 @@ Acceptance:
 ```text
 - migration failure recovery is described
 - schema drift debugging is described
-- DB Studio/direct SQL trigger caveats are clear
+- direct SQL trigger caveats are clear
 ```
 
 ### Milestone 4: Entry points

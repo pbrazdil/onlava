@@ -204,7 +204,7 @@ func printRuntimeBanner(out io.Writer, listenAddr string, info StandaloneDevInfo
 	}
 
 	title := "onlava server running!"
-	if info.APIURL != "" || info.ConsoleURL != "" || info.MCPBaseURL != "" || len(info.FrontendURLs) > 0 || info.DBStudioURL != "" {
+	if info.APIURL != "" || info.ConsoleURL != "" || info.MCPBaseURL != "" || len(info.FrontendURLs) > 0 {
 		title = "onlava development server running!"
 	}
 
@@ -222,9 +222,6 @@ func printRuntimeBanner(out io.Writer, listenAddr string, info StandaloneDevInfo
 	}
 	for _, name := range sortedStandaloneFrontendNames(info.FrontendURLs) {
 		lines = append(lines, fmt.Sprintf("  %-26s  %s", standaloneFrontendLabel(name), info.FrontendURLs[name]))
-	}
-	if info.DBStudioURL != "" {
-		lines = append(lines, fmt.Sprintf("  %-26s  %s", "Drizzle Studio URL:", info.DBStudioURL))
 	}
 	lines = append(lines, "")
 	for _, line := range lines {

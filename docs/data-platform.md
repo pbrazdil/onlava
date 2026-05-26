@@ -76,7 +76,7 @@ page, err := store.QueryRecords(ctx, actor, "company", data.QueryRecordsRequest{
 
 `RecordPage.NextCursor` is an opaque keyset cursor. Reuse the same object and sort shape when passing it back as `Query.Cursor`.
 
-`data.Search("term")` uses an indexed `onlava_data.search_documents` table maintained by normal data mutations in the same transaction as record writes. Direct SQL or DB Studio edits can update records without refreshing search documents in this version; use the public data mutation path for searchable data until trigger-backed search rebuilds are added.
+`data.Search("term")` uses an indexed `onlava_data.search_documents` table maintained by normal data mutations in the same transaction as record writes. Direct SQL edits can update records without refreshing search documents in this version; use the public data mutation path for searchable data until trigger-backed search rebuilds are added.
 
 ## Standard Auth Tenant Permissions
 

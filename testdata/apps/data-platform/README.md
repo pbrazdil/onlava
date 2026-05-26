@@ -99,9 +99,9 @@ Reconnect/replay uses `after_seq`:
 curl -N 'http://127.0.0.1:4000/data/events?tenant_key=fixture_tenant&object=company&query_id=companies&after_seq=0'
 ```
 
-After triggers are enabled, direct SQL or DB Studio changes to the physical
-record table also write outbox rows. Use inspect to find the physical table and
-columns before doing manual SQL.
+After triggers are enabled, direct SQL changes to the physical record table also
+write outbox rows. Use inspect to find the physical table and columns before
+doing manual SQL.
 
 Inspect metadata, migrations, and outbox state without dumping user records:
 

@@ -88,7 +88,7 @@ Deliverables:
 
 - Extend architecture checks with package dependency direction rules.
 - Define allowed imports for public packages (`auth`, `errs`, `cron`, `middleware`, `temporal`, `pgxpool`, `rlog`) versus internal packages.
-- Add source ownership metadata for major areas: CLI, parser/build/codegen, runtime, dashboard UI, DB Studio UI, docs, fixtures.
+- Add source ownership metadata for major areas: CLI, parser/build/codegen, runtime, dashboard UI, docs, fixtures.
 - Detect repeated local helper patterns that should be centralized.
 
 Acceptance:

@@ -64,7 +64,7 @@ Every ExecPlan must include project-specific validation commands. For onlava rep
 - `go install ./cmd/onlava`
 - `onlava harness self --json --write` when practical
 
-For frontend changes, include the relevant `bun run typecheck` and `bun run build` commands in `ui/` or `dbstudio/`.
+For frontend changes, include the relevant `bun run typecheck` and `bun run build` commands in `ui/`.
 
 For app-facing runtime changes, include an example command against a fixture app or another read-only onlava app available to the contributor.
 

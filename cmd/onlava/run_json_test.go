@@ -22,7 +22,7 @@ func TestParseRunArgs(t *testing.T) {
 }
 
 func TestParseRunArgsRejectsDevFlags(t *testing.T) {
-	for _, flag := range []string{"--verbose", "--json", "--watch", "--dashboard", "--db-studio", "--proxy"} {
+	for _, flag := range []string{"--verbose", "--json", "--watch", "--dashboard", "--proxy"} {
 		if _, err := parseRunArgs([]string{flag}); err == nil {
 			t.Fatalf("parseRunArgs(%q) returned nil error", flag)
 		}
@@ -239,7 +239,7 @@ func TestParseWorkerArgsSplitsRepeatedTaskQueues(t *testing.T) {
 }
 
 func TestParseWorkerArgsRejectsServerFlags(t *testing.T) {
-	for _, flag := range []string{"--port", "--listen", "--verbose", "--json", "--watch", "--dashboard", "--db-studio", "--proxy"} {
+	for _, flag := range []string{"--port", "--listen", "--verbose", "--json", "--watch", "--dashboard", "--proxy"} {
 		if _, err := parseWorkerArgs([]string{flag}); err == nil {
 			t.Fatalf("parseWorkerArgs(%q) returned nil error", flag)
 		}

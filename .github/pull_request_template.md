@@ -9,7 +9,7 @@
 - [ ] `go test ./...`
 - [ ] `go install ./cmd/onlava`
 - [ ] `onlava harness self --json --write`
-- [ ] UI or DB Studio checks, if relevant
+- [ ] UI checks, if relevant
 
 ## Notes
 

@@ -74,7 +74,7 @@ and metric ingestion, VictoriaLogs query output, and graceful sidecar shutdown.
 
 Current local observability flows through `runtime/devreport.go`, `runtime/dbtrace.go`, `runtime/consolelog.go`, `cmd/onlava/dashboard.go`, and `internal/devdash`. Runtime emits onlava-specific report envelopes. The dashboard server receives them at `devdash.ReportPath`, stores summaries/events/logs in SQLite, and notifies the dashboard UI.
 
-The new sidecar orchestration belongs in `cmd/onlava` next to `devSupervisor`, DB Studio, and local proxy lifecycle. App runtime should only receive endpoint configuration for now. Later, runtime can add an OTLP exporter that uses the same endpoint environment variables.
+The new sidecar orchestration belongs in `cmd/onlava` next to `devSupervisor`, and local proxy lifecycle. App runtime should only receive endpoint configuration for now. Later, runtime can add an OTLP exporter that uses the same endpoint environment variables.
 
 Victoria local defaults:
 

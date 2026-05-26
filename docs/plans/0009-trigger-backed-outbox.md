@@ -4,14 +4,14 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The first data-platform slice writes outbox events from the explicit Go mutation path. That is correct for app-driven changes, but it leaves a known local-development gap: direct SQL or DB Studio edits to physical dynamic object tables do not emit outbox rows, so SSE live updates and replay miss those changes.
+The first data-platform slice writes outbox events from the explicit Go mutation path. That is correct for app-driven changes, but it leaves a known local-development gap: direct SQL edits to physical dynamic object tables do not emit outbox rows, so SSE live updates and replay miss those changes.
 
 This plan adds optional trigger-backed outbox support after validation, inspectability, migration hardening, and live-sync hardening are complete.
 
 Target flow:
 
 ```text
-DB Studio / direct SQL / maintenance script
+direct SQL / maintenance script
         |
         v
 INSERT / UPDATE / DELETE on physical object table
@@ -35,7 +35,7 @@ The trigger path should be compatible with existing event payloads. It may produ
 - [x] (2026-05-08 22:55Z) Design trigger function and metadata toggles.
 - [x] (2026-05-08 22:55Z) Implement optional per-object triggers.
 - [x] (2026-05-08 22:55Z) Add transaction-local actor context for explicit mutation path.
-- [x] (2026-05-08 22:55Z) Validate direct SQL and DB Studio-style changes produce outbox rows.
+- [x] (2026-05-08 22:55Z) Validate direct SQL changes produce outbox rows.
 - [x] (2026-05-08 22:55Z) Preserve existing SSE replay compatibility.
 
 ## Surprises & Discoveries
@@ -50,15 +50,15 @@ The trigger path should be compatible with existing event payloads. It may produ
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Make trigger-backed outbox optional per object at first.
-  Rationale: Explicit mutation path already writes precise events. Optional triggers let onlava close the DB Studio/direct SQL gap without forcing every object into trigger overhead before the design is proven.
+  Rationale: Explicit mutation path already writes precise events. Optional triggers let onlava close the direct SQL gap without forcing every object into trigger overhead before the design is proven.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Use transaction-local PostgreSQL settings for actor context when available.
-  Rationale: Triggers cannot see Go request state directly. `SET LOCAL onlava.actor_id = '...'` lets explicit mutations provide actor context while direct DB Studio edits can fall back to anonymous/system actor.
+  Rationale: Triggers cannot see Go request state directly. `SET LOCAL onlava.actor_id = '...'` lets explicit mutations provide actor context while direct  edits can fall back to anonymous/system actor.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Use duplicate-event strategy Option B.
-  Rationale: Explicit onlava mutations still write precise outbox rows. They set `onlava.outbox_explicit=true` inside the transaction, and record-table triggers skip those transactions. Direct SQL/DB Studio changes do not set that flag, so triggers write generic logical events without duplicate delivery.
+  Rationale: Explicit onlava mutations still write precise outbox rows. They set `onlava.outbox_explicit=true` inside the transaction, and record-table triggers skip those transactions. Direct SQL/ changes do not set that flag, so triggers write generic logical events without duplicate delivery.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Reconstruct logical field values inside the trigger from metadata.
@@ -201,7 +201,7 @@ Acceptance:
 - Direct SQL insert/update/delete on a physical object table writes outbox events.
 - Explicit mutation path does not double-deliver events.
 - Actor context is recorded for explicit mutations through transaction-local settings.
-- Direct SQL/DB Studio changes use anonymous/system actor when no actor context is set.
+- Direct SQL/ changes use anonymous/system actor when no actor context is set.
 - Existing SSE replay and live matching work with trigger-created events.
 - Inspect output shows trigger configuration and physical trigger presence.
 

@@ -201,13 +201,13 @@ deleted: match before
 
 ## Trigger-Backed Outbox
 
-Normal data mutations write precise outbox rows. Trigger-backed outbox catches direct SQL or DB Studio changes.
+Normal data mutations write precise outbox rows. Trigger-backed outbox catches direct SQL changes.
 
 ```go
 _, err = store.EnableOutboxTriggers(ctx, actor, "acme", "company")
 ```
 
-Trigger-backed events cannot know the app actor unless the transaction sets onlava actor context. DB Studio edits should be treated as anonymous/system actor events.
+Trigger-backed events cannot know the app actor unless the transaction sets onlava actor context. Direct SQL edits without actor context should be treated as anonymous/system actor events.
 
 ## Import And Export
 
@@ -302,9 +302,9 @@ select * from onlava_data.schema_migrations order by started_at desc limit 20;
 select * from onlava_data.outbox_events order by seq desc limit 20;
 ```
 
-## DB Studio And Direct SQL Caveats
+## Direct SQL Caveats
 
-DB Studio is useful for local inspection. Direct SQL writes bypass application validation and permission hooks. Trigger-backed outbox can capture direct row changes, but it does not enforce app-level permissions, update search documents, or infer actor context unless configured in the transaction.
+Direct SQL writes bypass application validation and permission hooks. Trigger-backed outbox can capture direct row changes, but it does not enforce app-level permissions, update search documents, or infer actor context unless configured in the transaction.
 
 Use public `data.Store` mutations when correctness matters.
 
@@ -321,7 +321,7 @@ Use public `data.Store` mutations when correctness matters.
 - Many-to-many relation physical structures exist, but ergonomic record mutation helpers are limited.
 - Relation path queries are intentionally shallow.
 - Search documents are maintained by normal data mutations; direct SQL does not automatically rebuild them in this version.
-- Trigger-backed outbox captures DB Studio/direct SQL writes but actor context may be anonymous/system.
+- Trigger-backed outbox captures direct SQL writes but actor context may be anonymous/system.
 - Cursor pagination rejects or constrains some nullable sort cases.
 - Dashboard Data Explorer is a local developer surface, not production UI.
 

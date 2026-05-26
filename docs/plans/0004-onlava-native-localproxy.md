@@ -141,7 +141,7 @@ The shared file should define the injectable function used by `Start`. Darwin sh
 
 Then implement serving with `net/http` and `net/http/httputil.ReverseProxy`. Build upstream targets as `http://<normalized-upstream>`, preserve path and query, return `502` on upstream errors, return `404` for unknown host/path combinations, and keep default reverse proxy streaming behavior for SSE and WebSocket traffic. For API, console, MCP, and frontend `/__onlava/config`, preserve the incoming `Host` header. For the frontend catch-all route, set `req.Host` to the upstream host:port to match the old Caddy `Host: {http.reverse_proxy.upstream.hostport}` behavior. Set useful `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`; HTTPS requests should report `X-Forwarded-Proto: https`.
 
-Finally update the call sites only as needed. `cmd/onlava/dev_supervisor.go` should continue to start the proxy before the child app and pass `ONLAVA_LOCAL_PROXY=0` plus `ONLAVA_PUBLIC_BASE_URL=<routes.APIURL>`. `runtimeapp/app.go` should continue to avoid a second proxy when launched by the supervisor or when local proxy is disabled. The runtime banner should still use routes for API, dashboard, MCP SSE, frontend, and DB Studio URLs.
+Finally update the call sites only as needed. `cmd/onlava/dev_supervisor.go` should continue to start the proxy before the child app and pass `ONLAVA_LOCAL_PROXY=0` plus `ONLAVA_PUBLIC_BASE_URL=<routes.APIURL>`. `runtimeapp/app.go` should continue to avoid a second proxy when launched by the supervisor or when local proxy is disabled. The runtime banner should still use routes for API, dashboard, MCP SSE, frontend, URLs.
 
 ## Concrete Steps
 
@@ -199,7 +199,7 @@ Manual smoke validation when practical:
 
     ONLAVA_LOCAL_PROXY=1 ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1 ONLAVA_LOCAL_PROXY_HTTPS_PORT=9443 onlava run
 
-Run this from a fixture app or a read-only app root. Confirm that the banner still prints HTTPS API, dashboard, MCP SSE, frontend, and DB Studio URLs as applicable. Also verify that `ONLAVA_LOCAL_PROXY=0 onlava run` avoids starting the proxy, that custom `ONLAVA_LOCAL_PROXY_HTTPS_PORT` appears in route URLs, and that explicit proxy hosts from `.onlava.json` override workspace-derived hosts.
+Run this from a fixture app or a read-only app root. Confirm that the banner still prints HTTPS API, dashboard, MCP SSE, frontend, URLs as applicable. Also verify that `ONLAVA_LOCAL_PROXY=0 onlava run` avoids starting the proxy, that custom `ONLAVA_LOCAL_PROXY_HTTPS_PORT` appears in route URLs, and that explicit proxy hosts from `.onlava.json` override workspace-derived hosts.
 
 Acceptance criteria:
 

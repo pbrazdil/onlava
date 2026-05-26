@@ -62,7 +62,7 @@ Success means app code can create/list indexes through a small public API, inspe
   Date/Author: 2026-05-09 / Codex
 
 - Decision: Keep physical index names inspectable but not central to the app-facing public API.
-  Rationale: The public `data` API should be about objects, fields, queries, and indexes. Physical names are operational details for DB Studio and `onlava inspect data`.
+  Rationale: The public `data` API should be about objects, fields, queries, and indexes. Physical names are operational details for `onlava inspect data`.
   Date/Author: 2026-05-09 / Codex
 
 - Decision: Keep arbitrary partial-index predicates out of the first implementation.
@@ -99,7 +99,7 @@ This plan follows completed data-platform plans:
 - `docs/plans/0005-onlava-data-platform.md`: initial metadata/object/field/record/outbox/SSE vertical slice.
 - `docs/plans/0007-data-platform-validation-and-inspect.md`: PostgreSQL CI and `onlava inspect data`.
 - `docs/plans/0008-data-platform-migration-and-live-hardening.md`: migration correctness, live matching, and public data API cleanup.
-- `docs/plans/0009-trigger-backed-outbox.md`: direct SQL and DB Studio changes write outbox rows through optional triggers.
+- `docs/plans/0009-trigger-backed-outbox.md`: direct SQL changes write outbox rows through optional triggers.
 
 Relevant files and packages:
 
@@ -166,7 +166,7 @@ Do not add an ORM, migration framework, external broker, dynamic GraphQL, or UI 
 
 Milestone 1: Metadata and physical naming.
 
-Add index metadata tables to bootstrap. Define deterministic physical index names that are readable enough for DB Studio, stable after label rename, unique per physical table, safe under PostgreSQL's 63-byte identifier limit, and derived only from validated metadata.
+Add index metadata tables to bootstrap. Define deterministic physical index names that are readable enough for stable after label rename, unique per physical table, safe under PostgreSQL's 63-byte identifier limit, and derived only from validated metadata.
 
 Milestone 2: Index creation and listing API.
 

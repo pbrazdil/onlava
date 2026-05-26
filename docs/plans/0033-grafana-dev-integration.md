@@ -167,7 +167,7 @@ cmd/onlava/run_json_test.go
 
 internal/devdash/
 internal/localproxy/
-internal/dbstudio/
+internal//
 
 docs/local-contract.md
 ARCHITECTURE.md

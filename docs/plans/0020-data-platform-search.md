@@ -34,7 +34,7 @@ dashboard search box
 ## Surprises & Discoveries
 
 - A generic search document table keeps the first implementation smaller than per-object generated columns and avoids reworking physical object-table DDL every time a searchable field is added.
-- Direct SQL and DB Studio edits are not enough to keep search documents fresh in this version. Normal data mutation APIs update search documents transactionally; trigger-backed search refresh can close the direct-SQL gap later.
+- Direct SQL edits are not enough to keep search documents fresh in this version. Normal data mutation APIs update search documents transactionally; trigger-backed search refresh can close the direct-SQL gap later.
 
 ## Decision Log
 
@@ -46,7 +46,7 @@ dashboard search box
 ## Outcomes & Retrospective
 
 - Implemented searchable field metadata, search document storage, GIN indexing, query compiler support, live-event search matching, inspect output, public helper, and Data Explorer search input.
-- The first version is useful and indexed through normal data writes, but direct SQL/DB Studio changes need a later rebuild or trigger-backed refresh path to keep search documents current.
+- The first version is useful and indexed through normal data writes, but direct SQL changes need a later rebuild or trigger-backed refresh path to keep search documents current.
 
 ## Context and Orientation
 
