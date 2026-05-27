@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 )
 
 func TestGrafanaDevMode(t *testing.T) {
@@ -48,6 +50,17 @@ func TestGrafanaConfigDefaults(t *testing.T) {
 	}
 	if cfg.TracesURL != "http://127.0.0.1:10428/select/jaeger" {
 		t.Fatalf("traces URL = %q", cfg.TracesURL)
+	}
+}
+
+func TestGrafanaConfigForRootUsesProvidedRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "agent", "grafana")
+	cfg := newGrafanaConfigForRoot(root, fakeVictoriaStack(), "")
+	if cfg.RootDir != root {
+		t.Fatalf("root dir = %q, want %q", cfg.RootDir, root)
+	}
+	if cfg.ConfigPath != filepath.Join(root, "conf", "grafana.ini") {
+		t.Fatalf("config path = %q", cfg.ConfigPath)
 	}
 }
 
@@ -108,6 +121,13 @@ func TestGrafanaDashboardsUseExportedRequestMetric(t *testing.T) {
 	overview := string(files["onlava-overview.json"])
 	if !strings.Contains(overview, grafanaRequestDurationMetricName) {
 		t.Fatalf("overview dashboard does not query %s:\n%s", grafanaRequestDurationMetricName, overview)
+	}
+	if !strings.Contains(overview, "onlava_session_id") || !strings.Contains(overview, "label_values(onlava_request_duration_seconds, onlava_session_id)") {
+		t.Fatalf("overview dashboard missing session variable/filter:\n%s", overview)
+	}
+	endpoint := string(files["onlava-endpoint.json"])
+	if !strings.Contains(endpoint, `onlava_session_id=~\"$session\"`) {
+		t.Fatalf("endpoint dashboard missing session filter:\n%s", endpoint)
 	}
 	if onlavaRequestDurationMetricName != "onlava_request_duration_seconds" || grafanaRequestDurationMetricName != "onlava_request_duration_seconds" {
 		t.Fatalf("unexpected request duration metric names: otlp=%q grafana=%q", onlavaRequestDurationMetricName, grafanaRequestDurationMetricName)
@@ -369,6 +389,37 @@ func TestGrafanaStateIncludesStableLinks(t *testing.T) {
 	degraded := grafanaState(cfg, "degraded", "not ready")
 	if degraded.Available || degraded.URL != "" || degraded.OverviewURL != "" {
 		t.Fatalf("degraded state exposes links: %+v", degraded)
+	}
+}
+
+func TestGrafanaSubstrateRoundTrip(t *testing.T) {
+	cfg := newGrafanaConfig(t.TempDir(), fakeVictoriaStack(), "")
+	component := &grafanaComponent{cfg: cfg, state: grafanaState(cfg, "ready", "")}
+	req := component.SubstrateRequest(123)
+	if req.Kind != localagent.SubstrateGrafana || req.OwnerPID != 123 {
+		t.Fatalf("substrate request = %+v", req)
+	}
+	if req.URLs["web"] != cfg.URL || req.Endpoints["health"] != cfg.URL+grafanaHealthPath {
+		t.Fatalf("substrate endpoints = urls:%+v endpoints:%+v", req.URLs, req.Endpoints)
+	}
+
+	restored := grafanaComponentFromSubstrate(localagent.Substrate{
+		Kind:      localagent.SubstrateGrafana,
+		URLs:      req.URLs,
+		Endpoints: req.Endpoints,
+	}, fakeVictoriaStack(), "https://grafana.acme.localhost")
+	if restored == nil {
+		t.Fatal("restored grafana component is nil")
+	}
+	if !restored.external || restored.URL() != cfg.URL {
+		t.Fatalf("restored component = %+v", restored)
+	}
+	state := restored.State()
+	if state.Status != "external" || state.URL != "https://grafana.acme.localhost" {
+		t.Fatalf("restored state = %+v", state)
+	}
+	if state.Datasources["metrics"] != grafanaMetricsUID {
+		t.Fatalf("restored datasources = %+v", state.Datasources)
 	}
 }
 

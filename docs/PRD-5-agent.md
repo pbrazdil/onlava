@@ -204,7 +204,7 @@ single reverse proxy:
   https://<route>.<session>.onlava.localhost
 ```
 
-The daemon should be authenticated by filesystem permissions on the socket plus a local token for browser/MCP access.
+The daemon control API should be authenticated by filesystem permissions on the socket. Browser and MCP routes are machine-local development surfaces and do not require a separate browser token.
 
 This directly fixes the current issue where dashboard binding is global and cleanup can stop an existing onlava dev process that merely “looks like” an onlava dashboard process. The current dashboard default is `127.0.0.1:9401`, and the existing reaping logic is tied to the default dashboard address/process inspection.  
 
@@ -358,13 +358,7 @@ faster startup
 easier historical comparison between sessions
 ```
 
-For hard isolation, add:
-
-```sh
-onlava dev --isolated-observability
-```
-
-but default should be shared substrate with session labels.
+The default should be shared substrate with session labels.
 
 ---
 
@@ -438,13 +432,7 @@ onlava db snapshot create before-refactor
 onlava db snapshot restore before-refactor
 ```
 
-For cases needing full cluster isolation:
-
-```sh
-onlava dev --isolated-postgres
-```
-
-But the default should be **shared cluster, isolated DB**.
+The default should be **shared cluster, isolated DB**.
 
 ---
 
@@ -492,7 +480,7 @@ Pulse external: https://pulse.onlv-fr-123-a81c7d.onlava.localhost
 
 For frontends that can listen on Unix sockets later, switch them.
 
-The checked-in onlv config has fixed hosts and a fixed blog upstream `127.0.0.1:4321`; the daemon should override these in effective dev config, not require changing `.onlava.json` per worktree. 
+The earlier onlv config had fixed hosts and a fixed blog upstream `127.0.0.1:4321`; the daemon should override or own these in effective dev config, not require changing `.onlava.json` per worktree.
 
 ---
 

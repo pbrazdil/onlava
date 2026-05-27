@@ -38,7 +38,19 @@ type fileStamp struct {
 
 type fileSnapshot map[string]fileStamp
 
-func runWithWatch(addr string, verbose, jsonMode bool, appRoot string) error {
+type devBackend struct {
+	Network string
+	Addr    string
+}
+
+func (b devBackend) normalized() devBackend {
+	if strings.TrimSpace(b.Network) == "" {
+		b.Network = "tcp"
+	}
+	return b
+}
+
+func runWithWatch(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 	start, err := resolveAppRoot(appRoot)
 	if err != nil {
 		return err
@@ -62,7 +74,10 @@ func runWithWatch(addr string, verbose, jsonMode bool, appRoot string) error {
 		case <-ctx.Done():
 		}
 	}()
-	stopParentMonitor := startParentMonitor(ctx, cancel)
+	stopParentMonitor := func() {}
+	if !detachedDevChildMode() {
+		stopParentMonitor = startParentMonitor(ctx, cancel)
+	}
 	defer stopParentMonitor()
 
 	snapshot, err := scanWatchedFiles(root)
@@ -70,13 +85,13 @@ func runWithWatch(addr string, verbose, jsonMode bool, appRoot string) error {
 		return err
 	}
 
-	agentClient, agentSession, restoreAgentEnv, err := prepareDevAgentSession(ctx, root, cfg, addr)
+	agentClient, agentSession, backend, restoreAgentEnv, err := prepareDevAgentSession(ctx, root, cfg, listen)
 	if err != nil {
 		return err
 	}
 	defer restoreAgentEnv()
 
-	supervisor, err := newDevSupervisor(ctx, root, cfg, addr, verbose, jsonMode)
+	supervisor, err := newDevSupervisor(ctx, root, cfg, backend, verbose, jsonMode)
 	if err != nil {
 		return err
 	}
@@ -118,45 +133,127 @@ func runWithWatch(addr string, verbose, jsonMode bool, appRoot string) error {
 	}
 }
 
-func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, apiAddr string) (*localagent.Client, *localagent.Session, func(), error) {
-	restore := func() {}
+func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, listen devListenRequest) (*localagent.Client, *localagent.Session, devBackend, func(), error) {
+	var restorers []func()
+	restore := func() {
+		for i := len(restorers) - 1; i >= 0; i-- {
+			restorers[i]()
+		}
+	}
+	if listen.Addr == "" && listen.PreferTCP {
+		addr, err := freeLoopbackAddr()
+		if err != nil {
+			return nil, nil, devBackend{}, restore, err
+		}
+		listen.Network = "tcp"
+		listen.Addr = addr
+	}
+	fallback := devBackend{Network: "tcp", Addr: listen.Addr}
+	if fallback.Addr == "" {
+		fallback.Addr = resolveListenAddr("", 4000)
+	}
 	if localagent.DisabledByEnv() {
-		return nil, nil, restore, nil
+		return nil, nil, fallback, restore, nil
 	}
 	if strings.TrimSpace(os.Getenv("ONLAVA_DEV_DASHBOARD_ADDR")) == "" {
 		addr, err := freeLoopbackAddr()
 		if err != nil {
-			return nil, nil, restore, err
+			return nil, nil, devBackend{}, restore, err
 		}
 		_ = os.Setenv("ONLAVA_DEV_DASHBOARD_ADDR", addr)
-		restore = func() {
+		restorers = append(restorers, func() {
 			_ = os.Unsetenv("ONLAVA_DEV_DASHBOARD_ADDR")
-		}
+		})
 	}
 	client, err := localagent.Ensure(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "onlava: agent unavailable; continuing without routed session URLs: %v\n", err)
-		return nil, nil, restore, nil
+		return nil, nil, fallback, restore, nil
+	}
+	if strings.TrimSpace(os.Getenv("ONLAVA_DEV_CACHE_DIR")) == "" {
+		paths, err := localagent.DefaultPaths()
+		if err != nil {
+			return nil, nil, devBackend{}, restore, err
+		}
+		if strings.TrimSpace(os.Getenv("ONLAVA_AGENT_HOME")) == "" {
+			_ = os.Setenv("ONLAVA_AGENT_HOME", paths.Home)
+			restorers = append(restorers, func() {
+				_ = os.Unsetenv("ONLAVA_AGENT_HOME")
+			})
+		}
+		_ = os.Setenv("ONLAVA_DEV_CACHE_DIR", filepath.Join(paths.AgentDir, "dashboard"))
+		restorers = append(restorers, func() {
+			_ = os.Unsetenv("ONLAVA_DEV_CACHE_DIR")
+		})
+	}
+	backends := map[string]localagent.Backend{}
+	baseEnv, err := appEnvWithDotEnv(os.Environ(), root, ".env", ".env.local")
+	if err != nil {
+		return nil, nil, devBackend{}, restore, err
+	}
+	electricBackends, err := managedElectricBackends(cfg, baseEnv)
+	if err != nil {
+		return nil, nil, devBackend{}, restore, err
+	}
+	for name, backend := range electricBackends {
+		backends[name] = backend
+	}
+	if listen.Addr != "" {
+		backends[localagent.RouteAPI] = localagent.Backend{Network: "tcp", Addr: listen.Addr}
 	}
 	session, err := client.Register(ctx, localagent.RegisterRequest{
 		BaseAppID: cfg.AppID(),
 		AppRoot:   root,
 		Status:    "starting",
 		OwnerPID:  os.Getpid(),
-		Backends: map[string]localagent.Backend{
-			localagent.RouteAPI:       {Network: "tcp", Addr: apiAddr},
-			localagent.RouteDashboard: {Network: "tcp", Addr: devdashListenAddr()},
-			localagent.RouteMCP:       {Network: "tcp", Addr: devdashListenAddr()},
-		},
+		Backends:  backends,
 	})
 	if err != nil {
-		return nil, nil, restore, err
+		return nil, nil, devBackend{}, restore, err
 	}
-	return client, &session, restore, nil
-}
-
-func devdashListenAddr() string {
-	return os.Getenv("ONLAVA_DEV_DASHBOARD_ADDR")
+	backend := fallback
+	if listen.Addr == "" {
+		backend = devBackend{
+			Network: "unix",
+			Addr:    filepath.Join(session.StateRoot, "run", "api.sock"),
+		}
+		backends[localagent.RouteAPI] = localagent.Backend{Network: backend.Network, Addr: backend.Addr}
+		session, err = client.Register(ctx, localagent.RegisterRequest{
+			BaseAppID: cfg.AppID(),
+			AppRoot:   root,
+			Status:    "starting",
+			OwnerPID:  os.Getpid(),
+			Backends:  backends,
+		})
+		if err != nil {
+			return nil, nil, devBackend{}, restore, err
+		}
+	}
+	frontendBackends, frontendProcesses, err := managedFrontendBackendsForSession(ctx, root, cfg, baseEnv, session)
+	if err != nil {
+		return nil, nil, devBackend{}, restore, err
+	}
+	if len(frontendProcesses) > 0 {
+		restorers = append(restorers, func() {
+			stopManagedFrontendProcesses(frontendProcesses)
+		})
+	}
+	if len(frontendBackends) > 0 {
+		for name, backend := range frontendBackends {
+			backends[name] = backend
+		}
+		session, err = client.Register(ctx, localagent.RegisterRequest{
+			BaseAppID: cfg.AppID(),
+			AppRoot:   root,
+			Status:    "starting",
+			OwnerPID:  os.Getpid(),
+			Backends:  backends,
+		})
+		if err != nil {
+			return nil, nil, devBackend{}, restore, err
+		}
+	}
+	return client, &session, backend.normalized(), restore, nil
 }
 
 func waitForStableChange(ctx context.Context, root string, current fileSnapshot, watcher *fileChangeWatcher) (fileSnapshot, error) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +25,7 @@ type inspectTraceQueryOptions struct {
 	Service       string
 	Endpoint      string
 	TraceID       string
+	Session       string
 	Status        string
 	MinDurationMS float64
 	Slowest       bool
@@ -53,6 +53,7 @@ type inspectMetricsResponse struct {
 
 type inspectTraceQueryRecord struct {
 	AppID            string   `json:"app_id"`
+	SessionID        string   `json:"session_id,omitempty"`
 	Limit            int      `json:"limit,omitempty"`
 	Since            string   `json:"since,omitempty"`
 	SinceTimestamp   string   `json:"since_timestamp,omitempty"`
@@ -68,6 +69,10 @@ type inspectTraceQueryRecord struct {
 type inspectTraceRecord struct {
 	TraceID           string  `json:"trace_id"`
 	SpanID            string  `json:"span_id"`
+	SessionID         string  `json:"session_id,omitempty"`
+	AppRootHash       string  `json:"app_root_hash,omitempty"`
+	Branch            string  `json:"branch,omitempty"`
+	Worktree          string  `json:"worktree,omitempty"`
 	Kind              string  `json:"kind"`
 	Status            string  `json:"status"`
 	Service           string  `json:"service,omitempty"`
@@ -131,6 +136,11 @@ func buildInspectTracesResponse(ctx context.Context, appRoot string, cfg appcfg.
 		opts.Limit = 100
 	}
 	appID := cfg.AppID()
+	sessionID, err := resolveInspectSessionID(ctx, opts.Session, appRoot)
+	if err != nil {
+		return inspectTracesResponse{}, err
+	}
+	opts.Session = sessionID
 	resp := inspectTracesResponse{
 		SchemaVersion: inspectTracesSchema,
 		App:           inspectAppInfo(appRoot, cfg, nil),
@@ -138,7 +148,7 @@ func buildInspectTracesResponse(ctx context.Context, appRoot string, cfg appcfg.
 		Traces:        []inspectTraceRecord{},
 	}
 
-	store, warnings, err := openObservabilityStore(ctx, appRoot, cfg)
+	store, warnings, err := openObservabilityStore(ctx, appRoot, cfg, sessionID)
 	if err != nil {
 		return inspectTracesResponse{}, err
 	}
@@ -170,6 +180,11 @@ func buildInspectMetricsResponse(ctx context.Context, appRoot string, cfg appcfg
 		opts.Limit = 10000
 	}
 	appID := cfg.AppID()
+	sessionID, err := resolveInspectSessionID(ctx, opts.Session, appRoot)
+	if err != nil {
+		return inspectMetricsResponse{}, err
+	}
+	opts.Session = sessionID
 	resp := inspectMetricsResponse{
 		SchemaVersion: inspectMetricsSchema,
 		App:           inspectAppInfo(appRoot, cfg, nil),
@@ -182,7 +197,7 @@ func buildInspectMetricsResponse(ctx context.Context, appRoot string, cfg appcfg
 		},
 	}
 
-	store, warnings, err := openObservabilityStore(ctx, appRoot, cfg)
+	store, warnings, err := openObservabilityStore(ctx, appRoot, cfg, sessionID)
 	if err != nil {
 		return inspectMetricsResponse{}, err
 	}
@@ -200,12 +215,12 @@ func buildInspectMetricsResponse(ctx context.Context, appRoot string, cfg appcfg
 	resp.Summary = buildInspectMetricsSummary(items)
 	resp.Services = buildInspectTraceMetrics(items, "service")
 	resp.Endpoints = buildInspectTraceMetrics(items, "endpoint")
-	eventCount, err := store.CountTraceEvents(ctx, appID, query.Since)
+	eventCount, err := store.CountTraceEventsForSession(ctx, appID, query.SessionID, query.Since)
 	if err != nil {
 		return inspectMetricsResponse{}, err
 	}
 	resp.Summary.EventCount = eventCount
-	logs, err := store.CountLogsByLevel(ctx, appID, query.Since)
+	logs, err := store.CountLogsByLevelForSession(ctx, appID, query.SessionID, query.Since)
 	if err != nil {
 		return inspectMetricsResponse{}, err
 	}
@@ -216,14 +231,14 @@ func buildInspectMetricsResponse(ctx context.Context, appRoot string, cfg appcfg
 	return resp, nil
 }
 
-func openObservabilityStore(ctx context.Context, appRoot string, cfg appcfg.Config) (*devdash.Store, []string, error) {
-	store, err := devdash.OpenStore(os.Getenv("ONLAVA_DEV_CACHE_DIR"))
+func openObservabilityStore(ctx context.Context, appRoot string, cfg appcfg.Config, sessionID string) (*devdash.Store, []string, error) {
+	store, err := openDevdashStore()
 	if err != nil {
 		return nil, nil, err
 	}
 	appID := cfg.AppID()
 	var warnings []string
-	record, err := store.GetApp(ctx, appID)
+	record, sessionRecord, err := devdashAppRecordForSession(ctx, store, appID, sessionID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			warnings = append(warnings, "no local observability state found for "+appID+"; run `onlava run` first")
@@ -232,7 +247,7 @@ func openObservabilityStore(ctx context.Context, appRoot string, cfg appcfg.Conf
 		_ = store.Close()
 		return nil, nil, err
 	}
-	if record.Root != "" && record.Root != appRoot {
+	if !sessionRecord && record.Root != "" && record.Root != appRoot {
 		warnings = append(warnings, "local observability state for "+appID+" belongs to "+record.Root+", not "+appRoot)
 	}
 	return store, warnings, nil
@@ -241,6 +256,7 @@ func openObservabilityStore(ctx context.Context, appRoot string, cfg appcfg.Conf
 func inspectTraceQuery(appID string, opts inspectTraceQueryOptions) devdash.TraceQuery {
 	query := devdash.TraceQuery{
 		AppID:        appID,
+		SessionID:    opts.Session,
 		TraceID:      opts.TraceID,
 		ServiceName:  opts.Service,
 		EndpointName: opts.Endpoint,
@@ -270,14 +286,16 @@ func queryVictoriaTraceSummaries(ctx context.Context, query devdash.TraceQuery) 
 
 func buildInspectTraceQueryRecord(appID string, opts inspectTraceQueryOptions) inspectTraceQueryRecord {
 	record := inspectTraceQueryRecord{
-		AppID:    appID,
-		Limit:    opts.Limit,
-		Service:  opts.Service,
-		Endpoint: opts.Endpoint,
-		TraceID:  opts.TraceID,
-		Status:   opts.Status,
-		Sort:     "started_at_desc",
+		AppID:     appID,
+		SessionID: opts.Session,
+		Limit:     opts.Limit,
+		Service:   opts.Service,
+		Endpoint:  opts.Endpoint,
+		TraceID:   opts.TraceID,
+		Status:    opts.Status,
+		Sort:      "started_at_desc",
 		AvailableFilters: []string{
+			"--session current|<id>",
 			"--service",
 			"--endpoint",
 			"--trace-id",
@@ -306,6 +324,10 @@ func inspectTraceRecordFromSummary(summary *devdash.TraceSummary) inspectTraceRe
 	record := inspectTraceRecord{
 		TraceID:       summary.TraceID,
 		SpanID:        summary.SpanID,
+		SessionID:     summary.SessionID,
+		AppRootHash:   summary.AppRootHash,
+		Branch:        summary.Branch,
+		Worktree:      summary.Worktree,
 		Kind:          summary.Type,
 		Status:        "ok",
 		Service:       summary.ServiceName,
@@ -440,6 +462,11 @@ func parseInspectTraceFlags(opts *inspectOptions, flag, value string) error {
 		opts.Trace.Endpoint = value
 	case "--trace-id":
 		opts.Trace.TraceID = value
+	case "--session":
+		opts.Trace.Session = strings.TrimSpace(value)
+		if opts.Trace.Session == "" {
+			return fmt.Errorf("invalid session %q", value)
+		}
 	case "--status":
 		switch strings.ToLower(value) {
 		case "ok", "error":
@@ -457,6 +484,10 @@ func parseInspectTraceFlags(opts *inspectOptions, flag, value string) error {
 		return fmt.Errorf("unknown flag %q", flag)
 	}
 	return nil
+}
+
+func resolveInspectSessionID(ctx context.Context, value, appRoot string) (string, error) {
+	return resolveLogsSessionID(ctx, value, appRoot)
 }
 
 func percentileDuration(sorted []uint64, p float64) uint64 {

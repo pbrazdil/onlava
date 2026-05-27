@@ -43,7 +43,7 @@ func (s *dashboardServer) handleMCPSSE(w http.ResponseWriter, req *http.Request)
 	}
 	session := &mcpSession{
 		id:       sessionID,
-		appID:    firstNonEmpty(req.URL.Query().Get("appID"), req.URL.Query().Get("app"), s.supervisor.activeAppID()),
+		appID:    firstNonEmpty(req.URL.Query().Get("appID"), req.URL.Query().Get("app"), s.dashboardActiveAppID()),
 		outgoing: make(chan []byte, 32),
 	}
 	s.addMCPSession(session)
@@ -512,7 +512,7 @@ func (s *dashboardServer) mcpGetTraces(ctx context.Context, session *mcpSession,
 	}
 	limit := intArg(args, "limit", 100)
 	messageID := stringArg(args, "message_id")
-	items, err := s.supervisor.store.ListTraceSummaries(ctx, status.AppID, limit, messageID)
+	items, err := s.dashboardStore().ListTraceSummariesForSession(ctx, dashboardStoreAppID(status), status.SessionID, limit, messageID)
 	if err != nil {
 		return nil, true, err
 	}
@@ -533,11 +533,11 @@ func (s *dashboardServer) mcpGetTraceSpans(ctx context.Context, session *mcpSess
 	}
 	var traces []map[string]any
 	for _, traceID := range traceIDs {
-		summaries, err := s.supervisor.store.GetTraceSummaries(ctx, status.AppID, traceID)
+		summaries, err := s.dashboardStore().GetTraceSummariesForSession(ctx, dashboardStoreAppID(status), status.SessionID, traceID)
 		if err != nil {
 			return nil, true, err
 		}
-		events, err := s.traceEventsFor(ctx, status.AppID, traceID)
+		events, err := s.traceEventsFor(ctx, dashboardStoreAppID(status), status.SessionID, traceID)
 		if err != nil {
 			return nil, true, err
 		}
@@ -628,8 +628,8 @@ func (s *dashboardServer) mcpMetadataSection(ctx context.Context, session *mcpSe
 }
 
 func (s *dashboardServer) mcpStatus(ctx context.Context, session *mcpSession, args map[string]any) (devdash.AppStatus, error) {
-	appID := firstNonEmpty(stringArg(args, "app_id"), stringArg(args, "app"), session.appID, s.supervisor.activeAppID())
-	return s.supervisor.statusFor(ctx, appID)
+	appID := firstNonEmpty(stringArg(args, "app_id"), stringArg(args, "app"), session.appID, s.dashboardActiveAppID())
+	return s.dashboardStatusFor(ctx, appID)
 }
 
 func (s *dashboardServer) addMCPSession(session *mcpSession) {

@@ -20,19 +20,29 @@ func (s *Store) AppendTraceEvent(ctx context.Context, event *TraceEvent) error {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-		insert into trace_events (app_id, trace_id, span_id, event_id, event_time, event_json)
-		values (?, ?, ?, ?, ?, ?)
-	`, event.AppID, event.TraceID, event.SpanID, event.EventID, event.EventTime.UTC().Format(time.RFC3339Nano), string(body))
+		insert into trace_events (app_id, session_id, trace_id, span_id, event_id, event_time, event_json)
+		values (?, ?, ?, ?, ?, ?, ?)
+	`, event.AppID, event.SessionID, event.TraceID, event.SpanID, event.EventID, event.EventTime.UTC().Format(time.RFC3339Nano), string(body))
 	return err
 }
 
 func (s *Store) GetTraceEvents(ctx context.Context, appID, traceID, spanID string) ([]*TraceEvent, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.GetTraceEventsForSession(ctx, appID, "", traceID, spanID)
+}
+
+func (s *Store) GetTraceEventsForSession(ctx context.Context, appID, sessionID, traceID, spanID string) ([]*TraceEvent, error) {
+	stmt := `
 		select event_json
 		from trace_events
 		where app_id = ? and trace_id = ? and span_id = ?
-		order by event_id asc
-	`, appID, traceID, spanID)
+	`
+	args := []any{appID, traceID, spanID}
+	if sessionID != "" {
+		stmt += ` and session_id = ?`
+		args = append(args, sessionID)
+	}
+	stmt += ` order by event_id asc`
+	rows, err := s.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +59,9 @@ func (s *Store) GetTraceEvents(ctx context.Context, appID, traceID, spanID strin
 			return nil, err
 		}
 		event.AppID = appID
+		if event.SessionID == "" {
+			event.SessionID = sessionID
+		}
 		list = append(list, &event)
 	}
 	return list, rows.Err()
@@ -66,24 +79,34 @@ func (s *Store) WriteLogEvent(ctx context.Context, event *LogEvent) error {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-		insert into log_events (app_id, trace_id, span_id, level, message, attrs_json, created_at)
-		values (?, ?, ?, ?, ?, ?, ?)
-	`, event.AppID, event.TraceID, event.SpanID, event.Level, event.Message, string(attrs), event.Timestamp.UTC().Format(time.RFC3339Nano))
+		insert into log_events (app_id, session_id, trace_id, span_id, level, message, attrs_json, created_at)
+		values (?, ?, ?, ?, ?, ?, ?, ?)
+	`, event.AppID, event.SessionID, event.TraceID, event.SpanID, event.Level, event.Message, string(attrs), event.Timestamp.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
 func (s *Store) ClearTraces(ctx context.Context, appID string) error {
+	return s.ClearTracesForSession(ctx, appID, "")
+}
+
+func (s *Store) ClearTracesForSession(ctx context.Context, appID, sessionID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, stmt := range []string{
-		`delete from trace_events where app_id = ?`,
-		`delete from trace_summaries where app_id = ?`,
-		`delete from log_events where app_id = ?`,
+	for _, table := range []string{
+		"trace_events",
+		"trace_summaries",
+		"log_events",
 	} {
-		if _, err := tx.ExecContext(ctx, stmt, appID); err != nil {
+		stmt := `delete from ` + table + ` where app_id = ?`
+		args := []any{appID}
+		if sessionID != "" {
+			stmt += ` and session_id = ?`
+			args = append(args, sessionID)
+		}
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
 			return err
 		}
 	}
@@ -274,28 +297,40 @@ func parseOptionalTime(value string) (time.Time, error) {
 
 func marshalTraceEvent(event *TraceEvent) ([]byte, error) {
 	payload := map[string]any{
-		"trace_id":   event.TraceID,
-		"span_id":    event.SpanID,
-		"event_id":   event.EventID,
-		"event_time": event.EventTime.UTC().Format(time.RFC3339Nano),
-		"event":      event.Event,
+		"trace_id":      event.TraceID,
+		"span_id":       event.SpanID,
+		"session_id":    event.SessionID,
+		"app_root_hash": event.AppRootHash,
+		"branch":        event.Branch,
+		"worktree":      event.Worktree,
+		"event_id":      event.EventID,
+		"event_time":    event.EventTime.UTC().Format(time.RFC3339Nano),
+		"event":         event.Event,
 	}
 	return json.Marshal(payload)
 }
 
 func unmarshalTraceEvent(data []byte, dst *TraceEvent) error {
 	var raw struct {
-		TraceID   string         `json:"trace_id"`
-		SpanID    string         `json:"span_id"`
-		EventID   uint64         `json:"event_id"`
-		EventTime string         `json:"event_time"`
-		Event     map[string]any `json:"event"`
+		TraceID     string         `json:"trace_id"`
+		SpanID      string         `json:"span_id"`
+		SessionID   string         `json:"session_id"`
+		AppRootHash string         `json:"app_root_hash"`
+		Branch      string         `json:"branch"`
+		Worktree    string         `json:"worktree"`
+		EventID     uint64         `json:"event_id"`
+		EventTime   string         `json:"event_time"`
+		Event       map[string]any `json:"event"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	dst.TraceID = raw.TraceID
 	dst.SpanID = raw.SpanID
+	dst.SessionID = raw.SessionID
+	dst.AppRootHash = raw.AppRootHash
+	dst.Branch = raw.Branch
+	dst.Worktree = raw.Worktree
 	dst.EventID = raw.EventID
 	dst.Event = raw.Event
 	if raw.EventTime != "" {

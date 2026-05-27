@@ -83,8 +83,8 @@ func (s *dashboardServer) dispatchGraphQL(ctx context.Context, operation string,
 		if err := decodeGraphQLVariables(raw, &params); err != nil {
 			return nil, err
 		}
-		appID := firstNonEmpty(params.AppSlug, s.supervisor.activeAppID())
-		requests, err := s.supervisor.store.ListStoredRequests(ctx, appID)
+		appID := firstNonEmpty(params.AppSlug, s.dashboardActiveAppID())
+		requests, err := s.dashboardStore().ListStoredRequests(ctx, appID)
 		if err != nil {
 			return nil, err
 		}
@@ -106,8 +106,8 @@ func (s *dashboardServer) dispatchGraphQL(ctx context.Context, operation string,
 		if err := decodeGraphQLVariables(raw, &params); err != nil {
 			return nil, err
 		}
-		created, err := s.supervisor.store.CreateStoredRequest(ctx, devdash.StoredRequest{
-			AppID:  firstNonEmpty(params.AppSlug, s.supervisor.activeAppID()),
+		created, err := s.dashboardStore().CreateStoredRequest(ctx, devdash.StoredRequest{
+			AppID:  firstNonEmpty(params.AppSlug, s.dashboardActiveAppID()),
 			Title:  params.Input.Title,
 			RPC:    params.Input.RPC,
 			Svc:    params.Input.Svc,
@@ -135,9 +135,9 @@ func (s *dashboardServer) dispatchGraphQL(ctx context.Context, operation string,
 		if err := decodeGraphQLVariables(raw, &params); err != nil {
 			return nil, err
 		}
-		updated, err := s.supervisor.store.UpdateStoredRequest(ctx, devdash.StoredRequest{
+		updated, err := s.dashboardStore().UpdateStoredRequest(ctx, devdash.StoredRequest{
 			ID:     params.StoredRequestID,
-			AppID:  firstNonEmpty(params.AppSlug, s.supervisor.activeAppID()),
+			AppID:  firstNonEmpty(params.AppSlug, s.dashboardActiveAppID()),
 			Title:  params.Input.Title,
 			RPC:    params.Input.RPC,
 			Svc:    params.Input.Svc,
@@ -167,7 +167,7 @@ func (s *dashboardServer) dispatchGraphQL(ctx context.Context, operation string,
 		if err := decodeGraphQLVariables(raw, &params); err != nil {
 			return nil, err
 		}
-		if err := s.supervisor.store.DeleteStoredRequest(ctx, firstNonEmpty(params.AppSlug, s.supervisor.activeAppID()), params.StoredRequestID); err != nil {
+		if err := s.dashboardStore().DeleteStoredRequest(ctx, firstNonEmpty(params.AppSlug, s.dashboardActiveAppID()), params.StoredRequestID); err != nil {
 			return nil, err
 		}
 		return map[string]any{

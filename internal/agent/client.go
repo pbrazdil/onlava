@@ -22,6 +22,13 @@ type Client struct {
 	http       *http.Client
 }
 
+type StartOptions struct {
+	RouterAddr string
+	RouterTLS  bool
+	RouterHTTP bool
+	Trust      bool
+}
+
 func NewClient(socketPath string) *Client {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -55,7 +62,7 @@ func Ensure(ctx context.Context) (*Client, error) {
 	if err := client.Ping(ctx); err == nil {
 		return client, nil
 	}
-	if err := startAgentProcess(paths); err != nil {
+	if err := StartProcess(paths, StartOptions{}); err != nil {
 		return nil, err
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -75,7 +82,7 @@ func Ensure(ctx context.Context) (*Client, error) {
 	return nil, fmt.Errorf("timed out waiting for onlava agent at %s: %w", paths.SocketPath, lastErr)
 }
 
-func startAgentProcess(paths Paths) error {
+func StartProcess(paths Paths, opts StartOptions) error {
 	if err := EnsureDirs(paths); err != nil {
 		return err
 	}
@@ -87,7 +94,20 @@ func startAgentProcess(paths Paths) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "agent", "--socket", paths.SocketPath, "--router-listen", RouterAddrFromEnv())
+	routerAddr := strings.TrimSpace(opts.RouterAddr)
+	if routerAddr == "" {
+		routerAddr = RouterAddrFromEnv()
+	}
+	routerTLS := opts.RouterTLS || (!opts.RouterHTTP && RouterTLSDefault())
+	args := []string{"agent", "--socket", paths.SocketPath, "--router-listen", routerAddr}
+	if opts.Trust {
+		args = append(args, "--trust")
+	} else if routerTLS {
+		args = append(args, "--router-tls")
+	} else {
+		args = append(args, "--router-http")
+	}
+	cmd := exec.Command(exe, args...)
 	cmd.Env = os.Environ()
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -142,6 +162,38 @@ func (c *Client) Delete(ctx context.Context, sessionID string, signal bool) (Ses
 		return Session{}, err
 	}
 	return out.Session, nil
+}
+
+func (c *Client) UpsertSubstrate(ctx context.Context, req UpsertSubstrateRequest) (Substrate, error) {
+	var out SubstrateResponse
+	if err := c.postJSON(ctx, "/v1/substrates", req, &out); err != nil {
+		return Substrate{}, err
+	}
+	return out.Substrate, nil
+}
+
+func (c *Client) GetSubstrate(ctx context.Context, kind string) (Substrate, error) {
+	var out SubstrateResponse
+	if err := c.getJSON(ctx, "/v1/substrates/"+url.PathEscape(kind), &out); err != nil {
+		return Substrate{}, err
+	}
+	return out.Substrate, nil
+}
+
+func (c *Client) ListSubstrates(ctx context.Context) ([]Substrate, error) {
+	var out SubstratesResponse
+	if err := c.getJSON(ctx, "/v1/substrates", &out); err != nil {
+		return nil, err
+	}
+	return out.Substrates, nil
+}
+
+func (c *Client) DeleteSubstrate(ctx context.Context, kind string) (Substrate, error) {
+	var out SubstrateResponse
+	if err := c.doJSON(ctx, http.MethodDelete, "/v1/substrates/"+url.PathEscape(kind), nil, &out); err != nil {
+		return Substrate{}, err
+	}
+	return out.Substrate, nil
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, out any) error {

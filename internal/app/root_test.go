@@ -75,6 +75,54 @@ func TestDiscoverRootAcceptsTemporalConfig(t *testing.T) {
 	}
 }
 
+func TestDiscoverRootAcceptsDevServicesConfig(t *testing.T) {
+	dir := t.TempDir()
+	data := `{
+  "name": "devservices",
+  "dev": {
+    "setup": ["./scripts/db-safe-apply.sh"],
+    "services": {
+      "postgres": {
+        "kind": "postgres",
+        "version": "18",
+        "isolation": "database"
+      },
+      "electric": {
+        "kind": "electric",
+        "image": "electricsql/electric:canary",
+        "database": "postgres",
+        "route": "electric",
+        "env": {
+          "ELECTRIC_INSECURE": "true"
+        }
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, cfg, err := DiscoverRoot(dir)
+	if err != nil {
+		t.Fatalf("DiscoverRoot returned error: %v", err)
+	}
+	postgres := cfg.Dev.Services["postgres"]
+	if len(cfg.Dev.Setup) != 1 || cfg.Dev.Setup[0] != "./scripts/db-safe-apply.sh" {
+		t.Fatalf("dev setup = %+v", cfg.Dev.Setup)
+	}
+	if postgres.Kind != "postgres" || postgres.Version != "18" || postgres.Isolation != "database" {
+		t.Fatalf("postgres service = %+v", postgres)
+	}
+	electric := cfg.Dev.Services["electric"]
+	if electric.Kind != "electric" || electric.Database != "postgres" || electric.Route != "electric" {
+		t.Fatalf("electric service = %+v", electric)
+	}
+	if electric.Env["ELECTRIC_INSECURE"] != "true" {
+		t.Fatalf("electric env = %+v", electric.Env)
+	}
+}
+
 func TestConfigAppIDPrefersExplicitID(t *testing.T) {
 	cfg := Config{Name: "display-name", ID: "stable-id"}
 	if got, want := cfg.AppID(), "stable-id"; got != want {

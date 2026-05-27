@@ -32,6 +32,92 @@ type localCertificates struct {
 	CACert *x509.Certificate
 }
 
+type LocalCA struct {
+	Cert     *x509.Certificate
+	Key      crypto.Signer
+	CertPath string
+}
+
+func LoadOrCreateLocalCA() (LocalCA, error) {
+	dir, err := localProxyCacheDir()
+	if err != nil {
+		return LocalCA{}, err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return LocalCA{}, err
+	}
+	_ = os.Chmod(dir, 0o700)
+	paths := certificatePaths{
+		caCert: filepath.Join(dir, localProxyCACertFile),
+		caKey:  filepath.Join(dir, localProxyCAKeyFile),
+	}
+	cert, key, err := loadOrCreateCA(paths)
+	if err != nil {
+		return LocalCA{}, err
+	}
+	return LocalCA{Cert: cert, Key: key, CertPath: paths.caCert}, nil
+}
+
+func LocalLeafCertificate(ca LocalCA, subjects []string) (tls.Certificate, error) {
+	subjects = normalizeCertificateSubjects(subjects)
+	if len(subjects) == 0 {
+		return tls.Certificate{}, fmt.Errorf("local HTTPS certificate requires at least one subject")
+	}
+	if ca.Cert == nil || ca.Key == nil {
+		return tls.Certificate{}, fmt.Errorf("local CA is incomplete")
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	now := time.Now()
+	serial, err := randomSerial()
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			CommonName: "onlava Local Agent",
+		},
+		NotBefore:   now.Add(-time.Hour),
+		NotAfter:    now.Add(90 * 24 * time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	for _, subject := range subjects {
+		if ip := net.ParseIP(subject); ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, subject)
+		}
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca.Cert, key.Public(), ca.Key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	tlsCert.Leaf, _ = x509.ParseCertificate(der)
+	return tlsCert, nil
+}
+
+func LocalCATrusted(certPath string) (bool, error) {
+	return localCATrusted(certPath)
+}
+
+func InstallLocalCATrust(certPath string) error {
+	return installLocalCATrust(certPath)
+}
+
 func prepareLocalCertificates(subjects []string) (localCertificates, error) {
 	subjects = normalizeCertificateSubjects(subjects)
 	if len(subjects) == 0 {

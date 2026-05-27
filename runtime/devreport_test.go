@@ -43,6 +43,33 @@ func TestDevReporterDisablesOnConnectionRefused(t *testing.T) {
 	reporter.enqueue(devdash.ReportEnvelope{Type: "trace-event"})
 }
 
+func TestDevReporterAddsSessionIdentity(t *testing.T) {
+	reporter := &devReporter{
+		appID:       "app",
+		sessionID:   "session-a",
+		appRootHash: "root123",
+		branch:      "feature/a",
+		worktree:    "onlv-a",
+		queue:       make(chan devdash.ReportEnvelope, 4),
+		stop:        make(chan struct{}),
+	}
+	reporter.enqueue(devdash.ReportEnvelope{
+		Type: "trace-summary",
+		TraceSummary: &devdash.TraceSummary{
+			TraceID: "trace-1",
+			SpanID:  "span-1",
+		},
+	})
+
+	report := <-reporter.queue
+	if report.AppID != "app" || report.SessionID != "session-a" || report.AppRootHash != "root123" || report.Branch != "feature/a" || report.Worktree != "onlv-a" {
+		t.Fatalf("envelope identity = %+v", report)
+	}
+	if report.TraceSummary.AppID != "app" || report.TraceSummary.SessionID != "session-a" || report.TraceSummary.AppRootHash != "root123" || report.TraceSummary.Branch != "feature/a" || report.TraceSummary.Worktree != "onlv-a" {
+		t.Fatalf("summary identity = %+v", report.TraceSummary)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

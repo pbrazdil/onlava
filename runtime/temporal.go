@@ -11,6 +11,7 @@ import (
 	"time"
 
 	temporalclient "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/contrib/sysinfo"
 	temporalworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 )
@@ -20,6 +21,7 @@ const (
 	DefaultTemporalAddressEnv       = "TEMPORAL_ADDRESS"
 	DefaultTemporalNamespace        = "default"
 	DefaultTemporalNamespaceEnv     = "TEMPORAL_NAMESPACE"
+	DefaultTemporalTaskQueueEnv     = "ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX"
 	DefaultTemporalBuildID          = "dev"
 	DefaultTemporalBuildIDEnv       = "ONLAVA_BUILD_ID"
 	DefaultTemporalDeploymentEnv    = "ONLAVA_TEMPORAL_DEPLOYMENT_NAME"
@@ -31,6 +33,8 @@ const (
 	DefaultTemporalTLSCACertFileEnv = "TEMPORAL_TLS_CA_CERT_FILE"
 	DefaultTemporalTLSCertFileEnv   = "TEMPORAL_TLS_CERT_FILE"
 	DefaultTemporalTLSKeyFileEnv    = "TEMPORAL_TLS_KEY_FILE"
+	DefaultTemporalHostReportingEnv = "ONLAVA_TEMPORAL_HOST_RESOURCE_REPORTING"
+	DefaultOnlavaSessionIDEnv       = "ONLAVA_SESSION_ID"
 	DefaultTemporalMode             = "local"
 	DefaultTemporalConnectWait      = 5 * time.Second
 	DefaultTemporalLocalDBFile      = ".onlava/temporal/dev.sqlite"
@@ -76,6 +80,11 @@ type TemporalRuntimeInfo struct {
 	Namespace        string
 	NamespaceEnvSet  bool
 	TaskQueuePrefix  string
+	TaskQueueEnv     string
+	TaskQueueEnvSet  bool
+	SessionID        string
+	SessionIDEnv     string
+	SessionIDEnvSet  bool
 	PayloadCodec     string
 	APIKeyEnv        string
 	APIKeyEnvSet     bool
@@ -89,6 +98,9 @@ type TemporalRuntimeInfo struct {
 	TLSCertFileSet   bool
 	TLSKeyFileEnv    string
 	TLSKeyFileSet    bool
+	HostReporting    bool
+	HostReportingEnv string
+	HostReportingSet bool
 	DeploymentName   string
 	DeploymentEnv    string
 	DeploymentEnvSet bool
@@ -141,9 +153,14 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 		namespace = DefaultTemporalNamespace
 	}
 	taskQueuePrefix := strings.TrimSpace(cfg.TaskQueuePrefix)
+	taskQueueEnvValue, taskQueueEnvSet := envValue(DefaultTemporalTaskQueueEnv)
+	if taskQueueEnvSet {
+		taskQueuePrefix = taskQueueEnvValue
+	}
 	if taskQueuePrefix == "" {
 		taskQueuePrefix = defaultTemporalTaskQueuePrefix(appName)
 	}
+	sessionID, sessionIDEnvSet := envValue(DefaultOnlavaSessionIDEnv)
 	payloadCodec := strings.TrimSpace(cfg.PayloadCodec)
 	if payloadCodec == "" {
 		payloadCodec = DefaultTemporalPayloadCodec
@@ -189,6 +206,7 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 		versioning = DefaultTemporalVersioning
 	}
 	versioning = normalizeTemporalVersioning(versioning)
+	hostReporting, hostReportingSet := temporalHostResourceReportingFromEnv()
 	dbFile := strings.TrimSpace(cfg.Local.DBFilename)
 	if dbFile == "" {
 		dbFile = DefaultTemporalLocalDBFile
@@ -202,6 +220,11 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 		Namespace:        namespace,
 		NamespaceEnvSet:  namespaceEnvSet,
 		TaskQueuePrefix:  taskQueuePrefix,
+		TaskQueueEnv:     DefaultTemporalTaskQueueEnv,
+		TaskQueueEnvSet:  taskQueueEnvSet,
+		SessionID:        sessionID,
+		SessionIDEnv:     DefaultOnlavaSessionIDEnv,
+		SessionIDEnvSet:  sessionIDEnvSet,
 		PayloadCodec:     payloadCodec,
 		APIKeyEnv:        apiKeyEnv,
 		APIKeyEnvSet:     apiKeyEnvSet,
@@ -215,6 +238,9 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 		TLSCertFileSet:   tlsCertSet,
 		TLSKeyFileEnv:    tlsKeyEnv,
 		TLSKeyFileSet:    tlsKeySet,
+		HostReporting:    hostReporting,
+		HostReportingEnv: DefaultTemporalHostReportingEnv,
+		HostReportingSet: hostReportingSet,
 		DeploymentName:   deploymentName,
 		DeploymentEnv:    DefaultTemporalDeploymentEnv,
 		DeploymentEnvSet: deploymentEnvSet,
@@ -400,7 +426,7 @@ func TemporalDeploymentName(info TemporalRuntimeInfo) string {
 
 func TemporalWorkerOptions(info TemporalRuntimeInfo, role, taskQueue string) temporalworker.Options {
 	buildID := TemporalWorkerBuildID(info)
-	return temporalworker.Options{
+	opts := temporalworker.Options{
 		DisableRegistrationAliasing: true,
 		Identity:                    TemporalWorkerIdentity(info, role, taskQueue),
 		BuildID:                     buildID,
@@ -413,6 +439,46 @@ func TemporalWorkerOptions(info TemporalRuntimeInfo, role, taskQueue string) tem
 			DefaultVersioningBehavior: TemporalWorkflowVersioningBehavior(info),
 		},
 	}
+	if TemporalHostResourceReportingEnabled(info) {
+		opts.SysInfoProvider = sysinfo.SysInfoProvider()
+	}
+	return opts
+}
+
+func SessionScopedTemporalTaskQueue(info TemporalRuntimeInfo, queue string) string {
+	queue = strings.TrimSpace(queue)
+	if queue == "" || strings.TrimSpace(info.SessionID) == "" {
+		return queue
+	}
+	prefix := strings.TrimSpace(info.TaskQueuePrefix)
+	if prefix == "" {
+		prefix = defaultTemporalTaskQueuePart
+	}
+	prefix = strings.TrimSuffix(prefix, ".")
+	if queue == prefix || strings.HasPrefix(queue, prefix+".") {
+		return queue
+	}
+	queue = sanitizeTemporalName(queue)
+	if queue == "" {
+		return prefix
+	}
+	return prefix + "." + queue
+}
+
+func SessionScopedTemporalTaskQueueFromEnv(queue string) string {
+	prefix, _ := envValue(DefaultTemporalTaskQueueEnv)
+	sessionID, _ := envValue(DefaultOnlavaSessionIDEnv)
+	return SessionScopedTemporalTaskQueue(TemporalRuntimeInfo{
+		TaskQueuePrefix: prefix,
+		SessionID:       sessionID,
+	}, queue)
+}
+
+func TemporalHostResourceReportingEnabled(info TemporalRuntimeInfo) bool {
+	if info.HostReportingSet {
+		return info.HostReporting
+	}
+	return true
 }
 
 func TemporalWorkflowVersioningBehavior(info TemporalRuntimeInfo) workflow.VersioningBehavior {
@@ -475,6 +541,23 @@ func envValue(name string) (string, bool) {
 		return "", false
 	}
 	return value, true
+}
+
+func temporalHostResourceReportingFromEnv() (bool, bool) {
+	value, ok := os.LookupEnv(DefaultTemporalHostReportingEnv)
+	if !ok {
+		return true, false
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return true, false
+	}
+	switch value {
+	case "0", "false", "no", "off", "disable", "disabled":
+		return false, true
+	default:
+		return true, true
+	}
 }
 
 func defaultTemporalTaskQueuePrefix(appName string) string {

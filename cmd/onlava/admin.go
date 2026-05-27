@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/pbrazdil/onlava/internal/app"
-	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 type adminOptions struct {
@@ -66,7 +65,7 @@ func runOnlavaAdmin(ctx context.Context, args []string, stdout io.Writer) error 
 
 	switch opts.Domain + "/" + opts.Action {
 	case "traces/clear":
-		store, err := devdash.OpenStore(os.Getenv("ONLAVA_DEV_CACHE_DIR"))
+		store, err := openDevdashStore()
 		if err != nil {
 			return err
 		}

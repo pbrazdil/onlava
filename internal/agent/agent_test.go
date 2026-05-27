@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -34,10 +35,11 @@ func TestRegistryUpsertWritesSessionManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	session, err := registry.Upsert(RegisterRequest{
-		BaseAppID: "demo",
-		AppRoot:   root,
-		Branch:    "feature/test",
-		Status:    "running",
+		BaseAppID:   "demo",
+		AppRoot:     root,
+		Branch:      "feature/test",
+		Status:      "running",
+		ReportToken: "private-report-token",
 		Backends: map[string]Backend{
 			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
 		},
@@ -51,6 +53,86 @@ func TestRegistryUpsertWritesSessionManifest(t *testing.T) {
 	manifestPath := filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")
 	if _, err := os.Stat(manifestPath); err != nil {
 		t.Fatalf("manifest not written at %s: %v", manifestPath, err)
+	}
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "private-report-token") || strings.Contains(string(data), "report_token") {
+		t.Fatalf("manifest leaked report token: %s", data)
+	}
+}
+
+func TestRegistryUpsertPreservesReportTokenWhenOmitted(t *testing.T) {
+	root := t.TempDir()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID:   "demo",
+		AppRoot:     root,
+		Status:      "starting",
+		ReportToken: "private-report-token",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		Status:    "running",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4001"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.SessionID != first.SessionID {
+		t.Fatalf("session id changed from %q to %q", first.SessionID, second.SessionID)
+	}
+	if second.ReportToken != "private-report-token" {
+		t.Fatalf("report token = %q", second.ReportToken)
+	}
+}
+
+func TestRegistryPersistsSharedSubstrate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sessions.json")
+	registry, err := OpenRegistry(path, "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	substrate, err := registry.UpsertSubstrate(UpsertSubstrateRequest{
+		Kind:     SubstrateVictoria,
+		Status:   "ready",
+		OwnerPID: 123,
+		PIDs:     map[string]int{"metrics": 456},
+		URLs:     map[string]string{"metrics": "http://127.0.0.1:8428"},
+		Endpoints: map[string]string{
+			"metrics": "http://127.0.0.1:8428/opentelemetry/v1/metrics",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if substrate.Kind != SubstrateVictoria || substrate.PIDs["metrics"] != 456 {
+		t.Fatalf("substrate = %+v", substrate)
+	}
+
+	reopened, err := OpenRegistry(path, "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := reopened.GetSubstrate(SubstrateVictoria)
+	if !ok {
+		t.Fatal("substrate not persisted")
+	}
+	if got.Endpoints["metrics"] != "http://127.0.0.1:8428/opentelemetry/v1/metrics" {
+		t.Fatalf("substrate endpoints = %+v", got.Endpoints)
 	}
 }
 
@@ -110,6 +192,678 @@ func TestServerRegistersAndRoutesSessionBackend(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || string(body) != "backend ok" {
 		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerRouterTLSGeneratesHTTPSRoutes(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_, _ = io.WriteString(w, "tls backend ok")
+	}))
+	defer backend.Close()
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+		RouterTLS:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/tls",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: backendAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiURL := session.Routes[RouteAPI]
+	if !strings.HasPrefix(apiURL, "https://api."+session.SessionID+".onlava.localhost:") {
+		t.Fatalf("api route = %q", apiURL)
+	}
+
+	routerAddr := server.RouterAddr()
+	httpClient := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", routerAddr)
+		},
+	}}
+	resp, err := httpClient.Get(apiURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "tls backend ok" {
+		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerRoutesFrontendBackend(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	var frontendAddr string
+	frontend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Host != frontendAddr {
+			t.Fatalf("frontend host = %q", req.Host)
+		}
+		_, _ = io.WriteString(w, "frontend ok")
+	}))
+	defer frontend.Close()
+	frontendAddr = strings.TrimPrefix(frontend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/frontend",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+			"web":    {Network: "tcp", Addr: frontendAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Routes["web"] == "" || !strings.Contains(session.Routes["web"], "web."+session.SessionID+".onlava.localhost") {
+		t.Fatalf("frontend route = %q", session.Routes["web"])
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "web." + session.SessionID + ".onlava.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "frontend ok" {
+		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerRoutesParallelSessionsWithoutRouteCollision(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	backend := func(label string) (*httptest.Server, *string) {
+		var addr string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.Host != addr {
+				t.Fatalf("%s backend host = %q, want %q", label, req.Host, addr)
+			}
+			_, _ = io.WriteString(w, label)
+		}))
+		addr = strings.TrimPrefix(server.URL, "http://")
+		return server, &addr
+	}
+	apiA, apiAAddr := backend("api-a")
+	defer apiA.Close()
+	webA, webAAddr := backend("web-a")
+	defer webA.Close()
+	apiB, apiBAddr := backend("api-b")
+	defer apiB.Close()
+	webB, webBAddr := backend("web-b")
+	defer webB.Close()
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	sessionA, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   filepath.Join(t.TempDir(), "worktree-a"),
+		Branch:    "feature/parallel",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: *apiAAddr},
+			"web":    {Network: "tcp", Addr: *webAAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionB, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   filepath.Join(t.TempDir(), "worktree-b"),
+		Branch:    "feature/parallel",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: *apiBAddr},
+			"web":    {Network: "tcp", Addr: *webBAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessionA.SessionID == sessionB.SessionID {
+		t.Fatalf("parallel sessions share session id %q", sessionA.SessionID)
+	}
+
+	assertRouteBody := func(host, want string) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Host = host
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || string(body) != want {
+			t.Fatalf("%s response status=%d body=%q, want %q", host, resp.StatusCode, body, want)
+		}
+	}
+	assertRouteBody("api."+sessionA.SessionID+".onlava.localhost", "api-a")
+	assertRouteBody("web."+sessionA.SessionID+".onlava.localhost", "web-a")
+	assertRouteBody("api."+sessionB.SessionID+".onlava.localhost", "api-b")
+	assertRouteBody("web."+sessionB.SessionID+".onlava.localhost", "web-b")
+}
+
+func TestServerRoutesSharedSubstrateBackends(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	var grafanaAddr string
+	grafana := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Host != grafanaAddr {
+			t.Fatalf("grafana host = %q", req.Host)
+		}
+		_, _ = io.WriteString(w, "grafana ok")
+	}))
+	defer grafana.Close()
+	grafanaAddr = strings.TrimPrefix(grafana.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/substrate-routes",
+		Backends: map[string]Backend{
+			RouteGrafana: {Network: "tcp", Addr: grafanaAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Routes[RouteGrafana] == "" || !strings.Contains(session.Routes[RouteGrafana], "grafana."+session.SessionID+".onlava.localhost") {
+		t.Fatalf("grafana route = %q", session.Routes[RouteGrafana])
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "grafana." + session.SessionID + ".onlava.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "grafana ok" {
+		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerRoutesConsoleBackend(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_, _ = io.WriteString(w, "dashboard ok")
+	}))
+	defer backend.Close()
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/console",
+		Backends: map[string]Backend{
+			RouteDashboard: {Network: "tcp", Addr: backendAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/s/"+session.SessionID+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "console.onlava.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "dashboard ok" {
+		t.Fatalf("console response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerRoutesConsoleToGlobalDashboardBackend(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		gotPath = req.URL.Path
+		_, _ = io.WriteString(w, "global dashboard ok")
+	}))
+	defer backend.Close()
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+		DashboardBackend: Backend{
+			Network: "tcp",
+			Addr:    backendAddr,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/global-dashboard",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Routes[RouteDashboard] == "" {
+		t.Fatalf("dashboard route missing: %+v", session.Routes)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/s/"+session.SessionID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "console.onlava.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "global dashboard ok" {
+		t.Fatalf("global console response status=%d body=%q", resp.StatusCode, body)
+	}
+	if gotPath != "/s/"+session.SessionID {
+		t.Fatalf("global dashboard path = %q, want /s/%s", gotPath, session.SessionID)
+	}
+}
+
+func TestServerConsoleFollowsGlobalDashboardRedirect(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	var sawSessionPath bool
+	var sawAppPath bool
+	var sessionPath string
+	var appPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case sessionPath:
+			sawSessionPath = true
+			http.Redirect(w, req, appPath, http.StatusFound)
+		case appPath:
+			sawAppPath = true
+			_, _ = io.WriteString(w, "redirect ok")
+		default:
+			t.Fatalf("backend path = %q", req.URL.Path)
+		}
+	}))
+	defer backend.Close()
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+		DashboardBackend: Backend{
+			Network: "tcp",
+			Addr:    backendAddr,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/global-dashboard",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionPath = "/s/" + session.SessionID
+	appPath = "/" + session.SessionID
+
+	httpClient := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			req.Host = "console.onlava.localhost"
+			return nil
+		},
+	}
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/s/"+session.SessionID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "console.onlava.localhost"
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "redirect ok" {
+		t.Fatalf("redirect response status=%d body=%q", resp.StatusCode, body)
+	}
+	if !sawSessionPath || !sawAppPath {
+		t.Fatalf("redirect paths saw session=%v app=%v", sawSessionPath, sawAppPath)
+	}
+}
+
+func TestServerRoutesMCPToGlobalDashboardBackend(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		gotPath = req.URL.Path
+		_, _ = io.WriteString(w, "global mcp ok")
+	}))
+	defer backend.Close()
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+		DashboardBackend: Backend{
+			Network: "tcp",
+			Addr:    backendAddr,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/global-mcp",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Routes[RouteMCP] == "" {
+		t.Fatalf("mcp route missing: %+v", session.Routes)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/sse", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "mcp." + session.SessionID + ".onlava.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "global mcp ok" {
+		t.Fatalf("global MCP response status=%d body=%q", resp.StatusCode, body)
+	}
+	if gotPath != "/sse" {
+		t.Fatalf("global MCP path = %q, want /sse", gotPath)
+	}
+}
+
+func TestServerRoutesMCPBackend(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_, _ = io.WriteString(w, "mcp ok")
+	}))
+	defer backend.Close()
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/mcp",
+		Backends: map[string]Backend{
+			RouteMCP: {Network: "tcp", Addr: backendAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/sse", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "mcp." + session.SessionID + ".onlava.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "mcp ok" {
+		t.Fatalf("mcp response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerSubstrateAPI(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.UpsertSubstrate(ctx, UpsertSubstrateRequest{
+		Kind:   SubstrateVictoria,
+		Status: "ready",
+		URLs:   map[string]string{"metrics": "http://127.0.0.1:8428"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Kind != SubstrateVictoria {
+		t.Fatalf("created substrate = %+v", created)
+	}
+	list, err := client.ListSubstrates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Kind != SubstrateVictoria {
+		t.Fatalf("substrates = %+v", list)
+	}
+	got, err := client.GetSubstrate(ctx, SubstrateVictoria)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.URLs["metrics"] != "http://127.0.0.1:8428" {
+		t.Fatalf("substrate urls = %+v", got.URLs)
+	}
+	deleted, err := client.DeleteSubstrate(ctx, SubstrateVictoria)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.Kind != SubstrateVictoria {
+		t.Fatalf("deleted substrate = %+v", deleted)
 	}
 }
 

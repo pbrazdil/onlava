@@ -251,6 +251,10 @@ func traceSummaryFromVictoriaSpan(appID string, trace victoriaJaegerTrace, span 
 	endpointName := optionalVictoriaString(firstNonEmpty(stringTag(tags, "onlava.endpoint"), endpointFromOperation(span.OperationName)))
 	summary := &devdash.TraceSummary{
 		AppID:         appID,
+		SessionID:     stringTag(tags, "onlava.session_id"),
+		AppRootHash:   stringTag(tags, "onlava.app_root_hash"),
+		Branch:        stringTag(tags, "onlava.branch"),
+		Worktree:      stringTag(tags, "onlava.worktree"),
 		TraceID:       traceID,
 		SpanID:        span.SpanID,
 		Type:          firstNonEmpty(stringTag(tags, "onlava.trace.type"), "REQUEST"),
@@ -279,6 +283,9 @@ func filterVictoriaSummaries(items []*devdash.TraceSummary, query devdash.TraceQ
 	out := items[:0]
 	for _, item := range items {
 		if query.TraceID != "" && item.TraceID != query.TraceID {
+			continue
+		}
+		if query.SessionID != "" && item.SessionID != query.SessionID {
 			continue
 		}
 		if query.ServiceName != "" && item.ServiceName != query.ServiceName {

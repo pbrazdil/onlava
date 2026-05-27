@@ -262,6 +262,8 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 				WorkerBuildID    string `json:"worker_build_id"`
 				WorkerBuildIDSet bool   `json:"worker_build_id_set"`
 				Versioning       string `json:"versioning"`
+				HostReporting    bool   `json:"host_resource_reporting"`
+				HostReportingEnv string `json:"host_resource_reporting_env"`
 			} `json:"temporal"`
 			Connectivity struct {
 				Checked bool `json:"checked"`
@@ -300,6 +302,9 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 		}
 		if payload.Temporal.Versioning != "pinned" {
 			t.Fatalf("versioning = %q", payload.Temporal.Versioning)
+		}
+		if !payload.Temporal.HostReporting || payload.Temporal.HostReportingEnv != "ONLAVA_TEMPORAL_HOST_RESOURCE_REPORTING" {
+			t.Fatalf("host resource reporting = %+v", payload.Temporal)
 		}
 		if payload.Connectivity.Checked {
 			t.Fatalf("connectivity checked while disabled: %+v", payload.Connectivity)

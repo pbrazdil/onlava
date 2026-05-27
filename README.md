@@ -143,7 +143,11 @@ onlava dev --port 4000 --listen 127.0.0.1
 onlava dev --json
 onlava dev --proxy
 onlava dev --proxy --trust
+onlava dev --detach
+onlava attach
 ```
+
+`--detach` starts an agent-backed dev session in the background and returns after the session is registered. `onlava attach` follows the current session logs. `onlava down` stops the current or selected session.
 
 `--proxy` enables local HTTPS/frontend domains from `.onlava.json` proxy config. `--trust` allows onlava to install the local development CA into the OS trust store. Without `--trust`, onlava skips trust-store changes.
 
@@ -175,7 +179,12 @@ Example proxy config:
 ## CLI Overview
 
 ```text
-onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]
+onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust] [--detach]
+onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--jsonl|--json]
+onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls] [--trust] [--json]
+onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls] [--trust] [--json]
+onlava status --json [--app-root <path>] [--session <id>]
+onlava down [--app-root <path>] [--session <id>]
 onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava version [--json]
 onlava build [--app-root <path>] [-o <path>]
@@ -184,9 +193,12 @@ onlava harness [--app-root <path>] [--json] [--write]
 onlava harness self [--repo-root <path>] [--json] [--write]
 onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
-onlava logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
+onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
 onlava test [--app-root <path>] [go test flags/packages...]
 onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+onlava db psql [--app-root <path>] [psql args...]
+onlava db reset [--app-root <path>]
+onlava db snapshot create|restore <name> [--app-root <path>]
 onlava psql [--app-root <path>] [psql args...]
 ```
 
@@ -218,12 +230,13 @@ onlava writes local development logs and traces, and `onlava dev` can run Victor
 Useful commands:
 
 ```sh
-onlava logs --limit 200
-onlava logs --jsonl --limit 200
+onlava logs --session current --limit 200
+onlava attach
+onlava logs --session current --jsonl --limit 200
 onlava inspect routes --json
 onlava inspect endpoints --json
-onlava inspect traces --json --since 15m --slowest
-onlava inspect metrics --json --since 1h
+onlava inspect traces --json --session current --since 15m --slowest
+onlava inspect metrics --json --session current --since 1h
 onlava harness --json --write
 ```
 

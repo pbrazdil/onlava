@@ -86,6 +86,8 @@ type inspectTemporalRecord struct {
 	Namespace        string `json:"namespace"`
 	NamespaceEnvSet  bool   `json:"namespace_env_set"`
 	TaskQueuePrefix  string `json:"task_queue_prefix"`
+	TaskQueueEnv     string `json:"task_queue_env"`
+	TaskQueueEnvSet  bool   `json:"task_queue_env_set"`
 	PayloadCodec     string `json:"payload_codec"`
 	APIKeyEnv        string `json:"api_key_env"`
 	APIKeyEnvSet     bool   `json:"api_key_env_set"`
@@ -98,6 +100,9 @@ type inspectTemporalRecord struct {
 	TLSCertFileSet   bool   `json:"tls_cert_file_env_set"`
 	TLSKeyFileEnv    string `json:"tls_key_file_env"`
 	TLSKeyFileSet    bool   `json:"tls_key_file_env_set"`
+	HostReporting    bool   `json:"host_resource_reporting"`
+	HostReportingEnv string `json:"host_resource_reporting_env"`
+	HostReportingSet bool   `json:"host_resource_reporting_env_set"`
 	DeploymentName   string `json:"deployment_name"`
 	DeploymentEnv    string `json:"deployment_env"`
 	DeploymentEnvSet bool   `json:"deployment_env_set"`
@@ -284,7 +289,7 @@ func parseInspectArgs(args []string) (inspectOptions, error) {
 				return inspectOptions{}, fmt.Errorf("--repo-root is only supported for inspect docs")
 			}
 			opts.RepoRoot = args[i]
-		case "--limit", "-n", "--since", "--service", "--endpoint", "--trace-id", "--status", "--min-duration-ms":
+		case "--limit", "-n", "--since", "--service", "--endpoint", "--trace-id", "--session", "--status", "--min-duration-ms":
 			i++
 			if i >= len(args) {
 				return inspectOptions{}, fmt.Errorf("missing value for %s", args[i-1])
@@ -450,6 +455,8 @@ func buildInspectTemporalResponse(ctx context.Context, appRoot string, cfg appcf
 			Namespace:        info.Namespace,
 			NamespaceEnvSet:  info.NamespaceEnvSet,
 			TaskQueuePrefix:  info.TaskQueuePrefix,
+			TaskQueueEnv:     info.TaskQueueEnv,
+			TaskQueueEnvSet:  info.TaskQueueEnvSet,
 			PayloadCodec:     info.PayloadCodec,
 			APIKeyEnv:        info.APIKeyEnv,
 			APIKeyEnvSet:     info.APIKeyEnvSet,
@@ -462,6 +469,9 @@ func buildInspectTemporalResponse(ctx context.Context, appRoot string, cfg appcf
 			TLSCertFileSet:   info.TLSCertFileSet,
 			TLSKeyFileEnv:    info.TLSKeyFileEnv,
 			TLSKeyFileSet:    info.TLSKeyFileSet,
+			HostReporting:    info.HostReporting,
+			HostReportingEnv: info.HostReportingEnv,
+			HostReportingSet: info.HostReportingSet,
 			DeploymentName:   info.DeploymentName,
 			DeploymentEnv:    info.DeploymentEnv,
 			DeploymentEnvSet: info.DeploymentEnvSet,
@@ -500,6 +510,7 @@ func temporalDeclarations(appRoot string, appModel *model.App, info onlavaruntim
 			queue = defaultTemporalWorkerTaskQueue(info.TaskQueuePrefix)
 			explicit = false
 		}
+		queue = onlavaruntime.SessionScopedTemporalTaskQueue(info, queue)
 		position := decl.Package.GoPkg.Fset.Position(decl.TokenPos)
 		out = append(out, temporalDeclaration{
 			Kind:              string(decl.Kind),

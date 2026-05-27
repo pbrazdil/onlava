@@ -13,6 +13,7 @@ type Config struct {
 	Name          string              `json:"name"`
 	ID            string              `json:"id"`
 	Proxy         ProxyConfig         `json:"proxy"`
+	Dev           DevConfig           `json:"dev"`
 	Auth          AuthConfig          `json:"auth"`
 	Observability ObservabilityConfig `json:"observability"`
 	Temporal      TemporalConfig      `json:"temporal"`
@@ -39,6 +40,21 @@ type FrontendConfig struct {
 	Host     string `json:"host"`
 	Root     string `json:"root"`
 	Upstream string `json:"upstream"`
+}
+
+type DevConfig struct {
+	Services map[string]DevServiceConfig `json:"services"`
+	Setup    []string                    `json:"setup"`
+}
+
+type DevServiceConfig struct {
+	Kind      string            `json:"kind"`
+	Version   string            `json:"version"`
+	Isolation string            `json:"isolation"`
+	Image     string            `json:"image"`
+	Database  string            `json:"database"`
+	Route     string            `json:"route"`
+	Env       map[string]string `json:"env"`
 }
 
 type AuthConfig struct {

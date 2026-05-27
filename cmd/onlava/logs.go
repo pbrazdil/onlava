@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
 )
@@ -19,6 +20,7 @@ type logsOptions struct {
 	Limit   int
 	Follow  bool
 	Stream  string
+	Session string
 	JSONL   bool
 }
 
@@ -29,6 +31,7 @@ type logsEvent struct {
 		Root string `json:"root"`
 	} `json:"app"`
 	ID        int64  `json:"id"`
+	SessionID string `json:"session_id,omitempty"`
 	PID       string `json:"pid"`
 	Stream    string `json:"stream"`
 	Output    string `json:"output"`
@@ -36,7 +39,35 @@ type logsEvent struct {
 }
 
 func logsCommand(args []string) error {
-	return runOnlavaLogs(context.Background(), os.Stdout, args)
+	return runOnlavaLogsFunc(context.Background(), os.Stdout, args)
+}
+
+var runOnlavaLogsFunc = runOnlavaLogs
+
+func attachCommand(args []string) error {
+	logArgs, err := attachLogArgs(args)
+	if err != nil {
+		return err
+	}
+	return runOnlavaLogsFunc(context.Background(), os.Stdout, logArgs)
+}
+
+func attachLogArgs(args []string) ([]string, error) {
+	opts, err := parseLogsArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	if opts.Session == "" {
+		opts.Session = "current"
+	}
+	out := []string{"--follow", "--session", opts.Session, "--limit", strconv.Itoa(opts.Limit), "--stream", opts.Stream}
+	if opts.AppRoot != "" {
+		out = append(out, "--app-root", opts.AppRoot)
+	}
+	if opts.JSONL {
+		out = append(out, "--jsonl")
+	}
+	return out, nil
 }
 
 func runOnlavaLogs(ctx context.Context, stdout io.Writer, args []string) error {
@@ -54,22 +85,26 @@ func runOnlavaLogs(ctx context.Context, stdout io.Writer, args []string) error {
 		return err
 	}
 	appID := cfg.AppID()
+	sessionID, err := resolveLogsSessionID(ctx, opts.Session, appRoot)
+	if err != nil {
+		return err
+	}
 
-	store, err := devdash.OpenStore(os.Getenv("ONLAVA_DEV_CACHE_DIR"))
+	store, err := openDevdashStore()
 	if err != nil {
 		return err
 	}
 	defer store.Close()
 
-	record, err := store.GetApp(ctx, appID)
+	record, sessionRecord, err := devdashAppRecordForSession(ctx, store, appID, sessionID)
 	if err != nil {
 		return fmt.Errorf("no local logs found for %q; run `onlava run` first", appID)
 	}
-	if record.Root != "" && record.Root != appRoot {
+	if !sessionRecord && sessionID == "" && record.Root != "" && record.Root != appRoot {
 		return fmt.Errorf("local logs for %q belong to %s, not %s", appID, record.Root, appRoot)
 	}
 
-	items, err := store.ListProcessOutput(ctx, appID, opts.Limit)
+	items, err := store.ListProcessOutputForSession(ctx, appID, sessionID, opts.Limit)
 	if err != nil {
 		return err
 	}
@@ -97,7 +132,7 @@ func runOnlavaLogs(ctx context.Context, stdout io.Writer, args []string) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			items, err := store.ListProcessOutputSince(ctx, appID, lastID, 200)
+			items, err := store.ListProcessOutputSinceForSession(ctx, appID, sessionID, lastID, 200)
 			if err != nil {
 				return err
 			}
@@ -151,11 +186,42 @@ func parseLogsArgs(args []string) (logsOptions, error) {
 			if opts.Stream == "" {
 				return logsOptions{}, fmt.Errorf("invalid stream %q", args[i])
 			}
+		case "--session":
+			i++
+			if i >= len(args) {
+				return logsOptions{}, fmt.Errorf("missing value for --session")
+			}
+			opts.Session = strings.TrimSpace(args[i])
+			if opts.Session == "" {
+				return logsOptions{}, fmt.Errorf("invalid session %q", args[i])
+			}
 		default:
 			return logsOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	return opts, nil
+}
+
+func resolveLogsSessionID(ctx context.Context, value, appRoot string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if value != "current" {
+		return value, nil
+	}
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		return "", err
+	}
+	sessions, err := client.List(ctx, appRoot)
+	if err != nil {
+		return "", err
+	}
+	if len(sessions) == 0 {
+		return "", fmt.Errorf("no onlava agent session found for %s", appRoot)
+	}
+	return sessions[0].SessionID, nil
 }
 
 func normalizeLogStream(value string) string {
@@ -187,6 +253,7 @@ func writeLogsJSONL(w io.Writer, appName, appRoot string, item devdash.ProcessOu
 	event := logsEvent{
 		SchemaVersion: "onlava.logs.event.v1",
 		ID:            item.ID,
+		SessionID:     item.SessionID,
 		PID:           item.PID,
 		Stream:        item.Stream,
 		Output:        string(item.Output),

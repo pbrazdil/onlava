@@ -148,7 +148,7 @@ func (s *dashboardServer) dataOutboxEvents(ctx context.Context, params dataOutbo
 }
 
 func (s *dashboardServer) openDataPool(ctx context.Context, appID string) (*pgxpool.Pool, error) {
-	status, err := s.supervisor.statusFor(ctx, firstNonEmpty(appID, s.supervisor.activeAppID()))
+	status, err := s.dashboardStatusFor(ctx, firstNonEmpty(appID, s.dashboardActiveAppID()))
 	if err != nil {
 		return nil, err
 	}

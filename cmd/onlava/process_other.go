@@ -12,6 +12,8 @@ import (
 
 func configureChildProcess(cmd *exec.Cmd) {}
 
+func configureDetachedChildProcess(cmd *exec.Cmd) {}
+
 func interruptProcessTree(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil

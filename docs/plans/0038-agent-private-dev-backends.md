@@ -1,0 +1,152 @@
+# Agent Private Dev Backends
+
+This ExecPlan is a living document. Update Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective as work proceeds.
+
+## Purpose / Big Picture
+
+`docs/PRD-5-agent.md` says worktrees should not bind stable host ports. The shipped 0037 agent MVP created the daemon, control socket, router, session registry, and routed session URLs, but `onlava dev` still starts the app on `127.0.0.1:4000` by default and enables the older local HTTPS proxy unless disabled by environment.
+
+After this work, the default `onlava dev` path starts the app on a session-private backend, preferably a Unix domain socket under `.onlava/sessions/<session_id>/run/api.sock`, registers that backend with the agent, and prints the agent route as the public API URL. Explicit `--listen`, `--port`, `--proxy`, and `--trust` flags remain available for compatibility and debugging, but they are no longer the default public surface.
+
+This plan intentionally does not move Grafana, Victoria, Temporal, Postgres, Electric, or frontend process ownership. Those are covered by later PRD-5 plans.
+
+## Progress
+
+* [x] 2026-05-26: Create this ExecPlan and link it from `docs/plans/active.md`.
+* [x] 2026-05-26: Default `onlava dev` to an agent-routed private Unix app backend when the agent is available.
+* [x] 2026-05-26: Keep explicit `--listen` and `--port` as TCP compatibility/debug paths.
+* [x] 2026-05-26: Make the old local HTTPS proxy opt-in through `--proxy`, `--trust`, or an explicit `ONLAVA_LOCAL_PROXY=1` environment override instead of defaulting on.
+* [x] 2026-05-26: Update focused tests for routed Unix backend registration, TCP fallback behavior, and proxy flags.
+* [x] 2026-05-26: Run full repository validation and install the updated `onlava` binary.
+
+## Surprises & Discoveries
+
+Record implementation findings here with commands, test output, or file references.
+
+* 2026-05-26: The existing local HTTPS proxy only supports TCP upstreams. For compatibility, `--proxy`, `--trust`, or `ONLAVA_LOCAL_PROXY=1` now make the app backend a daemon-registered hidden loopback TCP address instead of a Unix socket.
+
+## Decision Log
+
+* Decision: Preserve explicit TCP flags while changing the no-flag default to agent/private.
+  Rationale: The PRD wants humans to stop seeing per-worktree API ports, but keeping explicit TCP flags gives developers an escape hatch and keeps existing CI helpers simple.
+  Date/Author: 2026-05-26 / Codex
+
+* Decision: Make the existing local HTTPS proxy opt-in during this phase.
+  Rationale: The proxy binds machine-global ports and conflicts with the daemon/router ownership model. Keeping it available behind `--proxy`/`--trust` avoids mixing the old and new public surfaces by default.
+  Date/Author: 2026-05-26 / Codex
+
+## Outcomes & Retrospective
+
+Completed on 2026-05-26.
+
+Shipped outcome:
+
+* `onlava dev` with no explicit listen flags registers a session-private Unix API backend at `.onlava/sessions/<session_id>/run/api.sock` when the agent is available.
+* Explicit `--listen` and `--port` keep using TCP and register TCP API backends.
+* `--proxy`, `--trust`, or `ONLAVA_LOCAL_PROXY=1` keep the legacy local HTTPS proxy available and force a hidden loopback TCP app backend because the proxy only supports TCP upstreams.
+* The app child receives `ONLAVA_LISTEN_NETWORK` and `ONLAVA_LISTEN_ADDR`, and the dev supervisor can wait for either TCP or Unix listeners.
+
+Validation:
+
+```sh
+go test ./cmd/onlava -run 'Test(DevCommand|ParseDevArgs|PrepareDevAgentSession|Backend|WaitForAppStartup|ScanWatched|ChangedPaths|SnapshotsEqual|ShouldIgnoreWatchPath)'
+go test ./cmd/onlava ./internal/agent ./runtime
+go test ./...
+go install ./cmd/onlava
+onlava harness self --json --write
+git diff --check
+```
+
+All validation commands passed. The self harness wrote `.onlava/harness/self-latest.json` and reported only existing large-file architecture warnings.
+
+## Context and Orientation
+
+Relevant files:
+
+```text
+docs/PRD-5-agent.md
+cmd/onlava/main.go
+cmd/onlava/watch.go
+cmd/onlava/dev_supervisor.go
+cmd/onlava/console.go
+internal/agent/*
+runtime/app.go
+internal/localproxy/*
+```
+
+The 0037 MVP already added `ONLAVA_LISTEN_NETWORK=unix` support in `runtime/app.go` and Unix backend routing in `internal/agent/router.go`. This plan wires those primitives into the normal dev supervisor path.
+
+## Milestones
+
+Milestone 1 updates CLI option handling so the dev path can distinguish explicit TCP requests from the no-flag default.
+
+Milestone 2 computes the session backend path after app-root discovery and agent registration, then starts the app with `ONLAVA_LISTEN_NETWORK=unix`.
+
+Milestone 3 updates session manifests and console URLs so routed agent URLs are the default visible API/dashboard/MCP surfaces.
+
+Milestone 4 updates tests and validation.
+
+## Plan of Work
+
+Use additive changes to the supervisor so the old TCP path remains obvious and testable. Avoid moving dashboard internals in this plan; the dashboard still runs as a hidden per-session backend while the agent provides the visible route.
+
+## Concrete Steps
+
+1. Add a dev listen request type that records the requested network/address and whether the user explicitly chose TCP.
+2. Change `prepareDevAgentSession` so the no-flag default registers a Unix API backend under the session state root.
+3. Start the child process with both `ONLAVA_LISTEN_NETWORK` and `ONLAVA_LISTEN_ADDR`.
+4. Teach startup checks to probe Unix sockets as well as TCP addresses.
+5. Make `configureDevProcessEnv` leave `ONLAVA_LOCAL_PROXY` unset unless `--proxy` or `--trust` is provided.
+6. Update tests for CLI flags, agent session registration, and startup probing.
+7. Run `gofmt`, focused Go tests, `go test ./cmd/onlava ./internal/agent ./runtime`, `go install ./cmd/onlava`, and broader validation when practical.
+
+## Validation and Acceptance
+
+Expected validation:
+
+```sh
+go test ./cmd/onlava ./internal/agent ./runtime
+go test ./...
+go install ./cmd/onlava
+onlava harness self --json --write
+git diff --check
+```
+
+Observable behavior:
+
+* `onlava dev` with no listen flags registers an API backend with `"network":"unix"` in `.onlava/sessions/<session_id>/manifest.json`.
+* The app child receives `ONLAVA_LISTEN_NETWORK=unix` and a session-local socket path.
+* The printed API URL uses the agent route, not `127.0.0.1:4000`, when the agent is available.
+* `onlava dev --port <n>` and `onlava dev --listen <addr>` still use TCP and register a TCP backend.
+* The local HTTPS proxy only starts when explicitly requested or enabled by environment.
+
+## Idempotence and Recovery
+
+The runtime already removes stale Unix socket files before binding. Session registration remains an upsert keyed by app root and branch, so repeated dev starts refresh the same session manifest.
+
+If the agent cannot start, `onlava dev` should fall back to the existing TCP behavior and warn rather than blocking local development.
+
+## Artifacts and Notes
+
+Expected changed artifacts:
+
+```text
+cmd/onlava/main.go
+cmd/onlava/watch.go
+cmd/onlava/dev_supervisor.go
+cmd/onlava/*_test.go
+docs/plans/0038-agent-private-dev-backends.md
+```
+
+## Interfaces and Dependencies
+
+No new external dependencies.
+
+Expected effective default:
+
+```text
+ONLAVA_LISTEN_NETWORK=unix
+ONLAVA_LISTEN_ADDR=<app-root>/.onlava/sessions/<session_id>/run/api.sock
+```
+
+Explicit compatibility flags continue to produce TCP backends.

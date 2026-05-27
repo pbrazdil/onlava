@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
@@ -98,6 +99,52 @@ func TestVictoriaStackEnv(t *testing.T) {
 	}
 }
 
+func TestVictoriaStackSubstrateRoundTrip(t *testing.T) {
+	stack := &victoriaStack{components: []*victoriaComponent{
+		{
+			spec:        victoriaComponentSpec{Name: "metrics", EndpointPath: "/opentelemetry/v1/metrics", URLPath: "/vmui"},
+			baseURL:     "http://127.0.0.1:8428",
+			endpointURL: "http://127.0.0.1:8428/opentelemetry/v1/metrics",
+		},
+	}}
+	req := stack.SubstrateRequest(123)
+	if req.Kind != localagent.SubstrateVictoria || req.OwnerPID != 123 {
+		t.Fatalf("substrate request = %+v", req)
+	}
+	substrate := localagent.Substrate{
+		Kind:      req.Kind,
+		URLs:      req.URLs,
+		Endpoints: req.Endpoints,
+	}
+	roundTrip := victoriaStackFromSubstrate(substrate)
+	if roundTrip == nil {
+		t.Fatal("expected stack from substrate")
+	}
+	env := roundTrip.Env()
+	if !containsString(env, "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://127.0.0.1:8428/opentelemetry/v1/metrics") {
+		t.Fatalf("env = %+v", env)
+	}
+	urls := roundTrip.URLs()
+	if urls["metrics"] != "http://127.0.0.1:8428/vmui" {
+		t.Fatalf("urls = %+v", urls)
+	}
+	roundTrip.MarkExternal()
+	if !roundTrip.components[0].external {
+		t.Fatal("component not marked external")
+	}
+}
+
+func TestURLAcceptsTCP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer server.Close()
+	if !urlAcceptsTCP(server.URL) {
+		t.Fatalf("urlAcceptsTCP(%q) = false, want true", server.URL)
+	}
+	if urlAcceptsTCP("http://127.0.0.1:1") {
+		t.Fatal("urlAcceptsTCP on closed port = true, want false")
+	}
+}
+
 func TestStartVictoriaComponentReusesOccupiedPort(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -131,6 +178,10 @@ func TestBuildOTLPTracePayload(t *testing.T) {
 	endpoint := "Hello"
 	payload := buildOTLPTracePayload(&devdash.TraceSummary{
 		AppID:         "app",
+		SessionID:     "session-a",
+		AppRootHash:   "root123",
+		Branch:        "feature/a",
+		Worktree:      "onlv-a",
 		TraceID:       "00000000000000010000000000000002",
 		SpanID:        "0000000000000003",
 		Type:          "REQUEST",
@@ -141,10 +192,14 @@ func TestBuildOTLPTracePayload(t *testing.T) {
 		EndpointName:  &endpoint,
 	}, []*devdash.TraceEvent{
 		{
-			TraceID:   "00000000000000010000000000000002",
-			SpanID:    "0000000000000003",
-			EventID:   4,
-			EventTime: time.Unix(1, 3).UTC(),
+			TraceID:     "00000000000000010000000000000002",
+			SpanID:      "0000000000000003",
+			SessionID:   "session-a",
+			AppRootHash: "root123",
+			Branch:      "feature/a",
+			Worktree:    "onlv-a",
+			EventID:     4,
+			EventTime:   time.Unix(1, 3).UTC(),
 			Event: map[string]any{
 				"span_event": map[string]any{"db": "query"},
 			},
@@ -167,16 +222,29 @@ func TestBuildOTLPTracePayload(t *testing.T) {
 	if len(span["events"].([]any)) != 1 {
 		t.Fatalf("events = %v", span["events"])
 	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"onlava.session_id", "session-a", "onlava.app_root_hash", "root123", "onlava.branch", "feature/a", "onlava.worktree", "onlv-a"} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("payload missing %q: %s", want, data)
+		}
+	}
 }
 
 func TestBuildOTLPLogPayloadIncludesTraceContext(t *testing.T) {
 	payload := buildOTLPLogPayload(&devdash.LogEvent{
-		AppID:     "app",
-		TraceID:   "00000000000000010000000000000002",
-		SpanID:    "0000000000000003",
-		Level:     "info",
-		Message:   "hello",
-		Timestamp: time.Unix(1, 2).UTC(),
+		AppID:       "app",
+		SessionID:   "session-a",
+		AppRootHash: "root123",
+		Branch:      "feature/a",
+		Worktree:    "onlv-a",
+		TraceID:     "00000000000000010000000000000002",
+		SpanID:      "0000000000000003",
+		Level:       "info",
+		Message:     "hello",
+		Timestamp:   time.Unix(1, 2).UTC(),
 	})
 
 	resourceLogs := payload["resourceLogs"].([]any)
@@ -188,6 +256,42 @@ func TestBuildOTLPLogPayloadIncludesTraceContext(t *testing.T) {
 	}
 	if record["severityText"] != "INFO" {
 		t.Fatalf("severityText = %v", record["severityText"])
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"onlava.session_id", "session-a", "onlava.app_root_hash", "root123", "onlava.branch", "feature/a", "onlava.worktree", "onlv-a"} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("payload missing %q: %s", want, data)
+		}
+	}
+}
+
+func TestMetricAttributePairsIncludesSessionLabels(t *testing.T) {
+	attrs := metricAttributePairs(&devdash.TraceSummary{
+		AppID:       "app",
+		SessionID:   "session-a",
+		AppRootHash: "root123",
+		Branch:      "feature/a",
+		Worktree:    "onlv-a",
+		Type:        "REQUEST",
+		IsRoot:      true,
+		ServiceName: "svc",
+	})
+	got := map[string]any{}
+	for _, attr := range attrs {
+		got[attr.Key] = attr.Value
+	}
+	for key, want := range map[string]any{
+		"onlava_session_id":    "session-a",
+		"onlava_app_root_hash": "root123",
+		"onlava_branch":        "feature/a",
+		"onlava_worktree":      "onlv-a",
+	} {
+		if got[key] != want {
+			t.Fatalf("metric attrs[%s] = %v, want %v; attrs=%+v", key, got[key], want, attrs)
+		}
 	}
 }
 
@@ -217,6 +321,7 @@ func TestVictoriaQueryTraceSummariesFromJaegerAPI(t *testing.T) {
 							"tags": []any{
 								map[string]any{"key": "onlava.service", "type": "string", "value": "svc"},
 								map[string]any{"key": "onlava.endpoint", "type": "string", "value": "Hello"},
+								map[string]any{"key": "onlava.session_id", "type": "string", "value": "session-a"},
 								map[string]any{"key": "onlava.is_error", "type": "bool", "value": false},
 							},
 						},
@@ -232,8 +337,9 @@ func TestVictoriaQueryTraceSummariesFromJaegerAPI(t *testing.T) {
 		baseURL: server.URL,
 	}}}
 	items, err := stack.QueryTraceSummaries(context.Background(), devdash.TraceQuery{
-		AppID: "app",
-		Limit: 10,
+		AppID:     "app",
+		SessionID: "session-a",
+		Limit:     10,
 	})
 	if err != nil {
 		t.Fatalf("QueryTraceSummaries: %v", err)
@@ -243,6 +349,9 @@ func TestVictoriaQueryTraceSummariesFromJaegerAPI(t *testing.T) {
 	}
 	if items[0].ServiceName != "svc" || items[0].EndpointName == nil || *items[0].EndpointName != "Hello" {
 		t.Fatalf("summary = %+v", items[0])
+	}
+	if items[0].SessionID != "session-a" {
+		t.Fatalf("session = %q", items[0].SessionID)
 	}
 	if items[0].DurationNanos != uint64(25*time.Millisecond) {
 		t.Fatalf("duration = %d", items[0].DurationNanos)

@@ -13,6 +13,8 @@ const (
 	envAgentHome       = "ONLAVA_AGENT_HOME"
 	envAgentSocket     = "ONLAVA_AGENT_SOCKET"
 	envAgentRouterAddr = "ONLAVA_AGENT_ROUTER_ADDR"
+	envAgentRouterTLS  = "ONLAVA_AGENT_ROUTER_TLS"
+	envAgentTrust      = "ONLAVA_AGENT_TRUST"
 	envAgentDisable    = "ONLAVA_AGENT_DISABLE"
 
 	defaultRouterAddr = "127.0.0.1:9440"
@@ -70,8 +72,32 @@ func RouterAddrFromEnv() string {
 	return defaultRouterAddr
 }
 
+func RouterTLSFromEnv() bool {
+	return envEnabled(envAgentRouterTLS)
+}
+
+func RouterTLSDefault() bool {
+	value, ok := os.LookupEnv(envAgentRouterTLS)
+	if !ok || strings.TrimSpace(value) == "" {
+		return true
+	}
+	return envValueEnabled(value)
+}
+
+func TrustFromEnv() bool {
+	return envEnabled(envAgentTrust)
+}
+
 func DisabledByEnv() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(envAgentDisable))) {
+	return envEnabled(envAgentDisable)
+}
+
+func envEnabled(name string) bool {
+	return envValueEnabled(os.Getenv(name))
+}
+
+func envValueEnabled(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true", "yes", "on":
 		return true
 	default:

@@ -17,6 +17,10 @@ func configureChildProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
+func configureDetachedChildProcess(cmd *exec.Cmd) {
+	configureChildProcess(cmd)
+}
+
 func interruptProcessTree(cmd *exec.Cmd) error {
 	return signalProcessTree(cmd, syscall.SIGINT)
 }

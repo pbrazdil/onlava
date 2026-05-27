@@ -202,7 +202,7 @@ func (w *Workflow[I, O]) Config() WorkflowConfig {
 
 func (w *Workflow[I, O]) taskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
 	if w != nil && strings.TrimSpace(w.config.TaskQueue) != "" {
-		return strings.TrimSpace(w.config.TaskQueue)
+		return onlavaruntime.SessionScopedTemporalTaskQueue(info, w.config.TaskQueue)
 	}
 	return defaultWorkerTaskQueue(info)
 }
@@ -240,9 +240,8 @@ func (a *Activity[I, O]) Config() ActivityConfig {
 }
 
 func (a *Activity[I, O]) taskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
-	_ = info
 	if a != nil {
-		return strings.TrimSpace(a.config.TaskQueue)
+		return onlavaruntime.SessionScopedTemporalTaskQueue(info, a.config.TaskQueue)
 	}
 	return ""
 }
@@ -290,7 +289,7 @@ func ExecuteActivity[I, O any](ctx workflow.Context, a *Activity[I, O], input I)
 		return ActivityFuture[O]{}
 	}
 	opts := workflow.ActivityOptions{
-		TaskQueue:           strings.TrimSpace(a.config.TaskQueue),
+		TaskQueue:           onlavaruntime.SessionScopedTemporalTaskQueueFromEnv(a.config.TaskQueue),
 		StartToCloseTimeout: a.config.StartToClose,
 		RetryPolicy:         retryPolicy(a.config.RetryPolicy),
 	}
@@ -626,7 +625,7 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 		}
 		byQueue[queue] = append(byQueue[queue], item)
 	}
-	byQueue, err := filterDeclarationsBySelectedTaskQueues(byQueue, selectedTemporalTaskQueuesFromEnv())
+	byQueue, err := filterDeclarationsBySelectedTaskQueues(byQueue, scopedSelectedTemporalTaskQueues(info, selectedTemporalTaskQueuesFromEnv()))
 	if err != nil {
 		return nil, err
 	}
@@ -663,6 +662,17 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 
 func selectedTemporalTaskQueuesFromEnv() []string {
 	return splitTemporalTaskQueueList(os.Getenv("ONLAVA_TEMPORAL_TASK_QUEUE"))
+}
+
+func scopedSelectedTemporalTaskQueues(info onlavaruntime.TemporalRuntimeInfo, selected []string) []string {
+	if len(selected) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(selected))
+	for _, queue := range selected {
+		out = append(out, onlavaruntime.SessionScopedTemporalTaskQueue(info, queue))
+	}
+	return out
 }
 
 func splitTemporalTaskQueueList(value string) []string {
@@ -761,6 +771,7 @@ func temporalStartWorkflowOptions(workflowName string, identity WorkflowIdentity
 	if taskQueue == "" {
 		taskQueue = defaultTaskQueue
 	}
+	taskQueue = onlavaruntime.SessionScopedTemporalTaskQueue(info, taskQueue)
 	start := temporalclient.StartWorkflowOptions{
 		ID:                       workflowIDFromIdentity(workflowName, identity),
 		TaskQueue:                taskQueue,

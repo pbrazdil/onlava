@@ -80,6 +80,7 @@
       "required": ["app_id", "available_filters"],
       "properties": {
         "app_id": { "type": "string" },
+        "session_id": { "type": "string" },
         "limit": { "type": "integer" },
         "since": { "type": "string" },
         "since_timestamp": { "type": "string" },

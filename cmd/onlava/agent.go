@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
@@ -18,6 +19,9 @@ import (
 type agentOptions struct {
 	SocketPath string
 	RouterAddr string
+	RouterTLS  bool
+	RouterHTTP bool
+	Trust      bool
 	JSON       bool
 }
 
@@ -33,6 +37,9 @@ type downOptions struct {
 }
 
 func agentCommand(args []string) error {
+	if len(args) > 0 && args[0] == "restart" {
+		return agentRestartCommand(args[1:])
+	}
 	opts, err := parseAgentArgs(args)
 	if err != nil {
 		return err
@@ -47,13 +54,96 @@ func agentCommand(args []string) error {
 		if opts.SocketPath != "" {
 			paths.SocketPath = opts.SocketPath
 		}
-		fmt.Fprintf(os.Stdout, "{\"type\":\"agent.start\",\"socket_path\":%q,\"router_addr\":%q}\n", paths.SocketPath, firstNonEmpty(opts.RouterAddr, localagent.RouterAddrFromEnv()))
+		routerTLS := opts.effectiveRouterTLS()
+		routerScheme := "http"
+		if routerTLS {
+			routerScheme = "https"
+		}
+		fmt.Fprintf(os.Stdout, "{\"type\":\"agent.start\",\"socket_path\":%q,\"router_addr\":%q,\"router_scheme\":%q}\n", paths.SocketPath, firstNonEmpty(opts.RouterAddr, localagent.RouterAddrFromEnv()), routerScheme)
 	}
-	return localagent.Run(ctx, localagent.RunOptions{
-		SocketPath: opts.SocketPath,
-		RouterAddr: opts.RouterAddr,
-		JSON:       opts.JSON,
+	dashboardAddr, err := freeLoopbackAddr()
+	if err != nil {
+		return err
+	}
+	server, err := localagent.NewServer(localagent.RunOptions{
+		SocketPath:   opts.SocketPath,
+		RouterAddr:   opts.RouterAddr,
+		RouterTLS:    opts.effectiveRouterTLS(),
+		InstallTrust: opts.Trust,
+		DashboardBackend: localagent.Backend{
+			Network: "tcp",
+			Addr:    dashboardAddr,
+		},
+		JSON: opts.JSON,
 	})
+	if err != nil {
+		return err
+	}
+	dashboard, err := startAgentDashboard(ctx, server, dashboardAddr)
+	if err != nil {
+		_ = server.Close()
+		return err
+	}
+	defer dashboard.Close()
+	return server.Run(ctx)
+}
+
+func agentRestartCommand(args []string) error {
+	opts, err := parseAgentArgs(args)
+	if err != nil {
+		return err
+	}
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		return err
+	}
+	if opts.SocketPath != "" {
+		paths.SocketPath = filepath.Clean(opts.SocketPath)
+		paths.RunDir = filepath.Dir(paths.SocketPath)
+	}
+	client := localagent.NewClient(paths.SocketPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	oldHealth, running := currentAgentHealth(ctx, client)
+	if running && oldHealth.PID > 0 {
+		if err := signalAgentPID(oldHealth.PID); err != nil {
+			return fmt.Errorf("stop onlava agent pid %d: %w", oldHealth.PID, err)
+		}
+		if err := waitForAgentStop(ctx, client, oldHealth.PID); err != nil {
+			return err
+		}
+	}
+	if err := localagent.StartProcess(paths, localagent.StartOptions{
+		RouterAddr: opts.RouterAddr,
+		RouterTLS:  opts.effectiveRouterTLS(),
+		RouterHTTP: opts.RouterHTTP,
+		Trust:      opts.Trust,
+	}); err != nil {
+		return err
+	}
+	health, err := waitForAgentStart(ctx, client, oldHealth.PID)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(map[string]any{
+			"schema_version": "onlava.agent.restart.v1",
+			"old_pid":        oldHealth.PID,
+			"pid":            health.PID,
+			"socket_path":    health.SocketPath,
+			"router_addr":    health.RouterAddr,
+			"router_scheme":  health.RouterScheme,
+		})
+	}
+	fmt.Fprintf(os.Stdout, "restarted onlava agent")
+	if health.PID > 0 {
+		fmt.Fprintf(os.Stdout, " (pid %d)", health.PID)
+	}
+	fmt.Fprintln(os.Stdout)
+	return nil
 }
 
 func parseAgentArgs(args []string) (agentOptions, error) {
@@ -72,6 +162,16 @@ func parseAgentArgs(args []string) (agentOptions, error) {
 				return agentOptions{}, fmt.Errorf("missing value for --router-listen")
 			}
 			opts.RouterAddr = args[i]
+		case "--router-tls":
+			opts.RouterTLS = true
+			opts.RouterHTTP = false
+		case "--router-http":
+			opts.RouterHTTP = true
+			opts.RouterTLS = false
+		case "--trust":
+			opts.Trust = true
+			opts.RouterTLS = true
+			opts.RouterHTTP = false
 		case "--json":
 			opts.JSON = true
 		default:
@@ -79,6 +179,69 @@ func parseAgentArgs(args []string) (agentOptions, error) {
 		}
 	}
 	return opts, nil
+}
+
+func (opts agentOptions) effectiveRouterTLS() bool {
+	if opts.Trust || opts.RouterTLS {
+		return true
+	}
+	if opts.RouterHTTP {
+		return false
+	}
+	return localagent.RouterTLSDefault()
+}
+
+func currentAgentHealth(ctx context.Context, client *localagent.Client) (localagent.HealthResponse, bool) {
+	health, err := client.Health(ctx)
+	return health, err == nil
+}
+
+func signalAgentPID(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	return nil
+}
+
+func waitForAgentStop(ctx context.Context, client *localagent.Client, pid int) error {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		health, err := client.Health(ctx)
+		if err != nil || health.PID != pid {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for onlava agent pid %d to stop: %w", pid, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForAgentStart(ctx context.Context, client *localagent.Client, oldPID int) (localagent.HealthResponse, error) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		health, err := client.Health(ctx)
+		if err == nil && (oldPID == 0 || health.PID != oldPID) {
+			return health, nil
+		}
+		lastErr = err
+		select {
+		case <-ctx.Done():
+			if lastErr == nil {
+				lastErr = ctx.Err()
+			}
+			return localagent.HealthResponse{}, fmt.Errorf("timed out waiting for restarted onlava agent: %w", lastErr)
+		case <-ticker.C:
+		}
+	}
 }
 
 func statusCommand(args []string) error {
@@ -112,10 +275,12 @@ func statusCommand(args []string) error {
 		sessions = filtered
 	}
 	if opts.JSON {
+		health, _ := client.Health(ctx)
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(map[string]any{
 			"schema_version": "onlava.agent.status.v1",
+			"agent":          health,
 			"sessions":       sessions,
 		})
 	}

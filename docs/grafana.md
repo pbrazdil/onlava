@@ -1,8 +1,8 @@
 # Grafana Dev Integration
 
-`onlava dev` can supervise a local Grafana process alongside the local Victoria observability sidecars. Grafana is dev-only: `onlava run` does not start it.
+`onlava dev` can supervise a local Grafana process alongside the local Victoria observability sidecars. When the local agent is active, the first dev session registers Grafana as a shared agent substrate and later sessions reuse it after verifying the expected datasource and dashboard UIDs. Grafana is dev-only: `onlava run` does not start it.
 
-Generated files live under `.onlava/grafana/` by default:
+Generated files live under `.onlava/grafana/` by default when the agent is disabled. Shared agent Grafana state lives under the agent directory:
 
 ```text
 .onlava/grafana/conf/grafana.ini
@@ -48,9 +48,9 @@ ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource@0.24.0
 
 `auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `ONLAVA_DEV_GRAFANA=1` makes Grafana required for `onlava dev` startup.
 
-When the local HTTPS proxy is enabled, onlava computes the Grafana browser URL before writing `grafana.ini` and uses that URL as Grafana's `root_url`. `ONLAVA_GRAFANA_PUBLIC_URL` can override the advertised browser URL.
+When the local HTTPS proxy is enabled without the agent, onlava computes the Grafana browser URL before writing `grafana.ini` and uses that URL as Grafana's `root_url`. Shared agent Grafana uses its direct loopback URL for provisioning, then each dev session advertises the matching proxy route after the proxy starts. `ONLAVA_GRAFANA_PUBLIC_URL` can override the advertised browser URL.
 
-onlava starts a managed Grafana by default. If another Grafana process is already listening on the configured port, `auto` mode chooses another loopback port when the port was not explicitly set. Explicit external reuse requires `ONLAVA_GRAFANA_REUSE_EXTERNAL=1`, and the external instance is only marked usable after onlava verifies the expected datasource and dashboard UIDs through Grafana's HTTP API.
+onlava starts a managed Grafana by default. If another Grafana process is already listening on the configured port, `auto` mode chooses another loopback port when the port was not explicitly set. Explicit external reuse requires `ONLAVA_GRAFANA_REUSE_EXTERNAL=1`, and any external or shared instance is only marked usable after onlava verifies the expected datasource and dashboard UIDs through Grafana's HTTP API.
 
 The Grafana child process does not inherit ambient `GF_*` variables by default because they can override generated config. Set `ONLAVA_GRAFANA_PRESERVE_GF_ENV=1` only for local debugging.
 
@@ -60,7 +60,7 @@ When automatic downloads are enabled, the Grafana archive is extracted under `.o
 
 Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `internal/devtools/versions.json`. Environment variables override those pins for local testing.
 
-The starter dashboards query onlava's emitted OTLP request-duration metric, `onlava_request_duration_seconds`, with labels such as `onlava_app`, `onlava_service`, `onlava_endpoint`, `onlava_trace_type`, and `onlava_is_error`.
+The starter dashboards query onlava's emitted OTLP request-duration metric, `onlava_request_duration_seconds`, with labels such as `onlava_app`, `onlava_session_id`, `onlava_service`, `onlava_endpoint`, `onlava_trace_type`, and `onlava_is_error`. Generated dashboards include a `Session` variable populated from `onlava_session_id`.
 
 Reset local Grafana state with:
 

@@ -30,11 +30,11 @@ func TestParseRunArgsRejectsDevFlags(t *testing.T) {
 }
 
 func TestParseDevArgs(t *testing.T) {
-	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app", "--proxy", "--trust"})
+	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app", "--proxy", "--trust", "--detach"})
 	if err != nil {
 		t.Fatalf("parseDevArgs returned error: %v", err)
 	}
-	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" || !opts.Proxy || !opts.Trust {
+	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.PortSet || !opts.ListenSet || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" || !opts.Proxy || !opts.Trust || !opts.Detach {
 		t.Fatalf("opts = %+v", opts)
 	}
 }
@@ -44,10 +44,10 @@ func TestDevCommandUsesWatcherPath(t *testing.T) {
 	defer func() { runWithWatchFunc = prev }()
 
 	called := false
-	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
-		if addr != "127.0.0.1:4444" || !verbose || !jsonMode || appRoot != "/tmp/app" {
-			t.Fatalf("watch args = %q %v %v %q", addr, verbose, jsonMode, appRoot)
+		if listen.Network != "tcp" || listen.Addr != "127.0.0.1:4444" || !listen.Explicit || !verbose || !jsonMode || appRoot != "/tmp/app" {
+			t.Fatalf("watch args = %+v %v %v %q", listen, verbose, jsonMode, appRoot)
 		}
 		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "1" {
 			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want 1", got)
@@ -66,18 +66,81 @@ func TestDevCommandUsesWatcherPath(t *testing.T) {
 	}
 }
 
-func TestDevCommandEnablesProxyByDefault(t *testing.T) {
+func TestDevCommandUsesDetachedPath(t *testing.T) {
+	prevDetached := runDetachedDevFunc
+	prevWatch := runWithWatchFunc
+	defer func() {
+		runDetachedDevFunc = prevDetached
+		runWithWatchFunc = prevWatch
+	}()
+
+	detachedCalled := false
+	runDetachedDevFunc = func(args []string, opts devOptions) error {
+		detachedCalled = true
+		if !reflect.DeepEqual(args, []string{"--app-root", "/tmp/app", "--detach"}) {
+			t.Fatalf("detached args = %#v", args)
+		}
+		if !opts.Detach || opts.AppRoot != "/tmp/app" {
+			t.Fatalf("detached opts = %+v", opts)
+		}
+		return nil
+	}
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
+		t.Fatalf("watcher should not run for detached parent")
+		return nil
+	}
+
+	if err := devCommand([]string{"--app-root", "/tmp/app", "--detach"}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !detachedCalled {
+		t.Fatal("expected detached path to be called")
+	}
+}
+
+func TestDevCommandDetachedChildUsesWatcherPath(t *testing.T) {
+	prevDetached := runDetachedDevFunc
+	prevWatch := runWithWatchFunc
+	defer func() {
+		runDetachedDevFunc = prevDetached
+		runWithWatchFunc = prevWatch
+	}()
+	t.Setenv(detachedDevChildEnv, "1")
+
+	watchCalled := false
+	runDetachedDevFunc = func(args []string, opts devOptions) error {
+		t.Fatalf("detached launcher should not run inside detached child")
+		return nil
+	}
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
+		watchCalled = true
+		if appRoot != "/tmp/app" {
+			t.Fatalf("appRoot = %q", appRoot)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{"--app-root", "/tmp/app", "--detach"}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !watchCalled {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestDevCommandDoesNotEnableProxyByDefault(t *testing.T) {
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
+	t.Setenv("ONLAVA_LOCAL_PROXY", "")
 
 	called := false
-	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
-		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "1" {
-			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want 1", got)
+		if listen.Addr != "" || listen.Network != "" || listen.Explicit || listen.PreferTCP {
+			t.Fatalf("listen = %+v, want agent/private default", listen)
 		}
-		if got := getenvForTest("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
-			t.Fatalf("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
+		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "" {
+			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want empty", got)
 		}
 		return nil
 	}
@@ -96,7 +159,7 @@ func TestDevCommandRespectsProxyDisableEnv(t *testing.T) {
 	t.Setenv("ONLAVA_LOCAL_PROXY", "0")
 
 	called := false
-	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
 		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "0" {
 			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want 0", got)
@@ -118,8 +181,11 @@ func TestDevCommandProxyFlagOverridesDisableEnv(t *testing.T) {
 	t.Setenv("ONLAVA_LOCAL_PROXY", "0")
 
 	called := false
-	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
+		if !listen.PreferTCP {
+			t.Fatalf("listen = %+v, want TCP preference for proxy", listen)
+		}
 		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "1" {
 			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want 1", got)
 		}
@@ -137,10 +203,11 @@ func TestDevCommandProxyFlagOverridesDisableEnv(t *testing.T) {
 func TestDevCommandPreservesTrustSkipEnv(t *testing.T) {
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
+	t.Setenv("ONLAVA_LOCAL_PROXY", "")
 	t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", "1")
 
 	called := false
-	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
 		if got := getenvForTest("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "1" {
 			t.Fatalf("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 1", got)
@@ -162,8 +229,11 @@ func TestDevCommandTrustFlagOverridesTrustSkipEnv(t *testing.T) {
 	t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", "1")
 
 	called := false
-	runWithWatchFunc = func(addr string, verbose, jsonMode bool, appRoot string) error {
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
+		if !listen.PreferTCP {
+			t.Fatalf("listen = %+v, want TCP preference for trust proxy", listen)
+		}
 		if got := getenvForTest("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
 			t.Fatalf("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
 		}
@@ -171,6 +241,31 @@ func TestDevCommandTrustFlagOverridesTrustSkipEnv(t *testing.T) {
 	}
 
 	if err := devCommand([]string{"--trust"}); err != nil {
+		t.Fatalf("devCommand returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestDevCommandProxyEnvPrefersTCP(t *testing.T) {
+	prev := runWithWatchFunc
+	defer func() { runWithWatchFunc = prev }()
+	t.Setenv("ONLAVA_LOCAL_PROXY", "1")
+
+	called := false
+	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
+		called = true
+		if !listen.PreferTCP {
+			t.Fatalf("listen = %+v, want TCP preference for proxy env", listen)
+		}
+		if got := getenvForTest("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
+			t.Fatalf("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
+		}
+		return nil
+	}
+
+	if err := devCommand([]string{}); err != nil {
 		t.Fatalf("devCommand returned error: %v", err)
 	}
 	if !called {

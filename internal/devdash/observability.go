@@ -10,6 +10,7 @@ import (
 
 type TraceQuery struct {
 	AppID            string
+	SessionID        string
 	TraceID          string
 	ServiceName      string
 	EndpointName     string
@@ -34,6 +35,10 @@ func (s *Store) QueryTraceSummaries(ctx context.Context, query TraceQuery) ([]*T
 		where app_id = ? and is_root = 1
 	`
 	args := []any{query.AppID}
+	if query.SessionID != "" {
+		stmt += ` and session_id = ?`
+		args = append(args, query.SessionID)
+	}
 	if query.TraceID != "" {
 		stmt += ` and trace_id = ?`
 		args = append(args, query.TraceID)
@@ -80,8 +85,16 @@ func (s *Store) QueryTraceMetrics(ctx context.Context, query TraceQuery) ([]*Tra
 }
 
 func (s *Store) CountTraceEvents(ctx context.Context, appID string, since time.Time) (int64, error) {
+	return s.CountTraceEventsForSession(ctx, appID, "", since)
+}
+
+func (s *Store) CountTraceEventsForSession(ctx context.Context, appID, sessionID string, since time.Time) (int64, error) {
 	stmt := `select count(*) from trace_events where app_id = ?`
 	args := []any{appID}
+	if sessionID != "" {
+		stmt += ` and session_id = ?`
+		args = append(args, sessionID)
+	}
 	if !since.IsZero() {
 		stmt += ` and event_time >= ?`
 		args = append(args, since.UTC().Format(time.RFC3339Nano))
@@ -94,12 +107,20 @@ func (s *Store) CountTraceEvents(ctx context.Context, appID string, since time.T
 }
 
 func (s *Store) CountLogsByLevel(ctx context.Context, appID string, since time.Time) ([]LogLevelCount, error) {
+	return s.CountLogsByLevelForSession(ctx, appID, "", since)
+}
+
+func (s *Store) CountLogsByLevelForSession(ctx context.Context, appID, sessionID string, since time.Time) ([]LogLevelCount, error) {
 	stmt := `
 		select level, count(*)
 		from log_events
 		where app_id = ?
 	`
 	args := []any{appID}
+	if sessionID != "" {
+		stmt += ` and session_id = ?`
+		args = append(args, sessionID)
+	}
 	if !since.IsZero() {
 		stmt += ` and created_at >= ?`
 		args = append(args, since.UTC().Format(time.RFC3339Nano))

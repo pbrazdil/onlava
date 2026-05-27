@@ -21,26 +21,28 @@ var victoriaExportClient = &http.Client{Timeout: time.Second}
 const onlavaRequestDurationMetricName = "onlava_request_duration_seconds"
 
 func (s *dashboardServer) exportVictoriaTraceSummary(ctx context.Context, summary *devdash.TraceSummary) {
-	if s == nil || s.supervisor == nil || s.supervisor.victoria == nil || summary == nil {
+	victoria := s.dashboardVictoria()
+	if s == nil || victoria == nil || summary == nil {
 		return
 	}
-	traceEndpoint := s.supervisor.victoria.Endpoint("traces")
-	rawEvents, _ := s.supervisor.store.GetTraceEvents(ctx, summary.AppID, summary.TraceID, summary.SpanID)
+	traceEndpoint := victoria.Endpoint("traces")
+	rawEvents, _ := s.dashboardStore().GetTraceEventsForSession(ctx, summary.AppID, summary.SessionID, summary.TraceID, summary.SpanID)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if traceEndpoint != "" {
 		_ = postVictoriaProtobuf(ctx, traceEndpoint, buildOTLPTraceProto(summary, rawEvents))
 	}
-	if metricsEndpoint := s.supervisor.victoria.Endpoint("metrics"); metricsEndpoint != "" {
+	if metricsEndpoint := victoria.Endpoint("metrics"); metricsEndpoint != "" {
 		_ = postVictoriaProtobuf(ctx, metricsEndpoint, buildOTLPMetricProto(summary))
 	}
 }
 
 func (s *dashboardServer) exportVictoriaLogEvent(event *devdash.LogEvent) {
-	if s == nil || s.supervisor == nil || s.supervisor.victoria == nil || event == nil {
+	victoria := s.dashboardVictoria()
+	if s == nil || victoria == nil || event == nil {
 		return
 	}
-	endpoint := s.supervisor.victoria.Endpoint("logs")
+	endpoint := victoria.Endpoint("logs")
 	if endpoint == "" {
 		return
 	}
@@ -114,14 +116,10 @@ func traceEventsToOTLP(events []*devdash.TraceEvent) []any {
 			continue
 		}
 		name := traceEventName(event)
-		attrs := []any{otlpAttr("onlava.event_id", event.EventID)}
-		if len(event.Event) > 0 {
-			attrs = append(attrs, otlpAttr("onlava.event", event.Event))
-		}
 		out = append(out, map[string]any{
 			"timeUnixNano": unixNanoString(event.EventTime),
 			"name":         name,
-			"attributes":   attrs,
+			"attributes":   attrsToJSON(traceEventAttributePairs(event)),
 		})
 	}
 	return out
@@ -193,9 +191,8 @@ func buildOTLPTraceProto(summary *devdash.TraceSummary, events []*devdash.TraceE
 		}
 		evt := protoFixed64(1, uint64(event.EventTime.UTC().UnixNano()))
 		evt = append(evt, protoString(2, traceEventName(event))...)
-		evt = append(evt, protoMessage(3, protoKeyValue("onlava.event_id", event.EventID))...)
-		if len(event.Event) > 0 {
-			evt = append(evt, protoMessage(3, protoKeyValue("onlava.event", event.Event))...)
+		for _, attr := range traceEventAttributePairs(event) {
+			evt = append(evt, protoMessage(3, protoKeyValue(attr.Key, attr.Value))...)
 		}
 		span = append(span, protoMessage(11, evt)...)
 	}
@@ -260,6 +257,26 @@ func traceSummaryAttributes(summary *devdash.TraceSummary) []any {
 	return attrsToJSON(traceSummaryAttributePairs(summary))
 }
 
+func traceEventAttributePairs(event *devdash.TraceEvent) []otlpAttribute {
+	attrs := []otlpAttribute{{Key: "onlava.event_id", Value: event.EventID}}
+	if event.SessionID != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.session_id", Value: event.SessionID})
+	}
+	if event.AppRootHash != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.app_root_hash", Value: event.AppRootHash})
+	}
+	if event.Branch != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.branch", Value: event.Branch})
+	}
+	if event.Worktree != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.worktree", Value: event.Worktree})
+	}
+	if len(event.Event) > 0 {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.event", Value: event.Event})
+	}
+	return attrs
+}
+
 func logAttributes(event *devdash.LogEvent) []any {
 	return attrsToJSON(logAttributePairs(event))
 }
@@ -285,6 +302,18 @@ func traceSummaryAttributePairs(summary *devdash.TraceSummary) []otlpAttribute {
 		{Key: "onlava.is_error", Value: summary.IsError},
 		{Key: "onlava.service", Value: summary.ServiceName},
 	}
+	if summary.SessionID != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.session_id", Value: summary.SessionID})
+	}
+	if summary.AppRootHash != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.app_root_hash", Value: summary.AppRootHash})
+	}
+	if summary.Branch != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.branch", Value: summary.Branch})
+	}
+	if summary.Worktree != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.worktree", Value: summary.Worktree})
+	}
 	if summary.EndpointName != nil {
 		attrs = append(attrs, otlpAttribute{Key: "onlava.endpoint", Value: *summary.EndpointName})
 	}
@@ -302,6 +331,18 @@ func metricAttributePairs(summary *devdash.TraceSummary) []otlpAttribute {
 		{Key: "onlava_is_error", Value: summary.IsError},
 		{Key: "onlava_service", Value: summary.ServiceName},
 	}
+	if summary.SessionID != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava_session_id", Value: summary.SessionID})
+	}
+	if summary.AppRootHash != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava_app_root_hash", Value: summary.AppRootHash})
+	}
+	if summary.Branch != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava_branch", Value: summary.Branch})
+	}
+	if summary.Worktree != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava_worktree", Value: summary.Worktree})
+	}
 	if summary.EndpointName != nil {
 		attrs = append(attrs, otlpAttribute{Key: "onlava_endpoint", Value: *summary.EndpointName})
 	}
@@ -313,6 +354,18 @@ func metricAttributePairs(summary *devdash.TraceSummary) []otlpAttribute {
 
 func logAttributePairs(event *devdash.LogEvent) []otlpAttribute {
 	attrs := []otlpAttribute{{Key: "onlava.application_id", Value: event.AppID}}
+	if event.SessionID != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.session_id", Value: event.SessionID})
+	}
+	if event.AppRootHash != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.app_root_hash", Value: event.AppRootHash})
+	}
+	if event.Branch != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.branch", Value: event.Branch})
+	}
+	if event.Worktree != "" {
+		attrs = append(attrs, otlpAttribute{Key: "onlava.worktree", Value: event.Worktree})
+	}
 	for key, value := range event.Attrs {
 		attrs = append(attrs, otlpAttribute{Key: "onlava.log." + key, Value: value})
 	}

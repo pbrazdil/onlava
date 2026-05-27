@@ -162,7 +162,18 @@ var global = &registry{
 func SetAppConfig(cfg AppConfig) {
 	global.mu.Lock()
 	defer global.mu.Unlock()
+	baseAppID := strings.TrimSpace(os.Getenv("ONLAVA_BASE_APP_ID"))
+	if baseAppID == "" {
+		baseAppID = cfg.Name
+	}
+	runtimeAppID := strings.TrimSpace(os.Getenv("ONLAVA_RUNTIME_APP_ID"))
+	if runtimeAppID == "" {
+		runtimeAppID = baseAppID
+	}
 	global.meta.AppID = cfg.Name
+	global.meta.BaseAppID = baseAppID
+	global.meta.RuntimeAppID = runtimeAppID
+	global.meta.SessionID = strings.TrimSpace(os.Getenv("ONLAVA_SESSION_ID"))
 	global.meta.Environment = defaultEnvironment()
 	global.observability = cfg.Observability
 	if publicBaseURL := strings.TrimSpace(os.Getenv("ONLAVA_PUBLIC_BASE_URL")); publicBaseURL != "" {

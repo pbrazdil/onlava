@@ -65,7 +65,7 @@ func TestDashboardTraceEventsForServiceInitSynthesizesSpanBoundaries(t *testing.
 		t.Fatalf("append end event: %v", err)
 	}
 
-	events, err := server.traceEventsFor(ctx, "app-test", traceID)
+	events, err := server.traceEventsFor(ctx, "app-test", "", traceID)
 	if err != nil {
 		t.Fatalf("traceEventsFor: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestDashboardTraceEventsForSpanFlattensRequestEvents(t *testing.T) {
 		t.Fatalf("append span_end: %v", err)
 	}
 
-	events, err := server.traceEventsForSpan(ctx, "app-test", traceID, spanID)
+	events, err := server.traceEventsForSpan(ctx, "app-test", "", traceID, spanID)
 	if err != nil {
 		t.Fatalf("traceEventsForSpan: %v", err)
 	}

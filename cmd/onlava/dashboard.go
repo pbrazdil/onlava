@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,8 +33,10 @@ var dashboardUpgrader = websocket.Upgrader{
 }
 
 type dashboardServer struct {
+	controller dashboardController
 	supervisor *devSupervisor
 	http       *http.Server
+	addr       string
 	state      dashboardRunState
 
 	mu          sync.Mutex
@@ -42,11 +45,96 @@ type dashboardServer struct {
 	assets      fs.FS
 }
 
+type dashboardVictoria interface {
+	TraceEventsFor(context.Context, string, string, string) ([]map[string]any, error)
+	QueryTraceSummaries(context.Context, devdash.TraceQuery) ([]*devdash.TraceSummary, error)
+	GetTraceSummaries(context.Context, string, string) ([]*devdash.TraceSummary, error)
+	MarkCleared(string, time.Time)
+	Endpoint(string) string
+}
+
+type dashboardController interface {
+	dashboardActiveAppID() string
+	dashboardCurrentSessionID() string
+	dashboardListApps(context.Context) ([]map[string]any, error)
+	dashboardStatusFor(context.Context, string) (devdash.AppStatus, error)
+	dashboardStore() *devdash.Store
+	dashboardAuthorizeReport(*http.Request, devdash.ReportEnvelope) bool
+	dashboardRootForApp(context.Context, string) (string, error)
+	dashboardVictoria() dashboardVictoria
+}
+
+func (s *dashboardServer) dashboardActiveAppID() string {
+	if s == nil || s.controller == nil {
+		return ""
+	}
+	return s.controller.dashboardActiveAppID()
+}
+
+func (s *dashboardServer) dashboardCurrentSessionID() string {
+	if s == nil || s.controller == nil {
+		return ""
+	}
+	return s.controller.dashboardCurrentSessionID()
+}
+
+func (s *dashboardServer) dashboardListApps(ctx context.Context) ([]map[string]any, error) {
+	if s == nil || s.controller == nil {
+		return []map[string]any{}, nil
+	}
+	return s.controller.dashboardListApps(ctx)
+}
+
+func (s *dashboardServer) dashboardStatusFor(ctx context.Context, appID string) (devdash.AppStatus, error) {
+	if s == nil || s.controller == nil {
+		return devdash.AppStatus{}, fmt.Errorf("dashboard controller unavailable")
+	}
+	return s.controller.dashboardStatusFor(ctx, appID)
+}
+
+func (s *dashboardServer) dashboardStore() *devdash.Store {
+	if s == nil || s.controller == nil {
+		return nil
+	}
+	return s.controller.dashboardStore()
+}
+
+func (s *dashboardServer) dashboardAuthorizeReport(req *http.Request, report devdash.ReportEnvelope) bool {
+	if s == nil || s.controller == nil {
+		return false
+	}
+	return s.controller.dashboardAuthorizeReport(req, report)
+}
+
+func (s *dashboardServer) dashboardRootForApp(ctx context.Context, appID string) (string, error) {
+	if s == nil || s.controller == nil {
+		return "", fmt.Errorf("dashboard controller unavailable")
+	}
+	return s.controller.dashboardRootForApp(ctx, appID)
+}
+
+func (s *dashboardServer) dashboardVictoria() dashboardVictoria {
+	if s == nil || s.controller == nil {
+		return nil
+	}
+	return s.controller.dashboardVictoria()
+}
+
+func dashboardStoreAppID(status devdash.AppStatus) string {
+	return firstNonEmpty(status.BaseAppID, status.AppID)
+}
+
 func newDashboardServer(supervisor *devSupervisor, assetsDir string) *dashboardServer {
+	return newDashboardServerWithController(supervisor, supervisor.root, devdash.ListenAddr(), assetsDir, supervisor)
+}
+
+func newDashboardServerWithController(controller dashboardController, root, addr, assetsDir string, supervisor *devSupervisor) *dashboardServer {
 	assets, _ := dashboardAssetFS(assetsDir)
 	s := &dashboardServer{
+		controller:  controller,
 		supervisor:  supervisor,
-		state:       newDashboardRunState(supervisor.root, devdash.ListenAddr()),
+		addr:        addr,
+		state:       newDashboardRunState(root, addr),
 		clients:     make(map[*dashboardClient]struct{}),
 		mcpSessions: make(map[string]*mcpSession),
 		assets:      assets,
@@ -59,14 +147,14 @@ func newDashboardServer(supervisor *devSupervisor, assetsDir string) *dashboardS
 	mux.HandleFunc("/sse", s.handleMCP)
 	mux.HandleFunc("/message", s.handleMCP)
 	s.http = &http.Server{
-		Addr:    devdash.ListenAddr(),
+		Addr:    addr,
 		Handler: mux,
 	}
 	return s
 }
 
 func (s *dashboardServer) Start(ctx context.Context) error {
-	addr := devdash.ListenAddr()
+	addr := s.addr
 	if err := ensureDashboardPortAvailable(addr, s.state); err != nil {
 		return fmt.Errorf("onlava dashboard failed to listen on %s: %w", addr, err)
 	}
@@ -182,9 +270,15 @@ func (s *dashboardServer) Close() error {
 func (s *dashboardServer) handleRoot(w http.ResponseWriter, req *http.Request) {
 	switch req.URL.Path {
 	case "/":
-		http.Redirect(w, req, "/"+s.supervisor.activeAppID(), http.StatusFound)
-		return
+		if appID := s.dashboardActiveAppID(); appID != "" {
+			http.Redirect(w, req, "/"+appID, http.StatusFound)
+			return
+		}
 	default:
+		if sessionID, ok := dashboardSessionPath(req.URL.Path); ok {
+			http.Redirect(w, req, "/"+url.PathEscape(sessionID), http.StatusFound)
+			return
+		}
 		if isDashboardStaticPath(req.URL.Path) {
 			s.serveAsset(w, req, strings.TrimPrefix(req.URL.Path, "/"), detectAssetContentType(req.URL.Path))
 			return
@@ -216,7 +310,7 @@ func (s *dashboardServer) serveAsset(w http.ResponseWriter, req *http.Request, n
 
 func (s *dashboardServer) indexHTML(appID string) string {
 	if appID == "" {
-		appID = s.supervisor.activeAppID()
+		appID = s.dashboardActiveAppID()
 	}
 	if data, err := s.readAsset("index.html"); err == nil {
 		return strings.ReplaceAll(string(data), "__APP_ID__", appID)
@@ -240,10 +334,19 @@ func (s *dashboardServer) indexHTML(appID string) string {
       <h1>onlava Dev Dashboard</h1>
       <p>The dashboard server is running for <code>` + appID + `</code>, but the dashboard UI build is not available.</p>
       <p>Build it from the onlava repo with <code>bun run build</code> inside <code>ui/</code>.</p>
-      <p>WebSocket endpoint: <code>ws://` + devdash.ListenAddr() + devdash.WebSocketPath + `</code></p>
+      <p>WebSocket endpoint: <code>ws://` + s.addr + devdash.WebSocketPath + `</code></p>
     </main>
   </body>
 </html>`
+}
+
+func dashboardSessionPath(path string) (string, bool) {
+	path = strings.Trim(path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[0] != "s" || strings.TrimSpace(parts[1]) == "" {
+		return "", false
+	}
+	return parts[1], true
 }
 
 func dashboardAssetFS(assetsDir string) (fs.FS, error) {
@@ -315,24 +418,31 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if req.Header.Get("Authorization") != "Bearer "+s.supervisor.reportToken {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
 	defer req.Body.Close()
 	var report devdash.ReportEnvelope
 	if err := json.NewDecoder(req.Body).Decode(&report); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !s.dashboardAuthorizeReport(req, report) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	if report.AppID == "" {
-		report.AppID = s.supervisor.activeAppID()
+		report.AppID = s.dashboardActiveAppID()
+	}
+	if report.SessionID == "" {
+		report.SessionID = s.dashboardCurrentSessionID()
 	}
 	switch report.Type {
 	case "trace-summary":
 		if report.TraceSummary != nil {
 			report.TraceSummary.AppID = report.AppID
-			_ = s.supervisor.store.AppendTraceSummary(req.Context(), report.TraceSummary)
+			if report.TraceSummary.SessionID == "" {
+				report.TraceSummary.SessionID = report.SessionID
+			}
+			fillTraceSummaryIdentity(report.TraceSummary, report)
+			_ = s.dashboardStore().AppendTraceSummary(req.Context(), report.TraceSummary)
 			go s.exportVictoriaTraceSummary(context.Background(), report.TraceSummary)
 			s.notify(&devdash.Notification{
 				Method: "trace/new",
@@ -346,16 +456,69 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 	case "trace-event":
 		if report.TraceEvent != nil {
 			report.TraceEvent.AppID = report.AppID
-			_ = s.supervisor.store.AppendTraceEvent(req.Context(), report.TraceEvent)
+			if report.TraceEvent.SessionID == "" {
+				report.TraceEvent.SessionID = report.SessionID
+			}
+			fillTraceEventIdentity(report.TraceEvent, report)
+			_ = s.dashboardStore().AppendTraceEvent(req.Context(), report.TraceEvent)
 		}
 	case "log":
 		if report.LogEvent != nil {
 			report.LogEvent.AppID = report.AppID
-			_ = s.supervisor.store.WriteLogEvent(req.Context(), report.LogEvent)
+			if report.LogEvent.SessionID == "" {
+				report.LogEvent.SessionID = report.SessionID
+			}
+			fillLogEventIdentity(report.LogEvent, report)
+			_ = s.dashboardStore().WriteLogEvent(req.Context(), report.LogEvent)
 			go s.exportVictoriaLogEvent(report.LogEvent)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func fillTraceSummaryIdentity(summary *devdash.TraceSummary, report devdash.ReportEnvelope) {
+	if summary == nil {
+		return
+	}
+	if summary.AppRootHash == "" {
+		summary.AppRootHash = report.AppRootHash
+	}
+	if summary.Branch == "" {
+		summary.Branch = report.Branch
+	}
+	if summary.Worktree == "" {
+		summary.Worktree = report.Worktree
+	}
+}
+
+func fillTraceEventIdentity(event *devdash.TraceEvent, report devdash.ReportEnvelope) {
+	if event == nil {
+		return
+	}
+	if event.AppRootHash == "" {
+		event.AppRootHash = report.AppRootHash
+	}
+	if event.Branch == "" {
+		event.Branch = report.Branch
+	}
+	if event.Worktree == "" {
+		event.Worktree = report.Worktree
+	}
+}
+
+func fillLogEventIdentity(event *devdash.LogEvent, report devdash.ReportEnvelope) {
+	if event == nil {
+		return
+	}
+	if event.AppRootHash == "" {
+		event.AppRootHash = report.AppRootHash
+	}
+	if event.Branch == "" {
+		event.Branch = report.Branch
+	}
+	if event.Worktree == "" {
+		event.Worktree = report.Worktree
+	}
 }
 
 func (s *dashboardServer) handleMCP(w http.ResponseWriter, req *http.Request) {
@@ -411,7 +574,7 @@ func (s *dashboardServer) removeClient(client *dashboardClient) {
 }
 
 func (s *dashboardServer) apiCall(ctx context.Context, params devdash.APICallRequest) (map[string]any, error) {
-	status, err := s.supervisor.statusFor(ctx, firstNonEmpty(params.AppID, s.supervisor.activeAppID()))
+	status, err := s.dashboardStatusFor(ctx, firstNonEmpty(params.AppID, s.dashboardActiveAppID()))
 	if err != nil {
 		return nil, err
 	}
@@ -526,8 +689,8 @@ func renderMetadataPath(raw map[string]any) string {
 }
 
 func (s *dashboardServer) queryDB(ctx context.Context, req devdash.QueryRequest) ([]any, error) {
-	appID := firstNonEmpty(req.AppID, s.supervisor.activeAppID())
-	status, err := s.supervisor.statusFor(ctx, appID)
+	appID := firstNonEmpty(req.AppID, s.dashboardActiveAppID())
+	status, err := s.dashboardStatusFor(ctx, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -545,8 +708,8 @@ func (s *dashboardServer) queryDB(ctx context.Context, req devdash.QueryRequest)
 }
 
 func (s *dashboardServer) transactionDB(ctx context.Context, req devdash.TransactionRequest) ([]any, error) {
-	appID := firstNonEmpty(req.AppID, s.supervisor.activeAppID())
-	status, err := s.supervisor.statusFor(ctx, appID)
+	appID := firstNonEmpty(req.AppID, s.dashboardActiveAppID())
+	status, err := s.dashboardStatusFor(ctx, appID)
 	if err != nil {
 		return nil, err
 	}

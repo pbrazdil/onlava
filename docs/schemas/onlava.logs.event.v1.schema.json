@@ -17,6 +17,7 @@
       "additionalProperties": false
     },
     "id": { "type": "integer", "minimum": 1 },
+    "session_id": { "type": "string" },
     "pid": { "type": "string" },
     "stream": { "type": "string", "enum": ["stdout", "stderr"] },
     "output": { "type": "string" },

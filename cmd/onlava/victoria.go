@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/devtools"
 )
 
@@ -62,10 +64,13 @@ type victoriaStack struct {
 }
 
 func startVictoriaStack(ctx context.Context, appRoot string, console *runConsole) *victoriaStack {
+	return startVictoriaStackWithRoot(ctx, victoriaRootDir(appRoot), console)
+}
+
+func startVictoriaStackWithRoot(ctx context.Context, root string, console *runConsole) *victoriaStack {
 	if !victoriaEnabled() {
 		return nil
 	}
-	root := victoriaRootDir(appRoot)
 	binDir := filepath.Join(root, "bin")
 	download := victoriaDownloadEnabled()
 	if err := ensureLocalStateDirIgnored(root); err != nil {
@@ -86,6 +91,86 @@ func startVictoriaStack(ctx context.Context, appRoot string, console *runConsole
 		return nil
 	}
 	return stack
+}
+
+func victoriaStackFromSubstrate(substrate localagent.Substrate) *victoriaStack {
+	if substrate.Kind != localagent.SubstrateVictoria || len(substrate.Endpoints) == 0 {
+		return nil
+	}
+	stack := &victoriaStack{}
+	for _, spec := range victoriaComponentSpecs() {
+		endpoint := strings.TrimSpace(substrate.Endpoints[spec.Name])
+		baseURL := strings.TrimSpace(substrate.URLs[spec.Name])
+		if endpoint == "" && baseURL != "" {
+			endpoint = strings.TrimRight(baseURL, "/") + spec.EndpointPath
+		}
+		if baseURL == "" && endpoint != "" {
+			baseURL = strings.TrimSuffix(endpoint, spec.EndpointPath)
+		}
+		if baseURL == "" || endpoint == "" {
+			continue
+		}
+		stack.components = append(stack.components, &victoriaComponent{
+			spec:        spec,
+			baseURL:     baseURL,
+			endpointURL: endpoint,
+			external:    true,
+		})
+	}
+	if len(stack.components) == 0 {
+		return nil
+	}
+	return stack
+}
+
+func (s *victoriaStack) SubstrateRequest(ownerPID int) localagent.UpsertSubstrateRequest {
+	if s == nil || len(s.components) == 0 {
+		return localagent.UpsertSubstrateRequest{}
+	}
+	urls := make(map[string]string, len(s.components))
+	endpoints := make(map[string]string, len(s.components))
+	pids := make(map[string]int)
+	for _, component := range s.components {
+		if component == nil {
+			continue
+		}
+		urls[component.spec.Name] = component.baseURL
+		endpoints[component.spec.Name] = component.endpointURL
+		if component.cmd != nil && component.cmd.Process != nil {
+			pids[component.spec.Name] = component.cmd.Process.Pid
+		}
+	}
+	return localagent.UpsertSubstrateRequest{
+		Kind:      localagent.SubstrateVictoria,
+		Status:    "ready",
+		OwnerPID:  ownerPID,
+		PIDs:      pids,
+		URLs:      urls,
+		Endpoints: endpoints,
+	}
+}
+
+func (s *victoriaStack) MarkExternal() {
+	if s == nil {
+		return
+	}
+	for _, component := range s.components {
+		if component != nil {
+			component.external = true
+		}
+	}
+}
+
+func (s *victoriaStack) Reachable() bool {
+	if s == nil || len(s.components) == 0 {
+		return false
+	}
+	for _, component := range s.components {
+		if component == nil || !urlAcceptsTCP(component.baseURL) {
+			return false
+		}
+	}
+	return true
 }
 
 func victoriaEnabled() bool {
@@ -555,4 +640,17 @@ func warnVictoria(console *runConsole, format string, args ...any) {
 			fmt.Fprintf(os.Stderr, "onlava: %s\n", msg)
 		}
 	}
+}
+
+func urlAcceptsTCP(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	conn, err := net.DialTimeout("tcp", parsed.Host, 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }

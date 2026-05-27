@@ -31,8 +31,9 @@ func runCommand(args []string) error {
 }
 
 var (
-	runWithWatchFunc = runWithWatch
-	runHeadlessFunc  = runHeadless
+	runWithWatchFunc   = runWithWatch
+	runDetachedDevFunc = runDetachedDev
+	runHeadlessFunc    = runHeadless
 )
 
 func parseRunArgs(args []string) (runOptions, error) {

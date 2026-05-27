@@ -137,6 +137,29 @@ func TestSetAppConfigUsesTestEnvironment(t *testing.T) {
 	}
 }
 
+func TestSetAppConfigUsesSessionIdentityEnv(t *testing.T) {
+	restore := replaceGlobalRegistryForTest()
+	defer restore()
+
+	t.Setenv("ONLAVA_BASE_APP_ID", "demo")
+	t.Setenv("ONLAVA_RUNTIME_APP_ID", "demo--feature-a")
+	t.Setenv("ONLAVA_SESSION_ID", "feature-a-123abc")
+	SetAppConfig(AppConfig{Name: "demo", ListenAddr: "127.0.0.1:4000"})
+	meta := Meta()
+	if meta.AppID != "demo" {
+		t.Fatalf("Meta().AppID = %q, want source app id", meta.AppID)
+	}
+	if meta.BaseAppID != "demo" {
+		t.Fatalf("Meta().BaseAppID = %q, want demo", meta.BaseAppID)
+	}
+	if meta.RuntimeAppID != "demo--feature-a" {
+		t.Fatalf("Meta().RuntimeAppID = %q, want demo--feature-a", meta.RuntimeAppID)
+	}
+	if meta.SessionID != "feature-a-123abc" {
+		t.Fatalf("Meta().SessionID = %q, want feature-a-123abc", meta.SessionID)
+	}
+}
+
 func replaceGlobalRegistryForTest() func() {
 	prev := global
 	global = &registry{

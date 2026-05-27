@@ -34,13 +34,13 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 	case "version":
 		return map[string]any{"version": onlavaDashboardCompatVersion, "channel": onlavaDashboardCompatChannel}, nil
 	case "list-apps":
-		return s.supervisor.listApps(ctx)
+		return s.dashboardListApps(ctx)
 	case "status":
 		var params struct {
 			AppID string `json:"app_id"`
 		}
 		_ = json.Unmarshal(raw, &params)
-		return s.supervisor.statusFor(ctx, firstNonEmpty(params.AppID, s.supervisor.activeAppID()))
+		return s.dashboardStatusFor(ctx, firstNonEmpty(params.AppID, s.dashboardActiveAppID()))
 	case "process/output/list":
 		var params struct {
 			AppID string `json:"app_id"`
@@ -48,21 +48,31 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		}
 		_ = json.Unmarshal(raw, &params)
 		if params.AppID == "" {
-			params.AppID = s.supervisor.activeAppID()
+			params.AppID = s.dashboardActiveAppID()
 		}
-		return s.supervisor.store.ListProcessOutput(ctx, params.AppID, params.Limit)
+		status, err := s.dashboardStatusFor(ctx, params.AppID)
+		if err != nil {
+			return s.dashboardStore().ListProcessOutput(ctx, params.AppID, params.Limit)
+		}
+		return s.dashboardStore().ListProcessOutputForSession(ctx, dashboardStoreAppID(status), status.SessionID, params.Limit)
 	case "traces/clear":
 		var params struct {
 			AppID string `json:"app_id"`
 		}
 		_ = json.Unmarshal(raw, &params)
 		if params.AppID == "" {
-			params.AppID = s.supervisor.activeAppID()
+			params.AppID = s.dashboardActiveAppID()
 		}
-		if err := s.supervisor.store.ClearTraces(ctx, params.AppID); err != nil {
+		status, err := s.dashboardStatusFor(ctx, params.AppID)
+		if err != nil {
 			return nil, err
 		}
-		s.supervisor.victoria.MarkCleared(params.AppID, time.Now().UTC())
+		if err := s.dashboardStore().ClearTracesForSession(ctx, dashboardStoreAppID(status), status.SessionID); err != nil {
+			return nil, err
+		}
+		if victoria := s.dashboardVictoria(); victoria != nil {
+			victoria.MarkCleared(dashboardStoreAppID(status), time.Now().UTC())
+		}
 		return "ok", nil
 	case "traces/list":
 		var params struct {
@@ -71,9 +81,13 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		}
 		_ = json.Unmarshal(raw, &params)
 		if params.AppID == "" {
-			params.AppID = s.supervisor.activeAppID()
+			params.AppID = s.dashboardActiveAppID()
 		}
-		return s.listTraceSummaries(ctx, params.AppID, 100, params.MessageID)
+		status, err := s.dashboardStatusFor(ctx, params.AppID)
+		if err != nil {
+			return nil, err
+		}
+		return s.listTraceSummaries(ctx, dashboardStoreAppID(status), status.SessionID, 100, params.MessageID)
 	case "traces/get":
 		var params struct {
 			AppID   string `json:"app_id"`
@@ -81,9 +95,13 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		}
 		_ = json.Unmarshal(raw, &params)
 		if params.AppID == "" {
-			params.AppID = s.supervisor.activeAppID()
+			params.AppID = s.dashboardActiveAppID()
 		}
-		return s.traceEventsFor(ctx, params.AppID, params.TraceID)
+		status, err := s.dashboardStatusFor(ctx, params.AppID)
+		if err != nil {
+			return nil, err
+		}
+		return s.traceEventsFor(ctx, dashboardStoreAppID(status), status.SessionID, params.TraceID)
 	case "traces/spans/summaries/list":
 		var params struct {
 			AppID   string `json:"app_id"`
@@ -91,9 +109,13 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		}
 		_ = json.Unmarshal(raw, &params)
 		if params.AppID == "" {
-			params.AppID = s.supervisor.activeAppID()
+			params.AppID = s.dashboardActiveAppID()
 		}
-		return s.getTraceSummaries(ctx, params.AppID, params.TraceID)
+		status, err := s.dashboardStatusFor(ctx, params.AppID)
+		if err != nil {
+			return nil, err
+		}
+		return s.getTraceSummaries(ctx, dashboardStoreAppID(status), status.SessionID, params.TraceID)
 	case "traces/spans/events/list":
 		var params struct {
 			AppID   string `json:"app_id"`
@@ -102,9 +124,13 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		}
 		_ = json.Unmarshal(raw, &params)
 		if params.AppID == "" {
-			params.AppID = s.supervisor.activeAppID()
+			params.AppID = s.dashboardActiveAppID()
 		}
-		return s.traceEventsForSpan(ctx, params.AppID, params.TraceID, params.SpanID)
+		status, err := s.dashboardStatusFor(ctx, params.AppID)
+		if err != nil {
+			return nil, err
+		}
+		return s.traceEventsForSpan(ctx, dashboardStoreAppID(status), status.SessionID, params.TraceID, params.SpanID)
 	case "api-call":
 		var params devdash.APICallRequest
 		if err := json.Unmarshal(raw, &params); err != nil {
@@ -156,9 +182,13 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		if err := json.Unmarshal(raw, &params); err != nil {
 			return nil, err
 		}
-		return map[string]any{}, openEditor(s.supervisor.root, params.Editor, params.File, params.StartLine, params.StartCol)
+		root, err := s.dashboardRootForApp(ctx, params.AppID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{}, openEditor(root, params.Editor, params.File, params.StartLine, params.StartCol)
 	case "onboarding/get":
-		return s.supervisor.store.GetOnboarding(ctx)
+		return s.dashboardStore().GetOnboarding(ctx)
 	case "onboarding/set":
 		var params struct {
 			Properties []string `json:"properties"`
@@ -166,7 +196,7 @@ func (s *dashboardServer) dispatchRPC(ctx context.Context, method string, raw js
 		if err := json.Unmarshal(raw, &params); err != nil {
 			return nil, err
 		}
-		return nil, s.supervisor.store.SetOnboarding(ctx, params.Properties)
+		return nil, s.dashboardStore().SetOnboarding(ctx, params.Properties)
 	case "telemetry":
 		return "ok", nil
 	default:

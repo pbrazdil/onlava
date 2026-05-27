@@ -6,6 +6,90 @@ Completed means implemented or shipped at least once. It does not imply stable
 v0 support. Use [../local-contract.md](../local-contract.md) as the source of
 truth for stable, beta, dev-only, and compatibility-mode classification.
 
+## Agent HTTPS Ingress
+
+- Status: completed
+- Owner: onlava runtime / dev agent
+- Completed: 2026-05-27
+- Quality: B+
+- ExecPlan: [0044 Agent HTTPS Ingress](0044-agent-https-ingress.md)
+
+Shipped:
+
+- Explicit agent router TLS mode through `onlava agent --router-tls` and `ONLAVA_AGENT_ROUTER_TLS=1`.
+- Trust-install controls through `onlava agent --trust` and `ONLAVA_AGENT_TRUST=1`, reusing the existing onlava local CA.
+- Agent session routes use `https://...onlava.localhost` when the agent router runs with TLS.
+- SNI-based on-demand leaf certificates for routed agent hostnames, including two-label session hosts.
+- Router scheme metadata in agent health/state plus CLI docs, local contract updates, focused tests, and full `go test ./...` validation.
+
+## Agent Detached Dev and Attach
+
+- Status: completed
+- Owner: onlava runtime / dev agent
+- Completed: 2026-05-27
+- Quality: B+
+- ExecPlan: [0043 Agent Detached Dev and Attach](0043-agent-detached-dev-and-attach.md)
+
+Shipped:
+
+- `onlava dev --detach` starts an agent-backed background dev supervisor, waits for the child PID to register as session owner, writes detached supervisor output under the agent directory, and returns session details.
+- Detached child supervisors skip parent-process monitoring while normal attached `onlava dev` keeps parent-death cleanup.
+- `onlava attach` follows the current session logs by default and supports explicit app-root, session, limit, stream, and JSONL options.
+- Command usage, README, local contract docs, focused tests, and full `go test ./...` validation.
+
+## Agent Global Dashboard
+
+- Status: completed
+- Owner: onlava runtime / dev dashboard
+- Completed: 2026-05-27
+- Quality: B+
+- ExecPlan: [0042 Agent Global Dashboard](0042-agent-global-dashboard.md)
+
+Shipped:
+
+- Agent-owned visible dashboard backend for `console.onlava.localhost/s/<session_id>`.
+- Session-addressable dashboard app records so multiple worktrees for the same base app can appear independently.
+- Runtime reports sent to the agent dashboard using per-session report tokens carried over the Unix-socket control API and omitted from manifests.
+- Direct/per-session dashboard fallback for agent-disabled, unavailable-agent, and explicit local-proxy paths.
+- Local contract updates, focused tests, full Go test suite, binary install, and self-harness snapshot refresh.
+
+## Agent Managed Postgres and Electric
+
+- Status: completed
+- Owner: onlava runtime / dev services
+- Completed: 2026-05-27
+- Quality: B+
+- ExecPlan: [0041 Agent Managed Postgres and Electric](0041-agent-managed-postgres-and-electric.md)
+
+Shipped:
+
+- Managed `dev.services.postgres` defaults for version `18` and database isolation.
+- Explicit admin URL reuse plus agent substrate reuse for Postgres.
+- Local Postgres startup from `initdb`/`postgres` without a mandatory Docker dependency, using an agent-private Unix socket.
+- Deterministic per-session database creation and app env injection for `DatabaseURL`/`DATABASE_URL` when not explicitly provided.
+- `onlava db psql`, `onlava db reset`, and `onlava db snapshot create|restore` against the current managed session database.
+- Electric as an agent-routed hidden session backend through explicit upstreams, local binary startup, or an explicitly configured Docker image.
+- Contract/schema docs, focused unit coverage, full `go test ./...`, binary install, and self-harness snapshot refresh.
+
+## Agent Shared Substrates and Dev Services
+
+- Status: completed
+- Owner: onlava runtime / dev services
+- Completed: 2026-05-26
+- Quality: B+
+- ExecPlan: [0040 Agent Shared Substrates and Dev Services](0040-agent-shared-substrates-and-dev-services.md)
+
+Shipped:
+
+- Agent substrate registry for shared local dev processes.
+- Shared agent-registered VictoriaMetrics, VictoriaLogs, VictoriaTraces, Grafana, and Temporal dev server reuse across sessions.
+- Grafana dashboards with a `Session` variable backed by `onlava_session_id`.
+- Session-scoped Temporal task queue/deployment/build env for app child processes.
+- Agent-routed frontend URLs for configured frontend upstreams.
+- Beta `.onlava.json` `dev.services` declarations for Postgres and Electric.
+- `onlava db psql` as the PRD-facing alias for the existing beta Postgres shell helper.
+- Follow-up Postgres/Electric lifecycle work split to [0041 Agent Managed Postgres and Electric](0041-agent-managed-postgres-and-electric.md).
+
 ## Grafana Dev Hardening
 
 - Status: completed
@@ -564,3 +648,50 @@ Shipped:
 - Moved service-method background handler support to `github.com/pbrazdil/onlava/temporal`.
 - Migrated ONLV async jobs in `codexsvc`, `jobs`, `house`, and `maps` to native Temporal workflows and activities.
 - Validation passed for onlava; ONLV validation is blocked only by the native house `torch/torch.h` environment prerequisite.
+
+## onlava Agent MVP
+
+- Status: completed
+- Owner: onlava runtime
+- Completed: 2026-05-26
+- Quality: B
+- ExecPlan: [0037 onlava Agent MVP](0037-onlava-agent-mvp.md)
+
+Shipped:
+
+- `internal/agent`, a standard-library local daemon package with Unix control socket, JSON session registry, host-based HTTP router, session manifest writing, and Unix-socket aware reverse proxying.
+- `onlava agent`, `onlava status --json`, and `onlava down`.
+- `onlava dev` auto-starts/connects to the agent unless disabled, registers the worktree session, writes `.onlava/sessions/<session_id>/manifest.json`, updates status, and advertises routed API/dashboard/MCP URLs when no explicit local proxy is active.
+- Runtime servers support `ONLAVA_LISTEN_NETWORK=unix` with TCP still available.
+
+## Agent Private Dev Backends
+
+- Status: completed
+- Owner: onlava runtime
+- Completed: 2026-05-26
+- Quality: B+
+- ExecPlan: [0038 Agent Private Dev Backends](0038-agent-private-dev-backends.md)
+
+Shipped:
+
+- `onlava dev` with no explicit listen flags now registers a session-private Unix API backend at `.onlava/sessions/<session_id>/run/api.sock` when the agent is available.
+- Explicit `--listen` and `--port` continue to use TCP and register TCP API backends.
+- The legacy local HTTPS proxy is opt-in through `--proxy`, `--trust`, or `ONLAVA_LOCAL_PROXY=1`; those paths use hidden loopback TCP because the proxy only supports TCP upstreams.
+- App children receive `ONLAVA_LISTEN_NETWORK` and `ONLAVA_LISTEN_ADDR`, and supervisor startup probes support both TCP and Unix listeners.
+
+## Agent Session Identity and Signals
+
+- Status: completed
+- Owner: onlava runtime / observability
+- Completed: 2026-05-26
+- Quality: B+
+- ExecPlan: [0039 Agent Session Identity and Signals](0039-agent-session-identity-and-signals.md)
+
+Shipped:
+
+- Session, base-app, and runtime-app identity are passed into dev children and exposed through runtime metadata plus `/__onlava/config`.
+- Devdash app records, process output, logs JSONL, trace summaries, trace events, log events, inspect traces, and inspect metrics carry session identity where applicable.
+- `onlava logs --session current|<id>`, `onlava inspect traces --session current|<id> --json`, and `onlava inspect metrics --session current|<id> --json` filter session-scoped records.
+- Victoria trace/log/metric export includes session labels.
+- Dev-mode standard auth receives session-routed local URL env vars and host-only cookie-domain defaults.
+- Dev-mode Temporal receives session-scoped task queue prefix, worker deployment name, and build ID env vars.

@@ -20,7 +20,11 @@ func ListenAddr() string {
 }
 
 type AppRecord struct {
+	RouteID      string
 	ID           string
+	BaseAppID    string
+	RuntimeAppID string
+	SessionID    string
 	Name         string
 	Root         string
 	ListenAddr   string
@@ -38,6 +42,9 @@ type AppRecord struct {
 type AppStatus struct {
 	Running      bool            `json:"running"`
 	AppID        string          `json:"appID"`
+	BaseAppID    string          `json:"baseAppID,omitempty"`
+	RuntimeAppID string          `json:"runtimeAppID,omitempty"`
+	SessionID    string          `json:"sessionID,omitempty"`
 	AppRoot      string          `json:"appRoot"`
 	PID          string          `json:"pid,omitempty"`
 	Meta         json.RawMessage `json:"meta,omitempty"`
@@ -77,6 +84,7 @@ type GrafanaDashboard struct {
 type ProcessOutput struct {
 	ID        int64     `json:"id"`
 	AppID     string    `json:"appID"`
+	SessionID string    `json:"session_id,omitempty"`
 	PID       string    `json:"pid"`
 	Stream    string    `json:"stream"`
 	Output    []byte    `json:"output"`
@@ -91,6 +99,10 @@ type Notification struct {
 type TraceSummary struct {
 	TraceID        string    `json:"trace_id"`
 	SpanID         string    `json:"span_id"`
+	SessionID      string    `json:"session_id,omitempty"`
+	AppRootHash    string    `json:"app_root_hash,omitempty"`
+	Branch         string    `json:"branch,omitempty"`
+	Worktree       string    `json:"worktree,omitempty"`
 	Type           string    `json:"type"`
 	IsRoot         bool      `json:"is_root"`
 	IsError        bool      `json:"is_error"`
@@ -110,23 +122,31 @@ type TraceSummary struct {
 }
 
 type TraceEvent struct {
-	TraceID   string          `json:"trace_id"`
-	SpanID    string          `json:"span_id"`
-	EventID   uint64          `json:"event_id"`
-	EventTime time.Time       `json:"event_time"`
-	AppID     string          `json:"-"`
-	Data      json.RawMessage `json:"-"`
-	Event     map[string]any  `json:"event"`
+	TraceID     string          `json:"trace_id"`
+	SpanID      string          `json:"span_id"`
+	SessionID   string          `json:"session_id,omitempty"`
+	AppRootHash string          `json:"app_root_hash,omitempty"`
+	Branch      string          `json:"branch,omitempty"`
+	Worktree    string          `json:"worktree,omitempty"`
+	EventID     uint64          `json:"event_id"`
+	EventTime   time.Time       `json:"event_time"`
+	AppID       string          `json:"-"`
+	Data        json.RawMessage `json:"-"`
+	Event       map[string]any  `json:"event"`
 }
 
 type LogEvent struct {
-	AppID     string         `json:"app_id"`
-	TraceID   string         `json:"trace_id,omitempty"`
-	SpanID    string         `json:"span_id,omitempty"`
-	Level     string         `json:"level"`
-	Message   string         `json:"message"`
-	Attrs     map[string]any `json:"attrs,omitempty"`
-	Timestamp time.Time      `json:"timestamp"`
+	AppID       string         `json:"app_id"`
+	SessionID   string         `json:"session_id,omitempty"`
+	AppRootHash string         `json:"app_root_hash,omitempty"`
+	Branch      string         `json:"branch,omitempty"`
+	Worktree    string         `json:"worktree,omitempty"`
+	TraceID     string         `json:"trace_id,omitempty"`
+	SpanID      string         `json:"span_id,omitempty"`
+	Level       string         `json:"level"`
+	Message     string         `json:"message"`
+	Attrs       map[string]any `json:"attrs,omitempty"`
+	Timestamp   time.Time      `json:"timestamp"`
 }
 
 type StoredRequest struct {
@@ -150,6 +170,10 @@ type OnboardingState map[string]time.Time
 type ReportEnvelope struct {
 	Type         string        `json:"type"`
 	AppID        string        `json:"app_id"`
+	SessionID    string        `json:"session_id,omitempty"`
+	AppRootHash  string        `json:"app_root_hash,omitempty"`
+	Branch       string        `json:"branch,omitempty"`
+	Worktree     string        `json:"worktree,omitempty"`
 	TraceSummary *TraceSummary `json:"trace_summary,omitempty"`
 	TraceEvent   *TraceEvent   `json:"trace_event,omitempty"`
 	LogEvent     *LogEvent     `json:"log_event,omitempty"`

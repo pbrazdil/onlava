@@ -13,9 +13,12 @@ type Environment struct {
 }
 
 type AppMetadata struct {
-	AppID       string
-	APIBaseURL  string
-	Environment Environment
+	AppID        string
+	BaseAppID    string
+	RuntimeAppID string
+	SessionID    string
+	APIBaseURL   string
+	Environment  Environment
 }
 
 type EnvironmentType string

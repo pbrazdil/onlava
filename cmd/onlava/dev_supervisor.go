@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -31,6 +33,7 @@ import (
 	"github.com/pbrazdil/onlava/internal/localproxy"
 	"github.com/pbrazdil/onlava/internal/model"
 	"github.com/pbrazdil/onlava/internal/parse"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
 type runningApp struct {
@@ -42,11 +45,12 @@ type runningApp struct {
 }
 
 type devSupervisor struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	root   string
-	cfg    app.Config
-	addr   string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	root    string
+	cfg     app.Config
+	backend devBackend
+	addr    string
 
 	store        *devdash.Store
 	dashboard    *dashboardServer
@@ -54,6 +58,7 @@ type devSupervisor struct {
 	temporal     *temporalDevServer
 	victoria     *victoriaStack
 	grafana      *grafanaComponent
+	electric     *managedElectricService
 	reportToken  string
 	console      *runConsole
 	agent        *localagent.Client
@@ -72,9 +77,10 @@ const (
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr string, verbose, jsonMode bool) (*devSupervisor, error) {
+func newDevSupervisor(ctx context.Context, root string, cfg app.Config, backend devBackend, verbose, jsonMode bool) (*devSupervisor, error) {
 	supervisorCtx, cancel := context.WithCancel(ctx)
-	store, err := devdash.OpenStore(os.Getenv("ONLAVA_DEV_CACHE_DIR"))
+	backend = backend.normalized()
+	store, err := openDevdashStore()
 	if err != nil {
 		cancel()
 		return nil, err
@@ -92,7 +98,8 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr str
 		cancel:      cancel,
 		root:        root,
 		cfg:         cfg,
-		addr:        addr,
+		backend:     backend,
+		addr:        backend.Addr,
 		store:       store,
 		reportToken: token,
 		console:     newRunConsole(os.Stdout, os.Stderr, verbose, jsonMode, appID, root),
@@ -100,7 +107,7 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, addr str
 			ID:         appID,
 			Name:       cfg.Name,
 			Root:       root,
-			ListenAddr: addr,
+			ListenAddr: backend.Addr,
 			Offline:    true,
 			UpdatedAt:  time.Now().UTC(),
 		},
@@ -126,6 +133,7 @@ func (s *devSupervisor) Close() error {
 		victoria := s.victoria
 		grafana := s.grafana
 		temporal := s.temporal
+		electric := s.electric
 
 		var errs []error
 		if app != nil {
@@ -145,6 +153,11 @@ func (s *devSupervisor) Close() error {
 		}
 		if temporal != nil {
 			if err := temporal.Interrupt(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if electric != nil {
+			if err := electric.Interrupt(); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -226,9 +239,12 @@ func (s *devSupervisor) Close() error {
 }
 
 func (s *devSupervisor) Start(ctx context.Context) error {
+	s.setSessionIdentity(s.agentSession)
+	s.updateAgentSession(ctx, "starting", "")
 	if s.console != nil {
 		s.console.Event("run.start", map[string]any{
-			"listen_addr": s.addr,
+			"listen_addr":    s.addr,
+			"listen_network": s.backend.Network,
 		})
 	}
 	if err := ensureOnlavaLocalStateIgnored(s.root); err != nil {
@@ -237,13 +253,18 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 	if err := s.persistStatus(ctx); err != nil {
 		return err
 	}
-	if err := s.dashboard.Start(ctx); err != nil {
+	if s.agent == nil || localproxy.Enabled() {
+		if err := s.dashboard.Start(ctx); err != nil {
+			return err
+		}
+	}
+	if err := s.ensureManagedElectric(ctx); err != nil {
 		return err
 	}
 	if err := s.ensureTemporalDevServer(ctx); err != nil {
 		return err
 	}
-	s.victoria = startVictoriaStack(s.ctx, s.root, s.console)
+	s.victoria = s.startVictoriaStack(ctx)
 	if err := s.startGrafana(s.ctx); err != nil {
 		return err
 	}
@@ -251,6 +272,58 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 		slog.Warn("local HTTPS proxy unavailable", "err", err)
 	}
 	return nil
+}
+
+func (s *devSupervisor) startVictoriaStack(ctx context.Context) *victoriaStack {
+	if s == nil || s.agent == nil {
+		return startVictoriaStack(s.ctx, s.root, s.console)
+	}
+	if stack := s.agentVictoriaStack(ctx); stack != nil {
+		return stack
+	}
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		warnVictoria(s.console, "agent Victoria state path unavailable: %v", err)
+		return startVictoriaStack(s.ctx, s.root, s.console)
+	}
+	stack := startVictoriaStackWithRoot(context.Background(), filepath.Join(paths.AgentDir, "victoria"), s.console)
+	if stack == nil {
+		return nil
+	}
+	if _, err := s.agent.UpsertSubstrate(ctx, stack.SubstrateRequest(os.Getpid())); err != nil {
+		warnVictoria(s.console, "failed to register shared Victoria substrate with agent: %v", err)
+		return stack
+	}
+	stack.MarkExternal()
+	if s.console != nil && s.console.verbose {
+		s.console.Event("victoria.shared", map[string]any{
+			"owner":     "agent",
+			"endpoints": stack.SubstrateRequest(os.Getpid()).Endpoints,
+		})
+	}
+	return stack
+}
+
+func (s *devSupervisor) agentVictoriaStack(ctx context.Context) *victoriaStack {
+	if s == nil || s.agent == nil {
+		return nil
+	}
+	substrate, err := s.agent.GetSubstrate(ctx, localagent.SubstrateVictoria)
+	if err != nil {
+		return nil
+	}
+	stack := victoriaStackFromSubstrate(substrate)
+	if stack == nil || !stack.Reachable() {
+		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateVictoria)
+		return nil
+	}
+	if s.console != nil && s.console.verbose {
+		s.console.Event("victoria.reuse", map[string]any{
+			"owner":     "agent",
+			"endpoints": substrate.Endpoints,
+		})
+	}
+	return stack
 }
 
 func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, snapshot fileSnapshot, changedPaths []string) error {
@@ -316,6 +389,9 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
 	s.cfg = effectiveDevConfigForModel(s.cfg, model)
+	if err := s.ensureManagedElectric(ctx); err != nil {
+		return s.handleCompileError(ctx, metadata, apiEncoding, err)
+	}
 	if err := s.ensureTemporalDevServer(ctx); err != nil {
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
@@ -364,6 +440,13 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	s.setMetadata(metadata, apiEncoding)
 	if err := s.persistStatus(ctx); err != nil {
 		return err
+	}
+	if len(s.cfg.Dev.Setup) > 0 {
+		if err := s.console.Phase("Running development setup", func() error {
+			return s.runDevSetup(ctx)
+		}); err != nil {
+			return s.handleCompileError(ctx, metadata, apiEncoding, err)
+		}
 	}
 
 	previous := s.currentApp()
@@ -448,6 +531,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	cmd.Env = appChildEnv(
 		baseEnv,
 		s.console != nil && s.console.palette.Enabled(),
+		"ONLAVA_LISTEN_NETWORK="+s.backend.Network,
 		"ONLAVA_LISTEN_ADDR="+s.addr,
 		"ONLAVA_APP_ID="+s.activeAppID(),
 		"ONLAVA_APP_ROOT="+s.root,
@@ -455,16 +539,29 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		"ONLAVA_DEV_ENDPOINTS=1",
 		fmt.Sprintf("ONLAVA_DEV_SUPERVISOR_PID=%d", os.Getpid()),
 		"ONLAVA_LOCAL_PROXY=0",
-		"ONLAVA_DEV_REPORT_URL=http://"+devdash.ListenAddr()+devdash.ReportPath,
+		"ONLAVA_DEV_REPORT_URL="+s.devReportURL(),
 		"ONLAVA_DEV_REPORT_TOKEN="+s.reportToken,
 	)
 	cmd.Env = append(cmd.Env, s.victoria.Env()...)
 	cmd.Env = append(cmd.Env, s.temporal.Env()...)
+	cmd.Env = append(cmd.Env, s.sessionTemporalEnv()...)
+	cmd.Env = append(cmd.Env, s.sessionIdentityEnv()...)
+	managedEnv, err := s.managedAppEnv(ctx, baseEnv)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Env = append(cmd.Env, managedEnv...)
+	electricEnv, err := managedElectricEnv(s.cfg, s.agentSession, cmd.Env)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Env = append(cmd.Env, electricEnv...)
 	if s.proxy != nil {
 		cmd.Env = append(cmd.Env, "ONLAVA_PUBLIC_BASE_URL="+s.proxy.Routes().APIURL)
 	} else if s.agentSession != nil && s.agentSession.Routes[localagent.RouteAPI] != "" {
 		cmd.Env = append(cmd.Env, "ONLAVA_PUBLIC_BASE_URL="+s.agentSession.Routes[localagent.RouteAPI])
 	}
+	cmd.Env = append(cmd.Env, s.sessionAuthEnv()...)
 	cmd.Stdin = nil
 
 	stdout, err := cmd.StdoutPipe()
@@ -475,7 +572,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	if err != nil {
 		return nil, err
 	}
-	if err := portAvailable(s.addr); err != nil {
+	if err := backendAvailableBeforeStartup(s.backend); err != nil {
 		return nil, fmt.Errorf("app listen address %s is unavailable before startup: %w", s.addr, err)
 	}
 	if err := cmd.Start(); err != nil {
@@ -503,6 +600,158 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	return app, nil
 }
 
+func (s *devSupervisor) runDevSetup(ctx context.Context) error {
+	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root, ".env", ".env.local")
+	if err != nil {
+		return err
+	}
+	managedEnv, err := s.managedAppEnv(ctx, baseEnv)
+	if err != nil {
+		return err
+	}
+	env := appChildEnv(
+		baseEnv,
+		s.console != nil && s.console.palette.Enabled(),
+		"ONLAVA_APP_ID="+s.activeAppID(),
+		"ONLAVA_APP_ROOT="+s.root,
+		"ONLAVA_DEV_SUPERVISOR=1",
+	)
+	env = append(env, managedEnv...)
+	for _, command := range s.cfg.Dev.Setup {
+		command = strings.TrimSpace(command)
+		if command == "" {
+			continue
+		}
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+		cmd.Dir = s.root
+		cmd.Env = env
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("dev.setup %q failed: %w", command, err)
+		}
+	}
+	return nil
+}
+
+func (s *devSupervisor) managedAppEnv(ctx context.Context, baseEnv []string) ([]string, error) {
+	return managedPostgresEnv(ctx, s.cfg, s.agentSession, baseEnv, s.agent)
+}
+
+func (s *devSupervisor) sessionIdentityEnv() []string {
+	if s == nil || s.agentSession == nil {
+		return nil
+	}
+	baseAppID := strings.TrimSpace(s.agentSession.BaseAppID)
+	if baseAppID == "" {
+		baseAppID = s.activeAppID()
+	}
+	runtimeAppID := strings.TrimSpace(s.agentSession.RuntimeAppID)
+	if runtimeAppID == "" {
+		runtimeAppID = baseAppID
+	}
+	return []string{
+		"ONLAVA_SESSION_ID=" + strings.TrimSpace(s.agentSession.SessionID),
+		"ONLAVA_BASE_APP_ID=" + baseAppID,
+		"ONLAVA_RUNTIME_APP_ID=" + runtimeAppID,
+		"ONLAVA_APP_ROOT_HASH=" + appRootHash(s.agentSession.AppRoot),
+		"ONLAVA_BRANCH=" + strings.TrimSpace(s.agentSession.Branch),
+		"ONLAVA_WORKTREE=" + appWorktreeName(s.agentSession.AppRoot),
+	}
+}
+
+func appRootHash(root string) string {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" || root == "." {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(root))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func appWorktreeName(root string) string {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" || root == "." {
+		return ""
+	}
+	return filepath.Base(root)
+}
+
+func (s *devSupervisor) devReportURL() string {
+	if s != nil && s.agentSession != nil {
+		if rawURL := strings.TrimSpace(s.agentSession.Routes[localagent.RouteDashboard]); rawURL != "" {
+			if parsed, err := url.Parse(rawURL); err == nil {
+				parsed.Path = devdash.ReportPath
+				parsed.RawQuery = ""
+				parsed.Fragment = ""
+				return parsed.String()
+			}
+		}
+	}
+	return "http://" + devdash.ListenAddr() + devdash.ReportPath
+}
+
+func (s *devSupervisor) sessionTemporalEnv() []string {
+	if s == nil || s.agentSession == nil || !s.cfg.Temporal.Enabled {
+		return nil
+	}
+	sessionID := strings.TrimSpace(s.agentSession.SessionID)
+	if sessionID == "" {
+		return nil
+	}
+	baseAppID := strings.TrimSpace(s.agentSession.BaseAppID)
+	if baseAppID == "" {
+		baseAppID = s.activeAppID()
+	}
+	prefix := "onlava." + baseAppID + "." + sessionID
+	return []string{
+		onlavaruntime.DefaultTemporalTaskQueueEnv + "=" + prefix,
+		onlavaruntime.DefaultTemporalDeploymentEnv + "=" + prefix,
+		onlavaruntime.DefaultTemporalBuildIDEnv + "=" + sessionID,
+	}
+}
+
+func (s *devSupervisor) sessionAuthEnv() []string {
+	if s == nil || !s.cfg.Auth.Enabled {
+		return nil
+	}
+	apiURL := strings.TrimSpace(s.apiURL())
+	if apiURL == "" {
+		return nil
+	}
+	publicAppURL := apiURL
+	frontends := s.frontendURLs()
+	if len(frontends) > 0 {
+		names := make([]string, 0, len(frontends))
+		for name := range frontends {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		if value := strings.TrimSpace(frontends[names[0]]); value != "" {
+			publicAppURL = value
+		}
+	}
+	return []string{
+		authEnvName(s.cfg.Auth.APIBaseURLEnv, "APIBaseURL") + "=" + apiURL,
+		"API_BASE_URL=" + apiURL,
+		"ONLAVA_API_BASE_URL=" + apiURL,
+		authEnvName(s.cfg.Auth.PublicAppURLEnv, "PublicAppURL") + "=" + publicAppURL,
+		"PUBLIC_APP_URL=" + publicAppURL,
+		"ONLAVA_PUBLIC_APP_URL=" + publicAppURL,
+		authEnvName(s.cfg.Auth.AuthCookieDomainEnv, "AuthCookieDomain") + "=",
+		"AUTH_COOKIE_DOMAIN=",
+		"ONLAVA_AUTH_COOKIE_DOMAIN=",
+	}
+}
+
+func authEnvName(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
 func (s *devSupervisor) waitForAppStartup(ctx context.Context, app *runningApp) error {
 	deadline := time.NewTimer(appStartupTimeout)
 	defer deadline.Stop()
@@ -519,12 +768,12 @@ func (s *devSupervisor) waitForAppStartup(ctx context.Context, app *runningApp) 
 			}
 			return appStartupExitError(app, err)
 		case <-ticker.C:
-			if tcpAddrAcceptsConnections(s.addr) {
+			if backendAcceptsConnections(s.backend) {
 				return nil
 			}
 		case <-deadline.C:
 			_ = app.stop()
-			return fmt.Errorf("onlava app did not listen on %s within %s", s.addr, appStartupTimeout)
+			return fmt.Errorf("onlava app did not listen on %s address %s within %s", s.backend.Network, s.addr, appStartupTimeout)
 		}
 	}
 }
@@ -542,6 +791,30 @@ func appStartupExitError(app *runningApp, err error) error {
 		}
 	}
 	return errors.New(message)
+}
+
+func backendAcceptsConnections(backend devBackend) bool {
+	backend = backend.normalized()
+	target := backend.Addr
+	if backend.Network == "tcp" {
+		if host, port, err := net.SplitHostPort(backend.Addr); err == nil && host == "" {
+			target = net.JoinHostPort("127.0.0.1", port)
+		}
+	}
+	conn, err := net.DialTimeout(backend.Network, target, 100*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func backendAvailableBeforeStartup(backend devBackend) error {
+	backend = backend.normalized()
+	if backend.Network == "unix" {
+		return nil
+	}
+	return portAvailable(backend.Addr)
 }
 
 func tcpAddrAcceptsConnections(addr string) bool {
@@ -575,6 +848,7 @@ func (s *devSupervisor) captureOutput(ctx context.Context, app *runningApp, stre
 			}
 			output := devdash.ProcessOutput{
 				AppID:     s.activeAppID(),
+				SessionID: s.currentSessionID(),
 				PID:       pid,
 				Stream:    stream,
 				Output:    plain,
@@ -797,6 +1071,35 @@ func (s *devSupervisor) setRunning(pid string, metadata, apiEncoding json.RawMes
 	s.status.UpdatedAt = time.Now().UTC()
 }
 
+func (s *devSupervisor) setSessionIdentity(session *localagent.Session) {
+	if s == nil || session == nil {
+		return
+	}
+	baseAppID := strings.TrimSpace(session.BaseAppID)
+	if baseAppID == "" {
+		baseAppID = s.activeAppID()
+	}
+	runtimeAppID := strings.TrimSpace(session.RuntimeAppID)
+	if runtimeAppID == "" {
+		runtimeAppID = baseAppID
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status.BaseAppID = baseAppID
+	s.status.RuntimeAppID = runtimeAppID
+	s.status.SessionID = strings.TrimSpace(session.SessionID)
+	s.status.UpdatedAt = time.Now().UTC()
+}
+
+func (s *devSupervisor) currentSessionID() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.status.SessionID
+}
+
 func (s *devSupervisor) setGrafanaState(state devdash.GrafanaState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -849,7 +1152,7 @@ func (s *devSupervisor) mcpURL() string {
 		return localproxy.MCPSSEURL(s.proxy.Routes(), s.activeAppID())
 	}
 	if s.agentSession != nil && s.agentSession.Routes[localagent.RouteMCP] != "" {
-		return s.agentSession.Routes[localagent.RouteMCP] + "?appID=" + url.QueryEscape(s.activeAppID())
+		return appendURLQuery(s.agentSession.Routes[localagent.RouteMCP], "appID", s.activeAppID())
 	}
 	return "http://" + devdash.ListenAddr() + "/sse?appID=" + url.QueryEscape(s.activeAppID())
 }
@@ -857,6 +1160,9 @@ func (s *devSupervisor) mcpURL() string {
 func (s *devSupervisor) temporalURL() string {
 	if s.proxy != nil && s.proxy.Routes().TemporalURL != "" {
 		return s.proxy.Routes().TemporalURL
+	}
+	if s.agentSession != nil && s.agentSession.Routes[localagent.RouteTemporal] != "" {
+		return s.agentSession.Routes[localagent.RouteTemporal]
 	}
 	return s.temporal.URL()
 }
@@ -872,6 +1178,9 @@ func (s *devSupervisor) frontendURLs() map[string]string {
 	if s.proxy != nil {
 		return frontendURLs(s.proxy.Routes())
 	}
+	if s.agentSession != nil {
+		return frontendURLsFromAgentRoutes(s.agentSession.Routes, s.cfg.Proxy.Frontends)
+	}
 	return nil
 }
 
@@ -879,31 +1188,213 @@ func (s *devSupervisor) ensureTemporalDevServer(ctx context.Context) error {
 	if s == nil || s.temporal != nil {
 		return nil
 	}
-	temporal, err := startTemporalDevServer(ctx, s.root, s.cfg, s.console)
+	var (
+		temporal *temporalDevServer
+		err      error
+	)
+	if s.agent != nil {
+		temporal, err = s.ensureAgentTemporalDevServer(ctx)
+	} else {
+		temporal, err = startTemporalDevServer(ctx, s.root, s.cfg, s.console)
+	}
 	if err != nil {
 		return err
 	}
 	s.temporal = temporal
+	if temporal != nil {
+		s.registerAgentSessionBackend(ctx, localagent.RouteTemporal, backendFromHTTPURL(temporal.URL()))
+	}
 	return nil
+}
+
+func (s *devSupervisor) ensureAgentTemporalDevServer(ctx context.Context) (*temporalDevServer, error) {
+	if s == nil || s.agent == nil {
+		return startTemporalDevServer(ctx, s.root, s.cfg, s.console)
+	}
+	if temporal := s.agentTemporalDevServer(ctx); temporal != nil {
+		return temporal, nil
+	}
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		warnTemporal(s.console, "agent Temporal state path unavailable: %v", err)
+		return startTemporalDevServer(ctx, s.root, s.cfg, s.console)
+	}
+	temporal, err := startTemporalDevServer(context.Background(), filepath.Join(paths.AgentDir, "temporal"), s.cfg, s.console)
+	if temporal == nil {
+		return nil, err
+	}
+	if _, registerErr := s.agent.UpsertSubstrate(ctx, temporal.SubstrateRequest(os.Getpid())); registerErr != nil {
+		warnTemporal(s.console, "failed to register shared Temporal substrate with agent: %v", registerErr)
+		return temporal, err
+	}
+	temporal.MarkExternal()
+	if s.console != nil && s.console.verbose {
+		s.console.Event("temporal.shared", map[string]any{
+			"owner":     "agent",
+			"address":   temporal.info.Address,
+			"namespace": temporal.info.Namespace,
+			"ui_url":    temporal.URL(),
+		})
+	}
+	return temporal, err
+}
+
+func (s *devSupervisor) agentTemporalDevServer(ctx context.Context) *temporalDevServer {
+	if s == nil || s.agent == nil {
+		return nil
+	}
+	substrate, err := s.agent.GetSubstrate(ctx, localagent.SubstrateTemporal)
+	if err != nil {
+		return nil
+	}
+	temporal := temporalDevServerFromSubstrate(substrate, s.cfg.Name, s.cfg.Temporal)
+	if temporal == nil {
+		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateTemporal)
+		return nil
+	}
+	if !temporal.Reachable(ctx, s.cfg.Name, s.cfg.Temporal) {
+		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateTemporal)
+		return nil
+	}
+	if s.console != nil && s.console.verbose {
+		s.console.Event("temporal.reuse", map[string]any{
+			"owner":     "agent",
+			"address":   temporal.info.Address,
+			"namespace": temporal.info.Namespace,
+			"ui_url":    temporal.URL(),
+		})
+	}
+	return temporal
 }
 
 func (s *devSupervisor) startGrafana(ctx context.Context) error {
 	if s == nil || s.grafana != nil {
 		return nil
 	}
-	grafana, err := startGrafanaForDev(ctx, s.root, s.victoria, s.plannedGrafanaPublicURL(), s.console)
+	var (
+		grafana *grafanaComponent
+		err     error
+	)
+	if s.agent != nil {
+		grafana, err = s.startAgentGrafana(ctx)
+	} else {
+		grafana, err = startGrafanaForDev(ctx, s.root, s.victoria, s.plannedGrafanaPublicURL(), s.console)
+	}
 	if grafana != nil {
 		s.grafana = grafana
-		s.setGrafanaState(grafana.State())
+		state := grafana.State()
+		if s.registerAgentSessionBackend(ctx, localagent.RouteGrafana, backendFromHTTPURL(grafana.URL())) {
+			if route := strings.TrimSpace(s.agentSession.Routes[localagent.RouteGrafana]); route != "" {
+				state = grafanaStateWithBaseURL(state, route)
+			}
+		}
+		s.setGrafanaState(state)
 		_ = s.persistStatus(ctx)
 		if s.dashboard != nil {
 			s.dashboard.notify(&devdash.Notification{
 				Method: "grafana/status",
-				Params: grafana.State(),
+				Params: state,
 			})
 		}
 	}
 	return err
+}
+
+func (s *devSupervisor) registerAgentSessionBackend(ctx context.Context, route string, backend localagent.Backend) bool {
+	route = strings.TrimSpace(route)
+	backend.Network = strings.TrimSpace(backend.Network)
+	backend.Addr = strings.TrimSpace(backend.Addr)
+	if s == nil || s.agent == nil || s.agentSession == nil || route == "" || backend.Addr == "" {
+		return false
+	}
+	if backend.Network == "" {
+		backend.Network = "tcp"
+	}
+	backends := copyManagedBackends(s.agentSession.Backends)
+	backends[route] = backend
+	session, err := s.agent.Register(ctx, localagent.RegisterRequest{
+		BaseAppID:   s.cfg.AppID(),
+		AppRoot:     s.root,
+		Status:      firstNonEmpty(s.agentSession.Status, "starting"),
+		OwnerPID:    os.Getpid(),
+		AppPID:      s.agentSession.AppPID,
+		Backends:    backends,
+		ReportToken: s.reportToken,
+	})
+	if err != nil {
+		slog.Warn("failed to register onlava agent session backend", "route", route, "err", err)
+		return false
+	}
+	s.agentSession = &session
+	s.setSessionIdentity(&session)
+	return true
+}
+
+func backendFromHTTPURL(raw string) localagent.Backend {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Host == "" {
+		return localagent.Backend{}
+	}
+	return localagent.Backend{Network: "tcp", Addr: parsed.Host}
+}
+
+func (s *devSupervisor) startAgentGrafana(ctx context.Context) (*grafanaComponent, error) {
+	if s == nil || s.agent == nil {
+		return startGrafanaForDev(ctx, s.root, s.victoria, s.plannedGrafanaPublicURL(), s.console)
+	}
+	if grafana := s.agentGrafana(ctx); grafana != nil {
+		return grafana, nil
+	}
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		warnGrafana(s.console, "agent Grafana state path unavailable: %v", err)
+		return startGrafanaForDev(ctx, s.root, s.victoria, s.plannedGrafanaPublicURL(), s.console)
+	}
+	grafana, err := startGrafanaForDevWithRoot(context.Background(), filepath.Join(paths.AgentDir, "grafana"), s.victoria, "", s.console)
+	if grafana == nil || !grafana.State().Available {
+		return grafana, err
+	}
+	if _, registerErr := s.agent.UpsertSubstrate(ctx, grafana.SubstrateRequest(os.Getpid())); registerErr != nil {
+		warnGrafana(s.console, "failed to register shared Grafana substrate with agent: %v", registerErr)
+		return grafana, err
+	}
+	grafana.MarkExternal()
+	if s.console != nil && s.console.verbose {
+		s.console.Event("grafana.shared", map[string]any{
+			"owner": "agent",
+			"url":   grafana.URL(),
+		})
+	}
+	return grafana, err
+}
+
+func (s *devSupervisor) agentGrafana(ctx context.Context) *grafanaComponent {
+	if s == nil || s.agent == nil {
+		return nil
+	}
+	substrate, err := s.agent.GetSubstrate(ctx, localagent.SubstrateGrafana)
+	if err != nil {
+		return nil
+	}
+	grafana := grafanaComponentFromSubstrate(substrate, s.victoria, "")
+	if grafana == nil {
+		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateGrafana)
+		return nil
+	}
+	if grafana.cfg.MetricsURL == "" && grafana.cfg.LogsURL == "" && grafana.cfg.TracesURL == "" {
+		return nil
+	}
+	if !grafana.Reachable(ctx) {
+		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateGrafana)
+		return nil
+	}
+	if s.console != nil && s.console.verbose {
+		s.console.Event("grafana.reuse", map[string]any{
+			"owner": "agent",
+			"url":   grafana.URL(),
+		})
+	}
+	return grafana
 }
 
 func (s *devSupervisor) plannedGrafanaPublicURL() string {
@@ -934,6 +1425,45 @@ func (s *devSupervisor) plannedGrafanaPublicURL() string {
 
 func (s *devSupervisor) activeAppID() string {
 	return s.cfg.AppID()
+}
+
+func (s *devSupervisor) dashboardActiveAppID() string {
+	return s.activeAppID()
+}
+
+func (s *devSupervisor) dashboardCurrentSessionID() string {
+	return s.currentSessionID()
+}
+
+func (s *devSupervisor) dashboardListApps(ctx context.Context) ([]map[string]any, error) {
+	return s.listApps(ctx)
+}
+
+func (s *devSupervisor) dashboardStatusFor(ctx context.Context, appID string) (devdash.AppStatus, error) {
+	return s.statusFor(ctx, appID)
+}
+
+func (s *devSupervisor) dashboardStore() *devdash.Store {
+	return s.store
+}
+
+func (s *devSupervisor) dashboardAuthorizeReport(req *http.Request, _ devdash.ReportEnvelope) bool {
+	return req.Header.Get("Authorization") == "Bearer "+s.reportToken
+}
+
+func (s *devSupervisor) dashboardRootForApp(ctx context.Context, appID string) (string, error) {
+	status, err := s.statusFor(ctx, firstNonEmpty(appID, s.activeAppID()))
+	if err != nil {
+		return "", err
+	}
+	return status.AppRoot, nil
+}
+
+func (s *devSupervisor) dashboardVictoria() dashboardVictoria {
+	if s == nil || s.victoria == nil {
+		return nil
+	}
+	return s.victoria
 }
 
 func (s *devSupervisor) setAppIdentity(cfg app.Config) {
@@ -1020,6 +1550,42 @@ func frontendURLs(routes localproxy.Routes) map[string]string {
 	return urls
 }
 
+func frontendURLsFromAgentRoutes(routes map[string]string, frontends map[string]app.FrontendConfig) map[string]string {
+	if len(routes) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(frontends))
+	if len(frontends) > 0 {
+		for name := range frontends {
+			value := strings.TrimSpace(routes[name])
+			if value == "" {
+				continue
+			}
+			names = append(names, name)
+		}
+	} else {
+		for name, value := range routes {
+			switch name {
+			case localagent.RouteAPI, localagent.RouteDashboard, localagent.RouteGrafana, localagent.RouteMCP, localagent.RouteTemporal:
+				continue
+			}
+			if strings.TrimSpace(value) == "" {
+				continue
+			}
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	urls := make(map[string]string, len(names))
+	for _, name := range names {
+		urls[name] = routes[name]
+	}
+	return urls
+}
+
 func (s *devSupervisor) runURLs() runURLs {
 	return runURLs{
 		API:       s.apiURL(),
@@ -1030,6 +1596,21 @@ func (s *devSupervisor) runURLs() runURLs {
 		Victoria:  s.victoria.URLs(),
 		Grafana:   s.appStatus().Grafana,
 	}
+}
+
+func appendURLQuery(rawURL, key, value string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		sep := "?"
+		if strings.Contains(rawURL, "?") {
+			sep = "&"
+		}
+		return rawURL + sep + url.QueryEscape(key) + "=" + url.QueryEscape(value)
+	}
+	values := parsed.Query()
+	values.Set(key, value)
+	parsed.RawQuery = values.Encode()
+	return parsed.String()
 }
 
 func (s *devSupervisor) handleCompileError(ctx context.Context, metadata, apiEncoding json.RawMessage, err error) error {
@@ -1058,6 +1639,9 @@ func (s *devSupervisor) appStatus() devdash.AppStatus {
 	return devdash.AppStatus{
 		Running:      s.status.Running,
 		AppID:        s.status.ID,
+		BaseAppID:    s.status.BaseAppID,
+		RuntimeAppID: s.status.RuntimeAppID,
+		SessionID:    s.status.SessionID,
 		AppRoot:      s.status.Root,
 		PID:          s.status.PID,
 		Meta:         s.status.Metadata,
@@ -1081,6 +1665,7 @@ func (s *devSupervisor) listApps(ctx context.Context) ([]map[string]any, error) 
 			"id":           status.AppID,
 			"name":         status.AppID,
 			"app_root":     status.AppRoot,
+			"session_id":   status.SessionID,
 			"offline":      !status.Running,
 			"compileError": status.CompileError,
 		}}, nil
@@ -1089,6 +1674,7 @@ func (s *devSupervisor) listApps(ctx context.Context) ([]map[string]any, error) 
 		"id":           app.ID,
 		"name":         app.Name,
 		"app_root":     app.Root,
+		"session_id":   app.SessionID,
 		"offline":      !app.Running,
 		"compileError": app.CompileError,
 	}}, nil
@@ -1100,11 +1686,18 @@ func (s *devSupervisor) statusFor(ctx context.Context, appID string) (devdash.Ap
 	}
 	app, err := s.store.GetApp(ctx, appID)
 	if err != nil {
-		return devdash.AppStatus{}, err
+		app, err = s.store.GetAppSession(ctx, appID)
+		if err != nil {
+			return devdash.AppStatus{}, err
+		}
 	}
+	routeID := firstNonEmpty(app.RouteID, app.ID)
 	return devdash.AppStatus{
 		Running:      app.Running,
-		AppID:        app.ID,
+		AppID:        routeID,
+		BaseAppID:    app.BaseAppID,
+		RuntimeAppID: app.RuntimeAppID,
+		SessionID:    app.SessionID,
 		AppRoot:      app.Root,
 		PID:          app.PID,
 		Meta:         app.Metadata,
@@ -1129,18 +1722,20 @@ func (s *devSupervisor) updateAgentSession(ctx context.Context, status, appPID s
 		return
 	}
 	session, err := s.agent.Register(ctx, localagent.RegisterRequest{
-		BaseAppID: s.cfg.AppID(),
-		AppRoot:   s.root,
-		Status:    status,
-		OwnerPID:  os.Getpid(),
-		AppPID:    appPID,
-		Backends:  s.agentSession.Backends,
+		BaseAppID:   s.cfg.AppID(),
+		AppRoot:     s.root,
+		Status:      status,
+		OwnerPID:    os.Getpid(),
+		AppPID:      appPID,
+		Backends:    s.agentSession.Backends,
+		ReportToken: s.reportToken,
 	})
 	if err != nil {
 		slog.Warn("failed to update onlava agent session", "err", err)
 		return
 	}
 	s.agentSession = &session
+	s.setSessionIdentity(&session)
 }
 
 func portAvailable(addr string) error {

@@ -71,8 +71,11 @@ func newServer(listenAddr string) (*http.Server, error) {
 }
 
 type publicConfigResponse struct {
-	AppID      string `json:"appID"`
-	APIBaseURL string `json:"apiBaseURL"`
+	AppID        string `json:"appID"`
+	BaseAppID    string `json:"baseAppID,omitempty"`
+	RuntimeAppID string `json:"runtimeAppID,omitempty"`
+	SessionID    string `json:"sessionID,omitempty"`
+	APIBaseURL   string `json:"apiBaseURL"`
 }
 
 func (s *server) registerOnlavaConfig() {
@@ -81,8 +84,11 @@ func (s *server) registerOnlavaConfig() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		if err := json.NewEncoder(w).Encode(publicConfigResponse{
-			AppID:      meta.AppID,
-			APIBaseURL: meta.APIBaseURL,
+			AppID:        meta.AppID,
+			BaseAppID:    meta.BaseAppID,
+			RuntimeAppID: meta.RuntimeAppID,
+			SessionID:    meta.SessionID,
+			APIBaseURL:   meta.APIBaseURL,
 		}); err != nil {
 			errs.HTTPError(w, errs.Wrap(err, "encode onlava config"))
 		}

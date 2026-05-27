@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
@@ -28,6 +29,95 @@ func TestAppChildEnvLeavesColorUnsetWhenDisabled(t *testing.T) {
 	env := appChildEnv([]string{"A=1"}, false, "B=2")
 	if containsString(env, "CLICOLOR_FORCE=1") {
 		t.Fatalf("appChildEnv(%v) unexpectedly added CLICOLOR_FORCE=1", env)
+	}
+}
+
+func TestSessionIdentityEnvUsesAgentSession(t *testing.T) {
+	s := &devSupervisor{
+		cfg: app.Config{Name: "demo"},
+		agentSession: &localagent.Session{
+			SessionID:    "feature-a-123abc",
+			BaseAppID:    "demo",
+			RuntimeAppID: "demo--feature-a-123abc",
+			AppRoot:      "/tmp/onlv-a",
+			Branch:       "feature/a",
+		},
+	}
+	env := s.sessionIdentityEnv()
+	for _, want := range []string{
+		"ONLAVA_SESSION_ID=feature-a-123abc",
+		"ONLAVA_BASE_APP_ID=demo",
+		"ONLAVA_RUNTIME_APP_ID=demo--feature-a-123abc",
+		"ONLAVA_APP_ROOT_HASH=" + appRootHash("/tmp/onlv-a"),
+		"ONLAVA_BRANCH=feature/a",
+		"ONLAVA_WORKTREE=onlv-a",
+	} {
+		if !containsString(env, want) {
+			t.Fatalf("sessionIdentityEnv() = %v, missing %q", env, want)
+		}
+	}
+}
+
+func TestSessionTemporalEnvUsesAgentSession(t *testing.T) {
+	s := &devSupervisor{
+		cfg: app.Config{
+			Name: "demo",
+			Temporal: app.TemporalConfig{
+				Enabled: true,
+			},
+		},
+		status: devdash.AppRecord{ID: "demo"},
+		agentSession: &localagent.Session{
+			SessionID: "feature-a-123abc",
+			BaseAppID: "demo",
+		},
+	}
+	env := s.sessionTemporalEnv()
+	for _, want := range []string{
+		"ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX=onlava.demo.feature-a-123abc",
+		"ONLAVA_TEMPORAL_DEPLOYMENT_NAME=onlava.demo.feature-a-123abc",
+		"ONLAVA_BUILD_ID=feature-a-123abc",
+	} {
+		if !containsString(env, want) {
+			t.Fatalf("sessionTemporalEnv() = %v, missing %q", env, want)
+		}
+	}
+}
+
+func TestSessionAuthEnvUsesRoutedSessionURLs(t *testing.T) {
+	s := &devSupervisor{
+		cfg: app.Config{
+			Name: "demo",
+			Auth: app.AuthConfig{
+				Enabled:             true,
+				PublicAppURLEnv:     "APP_URL",
+				APIBaseURLEnv:       "API_URL",
+				AuthCookieDomainEnv: "COOKIE_DOMAIN",
+			},
+		},
+		addr: "127.0.0.1:4000",
+		agentSession: &localagent.Session{
+			SessionID: "feature-a-123abc",
+			Routes: map[string]string{
+				localagent.RouteAPI: "http://api.feature-a-123abc.onlava.localhost",
+			},
+		},
+	}
+	env := s.sessionAuthEnv()
+	for _, want := range []string{
+		"API_URL=http://api.feature-a-123abc.onlava.localhost",
+		"API_BASE_URL=http://api.feature-a-123abc.onlava.localhost",
+		"ONLAVA_API_BASE_URL=http://api.feature-a-123abc.onlava.localhost",
+		"APP_URL=http://api.feature-a-123abc.onlava.localhost",
+		"PUBLIC_APP_URL=http://api.feature-a-123abc.onlava.localhost",
+		"ONLAVA_PUBLIC_APP_URL=http://api.feature-a-123abc.onlava.localhost",
+		"COOKIE_DOMAIN=",
+		"AUTH_COOKIE_DOMAIN=",
+		"ONLAVA_AUTH_COOKIE_DOMAIN=",
+	} {
+		if !containsString(env, want) {
+			t.Fatalf("sessionAuthEnv() = %v, missing %q", env, want)
+		}
 	}
 }
 
@@ -176,6 +266,96 @@ func TestTemporalDevHelpers(t *testing.T) {
 	}
 	if got := temporalUIUpstreamForConfig(app.Config{Name: "test"}); got != "127.0.0.1:8233" {
 		t.Fatalf("temporal UI upstream = %q, want %q", got, "127.0.0.1:8233")
+	}
+}
+
+func TestTemporalSubstrateRoundTrip(t *testing.T) {
+	server := &temporalDevServer{
+		info:   onlavaRuntimeInfoForTest(),
+		uiURL:  "http://127.0.0.1:8233",
+		dbPath: filepath.Join(t.TempDir(), "temporal.sqlite"),
+	}
+	req := server.SubstrateRequest(123)
+	if req.Kind != localagent.SubstrateTemporal || req.OwnerPID != 123 {
+		t.Fatalf("substrate request = %+v", req)
+	}
+	if req.Endpoints["address"] != "127.0.0.1:7233" || req.Endpoints["namespace"] != "orders" {
+		t.Fatalf("substrate endpoints = %+v", req.Endpoints)
+	}
+	if req.URLs["ui"] != "http://127.0.0.1:8233" {
+		t.Fatalf("substrate urls = %+v", req.URLs)
+	}
+
+	restored := temporalDevServerFromSubstrate(localagent.Substrate{
+		Kind:      localagent.SubstrateTemporal,
+		URLs:      req.URLs,
+		Endpoints: req.Endpoints,
+	}, "orders", app.TemporalConfig{
+		Enabled:    true,
+		AddressEnv: "CUSTOM_TEMPORAL_ADDRESS",
+		Namespace:  "default",
+		Local: app.TemporalLocalConfig{
+			AutoStart: true,
+		},
+	})
+	if restored == nil {
+		t.Fatal("restored temporal server is nil")
+	}
+	if !restored.external || restored.info.Address != "127.0.0.1:7233" || restored.info.Namespace != "orders" {
+		t.Fatalf("restored server = %+v", restored)
+	}
+	if restored.URL() != "http://127.0.0.1:8233" {
+		t.Fatalf("restored UI URL = %q", restored.URL())
+	}
+}
+
+func TestFrontendURLsFromAgentRoutes(t *testing.T) {
+	urls := frontendURLsFromAgentRoutes(map[string]string{
+		localagent.RouteAPI:       "http://api.session.onlava.localhost",
+		localagent.RouteDashboard: "http://console.onlava.localhost/s/session",
+		localagent.RouteGrafana:   "http://grafana.session.onlava.localhost",
+		"web":                     "http://web.session.onlava.localhost",
+		"blog":                    "http://blog.session.onlava.localhost",
+		"electric":                "http://electric.session.onlava.localhost",
+		localagent.RouteTemporal:  "http://temporal.session.onlava.localhost",
+	}, map[string]app.FrontendConfig{"web": {}, "blog": {}})
+	if len(urls) != 2 {
+		t.Fatalf("frontend urls = %+v", urls)
+	}
+	if urls["web"] != "http://web.session.onlava.localhost" || urls["blog"] != "http://blog.session.onlava.localhost" {
+		t.Fatalf("frontend urls = %+v", urls)
+	}
+}
+
+func TestTemporalURLUsesAgentRoute(t *testing.T) {
+	s := &devSupervisor{
+		agentSession: &localagent.Session{Routes: map[string]string{
+			localagent.RouteTemporal: "http://temporal.session.onlava.localhost",
+		}},
+		temporal: &temporalDevServer{info: onlavaRuntimeInfoForTest()},
+	}
+	if got, want := s.temporalURL(), "http://temporal.session.onlava.localhost"; got != want {
+		t.Fatalf("temporalURL() = %q, want %q", got, want)
+	}
+}
+
+func TestBackendFromHTTPURL(t *testing.T) {
+	got := backendFromHTTPURL("http://127.0.0.1:10429")
+	if got.Network != "tcp" || got.Addr != "127.0.0.1:10429" {
+		t.Fatalf("backendFromHTTPURL() = %+v", got)
+	}
+}
+
+func TestDevReportURLUsesAgentDashboardRoute(t *testing.T) {
+	s := &devSupervisor{
+		agentSession: &localagent.Session{
+			Routes: map[string]string{
+				localagent.RouteDashboard: "http://console.session.onlava.localhost:4100/s/session",
+			},
+		},
+	}
+	if got, want := s.devReportURL(), "http://console.session.onlava.localhost:4100/__onlava/report"; got != want {
+		t.Fatalf("devReportURL() = %q, want %q", got, want)
 	}
 }
 

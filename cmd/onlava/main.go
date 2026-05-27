@@ -37,12 +37,16 @@ func run(args []string) error {
 		return agentCommand(args[1:])
 	case "dev":
 		return devCommand(args[1:])
+	case "attach":
+		return attachCommand(args[1:])
 	case "run":
 		return runCommand(args[1:])
 	case "status":
 		return statusCommand(args[1:])
 	case "down":
 		return downCommand(args[1:])
+	case "db":
+		return dbCommand(args[1:])
 	case "worker":
 		return workerCommand(args[1:])
 	case "temporal":
@@ -75,10 +79,15 @@ func run(args []string) error {
 func usageError() error {
 	return fmt.Errorf(`usage:
   stable/dev commands:
-    onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust]
-    onlava agent [--socket <path>] [--router-listen <addr>] [--json]
+    onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust] [--detach]
+    onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--jsonl|--json]
+    onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+    onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
     onlava status --json [--app-root <path>] [--session <id>]
     onlava down [--app-root <path>] [--session <id>]
+    onlava db psql [--app-root <path>] [psql args...]
+    onlava db reset [--app-root <path>]
+    onlava db snapshot create|restore <name> [--app-root <path>]
     onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
     onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
     onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
@@ -94,10 +103,10 @@ func usageError() error {
     onlava inspect app|routes|services|endpoints|wire|build|paths|temporal|traces|metrics --json [--app-root <path>]
     onlava inspect docs --json [--repo-root <path>]
     onlava inspect data --json --database-url <postgres-url> [--tenant <key>] [--object <name>]
-    onlava inspect traces --json [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
-    onlava inspect metrics --json [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
+    onlava inspect traces --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
+    onlava inspect metrics --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
     onlava admin traces clear --json [--app-root <path>]
-    onlava logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
+    onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [-f|--follow] [--jsonl|--json]
     onlava test [--app-root <path>] [go test flags/packages...]
     onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 
@@ -123,18 +132,31 @@ func devCommand(args []string) error {
 	}
 	restore := configureDevProcessEnv(opts)
 	defer restore()
-	addr := resolveListenAddr(opts.Listen, opts.Port)
-	return runWithWatchFunc(addr, opts.Verbose, opts.JSON, opts.AppRoot)
+	if opts.Detach && !detachedDevChildMode() {
+		return runDetachedDevFunc(args, opts)
+	}
+	listen := resolveDevListenRequest(opts)
+	return runWithWatchFunc(listen, opts.Verbose, opts.JSON, opts.AppRoot)
 }
 
 type devOptions struct {
-	Listen  string
-	Port    int
-	Verbose bool
-	JSON    bool
-	AppRoot string
-	Proxy   bool
-	Trust   bool
+	Listen    string
+	Port      int
+	ListenSet bool
+	PortSet   bool
+	Verbose   bool
+	JSON      bool
+	AppRoot   string
+	Proxy     bool
+	Trust     bool
+	Detach    bool
+}
+
+type devListenRequest struct {
+	Network   string
+	Addr      string
+	Explicit  bool
+	PreferTCP bool
 }
 
 func parseDevArgs(args []string) (devOptions, error) {
@@ -151,12 +173,14 @@ func parseDevArgs(args []string) (devOptions, error) {
 				return devOptions{}, fmt.Errorf("invalid port %q", args[i])
 			}
 			opts.Port = value
+			opts.PortSet = true
 		case "--listen":
 			i++
 			if i >= len(args) {
 				return devOptions{}, fmt.Errorf("missing value for --listen")
 			}
 			opts.Listen = args[i]
+			opts.ListenSet = true
 		case "--verbose", "-v":
 			opts.Verbose = true
 		case "--json":
@@ -166,6 +190,8 @@ func parseDevArgs(args []string) (devOptions, error) {
 		case "--trust":
 			opts.Trust = true
 			opts.Proxy = true
+		case "--detach":
+			opts.Detach = true
 		case "--app-root":
 			i++
 			if i >= len(args) {
@@ -179,22 +205,37 @@ func parseDevArgs(args []string) (devOptions, error) {
 	return opts, nil
 }
 
+func resolveDevListenRequest(opts devOptions) devListenRequest {
+	if opts.ListenSet || opts.PortSet {
+		return devListenRequest{
+			Network:  "tcp",
+			Addr:     resolveListenAddr(opts.Listen, opts.Port),
+			Explicit: true,
+		}
+	}
+	return devListenRequest{PreferTCP: opts.Proxy || opts.Trust || devProxyEnabledByEnv()}
+}
+
 func configureDevProcessEnv(opts devOptions) func() {
 	changes := map[string]string{}
-	if opts.Proxy || !devProxyDisabledByEnv() {
+	if opts.Proxy || opts.Trust {
 		changes["ONLAVA_LOCAL_PROXY"] = "1"
 		if opts.Trust {
 			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
 		} else if _, ok := os.LookupEnv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
 			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
 		}
+	} else if devProxyEnabledByEnv() {
+		if _, ok := os.LookupEnv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
+			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
+		}
 	}
 	return applyTemporaryEnv(changes)
 }
 
-func devProxyDisabledByEnv() bool {
+func devProxyEnabledByEnv() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("ONLAVA_LOCAL_PROXY"))) {
-	case "0", "false", "no", "off":
+	case "1", "true", "yes", "on":
 		return true
 	default:
 		return false

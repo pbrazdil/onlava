@@ -178,37 +178,69 @@ func grafanaDashboardFiles(cfg grafanaConfig) map[string][]byte {
 }
 
 func grafanaOverviewDashboard(cfg grafanaConfig) map[string]any {
-	requestDuration := grafanaRequestDurationMetricName
-	return baseGrafanaDashboard(grafanaOverviewUID, "onlava dev overview", []any{
+	requestDuration := grafanaMetricSelector(grafanaRequestDurationMetricName, `onlava_session_id=~"$session"`)
+	errorDuration := grafanaMetricSelector(grafanaRequestDurationMetricName, `onlava_session_id=~"$session"`, `onlava_is_error="true"`)
+	dashboard := baseGrafanaDashboard(grafanaOverviewUID, "onlava dev overview", []any{
 		statPanel(1, "Requests observed", metricTarget(fmt.Sprintf("count_over_time(%s[15m])", requestDuration)), 0, 0, 6, 4),
 		statPanel(2, "Latest latency", metricTarget(requestDuration), 6, 0, 6, 4),
 		timeSeriesPanel(3, "Request duration", []any{metricTarget(requestDuration)}, 0, 4, 12, 8),
-		timeSeriesPanel(4, "Errors", []any{metricTarget(fmt.Sprintf(`count_over_time(%s{onlava_is_error="true"}[5m])`, requestDuration))}, 12, 0, 12, 6),
+		timeSeriesPanel(4, "Errors", []any{metricTarget(fmt.Sprintf(`count_over_time(%s[5m])`, errorDuration))}, 12, 0, 12, 6),
 		logsPanel(5, "Recent warnings and errors", `{level=~"warn|warning|error|fatal"}`, 12, 6, 12, 6),
 	})
+	dashboard["templating"] = grafanaSessionTemplating(grafanaRequestDurationMetricName)
+	return dashboard
 }
 
 func grafanaLogsDashboard(cfg grafanaConfig) map[string]any {
-	return baseGrafanaDashboard(grafanaLogsDashboardUID, "onlava dev logs", []any{
+	dashboard := baseGrafanaDashboard(grafanaLogsDashboardUID, "onlava dev logs", []any{
 		logsPanel(1, "Log stream", "*", 0, 0, 24, 10),
 		logsPanel(2, "Errors", `{level=~"error|fatal"}`, 0, 10, 24, 8),
 	})
+	dashboard["templating"] = grafanaSessionTemplating(grafanaRequestDurationMetricName)
+	return dashboard
 }
 
 func grafanaEndpointDashboard(cfg grafanaConfig) map[string]any {
 	requestDuration := grafanaRequestDurationMetricName
+	endpointDuration := grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`, `onlava_service="$service"`, `onlava_endpoint="$endpoint"`)
+	endpointErrors := grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`, `onlava_service="$service"`, `onlava_endpoint="$endpoint"`, `onlava_is_error="true"`)
 	dashboard := baseGrafanaDashboard(grafanaEndpointUID, "onlava dev endpoint", []any{
-		timeSeriesPanel(1, "Endpoint latency", []any{metricTarget(fmt.Sprintf(`%s{onlava_service="$service",onlava_endpoint="$endpoint"}`, requestDuration))}, 0, 0, 12, 8),
-		timeSeriesPanel(2, "Endpoint errors", []any{metricTarget(fmt.Sprintf(`count_over_time(%s{onlava_service="$service",onlava_endpoint="$endpoint",onlava_is_error="true"}[5m])`, requestDuration))}, 12, 0, 12, 8),
+		timeSeriesPanel(1, "Endpoint latency", []any{metricTarget(endpointDuration)}, 0, 0, 12, 8),
+		timeSeriesPanel(2, "Endpoint errors", []any{metricTarget(fmt.Sprintf(`count_over_time(%s[5m])`, endpointErrors))}, 12, 0, 12, 8),
 		logsPanel(3, "Recent logs", "*", 0, 8, 24, 8),
 	})
 	dashboard["templating"] = map[string]any{
 		"list": []any{
-			queryVariable("service", fmt.Sprintf(`label_values(%s, onlava_service)`, requestDuration)),
-			queryVariable("endpoint", fmt.Sprintf(`label_values(%s{onlava_service="$service"}, onlava_endpoint)`, requestDuration)),
+			sessionVariable(requestDuration),
+			queryVariable("service", fmt.Sprintf(`label_values(%s, onlava_service)`, grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`))),
+			queryVariable("endpoint", fmt.Sprintf(`label_values(%s, onlava_endpoint)`, grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`, `onlava_service="$service"`))),
 		},
 	}
 	return dashboard
+}
+
+func grafanaMetricSelector(metric string, labels ...string) string {
+	metric = strings.TrimSpace(metric)
+	if len(labels) == 0 {
+		return metric
+	}
+	filtered := make([]string, 0, len(labels))
+	for _, label := range labels {
+		label = strings.TrimSpace(label)
+		if label != "" {
+			filtered = append(filtered, label)
+		}
+	}
+	if len(filtered) == 0 {
+		return metric
+	}
+	return metric + "{" + strings.Join(filtered, ",") + "}"
+}
+
+func grafanaSessionTemplating(metric string) map[string]any {
+	return map[string]any{
+		"list": []any{sessionVariable(metric)},
+	}
 }
 
 func baseGrafanaDashboard(uid, title string, panels []any) map[string]any {
@@ -289,6 +321,19 @@ func queryVariable(name, query string) map[string]any {
 		"refresh":    1,
 		"sort":       1,
 	}
+}
+
+func sessionVariable(metric string) map[string]any {
+	variable := queryVariable("session", fmt.Sprintf(`label_values(%s, onlava_session_id)`, metric))
+	variable["label"] = "Session"
+	variable["includeAll"] = true
+	variable["allValue"] = ".*"
+	variable["current"] = map[string]any{
+		"selected": true,
+		"text":     "All",
+		"value":    "$__all",
+	}
+	return variable
 }
 
 func metricDatasourceRef() map[string]any {

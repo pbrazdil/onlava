@@ -39,9 +39,13 @@ type traceSpan struct {
 }
 
 type devReporter struct {
-	appID string
-	url   string
-	token string
+	appID       string
+	sessionID   string
+	appRootHash string
+	branch      string
+	worktree    string
+	url         string
+	token       string
 
 	client *http.Client
 	queue  chan devdash.ReportEnvelope
@@ -69,18 +73,26 @@ func startDevelopmentReporting(cfg AppConfig) func() {
 	url := stringsTrim(osGetenv("ONLAVA_DEV_REPORT_URL"))
 	token := stringsTrim(osGetenv("ONLAVA_DEV_REPORT_TOKEN"))
 	appID := stringsTrim(osGetenv("ONLAVA_APP_ID"))
+	sessionID := stringsTrim(osGetenv("ONLAVA_SESSION_ID"))
+	appRootHash := stringsTrim(osGetenv("ONLAVA_APP_ROOT_HASH"))
+	branch := stringsTrim(osGetenv("ONLAVA_BRANCH"))
+	worktree := stringsTrim(osGetenv("ONLAVA_WORKTREE"))
 	if url == "" || token == "" || appID == "" {
 		return func() {}
 	}
 
 	reporter := &devReporter{
-		appID:  appID,
-		url:    url,
-		token:  token,
-		client: &http.Client{Timeout: 2 * time.Second},
-		queue:  make(chan devdash.ReportEnvelope, 1024),
-		done:   make(chan struct{}),
-		stop:   make(chan struct{}),
+		appID:       appID,
+		sessionID:   sessionID,
+		appRootHash: appRootHash,
+		branch:      branch,
+		worktree:    worktree,
+		url:         url,
+		token:       token,
+		client:      &http.Client{Timeout: 2 * time.Second},
+		queue:       make(chan devdash.ReportEnvelope, 1024),
+		done:        make(chan struct{}),
+		stop:        make(chan struct{}),
 	}
 
 	reporter.prevLogger = slog.Default()
@@ -175,6 +187,72 @@ func (r *devReporter) post(env devdash.ReportEnvelope) error {
 func (r *devReporter) enqueue(env devdash.ReportEnvelope) {
 	if r == nil || r.disabled.Load() {
 		return
+	}
+	if env.AppID == "" {
+		env.AppID = r.appID
+	}
+	if env.SessionID == "" {
+		env.SessionID = r.sessionID
+	}
+	if env.AppRootHash == "" {
+		env.AppRootHash = r.appRootHash
+	}
+	if env.Branch == "" {
+		env.Branch = r.branch
+	}
+	if env.Worktree == "" {
+		env.Worktree = r.worktree
+	}
+	if env.TraceSummary != nil {
+		if env.TraceSummary.AppID == "" {
+			env.TraceSummary.AppID = env.AppID
+		}
+		if env.TraceSummary.SessionID == "" {
+			env.TraceSummary.SessionID = env.SessionID
+		}
+		if env.TraceSummary.AppRootHash == "" {
+			env.TraceSummary.AppRootHash = env.AppRootHash
+		}
+		if env.TraceSummary.Branch == "" {
+			env.TraceSummary.Branch = env.Branch
+		}
+		if env.TraceSummary.Worktree == "" {
+			env.TraceSummary.Worktree = env.Worktree
+		}
+	}
+	if env.TraceEvent != nil {
+		if env.TraceEvent.AppID == "" {
+			env.TraceEvent.AppID = env.AppID
+		}
+		if env.TraceEvent.SessionID == "" {
+			env.TraceEvent.SessionID = env.SessionID
+		}
+		if env.TraceEvent.AppRootHash == "" {
+			env.TraceEvent.AppRootHash = env.AppRootHash
+		}
+		if env.TraceEvent.Branch == "" {
+			env.TraceEvent.Branch = env.Branch
+		}
+		if env.TraceEvent.Worktree == "" {
+			env.TraceEvent.Worktree = env.Worktree
+		}
+	}
+	if env.LogEvent != nil {
+		if env.LogEvent.AppID == "" {
+			env.LogEvent.AppID = env.AppID
+		}
+		if env.LogEvent.SessionID == "" {
+			env.LogEvent.SessionID = env.SessionID
+		}
+		if env.LogEvent.AppRootHash == "" {
+			env.LogEvent.AppRootHash = env.AppRootHash
+		}
+		if env.LogEvent.Branch == "" {
+			env.LogEvent.Branch = env.Branch
+		}
+		if env.LogEvent.Worktree == "" {
+			env.LogEvent.Worktree = env.Worktree
+		}
 	}
 	select {
 	case <-r.stop:

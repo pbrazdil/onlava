@@ -14,12 +14,38 @@ import (
 )
 
 func TestParseAgentArgs(t *testing.T) {
-	opts, err := parseAgentArgs([]string{"--socket", "/tmp/onlava.sock", "--router-listen", "127.0.0.1:0", "--json"})
+	opts, err := parseAgentArgs([]string{"--socket", "/tmp/onlava.sock", "--router-listen", "127.0.0.1:0", "--router-tls", "--trust", "--json"})
 	if err != nil {
 		t.Fatalf("parseAgentArgs: %v", err)
 	}
-	if opts.SocketPath != "/tmp/onlava.sock" || opts.RouterAddr != "127.0.0.1:0" || !opts.JSON {
+	if opts.SocketPath != "/tmp/onlava.sock" || opts.RouterAddr != "127.0.0.1:0" || !opts.RouterTLS || !opts.Trust || !opts.JSON {
 		t.Fatalf("opts = %+v", opts)
+	}
+}
+
+func TestAgentRouterTLSDefaultsOn(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_ROUTER_TLS", "")
+	opts, err := parseAgentArgs(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.effectiveRouterTLS() {
+		t.Fatalf("effectiveRouterTLS() = false, want true")
+	}
+	opts, err = parseAgentArgs([]string{"--router-http"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.effectiveRouterTLS() {
+		t.Fatalf("effectiveRouterTLS() with --router-http = true, want false")
+	}
+	t.Setenv("ONLAVA_AGENT_ROUTER_TLS", "0")
+	opts, err = parseAgentArgs(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.effectiveRouterTLS() {
+		t.Fatalf("effectiveRouterTLS() with ONLAVA_AGENT_ROUTER_TLS=0 = true, want false")
 	}
 }
 

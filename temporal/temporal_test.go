@@ -115,9 +115,33 @@ func TestTemporalWorkerOptionsForQueueUsesSmallestActivityConcurrency(t *testing
 		return testWorkflowOutput{}, nil
 	})
 
-	opts := temporalWorkerOptionsForQueue(onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "onlava.orders"}, "worker", "orders.go", snapshotDeclarations())
+	opts := temporalWorkerOptionsForQueue(onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "onlava.orders", HostReporting: true}, "worker", "orders.go", snapshotDeclarations())
 	if opts.MaxConcurrentActivityExecutionSize != 1 {
 		t.Fatalf("MaxConcurrentActivityExecutionSize = %d", opts.MaxConcurrentActivityExecutionSize)
+	}
+	if opts.SysInfoProvider == nil {
+		t.Fatal("expected SysInfoProvider")
+	}
+}
+
+func TestTemporalDeclarationsUseSessionScopedTaskQueues(t *testing.T) {
+	restore := resetRegistryForTest()
+	defer restore()
+
+	_ = NewWorkflow("orders.Fulfill/v1", WorkflowConfig{TaskQueue: "orders.go"}, func(ctx workflow.Context, in testWorkflowInput) (testWorkflowOutput, error) {
+		return testWorkflowOutput{}, nil
+	})
+	_ = NewActivity("payments.Capture/v1", ActivityConfig{TaskQueue: "payments.go"}, func(ctx context.Context, in testWorkflowInput) (testWorkflowOutput, error) {
+		return testWorkflowOutput{}, nil
+	})
+
+	byQueue := declarationsByQueueForTest(onlavaruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "onlava.orders.session-a",
+		SessionID:       "session-a",
+	})
+	want := []string{"onlava.orders.session-a.orders.go", "onlava.orders.session-a.payments.go"}
+	if got := sortedDeclarationQueues(byQueue); !reflect.DeepEqual(got, want) {
+		t.Fatalf("queues = %#v, want %#v", got, want)
 	}
 }
 
@@ -164,6 +188,17 @@ func TestSelectedTemporalTaskQueuesFromEnv(t *testing.T) {
 	want := []string{"orders.go", "payments.go"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("selectedTemporalTaskQueuesFromEnv = %#v, want %#v", got, want)
+	}
+}
+
+func TestScopedSelectedTemporalTaskQueues(t *testing.T) {
+	got := scopedSelectedTemporalTaskQueues(onlavaruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "onlava.orders.session-a",
+		SessionID:       "session-a",
+	}, []string{"orders.go", "onlava.orders.session-a.payments.go"})
+	want := []string{"onlava.orders.session-a.orders.go", "onlava.orders.session-a.payments.go"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("scopedSelectedTemporalTaskQueues = %#v, want %#v", got, want)
 	}
 }
 
@@ -307,6 +342,28 @@ func TestTemporalStartWorkflowOptionsDoNotPinByDefault(t *testing.T) {
 	}
 	if start.VersioningOverride != nil {
 		t.Fatalf("VersioningOverride = %#v, want nil", start.VersioningOverride)
+	}
+}
+
+func TestTemporalStartWorkflowOptionsUseSessionScopedTaskQueue(t *testing.T) {
+	opts := applyStartOptions(WorkflowConfig{
+		TaskQueue: "cfg.go",
+	}, WithTaskQueue("orders.go"))
+	start := temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowID("orders-123"), opts, "default.go", onlavaruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "onlava.orders.session-a",
+		SessionID:       "session-a",
+	})
+	if start.TaskQueue != "onlava.orders.session-a.orders.go" {
+		t.Fatalf("TaskQueue = %q", start.TaskQueue)
+	}
+
+	opts = applyStartOptions(WorkflowConfig{})
+	start = temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowID("orders-123"), opts, "onlava.orders.session-a.worker.go", onlavaruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "onlava.orders.session-a",
+		SessionID:       "session-a",
+	})
+	if start.TaskQueue != "onlava.orders.session-a.worker.go" {
+		t.Fatalf("default TaskQueue = %q", start.TaskQueue)
 	}
 }
 

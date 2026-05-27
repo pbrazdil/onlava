@@ -65,6 +65,27 @@ func (s *Store) migrate(ctx context.Context) error {
 	stmts := []string{
 		`create table if not exists apps (
 			app_id text primary key,
+			base_app_id text not null default '',
+			runtime_app_id text not null default '',
+			session_id text not null default '',
+			name text not null,
+			root text not null,
+			listen_addr text not null default '',
+			metadata_json text not null default '{}',
+			api_encoding_json text not null default '{}',
+			grafana_json text not null default '{}',
+			running integer not null default 0,
+			compiling integer not null default 0,
+			compile_error text not null default '',
+			pid text not null default '',
+			updated_at text not null
+		)`,
+		`create table if not exists app_sessions (
+			record_key text primary key,
+			app_id text not null,
+			base_app_id text not null default '',
+			runtime_app_id text not null default '',
+			session_id text not null default '',
 			name text not null,
 			root text not null,
 			listen_addr text not null default '',
@@ -87,6 +108,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`create table if not exists process_output (
 			id integer primary key autoincrement,
 			app_id text not null,
+			session_id text not null default '',
 			pid text not null,
 			stream text not null,
 			output blob not null,
@@ -95,6 +117,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`create table if not exists trace_summaries (
 			id integer primary key autoincrement,
 			app_id text not null,
+			session_id text not null default '',
 			trace_id text not null,
 			span_id text not null,
 			started_at text not null,
@@ -109,6 +132,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`create table if not exists trace_events (
 			id integer primary key autoincrement,
 			app_id text not null,
+			session_id text not null default '',
 			trace_id text not null,
 			span_id text not null,
 			event_id integer not null,
@@ -118,6 +142,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`create table if not exists log_events (
 			id integer primary key autoincrement,
 			app_id text not null,
+			session_id text not null default '',
 			trace_id text not null default '',
 			span_id text not null default '',
 			level text not null,
@@ -151,6 +176,42 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.ensureColumn(ctx, "apps", "grafana_json", `text not null default '{}'`); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "apps", "base_app_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "apps", "runtime_app_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "apps", "session_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "app_sessions", "grafana_json", `text not null default '{}'`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "app_sessions", "base_app_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "app_sessions", "runtime_app_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "app_sessions", "session_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "process_output", "session_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "trace_summaries", "session_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "trace_events", "session_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "log_events", "session_id", `text not null default ''`); err != nil {
+		return err
+	}
+	if err := s.migrateAppSessions(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -180,6 +241,21 @@ func (s *Store) ensureColumn(ctx context.Context, table, column, definition stri
 	return err
 }
 
+func (s *Store) migrateAppSessions(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `
+		insert or ignore into app_sessions (
+			record_key, app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr,
+			metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
+		)
+		select
+			case when session_id != '' then session_id else app_id end,
+			app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr,
+			metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
+		from apps
+	`)
+	return err
+}
+
 func (s *Store) UpsertApp(ctx context.Context, app AppRecord) error {
 	if app.UpdatedAt.IsZero() {
 		app.UpdatedAt = time.Now().UTC()
@@ -193,10 +269,18 @@ func (s *Store) UpsertApp(ctx context.Context, app AppRecord) error {
 	if len(app.Grafana) == 0 {
 		app.Grafana = json.RawMessage(`{}`)
 	}
-	_, err := s.db.ExecContext(ctx, `
-		insert into apps (app_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		insert into apps (app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		on conflict(app_id) do update set
+			base_app_id = excluded.base_app_id,
+			runtime_app_id = excluded.runtime_app_id,
+			session_id = excluded.session_id,
 			name = excluded.name,
 			root = excluded.root,
 			listen_addr = excluded.listen_addr,
@@ -210,6 +294,9 @@ func (s *Store) UpsertApp(ctx context.Context, app AppRecord) error {
 			updated_at = excluded.updated_at
 	`,
 		app.ID,
+		app.BaseAppID,
+		app.RuntimeAppID,
+		app.SessionID,
 		app.Name,
 		app.Root,
 		app.ListenAddr,
@@ -221,13 +308,54 @@ func (s *Store) UpsertApp(ctx context.Context, app AppRecord) error {
 		app.CompileError,
 		app.PID,
 		app.UpdatedAt.Format(time.RFC3339Nano),
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		insert into app_sessions (record_key, app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		on conflict(record_key) do update set
+			app_id = excluded.app_id,
+			base_app_id = excluded.base_app_id,
+			runtime_app_id = excluded.runtime_app_id,
+			session_id = excluded.session_id,
+			name = excluded.name,
+			root = excluded.root,
+			listen_addr = excluded.listen_addr,
+			metadata_json = excluded.metadata_json,
+			api_encoding_json = excluded.api_encoding_json,
+			grafana_json = excluded.grafana_json,
+			running = excluded.running,
+			compiling = excluded.compiling,
+			compile_error = excluded.compile_error,
+			pid = excluded.pid,
+			updated_at = excluded.updated_at
+	`,
+		appSessionRecordKey(app),
+		app.ID,
+		app.BaseAppID,
+		app.RuntimeAppID,
+		app.SessionID,
+		app.Name,
+		app.Root,
+		app.ListenAddr,
+		string(app.Metadata),
+		string(app.APIEncoding),
+		string(app.Grafana),
+		boolToInt(app.Running),
+		boolToInt(app.Compiling),
+		app.CompileError,
+		app.PID,
+		app.UpdatedAt.Format(time.RFC3339Nano),
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ListApps(ctx context.Context) ([]AppRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		select app_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
+		select app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
 		from apps
 		order by running desc, name asc
 	`)
@@ -244,6 +372,9 @@ func (s *Store) ListApps(ctx context.Context) ([]AppRecord, error) {
 		var updatedAt string
 		if err := rows.Scan(
 			&app.ID,
+			&app.BaseAppID,
+			&app.RuntimeAppID,
+			&app.SessionID,
 			&app.Name,
 			&app.Root,
 			&app.ListenAddr,
@@ -265,6 +396,78 @@ func (s *Store) ListApps(ctx context.Context) ([]AppRecord, error) {
 		app.Compiling = compiling == 1
 		app.Offline = !app.Running
 		app.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		app.RouteID = app.ID
+		apps = append(apps, app)
+	}
+	return apps, rows.Err()
+}
+
+type appRecordScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanAppSessionRecord(row appRecordScanner) (AppRecord, error) {
+	var app AppRecord
+	var metadata, apiEncoding, grafana string
+	var running, compiling int
+	var updatedAt string
+	if err := row.Scan(
+		&app.RouteID,
+		&app.ID,
+		&app.BaseAppID,
+		&app.RuntimeAppID,
+		&app.SessionID,
+		&app.Name,
+		&app.Root,
+		&app.ListenAddr,
+		&metadata,
+		&apiEncoding,
+		&grafana,
+		&running,
+		&compiling,
+		&app.CompileError,
+		&app.PID,
+		&updatedAt,
+	); err != nil {
+		return AppRecord{}, err
+	}
+	app.Metadata = json.RawMessage(metadata)
+	app.APIEncoding = json.RawMessage(apiEncoding)
+	app.Grafana = json.RawMessage(grafana)
+	app.Running = running == 1
+	app.Compiling = compiling == 1
+	app.Offline = !app.Running
+	app.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	return app, nil
+}
+
+func appSessionRecordKey(app AppRecord) string {
+	if app.RouteID != "" {
+		return app.RouteID
+	}
+	if app.SessionID != "" {
+		return app.SessionID
+	}
+	return app.ID
+}
+
+func (s *Store) ListAppSessions(ctx context.Context) ([]AppRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select record_key, app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
+		from app_sessions
+		order by running desc, name asc, session_id asc, updated_at desc
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apps []AppRecord
+	for rows.Next() {
+		app, err := scanAppSessionRecord(rows)
+		if err != nil {
+			return nil, err
+		}
 		apps = append(apps, app)
 	}
 	return apps, rows.Err()
@@ -276,10 +479,13 @@ func (s *Store) GetApp(ctx context.Context, appID string) (AppRecord, error) {
 	var running, compiling int
 	var updatedAt string
 	err := s.db.QueryRowContext(ctx, `
-		select app_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
+		select app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
 		from apps where app_id = ?
 	`, appID).Scan(
 		&app.ID,
+		&app.BaseAppID,
+		&app.RuntimeAppID,
+		&app.SessionID,
 		&app.Name,
 		&app.Root,
 		&app.ListenAddr,
@@ -302,6 +508,57 @@ func (s *Store) GetApp(ctx context.Context, appID string) (AppRecord, error) {
 	app.Compiling = compiling == 1
 	app.Offline = !app.Running
 	app.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	app.RouteID = app.ID
+	return app, nil
+}
+
+func (s *Store) GetAppSession(ctx context.Context, routeID string) (AppRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select record_key, app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
+		from app_sessions
+		where record_key = ? or session_id = ?
+		order by running desc, updated_at desc
+		limit 1
+	`, routeID, routeID)
+	if err != nil {
+		return AppRecord{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return AppRecord{}, sql.ErrNoRows
+	}
+	app, err := scanAppSessionRecord(rows)
+	if err != nil {
+		return AppRecord{}, err
+	}
+	if err := rows.Err(); err != nil {
+		return AppRecord{}, err
+	}
+	return app, nil
+}
+
+func (s *Store) GetAppForSession(ctx context.Context, appID, sessionID string) (AppRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select record_key, app_id, base_app_id, runtime_app_id, session_id, name, root, listen_addr, metadata_json, api_encoding_json, grafana_json, running, compiling, compile_error, pid, updated_at
+		from app_sessions
+		where app_id = ? and session_id = ?
+		order by running desc, updated_at desc
+		limit 1
+	`, appID, sessionID)
+	if err != nil {
+		return AppRecord{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return AppRecord{}, sql.ErrNoRows
+	}
+	app, err := scanAppSessionRecord(rows)
+	if err != nil {
+		return AppRecord{}, err
+	}
+	if err := rows.Err(); err != nil {
+		return AppRecord{}, err
+	}
 	return app, nil
 }
 
@@ -322,23 +579,33 @@ func (s *Store) WriteProcessOutput(ctx context.Context, output ProcessOutput) er
 		output.CreatedAt = time.Now().UTC()
 	}
 	_, err := s.db.ExecContext(ctx, `
-		insert into process_output (app_id, pid, stream, output, created_at)
-		values (?, ?, ?, ?, ?)
-	`, output.AppID, output.PID, output.Stream, output.Output, output.CreatedAt.Format(time.RFC3339Nano))
+		insert into process_output (app_id, session_id, pid, stream, output, created_at)
+		values (?, ?, ?, ?, ?, ?)
+	`, output.AppID, output.SessionID, output.PID, output.Stream, output.Output, output.CreatedAt.Format(time.RFC3339Nano))
 	return err
 }
 
 func (s *Store) ListProcessOutput(ctx context.Context, appID string, limit int) ([]ProcessOutput, error) {
+	return s.ListProcessOutputForSession(ctx, appID, "", limit)
+}
+
+func (s *Store) ListProcessOutputForSession(ctx context.Context, appID, sessionID string, limit int) ([]ProcessOutput, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		select id, app_id, pid, stream, output, created_at
+	query := `
+		select id, app_id, session_id, pid, stream, output, created_at
 		from process_output
 		where app_id = ?
-		order by id desc
-		limit ?
-	`, appID, limit)
+	`
+	args := []any{appID}
+	if sessionID != "" {
+		query += ` and session_id = ?`
+		args = append(args, sessionID)
+	}
+	query += ` order by id desc limit ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +615,7 @@ func (s *Store) ListProcessOutput(ctx context.Context, appID string, limit int) 
 	for rows.Next() {
 		var item ProcessOutput
 		var createdAt string
-		if err := rows.Scan(&item.ID, &item.AppID, &item.PID, &item.Stream, &item.Output, &createdAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.AppID, &item.SessionID, &item.PID, &item.Stream, &item.Output, &createdAt); err != nil {
 			return nil, err
 		}
 		item.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
@@ -365,16 +632,26 @@ func (s *Store) ListProcessOutput(ctx context.Context, appID string, limit int) 
 }
 
 func (s *Store) ListProcessOutputSince(ctx context.Context, appID string, afterID int64, limit int) ([]ProcessOutput, error) {
+	return s.ListProcessOutputSinceForSession(ctx, appID, "", afterID, limit)
+}
+
+func (s *Store) ListProcessOutputSinceForSession(ctx context.Context, appID, sessionID string, afterID int64, limit int) ([]ProcessOutput, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		select id, app_id, pid, stream, output, created_at
+	query := `
+		select id, app_id, session_id, pid, stream, output, created_at
 		from process_output
 		where app_id = ? and id > ?
-		order by id asc
-		limit ?
-	`, appID, afterID, limit)
+	`
+	args := []any{appID, afterID}
+	if sessionID != "" {
+		query += ` and session_id = ?`
+		args = append(args, sessionID)
+	}
+	query += ` order by id asc limit ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +661,7 @@ func (s *Store) ListProcessOutputSince(ctx context.Context, appID string, afterI
 	for rows.Next() {
 		var item ProcessOutput
 		var createdAt string
-		if err := rows.Scan(&item.ID, &item.AppID, &item.PID, &item.Stream, &item.Output, &createdAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.AppID, &item.SessionID, &item.PID, &item.Stream, &item.Output, &createdAt); err != nil {
 			return nil, err
 		}
 		item.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
@@ -403,9 +680,10 @@ func (s *Store) AppendTraceSummary(ctx context.Context, summary *TraceSummary) e
 	}
 	endpointName := nullableString(summary.EndpointName)
 	_, err = s.db.ExecContext(ctx, `
-		insert into trace_summaries (app_id, trace_id, span_id, started_at, service_name, endpoint_name, is_root, is_error, duration_nanos, summary_json)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		insert into trace_summaries (app_id, session_id, trace_id, span_id, started_at, service_name, endpoint_name, is_root, is_error, duration_nanos, summary_json)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		on conflict(app_id, trace_id, span_id) do update set
+			session_id = excluded.session_id,
 			started_at = excluded.started_at,
 			service_name = excluded.service_name,
 			endpoint_name = excluded.endpoint_name,
@@ -415,6 +693,7 @@ func (s *Store) AppendTraceSummary(ctx context.Context, summary *TraceSummary) e
 			summary_json = excluded.summary_json
 	`,
 		summary.AppID,
+		summary.SessionID,
 		summary.TraceID,
 		summary.SpanID,
 		summary.StartedAt.UTC().Format(time.RFC3339Nano),
@@ -429,6 +708,10 @@ func (s *Store) AppendTraceSummary(ctx context.Context, summary *TraceSummary) e
 }
 
 func (s *Store) ListTraceSummaries(ctx context.Context, appID string, limit int, messageID string) ([]*TraceSummary, error) {
+	return s.ListTraceSummariesForSession(ctx, appID, "", limit, messageID)
+}
+
+func (s *Store) ListTraceSummariesForSession(ctx context.Context, appID, sessionID string, limit int, messageID string) ([]*TraceSummary, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -438,6 +721,10 @@ func (s *Store) ListTraceSummaries(ctx context.Context, appID string, limit int,
 		where app_id = ? and is_root = 1
 	`
 	args := []any{appID}
+	if sessionID != "" {
+		query += ` and session_id = ?`
+		args = append(args, sessionID)
+	}
 	if messageID != "" {
 		query += ` and summary_json like ?`
 		args = append(args, "%"+messageID+"%")
@@ -462,18 +749,31 @@ func (s *Store) ListTraceSummaries(ctx context.Context, appID string, limit int,
 			return nil, err
 		}
 		summary.AppID = appID
+		if summary.SessionID == "" {
+			summary.SessionID = sessionID
+		}
 		list = append(list, &summary)
 	}
 	return list, rows.Err()
 }
 
 func (s *Store) GetTraceSummaries(ctx context.Context, appID, traceID string) ([]*TraceSummary, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.GetTraceSummariesForSession(ctx, appID, "", traceID)
+}
+
+func (s *Store) GetTraceSummariesForSession(ctx context.Context, appID, sessionID, traceID string) ([]*TraceSummary, error) {
+	query := `
 		select summary_json
 		from trace_summaries
 		where app_id = ? and trace_id = ?
-		order by is_root desc, started_at asc
-	`, appID, traceID)
+	`
+	args := []any{appID, traceID}
+	if sessionID != "" {
+		query += ` and session_id = ?`
+		args = append(args, sessionID)
+	}
+	query += ` order by is_root desc, started_at asc`
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -490,6 +790,9 @@ func (s *Store) GetTraceSummaries(ctx context.Context, appID, traceID string) ([
 			return nil, err
 		}
 		summary.AppID = appID
+		if summary.SessionID == "" {
+			summary.SessionID = sessionID
+		}
 		list = append(list, &summary)
 	}
 	return list, rows.Err()

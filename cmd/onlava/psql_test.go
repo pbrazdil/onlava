@@ -27,6 +27,56 @@ func TestParsePSQLArgsRequiresAppRootValue(t *testing.T) {
 	}
 }
 
+func TestDBCommandRejectsMissingOrUnknownSubcommand(t *testing.T) {
+	if err := dbCommand(nil); err == nil || err.Error() != "usage: onlava db psql|reset|snapshot [--app-root <path>]" {
+		t.Fatalf("dbCommand(nil) error = %v", err)
+	}
+	if err := dbCommand([]string{"vacuum"}); err == nil || err.Error() != `unknown db command "vacuum"` {
+		t.Fatalf("dbCommand(vacuum) error = %v", err)
+	}
+}
+
+func TestParseDBResetArgs(t *testing.T) {
+	opts, err := parseDBResetArgs([]string{"--app-root", "/tmp/app"})
+	if err != nil {
+		t.Fatalf("parseDBResetArgs returned error: %v", err)
+	}
+	if opts.AppRoot != "/tmp/app" {
+		t.Fatalf("app root = %q", opts.AppRoot)
+	}
+	if _, err := parseDBResetArgs([]string{"--app-root"}); err == nil || err.Error() != "missing value for --app-root" {
+		t.Fatalf("parseDBResetArgs missing value error = %v", err)
+	}
+}
+
+func TestParseDBSnapshotArgs(t *testing.T) {
+	opts, err := parseDBSnapshotArgs([]string{"create", "before-refactor", "--app-root", "/tmp/app"})
+	if err != nil {
+		t.Fatalf("parseDBSnapshotArgs returned error: %v", err)
+	}
+	if opts.Action != "create" || opts.Name != "before-refactor" || opts.AppRoot != "/tmp/app" {
+		t.Fatalf("opts = %+v", opts)
+	}
+	if _, err := parseDBSnapshotArgs([]string{"create"}); err == nil || err.Error() != "missing snapshot name" {
+		t.Fatalf("missing name error = %v", err)
+	}
+	if _, err := parseDBSnapshotArgs([]string{}); err == nil || err.Error() != "missing db snapshot action create|restore" {
+		t.Fatalf("missing action error = %v", err)
+	}
+}
+
+func TestManagedPostgresSnapshotPathSanitizesName(t *testing.T) {
+	root := t.TempDir()
+	path, err := managedPostgresSnapshotPath(root, "session-a", "../Before Refactor!")
+	if err != nil {
+		t.Fatalf("managedPostgresSnapshotPath returned error: %v", err)
+	}
+	want := filepath.Join(root, ".onlava", "sessions", "session-a", "db", "snapshots", "before-refactor.sql")
+	if path != want {
+		t.Fatalf("snapshot path = %q, want %q", path, want)
+	}
+}
+
 func TestBuildPSQLInvocationUsesDatabaseURLFromDotEnv(t *testing.T) {
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".env", "DatabaseURL=postgres://localhost/from-file\nOTHER=two\n")

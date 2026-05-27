@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/devtools"
 )
@@ -84,7 +85,11 @@ type grafanaComponent struct {
 }
 
 func startGrafanaForDev(ctx context.Context, appRoot string, victoria *victoriaStack, publicURL string, console *runConsole) (*grafanaComponent, error) {
-	cfg := newGrafanaConfig(appRoot, victoria, publicURL)
+	return startGrafanaForDevWithRoot(ctx, grafanaRootDir(appRoot), victoria, publicURL, console)
+}
+
+func startGrafanaForDevWithRoot(ctx context.Context, root string, victoria *victoriaStack, publicURL string, console *runConsole) (*grafanaComponent, error) {
+	cfg := newGrafanaConfigForRoot(root, victoria, publicURL)
 	if !cfg.Enabled {
 		return &grafanaComponent{cfg: cfg, state: grafanaState(cfg, "disabled", "Grafana disabled by ONLAVA_DEV_GRAFANA=0")}, nil
 	}
@@ -231,9 +236,12 @@ func startGrafanaForDev(ctx context.Context, appRoot string, victoria *victoriaS
 }
 
 func newGrafanaConfig(appRoot string, victoria *victoriaStack, publicURL string) grafanaConfig {
+	return newGrafanaConfigForRoot(grafanaRootDir(appRoot), victoria, publicURL)
+}
+
+func newGrafanaConfigForRoot(root string, victoria *victoriaStack, publicURL string) grafanaConfig {
 	mode := grafanaDevMode()
 	versions := devtools.PinnedVersions()
-	root := grafanaRootDir(appRoot)
 	port := intEnvOrDefault("ONLAVA_GRAFANA_PORT", grafanaDefaultPort)
 	directURL := fmt.Sprintf("http://%s:%d", grafanaDefaultHost, port)
 	if value := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_PUBLIC_URL")); value != "" {
@@ -272,6 +280,32 @@ func newGrafanaConfig(appRoot string, victoria *victoriaStack, publicURL string)
 		cfg.TracesURL = ""
 	}
 	return cfg
+}
+
+func grafanaComponentFromSubstrate(substrate localagent.Substrate, victoria *victoriaStack, publicURL string) *grafanaComponent {
+	if substrate.Kind != localagent.SubstrateGrafana {
+		return nil
+	}
+	baseURL := strings.TrimSpace(firstNonEmpty(substrate.URLs["web"], substrate.URLs["grafana"]))
+	if baseURL == "" {
+		return nil
+	}
+	cfg := newGrafanaConfigForRoot("", victoria, publicURL)
+	cfg.Enabled = true
+	cfg.URL = strings.TrimRight(baseURL, "/")
+	cfg.PublicURL = strings.TrimRight(firstNonEmpty(publicURL, substrate.URLs["public"], cfg.URL), "/")
+	if parsed, err := url.Parse(cfg.URL); err == nil {
+		if _, portText, splitErr := net.SplitHostPort(parsed.Host); splitErr == nil {
+			if port, atoiErr := strconv.Atoi(portText); atoiErr == nil {
+				cfg.Port = port
+			}
+		}
+	}
+	return &grafanaComponent{
+		cfg:      cfg,
+		external: true,
+		state:    grafanaState(cfg, "external", "Using shared agent Grafana with onlava datasources and dashboards"),
+	}
 }
 
 func setGrafanaPort(cfg *grafanaConfig, port int) {
@@ -872,6 +906,42 @@ func (g *grafanaComponent) URL() string {
 		return ""
 	}
 	return g.cfg.URL
+}
+
+func (g *grafanaComponent) SubstrateRequest(ownerPID int) localagent.UpsertSubstrateRequest {
+	if g == nil || !g.cfg.Enabled || g.cfg.URL == "" {
+		return localagent.UpsertSubstrateRequest{}
+	}
+	pids := map[string]int{}
+	if g.cmd != nil && g.cmd.Process != nil {
+		pids["server"] = g.cmd.Process.Pid
+	}
+	return localagent.UpsertSubstrateRequest{
+		Kind:     localagent.SubstrateGrafana,
+		Status:   g.state.Status,
+		OwnerPID: ownerPID,
+		PIDs:     pids,
+		URLs: map[string]string{
+			"web":    g.cfg.URL,
+			"public": firstNonEmpty(g.cfg.PublicURL, g.cfg.URL),
+		},
+		Endpoints: map[string]string{
+			"health": strings.TrimRight(g.cfg.URL, "/") + grafanaHealthPath,
+		},
+	}
+}
+
+func (g *grafanaComponent) MarkExternal() {
+	if g != nil {
+		g.external = true
+	}
+}
+
+func (g *grafanaComponent) Reachable(ctx context.Context) bool {
+	if g == nil || g.cfg.URL == "" || !urlAcceptsTCP(g.cfg.URL) {
+		return false
+	}
+	return verifyGrafanaAssets(ctx, g.cfg) == nil
 }
 
 func (g *grafanaComponent) Interrupt() error {

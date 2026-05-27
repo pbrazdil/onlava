@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
@@ -199,6 +200,76 @@ func (s *temporalDevServer) URL() string {
 	return s.uiURL
 }
 
+func temporalDevServerFromSubstrate(substrate localagent.Substrate, appName string, cfg app.TemporalConfig) *temporalDevServer {
+	if substrate.Kind != localagent.SubstrateTemporal {
+		return nil
+	}
+	info := onlavaruntime.ResolveTemporalConfig(appName, temporalRuntimeConfigFromApp(cfg))
+	address := strings.TrimSpace(substrate.Endpoints["address"])
+	if address != "" {
+		info.Address = address
+	}
+	namespace := strings.TrimSpace(substrate.Endpoints["namespace"])
+	if namespace != "" {
+		info.Namespace = namespace
+	}
+	uiURL := strings.TrimSpace(substrate.URLs["ui"])
+	if uiURL == "" {
+		uiURL = temporalUIURL(info)
+	}
+	return &temporalDevServer{
+		info:     info,
+		uiURL:    strings.TrimRight(uiURL, "/"),
+		dbPath:   strings.TrimSpace(substrate.Endpoints["db_path"]),
+		external: true,
+	}
+}
+
+func (s *temporalDevServer) SubstrateRequest(ownerPID int) localagent.UpsertSubstrateRequest {
+	if s == nil || !s.info.Enabled || s.info.Address == "" {
+		return localagent.UpsertSubstrateRequest{}
+	}
+	pids := map[string]int{}
+	if s.cmd != nil && s.cmd.Process != nil {
+		pids["server"] = s.cmd.Process.Pid
+	}
+	endpoints := map[string]string{
+		"address":   s.info.Address,
+		"namespace": s.info.Namespace,
+	}
+	if s.dbPath != "" {
+		endpoints["db_path"] = s.dbPath
+	}
+	return localagent.UpsertSubstrateRequest{
+		Kind:      localagent.SubstrateTemporal,
+		Status:    "ready",
+		OwnerPID:  ownerPID,
+		PIDs:      pids,
+		URLs:      map[string]string{"ui": s.uiURL},
+		Endpoints: endpoints,
+	}
+}
+
+func (s *temporalDevServer) MarkExternal() {
+	if s != nil {
+		s.external = true
+	}
+}
+
+func (s *temporalDevServer) Reachable(ctx context.Context, appName string, cfg app.TemporalConfig) bool {
+	if s == nil || !s.info.Enabled {
+		return false
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	client, err := onlavaruntime.DialTemporal(checkCtx, s.info)
+	if err != nil {
+		return false
+	}
+	client.Close()
+	return true
+}
+
 func (s *temporalDevServer) Interrupt() error {
 	if s == nil || s.external || s.cmd == nil {
 		return nil
@@ -272,4 +343,14 @@ func temporalUIUpstreamForConfig(cfg app.Config) string {
 		return ""
 	}
 	return net.JoinHostPort(host, strconv.Itoa(port+1000))
+}
+
+func warnTemporal(console *runConsole, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	if console != nil && console.verbose {
+		console.Event("temporal.warn", map[string]any{"message": msg})
+		if !console.json {
+			fmt.Fprintf(os.Stderr, "onlava: Temporal %s\n", msg)
+		}
+	}
 }

@@ -5,8 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	localagent "github.com/pbrazdil/onlava/internal/agent"
+	"github.com/pbrazdil/onlava/internal/app"
 )
 
 func TestScanWatchedFilesIncludesWatchedSourceFiles(t *testing.T) {
@@ -167,6 +171,157 @@ func TestChangedPaths(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("changedPaths mismatch\n got: %v\nwant: %v", got, want)
+	}
+}
+
+func TestPrepareDevAgentSessionDefaultsToUnixBackend(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	agentDone := startTestAgentServer(t, ctx)
+
+	root := t.TempDir()
+	t.Setenv(devElectricUpstreamEnv, "http://127.0.0.1:3001")
+	client, session, backend, restore, err := prepareDevAgentSession(ctx, root, app.Config{
+		Name: "demo",
+		Dev: app.DevConfig{
+			Services: map[string]app.DevServiceConfig{
+				"electric": {Kind: "electric", Route: "electric"},
+			},
+		},
+		Proxy: app.ProxyConfig{
+			Frontends: map[string]app.FrontendConfig{
+				"web": {Host: "web.demo.localhost", Upstream: "127.0.0.1:5173"},
+			},
+		},
+	}, devListenRequest{})
+	defer restore()
+	if err != nil {
+		t.Fatalf("prepareDevAgentSession: %v", err)
+	}
+	if client == nil || session == nil {
+		t.Fatalf("agent client/session = %v/%v, want both", client, session)
+	}
+	agentPaths, err := localagent.DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := os.Getenv("ONLAVA_DEV_CACHE_DIR"), filepath.Join(agentPaths.AgentDir, "dashboard"); got != want {
+		t.Fatalf("ONLAVA_DEV_CACHE_DIR = %q, want %q", got, want)
+	}
+	if got, want := os.Getenv("ONLAVA_AGENT_HOME"), agentPaths.Home; got != want {
+		t.Fatalf("ONLAVA_AGENT_HOME = %q, want %q", got, want)
+	}
+	if backend.Network != "unix" {
+		t.Fatalf("backend network = %q, want unix", backend.Network)
+	}
+	wantPrefix := filepath.Join(root, ".onlava", "sessions", session.SessionID, "run")
+	if !strings.HasPrefix(backend.Addr, wantPrefix) || filepath.Base(backend.Addr) != "api.sock" {
+		t.Fatalf("backend addr = %q, want under %q", backend.Addr, wantPrefix)
+	}
+	api := session.Backends[localagent.RouteAPI]
+	if api.Network != "unix" || api.Addr != backend.Addr {
+		t.Fatalf("session API backend = %+v, want unix %q", api, backend.Addr)
+	}
+	if _, ok := session.Backends[localagent.RouteDashboard]; ok {
+		t.Fatalf("session dashboard backend should not be visible when the agent dashboard is active: %+v", session.Backends)
+	}
+	if _, ok := session.Backends[localagent.RouteMCP]; ok {
+		t.Fatalf("session MCP backend should not be visible when the agent dashboard is active: %+v", session.Backends)
+	}
+	if route := session.Routes[localagent.RouteDashboard]; !strings.Contains(route, "console.onlava.localhost") || !strings.Contains(route, "/s/"+session.SessionID) {
+		t.Fatalf("session dashboard route = %q", route)
+	}
+	if route := session.Routes[localagent.RouteMCP]; !strings.Contains(route, "mcp."+session.SessionID+".onlava.localhost") {
+		t.Fatalf("session MCP route = %q", route)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")); err != nil {
+		t.Fatalf("session manifest missing: %v", err)
+	}
+	web := session.Backends["web"]
+	if web.Network != "tcp" || web.Addr != "127.0.0.1:5173" {
+		t.Fatalf("session frontend backend = %+v", web)
+	}
+	if route := session.Routes["web"]; !strings.Contains(route, "web."+session.SessionID+".onlava.localhost") {
+		t.Fatalf("session frontend route = %q", route)
+	}
+	electric := session.Backends["electric"]
+	if electric.Network != "tcp" || electric.Addr != "127.0.0.1:3001" {
+		t.Fatalf("session electric backend = %+v", electric)
+	}
+	if route := session.Routes["electric"]; !strings.Contains(route, "electric."+session.SessionID+".onlava.localhost") {
+		t.Fatalf("session electric route = %q", route)
+	}
+
+	cancel()
+	waitForTestAgentServer(t, agentDone)
+}
+
+func TestPrepareDevAgentSessionPrefersTCPWhenRequested(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	agentDone := startTestAgentServer(t, ctx)
+
+	root := t.TempDir()
+	_, session, backend, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{PreferTCP: true})
+	defer restore()
+	if err != nil {
+		t.Fatalf("prepareDevAgentSession: %v", err)
+	}
+	if backend.Network != "tcp" || !strings.HasPrefix(backend.Addr, "127.0.0.1:") {
+		t.Fatalf("backend = %+v, want hidden loopback TCP", backend)
+	}
+	api := session.Backends[localagent.RouteAPI]
+	if api.Network != "tcp" || api.Addr != backend.Addr {
+		t.Fatalf("session API backend = %+v, want tcp %q", api, backend.Addr)
+	}
+
+	cancel()
+	waitForTestAgentServer(t, agentDone)
+}
+
+func TestPrepareDevAgentSessionFallsBackWhenAgentDisabled(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_DISABLE", "1")
+	_, session, backend, restore, err := prepareDevAgentSession(context.Background(), t.TempDir(), app.Config{Name: "demo"}, devListenRequest{})
+	defer restore()
+	if err != nil {
+		t.Fatalf("prepareDevAgentSession: %v", err)
+	}
+	if session != nil {
+		t.Fatalf("session = %+v, want nil", session)
+	}
+	if backend.Network != "tcp" || backend.Addr != "127.0.0.1:4000" {
+		t.Fatalf("backend = %+v, want default TCP fallback", backend)
+	}
+}
+
+func startTestAgentServer(t *testing.T, ctx context.Context) <-chan error {
+	t.Helper()
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	return done
+}
+
+func waitForTestAgentServer(t *testing.T, done <-chan error) {
+	t.Helper()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("agent shutdown: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for agent shutdown")
 	}
 }
 

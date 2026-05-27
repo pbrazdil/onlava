@@ -713,6 +713,29 @@ func TestLocalCertificatesIncludeExpectedSANsAndReuseCA(t *testing.T) {
 	}
 }
 
+func TestLocalLeafCertificateCoversAgentSessionHost(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+
+	ca, err := LoadOrCreateLocalCA()
+	if err != nil {
+		t.Fatalf("LoadOrCreateLocalCA() error = %v", err)
+	}
+	leaf, err := LocalLeafCertificate(ca, []string{"api.session-123.onlava.localhost"})
+	if err != nil {
+		t.Fatalf("LocalLeafCertificate() error = %v", err)
+	}
+	if leaf.Leaf == nil {
+		t.Fatal("expected parsed leaf certificate")
+	}
+	if err := leaf.Leaf.VerifyHostname("api.session-123.onlava.localhost"); err != nil {
+		t.Fatalf("leaf does not cover agent session host: %v", err)
+	}
+	if err := leaf.Leaf.CheckSignatureFrom(ca.Cert); err != nil {
+		t.Fatalf("leaf is not signed by local CA: %v", err)
+	}
+}
+
 type requestEcho struct {
 	Server         string `json:"server"`
 	Host           string `json:"host"`

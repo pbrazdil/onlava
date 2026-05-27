@@ -12,7 +12,7 @@ import (
 	"unicode"
 )
 
-func NewSession(req RegisterRequest, routerAddr string, existing *Session) (Session, error) {
+func NewSession(req RegisterRequest, routerAddr, routerScheme string, existing *Session) (Session, error) {
 	appRoot, err := filepath.Abs(strings.TrimSpace(req.AppRoot))
 	if err != nil {
 		return Session{}, err
@@ -38,8 +38,12 @@ func NewSession(req RegisterRequest, routerAddr string, existing *Session) (Sess
 	if status == "" {
 		status = "registered"
 	}
+	reportToken := strings.TrimSpace(req.ReportToken)
+	if reportToken == "" && existing != nil {
+		reportToken = existing.ReportToken
+	}
 	backends := copyBackends(req.Backends)
-	routes := routesForSession(sessionID, routerAddr, backends)
+	routes := routesForSession(sessionID, routerAddr, routerScheme, backends)
 	session := Session{
 		SchemaVersion: SessionSchemaVersion,
 		SessionID:     sessionID,
@@ -53,6 +57,7 @@ func NewSession(req RegisterRequest, routerAddr string, existing *Session) (Sess
 		AppPID:        strings.TrimSpace(req.AppPID),
 		Routes:        routes,
 		Backends:      backends,
+		ReportToken:   reportToken,
 		CreatedAt:     createdAt,
 		UpdatedAt:     now,
 	}
@@ -127,30 +132,41 @@ func copyBackends(backends map[string]Backend) map[string]Backend {
 	return copied
 }
 
-func routesForSession(sessionID, routerAddr string, backends map[string]Backend) map[string]string {
+func routesForSession(sessionID, routerAddr, routerScheme string, backends map[string]Backend) map[string]string {
 	routes := map[string]string{}
 	if _, ok := backends[RouteAPI]; ok {
-		routes[RouteAPI] = routeURL("api."+sessionID+".onlava.localhost", routerAddr, "")
+		routes[RouteAPI] = routeURL(routerScheme, "api."+sessionID+".onlava.localhost", routerAddr, "")
 	}
-	if _, ok := backends[RouteDashboard]; ok {
-		routes[RouteDashboard] = routeURL("console.onlava.localhost", routerAddr, "/s/"+sessionID)
-	}
-	if _, ok := backends[RouteMCP]; ok {
-		routes[RouteMCP] = routeURL("mcp."+sessionID+".onlava.localhost", routerAddr, "/sse")
+	routes[RouteDashboard] = routeURL(routerScheme, "console.onlava.localhost", routerAddr, "/s/"+sessionID)
+	routes[RouteMCP] = routeURL(routerScheme, "mcp."+sessionID+".onlava.localhost", routerAddr, "/sse")
+	for kind := range backends {
+		switch kind {
+		case RouteAPI, RouteDashboard, RouteMCP:
+			continue
+		}
+		routes[kind] = routeURL(routerScheme, kind+"."+sessionID+".onlava.localhost", routerAddr, "")
 	}
 	return routes
 }
 
-func routeURL(host, routerAddr, path string) string {
+func routeURL(scheme, host, routerAddr, path string) string {
+	scheme = strings.TrimSpace(scheme)
+	if scheme == "" {
+		scheme = "http"
+	}
 	port := ""
 	if _, p, err := net.SplitHostPort(routerAddr); err == nil {
 		port = p
 	}
-	if port != "" && port != "80" {
+	defaultPort := "80"
+	if scheme == "https" {
+		defaultPort = "443"
+	}
+	if port != "" && port != defaultPort {
 		host += ":" + port
 	}
 	if path == "" {
 		path = "/"
 	}
-	return "http://" + host + path
+	return scheme + "://" + host + path
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,23 +12,33 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/localproxy"
 )
 
 type RunOptions struct {
-	SocketPath string
-	RouterAddr string
-	JSON       bool
+	SocketPath       string
+	RouterAddr       string
+	RouterTLS        bool
+	InstallTrust     bool
+	DashboardBackend Backend
+	JSON             bool
 }
 
 type Server struct {
-	paths      Paths
-	registry   *Registry
-	routerAddr string
-	control    *http.Server
-	router     *http.Server
-	controlLn  net.Listener
-	routerLn   net.Listener
+	paths        Paths
+	registry     *Registry
+	routerAddr   string
+	routerScheme string
+	dashboard    Backend
+	tlsCA        localproxy.LocalCA
+	tlsCerts     sync.Map
+	control      *http.Server
+	router       *http.Server
+	controlLn    net.Listener
+	routerLn     net.Listener
 }
 
 func Run(ctx context.Context, opts RunOptions) error {
@@ -54,11 +65,36 @@ func NewServer(opts RunOptions) (*Server, error) {
 	if routerAddr == "" {
 		routerAddr = RouterAddrFromEnv()
 	}
+	routerTLS := opts.RouterTLS || RouterTLSFromEnv()
+	routerScheme := "http"
+	if routerTLS {
+		routerScheme = "https"
+	}
+	installTrust := opts.InstallTrust || TrustFromEnv()
 	routerLn, actualRouterAddr, err := listenRouter(routerAddr)
 	if err != nil {
 		return nil, err
 	}
-	registry, err := OpenRegistry(paths.RegistryPath, actualRouterAddr)
+	var tlsCA localproxy.LocalCA
+	if routerTLS {
+		tlsCA, err = localproxy.LoadOrCreateLocalCA()
+		if err != nil {
+			_ = routerLn.Close()
+			return nil, err
+		}
+		if installTrust {
+			trusted, trustErr := localproxy.LocalCATrusted(tlsCA.CertPath)
+			if trustErr != nil {
+				slog.Warn("failed to check onlava local CA trust", "err", trustErr)
+			}
+			if !trusted {
+				if err := localproxy.InstallLocalCATrust(tlsCA.CertPath); err != nil {
+					slog.Warn("failed to install onlava local CA trust", "err", err)
+				}
+			}
+		}
+	}
+	registry, err := OpenRegistry(paths.RegistryPath, actualRouterAddr, routerScheme)
 	if err != nil {
 		_ = routerLn.Close()
 		return nil, err
@@ -69,11 +105,14 @@ func NewServer(opts RunOptions) (*Server, error) {
 		return nil, err
 	}
 	server := &Server{
-		paths:      paths,
-		registry:   registry,
-		routerAddr: actualRouterAddr,
-		controlLn:  controlLn,
-		routerLn:   routerLn,
+		paths:        paths,
+		registry:     registry,
+		routerAddr:   actualRouterAddr,
+		routerScheme: routerScheme,
+		dashboard:    normalizeBackend(opts.DashboardBackend),
+		tlsCA:        tlsCA,
+		controlLn:    controlLn,
+		routerLn:     routerLn,
 	}
 	server.control = &http.Server{Handler: server.controlMux()}
 	server.router = &http.Server{Handler: server.routerMux()}
@@ -94,7 +133,11 @@ func (s *Server) Run(ctx context.Context) error {
 		errCh <- nil
 	}()
 	go func() {
-		if err := s.router.Serve(s.routerLn); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+		ln := s.routerLn
+		if s.routerScheme == "https" {
+			ln = tls.NewListener(s.routerLn, s.routerTLSConfig())
+		}
+		if err := s.router.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
 			errCh <- fmt.Errorf("router server: %w", err)
 			return
 		}
@@ -107,6 +150,41 @@ func (s *Server) Run(ctx context.Context) error {
 		closeErr := s.Close()
 		return errors.Join(err, closeErr)
 	}
+}
+
+func (s *Server) Paths() Paths {
+	if s == nil {
+		return Paths{}
+	}
+	return s.paths
+}
+
+func (s *Server) RouterAddr() string {
+	if s == nil {
+		return ""
+	}
+	return s.routerAddr
+}
+
+func (s *Server) RouterScheme() string {
+	if s == nil || s.routerScheme == "" {
+		return "http"
+	}
+	return s.routerScheme
+}
+
+func (s *Server) ListSessions() []Session {
+	if s == nil || s.registry == nil {
+		return nil
+	}
+	return s.registry.List()
+}
+
+func (s *Server) GetSession(id string) (Session, bool) {
+	if s == nil || s.registry == nil {
+		return Session{}, false
+	}
+	return s.registry.Get(id)
 }
 
 func (s *Server) Close() error {
@@ -133,12 +211,70 @@ func (s *Server) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if s.registry != nil {
+		for _, substrate := range s.registry.ListSubstrates() {
+			for name, pid := range substrate.PIDs {
+				if pid <= 0 {
+					continue
+				}
+				if err := interruptProcess(pid); err != nil {
+					slog.Warn("failed to interrupt onlava substrate process", "kind", substrate.Kind, "component", name, "pid", pid, "err", err)
+				}
+			}
+		}
+	}
 	if s.paths.SocketPath != "" {
 		if err := os.Remove(s.paths.SocketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func normalizeBackend(backend Backend) Backend {
+	backend.Network = strings.TrimSpace(backend.Network)
+	if backend.Network == "" {
+		backend.Network = "tcp"
+	}
+	backend.Addr = strings.TrimSpace(backend.Addr)
+	if backend.Addr == "" {
+		return Backend{}
+	}
+	return backend
+}
+
+func (s *Server) routerTLSConfig() *tls.Config {
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			host := ""
+			if hello != nil {
+				host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(hello.ServerName)), ".")
+			}
+			if host == "" {
+				host = "onlava.localhost"
+			}
+			if !agentTLSHostAllowed(host) {
+				return nil, fmt.Errorf("unsupported onlava agent TLS host %q", host)
+			}
+			if cert, ok := s.tlsCerts.Load(host); ok {
+				tlsCert := cert.(tls.Certificate)
+				return &tlsCert, nil
+			}
+			tlsCert, err := localproxy.LocalLeafCertificate(s.tlsCA, []string{host})
+			if err != nil {
+				return nil, err
+			}
+			actual, _ := s.tlsCerts.LoadOrStore(host, tlsCert)
+			cached := actual.(tls.Certificate)
+			return &cached, nil
+		},
+	}
+}
+
+func agentTLSHostAllowed(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	return host == "onlava.localhost" || strings.HasSuffix(host, ".onlava.localhost")
 }
 
 func listenRouter(addr string) (net.Listener, string, error) {
@@ -194,6 +330,7 @@ func (s *Server) writeState() error {
 		PID:           os.Getpid(),
 		SocketPath:    s.paths.SocketPath,
 		RouterAddr:    s.routerAddr,
+		RouterScheme:  s.routerScheme,
 		UpdatedAt:     time.Now().UTC(),
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -209,6 +346,8 @@ func (s *Server) controlMux() http.Handler {
 	mux.HandleFunc("/v1/health", s.handleHealth)
 	mux.HandleFunc("/v1/sessions", s.handleSessions)
 	mux.HandleFunc("/v1/sessions/", s.handleSession)
+	mux.HandleFunc("/v1/substrates", s.handleSubstrates)
+	mux.HandleFunc("/v1/substrates/", s.handleSubstrate)
 	return mux
 }
 
@@ -222,7 +361,60 @@ func (s *Server) handleHealth(w http.ResponseWriter, req *http.Request) {
 		PID:           os.Getpid(),
 		SocketPath:    s.paths.SocketPath,
 		RouterAddr:    s.routerAddr,
+		RouterScheme:  s.routerScheme,
 	})
+}
+
+func (s *Server) handleSubstrates(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, SubstratesResponse{Substrates: s.registry.ListSubstrates()})
+	case http.MethodPost:
+		defer req.Body.Close()
+		var upsert UpsertSubstrateRequest
+		if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<20)).Decode(&upsert); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		substrate, err := s.registry.UpsertSubstrate(upsert)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, SubstrateResponse{Substrate: substrate})
+	default:
+		methodNotAllowed(w, http.MethodGet, http.MethodPost)
+	}
+}
+
+func (s *Server) handleSubstrate(w http.ResponseWriter, req *http.Request) {
+	kind := strings.Trim(strings.TrimPrefix(req.URL.Path, "/v1/substrates/"), "/")
+	if kind == "" {
+		http.NotFound(w, req)
+		return
+	}
+	switch req.Method {
+	case http.MethodGet:
+		substrate, ok := s.registry.GetSubstrate(kind)
+		if !ok {
+			http.NotFound(w, req)
+			return
+		}
+		writeJSON(w, http.StatusOK, SubstrateResponse{Substrate: substrate})
+	case http.MethodDelete:
+		substrate, ok, err := s.registry.DeleteSubstrate(kind)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.NotFound(w, req)
+			return
+		}
+		writeJSON(w, http.StatusOK, SubstrateResponse{Substrate: substrate})
+	default:
+		methodNotAllowed(w, http.MethodGet, http.MethodDelete)
+	}
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, req *http.Request) {

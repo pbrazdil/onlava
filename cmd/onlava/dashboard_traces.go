@@ -17,18 +17,20 @@ type compatTraceEvent struct {
 	payload map[string]any
 }
 
-func (s *dashboardServer) traceEventsFor(ctx context.Context, appID, traceID string) ([]map[string]any, error) {
-	if events, err := s.supervisor.victoria.TraceEventsFor(ctx, appID, traceID, ""); err == nil && len(events) > 0 {
-		return events, nil
+func (s *dashboardServer) traceEventsFor(ctx context.Context, appID, sessionID, traceID string) ([]map[string]any, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		if events, err := victoria.TraceEventsFor(ctx, appID, traceID, ""); err == nil && len(events) > 0 {
+			return events, nil
+		}
 	}
-	summaries, err := s.supervisor.store.GetTraceSummaries(ctx, appID, traceID)
+	summaries, err := s.dashboardStore().GetTraceSummariesForSession(ctx, appID, sessionID, traceID)
 	if err != nil {
 		return nil, err
 	}
 
 	var compat []compatTraceEvent
 	for _, summary := range summaries {
-		rawEvents, err := s.supervisor.store.GetTraceEvents(ctx, appID, traceID, summary.SpanID)
+		rawEvents, err := s.dashboardStore().GetTraceEventsForSession(ctx, appID, sessionID, traceID, summary.SpanID)
 		if err != nil {
 			return nil, err
 		}
@@ -39,17 +41,19 @@ func (s *dashboardServer) traceEventsFor(ctx context.Context, appID, traceID str
 	return compatTracePayloads(compat), nil
 }
 
-func (s *dashboardServer) traceEventsForSpan(ctx context.Context, appID, traceID, spanID string) ([]map[string]any, error) {
-	if events, err := s.supervisor.victoria.TraceEventsFor(ctx, appID, traceID, spanID); err == nil && len(events) > 0 {
-		return events, nil
+func (s *dashboardServer) traceEventsForSpan(ctx context.Context, appID, sessionID, traceID, spanID string) ([]map[string]any, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		if events, err := victoria.TraceEventsFor(ctx, appID, traceID, spanID); err == nil && len(events) > 0 {
+			return events, nil
+		}
 	}
-	rawEvents, err := s.supervisor.store.GetTraceEvents(ctx, appID, traceID, spanID)
+	rawEvents, err := s.dashboardStore().GetTraceEventsForSession(ctx, appID, sessionID, traceID, spanID)
 	if err != nil {
 		return nil, err
 	}
 
 	var summary *devdash.TraceSummary
-	summaries, err := s.supervisor.store.GetTraceSummaries(ctx, appID, traceID)
+	summaries, err := s.dashboardStore().GetTraceSummariesForSession(ctx, appID, sessionID, traceID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,9 +69,99 @@ func (s *dashboardServer) traceEventsForSpan(ctx context.Context, appID, traceID
 	return compatTracePayloads(compat), nil
 }
 
-func (s *dashboardServer) listTraceSummaries(ctx context.Context, appID string, limit int, messageID string) ([]*devdash.TraceSummary, error) {
-	if s != nil && s.supervisor != nil && s.supervisor.victoria != nil {
-		items, err := s.supervisor.victoria.QueryTraceSummaries(ctx, devdash.TraceQuery{
+func (s *dashboardServer) listTraceSummaries(ctx context.Context, appID, sessionID string, limit int, messageID string) ([]*devdash.TraceSummary, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		items, err := victoria.QueryTraceSummaries(ctx, devdash.TraceQuery{
+			AppID:     appID,
+			SessionID: sessionID,
+			Limit:     limit,
+		})
+		if err == nil && len(items) > 0 {
+			if messageID != "" {
+				items = filterTraceSummariesByMessageID(items, messageID)
+			}
+			return items, nil
+		}
+	}
+	return s.dashboardStore().ListTraceSummariesForSession(ctx, appID, sessionID, limit, messageID)
+}
+
+func (s *dashboardServer) getTraceSummaries(ctx context.Context, appID, sessionID, traceID string) ([]*devdash.TraceSummary, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		items, err := victoria.GetTraceSummaries(ctx, appID, traceID)
+		if err == nil && len(items) > 0 {
+			if sessionID == "" {
+				return items, nil
+			}
+			filtered := items[:0]
+			for _, item := range items {
+				if item.SessionID == sessionID {
+					filtered = append(filtered, item)
+				}
+			}
+			if len(filtered) > 0 {
+				return filtered, nil
+			}
+		}
+	}
+	return s.dashboardStore().GetTraceSummariesForSession(ctx, appID, sessionID, traceID)
+}
+
+func (s *dashboardServer) legacyTraceEventsFor(ctx context.Context, appID, traceID string) ([]map[string]any, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		if events, err := victoria.TraceEventsFor(ctx, appID, traceID, ""); err == nil && len(events) > 0 {
+			return events, nil
+		}
+	}
+	summaries, err := s.dashboardStore().GetTraceSummaries(ctx, appID, traceID)
+	if err != nil {
+		return nil, err
+	}
+
+	var compat []compatTraceEvent
+	for _, summary := range summaries {
+		rawEvents, err := s.dashboardStore().GetTraceEvents(ctx, appID, traceID, summary.SpanID)
+		if err != nil {
+			return nil, err
+		}
+		compat = append(compat, buildCompatTraceEvents(summary, rawEvents)...)
+	}
+
+	sortCompatTraceEvents(compat)
+	return compatTracePayloads(compat), nil
+}
+
+func (s *dashboardServer) legacyTraceEventsForSpan(ctx context.Context, appID, traceID, spanID string) ([]map[string]any, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		if events, err := victoria.TraceEventsFor(ctx, appID, traceID, spanID); err == nil && len(events) > 0 {
+			return events, nil
+		}
+	}
+	rawEvents, err := s.dashboardStore().GetTraceEvents(ctx, appID, traceID, spanID)
+	if err != nil {
+		return nil, err
+	}
+
+	var summary *devdash.TraceSummary
+	summaries, err := s.dashboardStore().GetTraceSummaries(ctx, appID, traceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, candidate := range summaries {
+		if candidate.SpanID == spanID {
+			summary = candidate
+			break
+		}
+	}
+
+	compat := buildCompatTraceEvents(summary, rawEvents)
+	sortCompatTraceEvents(compat)
+	return compatTracePayloads(compat), nil
+}
+
+func (s *dashboardServer) legacyListTraceSummaries(ctx context.Context, appID string, limit int, messageID string) ([]*devdash.TraceSummary, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		items, err := victoria.QueryTraceSummaries(ctx, devdash.TraceQuery{
 			AppID: appID,
 			Limit: limit,
 		})
@@ -78,17 +172,17 @@ func (s *dashboardServer) listTraceSummaries(ctx context.Context, appID string, 
 			return items, nil
 		}
 	}
-	return s.supervisor.store.ListTraceSummaries(ctx, appID, limit, messageID)
+	return s.dashboardStore().ListTraceSummaries(ctx, appID, limit, messageID)
 }
 
-func (s *dashboardServer) getTraceSummaries(ctx context.Context, appID, traceID string) ([]*devdash.TraceSummary, error) {
-	if s != nil && s.supervisor != nil && s.supervisor.victoria != nil {
-		items, err := s.supervisor.victoria.GetTraceSummaries(ctx, appID, traceID)
+func (s *dashboardServer) legacyGetTraceSummaries(ctx context.Context, appID, traceID string) ([]*devdash.TraceSummary, error) {
+	if victoria := s.dashboardVictoria(); victoria != nil {
+		items, err := victoria.GetTraceSummaries(ctx, appID, traceID)
 		if err == nil && len(items) > 0 {
 			return items, nil
 		}
 	}
-	return s.supervisor.store.GetTraceSummaries(ctx, appID, traceID)
+	return s.dashboardStore().GetTraceSummaries(ctx, appID, traceID)
 }
 
 func filterTraceSummariesByMessageID(items []*devdash.TraceSummary, messageID string) []*devdash.TraceSummary {

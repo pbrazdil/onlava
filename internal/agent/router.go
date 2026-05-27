@@ -32,6 +32,10 @@ func (s *Server) routerMux() http.Handler {
 		if !ok && kind == RouteMCP {
 			backend, ok = session.Backends[RouteDashboard]
 		}
+		if !ok && kind == RouteMCP && s.dashboard.Addr != "" {
+			proxyBackend(w, req, s.dashboard, "")
+			return
+		}
 		if !ok {
 			http.NotFound(w, req)
 			return
@@ -41,6 +45,10 @@ func (s *Server) routerMux() http.Handler {
 }
 
 func (s *Server) handleConsole(w http.ResponseWriter, req *http.Request) {
+	if s.dashboard.Addr != "" {
+		proxyBackend(w, req, s.dashboard, "")
+		return
+	}
 	path := strings.Trim(req.URL.Path, "/")
 	if path == "" {
 		s.serveConsoleIndex(w, req)
