@@ -8,6 +8,8 @@ import (
 )
 
 func TestRunConsoleSetupOutputFormatsAtlasLines(t *testing.T) {
+	t.Parallel()
+
 	var out bytes.Buffer
 	console := newRunConsole(&out, &bytes.Buffer{}, false, false, "demo", t.TempDir())
 
@@ -33,6 +35,8 @@ func TestRunConsoleSetupOutputFormatsAtlasLines(t *testing.T) {
 }
 
 func TestRunConsoleSetupOutputJSON(t *testing.T) {
+	t.Parallel()
+
 	var out bytes.Buffer
 	console := newRunConsole(&out, &bytes.Buffer{}, false, true, "demo", t.TempDir())
 
@@ -48,6 +52,8 @@ func TestRunConsoleSetupOutputJSON(t *testing.T) {
 }
 
 func TestSetupOutputWriterFlushesPartialLines(t *testing.T) {
+	t.Parallel()
+
 	var out bytes.Buffer
 	console := newRunConsole(&out, &bytes.Buffer{}, false, false, "demo", t.TempDir())
 	writer := newSetupOutputWriter(console, "stdout", nil)

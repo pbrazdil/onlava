@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,60 @@ func TestSignBuiltBinaryIfNeededSkipsOutsideDarwin(t *testing.T) {
 
 	if err := signBuiltBinaryIfNeeded("/tmp/onlava-app"); err != nil {
 		t.Fatalf("signBuiltBinaryIfNeeded returned error: %v", err)
+	}
+}
+
+func TestCopyBinarySkipsUnchangedOutput(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	if err := os.WriteFile(src, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, []byte("binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	copied, err := copyBinary(src, dst)
+	if err != nil {
+		t.Fatalf("copyBinary: %v", err)
+	}
+	if copied {
+		t.Fatal("copyBinary copied unchanged output")
+	}
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("dst mode = %v, want 0755", got)
+	}
+}
+
+func TestCopyBinaryRewritesChangedOutput(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	if err := os.WriteFile(src, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	copied, err := copyBinary(src, dst)
+	if err != nil {
+		t.Fatalf("copyBinary: %v", err)
+	}
+	if !copied {
+		t.Fatal("copyBinary did not copy changed output")
+	}
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("dst = %q, want new", data)
 	}
 }
 

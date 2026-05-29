@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devreport"
 	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
@@ -72,10 +72,10 @@ func TraceDBQueryStart(ctx context.Context, query string, argsCount int) context
 		argsCount: max(argsCount, 0),
 	}
 
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   trace.span.traceID,
 			SpanID:    trace.span.spanID,
 			EventID:   reporter.nextEventID(),
@@ -121,10 +121,10 @@ func TraceDBQueryEnd(ctx context.Context, commandTag string, rowsAffected int64,
 		dbInfo["rows_affected"] = rowsAffected
 	}
 
-	trace.reporter.enqueue(devdash.ReportEnvelope{
+	trace.reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: trace.reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   trace.span.traceID,
 			SpanID:    trace.span.spanID,
 			EventID:   trace.reporter.nextEventID(),
@@ -140,10 +140,10 @@ func TraceDBQueryEnd(ctx context.Context, commandTag string, rowsAffected int64,
 		},
 	})
 
-	trace.reporter.enqueue(devdash.ReportEnvelope{
+	trace.reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-summary",
 		AppID: trace.reporter.appID,
-		TraceSummary: &devdash.TraceSummary{
+		TraceSummary: &devreport.TraceSummary{
 			AppID:         trace.reporter.appID,
 			TraceID:       trace.span.traceID,
 			SpanID:        trace.span.spanID,

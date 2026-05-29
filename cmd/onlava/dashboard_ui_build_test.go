@@ -8,6 +8,8 @@ import (
 )
 
 func TestDashboardUIBuildStaleWhenDistMissing(t *testing.T) {
+	t.Parallel()
+
 	uiRoot := t.TempDir()
 	writeDashboardUITestFile(t, uiRoot, "package.json", "{}")
 	writeDashboardUITestFile(t, uiRoot, "src/main.tsx", "export {}")
@@ -22,6 +24,8 @@ func TestDashboardUIBuildStaleWhenDistMissing(t *testing.T) {
 }
 
 func TestDashboardUIBuildStaleWhenSourceIsNewer(t *testing.T) {
+	t.Parallel()
+
 	uiRoot := t.TempDir()
 	writeDashboardUITestFile(t, uiRoot, "package.json", "{}")
 	distPath := writeDashboardUITestFile(t, uiRoot, "dist/index.html", "<!doctype html>")
@@ -45,6 +49,8 @@ func TestDashboardUIBuildStaleWhenSourceIsNewer(t *testing.T) {
 }
 
 func TestDashboardUIBuildNotStaleWhenDistIsNewer(t *testing.T) {
+	t.Parallel()
+
 	uiRoot := t.TempDir()
 	writeDashboardUITestFile(t, uiRoot, "package.json", "{}")
 	distPath := writeDashboardUITestFile(t, uiRoot, "dist/index.html", "<!doctype html>")
@@ -68,6 +74,8 @@ func TestDashboardUIBuildNotStaleWhenDistIsNewer(t *testing.T) {
 }
 
 func TestDashboardUIDepsStaleWhenPackageManifestIsNewer(t *testing.T) {
+	t.Parallel()
+
 	uiRoot := t.TempDir()
 	nodeModulesPath := filepath.Join(uiRoot, "node_modules")
 	if err := os.MkdirAll(nodeModulesPath, 0o755); err != nil {

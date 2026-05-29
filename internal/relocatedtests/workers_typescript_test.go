@@ -1,4 +1,4 @@
-package workers
+package relocatedtests
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	. "github.com/pbrazdil/onlava/internal/workers"
 )
 
 func TestDiscoverTypeScriptActivitiesFromWorkerFiles(t *testing.T) {
@@ -132,7 +134,7 @@ export const normalizeEarthMetadata = activity<NormalizeEarthMetadataInput, Norm
 		t.Fatalf("json.Unmarshal(manifest): %v\n%s", err, data)
 	}
 	manifest.Path = filepath.Join(outDir, "manifest.json")
-	if diagnostics := validateManifest(manifest, "onlvnext-o5o2"); len(diagnostics) != 0 {
+	if diagnostics := ValidateManifest(manifest, "onlvnext-o5o2"); len(diagnostics) != 0 {
 		t.Fatalf("manifest diagnostics = %#v\n%s", diagnostics, data)
 	}
 	if manifest.SchemaVersion != ManifestSchemaVersionV2 || manifest.Language != "typescript" || manifest.PayloadCodec != "onlava-json-v1" || len(manifest.TaskQueues) != 2 {

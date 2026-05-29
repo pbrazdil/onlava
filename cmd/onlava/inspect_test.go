@@ -43,8 +43,6 @@ func TestRunOnlavaInspectRequiresJSON(t *testing.T) {
 
 func TestRunOnlavaInspectOutputsStableJSON(t *testing.T) {
 	root := t.TempDir()
-	cacheRoot := filepath.Join(t.TempDir(), "cache")
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"inspectapp","id":"inspect-id"}`)
 	writeTestAppFile(t, root, "go.mod", "module example.com/inspectapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRootForTest(t)+"\n")
 	writeTestAppFile(t, root, "users/api.go", `package users
@@ -86,12 +84,15 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 })
 `)
 
-	restore := chdirForTest(t, root)
-	defer restore()
+	inspectArgs := func(subject string) []string {
+		return []string{subject, "--json", "--app-root", root}
+	}
 
 	t.Run("app", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"app", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("app"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(app) error = %v", err)
 		}
 		var payload struct {
@@ -124,8 +125,10 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 	})
 
 	t.Run("services", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"services", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("services"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(services) error = %v", err)
 		}
 		var payload struct {
@@ -156,8 +159,10 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 	})
 
 	t.Run("routes", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"routes", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("routes"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(routes) error = %v", err)
 		}
 		var payload struct {
@@ -188,8 +193,10 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 	})
 
 	t.Run("build", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"build", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("build"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(build) error = %v", err)
 		}
 		var payload struct {
@@ -211,8 +218,11 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 	})
 
 	t.Run("paths", func(t *testing.T) {
+		cacheRoot := filepath.Join(t.TempDir(), "cache")
+		t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"paths", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("paths"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(paths) error = %v", err)
 		}
 		var payload struct {
@@ -246,8 +256,10 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 	})
 
 	t.Run("temporal", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"temporal", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("temporal"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(temporal) error = %v", err)
 		}
 		var payload struct {
@@ -325,6 +337,8 @@ var act = temporal.NewActivity[In, Out]("jobs.Do/v1", temporal.ActivityConfig{Ta
 }
 
 func TestRunOnlavaInspectExcludesUnrelatedPackages(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"inspectapp","id":"inspect-id"}`)
 	writeTestAppFile(t, root, "go.mod", "module example.com/inspectapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRootForTest(t)+"\n")
@@ -362,12 +376,15 @@ func Global(req middleware.Request, next middleware.Next) middleware.Response {
 }
 `)
 
-	restore := chdirForTest(t, root)
-	defer restore()
+	inspectArgs := func(subject string) []string {
+		return []string{subject, "--json", "--app-root", root}
+	}
 
 	t.Run("app", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"app", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("app"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(app) error = %v", err)
 		}
 		var payload struct {
@@ -393,8 +410,10 @@ func Global(req middleware.Request, next middleware.Next) middleware.Response {
 	})
 
 	t.Run("services", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"services", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("services"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(services) error = %v", err)
 		}
 		var payload struct {
@@ -426,6 +445,8 @@ func Global(req middleware.Request, next middleware.Next) middleware.Response {
 }
 
 func TestInspectTemporalLeavesUnresolvedWorkflowQueueEmpty(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"inspectapp"}`)
 	writeTestAppFile(t, root, "go.mod", "module example.com/inspectapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRootForTest(t)+"\n")
@@ -454,11 +475,8 @@ var _ = temporal.NewWorkflow[In, Out]("jobs.Run/v1", cfg, func(ctx temporal.Work
 })
 `)
 
-	restore := chdirForTest(t, root)
-	defer restore()
-
 	var out bytes.Buffer
-	if err := runOnlavaInspect([]string{"temporal", "--json"}, &out); err != nil {
+	if err := runOnlavaInspect([]string{"temporal", "--json", "--app-root", root}, &out); err != nil {
 		t.Fatalf("runOnlavaInspect(temporal) error = %v", err)
 	}
 	var payload struct {
@@ -482,6 +500,8 @@ var _ = temporal.NewWorkflow[In, Out]("jobs.Run/v1", cfg, func(ctx temporal.Work
 }
 
 func TestRunOnlavaInspectBuildUsesLatestManifest(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"manifestapp","id":"manifest-id"}`)
 	writeTestAppFile(t, root, ".onlava/build/latest.json", `{
@@ -510,11 +530,8 @@ func TestRunOnlavaInspectBuildUsesLatestManifest(t *testing.T) {
   }
 }`)
 
-	restore := chdirForTest(t, root)
-	defer restore()
-
 	var out bytes.Buffer
-	if err := runOnlavaInspect([]string{"build", "--json"}, &out); err != nil {
+	if err := runOnlavaInspect([]string{"build", "--json", "--app-root", root}, &out); err != nil {
 		t.Fatalf("runOnlavaInspect(build) error = %v", err)
 	}
 	var payload struct {
@@ -536,6 +553,8 @@ func TestRunOnlavaInspectBuildUsesLatestManifest(t *testing.T) {
 }
 
 func TestRunOnlavaInspectUsesGeneratedArtifacts(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"genapp","id":"gen-id"}`)
 	writeTestAppFile(t, root, ".onlava/gen/app.json", `{
@@ -681,12 +700,15 @@ func TestRunOnlavaInspectUsesGeneratedArtifacts(t *testing.T) {
   ]
 }`)
 
-	restore := chdirForTest(t, root)
-	defer restore()
+	inspectArgs := func(subject string) []string {
+		return []string{subject, "--json", "--app-root", root}
+	}
 
 	t.Run("app", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"app", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("app"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(app) error = %v", err)
 		}
 		var payload struct {
@@ -711,8 +733,10 @@ func TestRunOnlavaInspectUsesGeneratedArtifacts(t *testing.T) {
 	})
 
 	t.Run("routes", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"routes", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("routes"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(routes) error = %v", err)
 		}
 		var payload struct {
@@ -730,8 +754,10 @@ func TestRunOnlavaInspectUsesGeneratedArtifacts(t *testing.T) {
 	})
 
 	t.Run("services", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"services", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("services"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(services) error = %v", err)
 		}
 		var payload struct {
@@ -748,8 +774,10 @@ func TestRunOnlavaInspectUsesGeneratedArtifacts(t *testing.T) {
 	})
 
 	t.Run("endpoints", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"endpoints", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("endpoints"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(endpoints) error = %v", err)
 		}
 		var payload struct {
@@ -773,8 +801,10 @@ func TestRunOnlavaInspectUsesGeneratedArtifacts(t *testing.T) {
 	})
 
 	t.Run("wire", func(t *testing.T) {
+		t.Parallel()
+
 		var out bytes.Buffer
-		if err := runOnlavaInspect([]string{"wire", "--json"}, &out); err != nil {
+		if err := runOnlavaInspect(inspectArgs("wire"), &out); err != nil {
 			t.Fatalf("runOnlavaInspect(wire) error = %v", err)
 		}
 		var payload struct {

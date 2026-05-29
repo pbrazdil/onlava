@@ -12,6 +12,8 @@ import (
 )
 
 func TestGenerateBasicGolden(t *testing.T) {
+	t.Parallel()
+
 	root := filepath.Join(repoRoot(t), "testdata", "apps", "basic")
 	app, err := parse.App(root, "basicapp")
 	if err != nil {
@@ -27,6 +29,8 @@ func TestGenerateBasicGolden(t *testing.T) {
 }
 
 func TestGenerateSanitizesBlankIdentifiers(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/blankident\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"blankident"}`)
@@ -60,6 +64,8 @@ func Hello(_ context.Context) error { return nil }
 }
 
 func TestGenerateRawOnlyPackageOmitsContextImport(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/rawonly\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"rawonly"}`)
@@ -87,6 +93,8 @@ func Hook(w http.ResponseWriter, req *http.Request) {}
 }
 
 func TestGeneratePopulatesSecretsBeforePackageVarInitializers(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/earlysecrets\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"earlysecrets"}`)
@@ -126,6 +134,8 @@ func Hello(ctx context.Context) error { return nil }
 }
 
 func TestGenerateRegistersMiddlewareAndEndpointLinks(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/middlewaregen\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"middlewaregen"}`)
@@ -165,6 +175,8 @@ func Apply(req middleware.Request, next middleware.Next) middleware.Response {
 }
 
 func TestGenerateRegistersServiceInitializer(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/serviceinit\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"serviceinit"}`)
@@ -200,6 +212,8 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 }
 
 func TestGenerateRegistersServiceShutdownAndMockLookup(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/serviceshutdown\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"serviceshutdown"}`)
@@ -240,6 +254,8 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 }
 
 func TestGenerateMainImportsCronOnlyPackages(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/cronapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"cronapp"}`)
@@ -283,6 +299,8 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 }
 
 func TestGenerateRegistersTemporalServiceAccessor(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/temporalsvc\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"temporalsvc"}`)
@@ -308,6 +326,8 @@ type Service struct{}
 }
 
 func TestGenerateMainOmitsRuntimeAppByDefault(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/headlessapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"headlessapp","proxy":{"api_host":"api.acme.localhost"}}`)
@@ -335,6 +355,8 @@ func Run(ctx context.Context) error { return nil }
 }
 
 func TestGenerateMainIncludesObservabilityFiltersWhenConfigured(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/obsapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"obsapp"}`)
@@ -377,6 +399,8 @@ func Run(ctx context.Context) error { return nil }
 }
 
 func TestGenerateMainIncludesTemporalConfigWhenConfigured(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/temporalapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"temporalapp"}`)
@@ -420,6 +444,7 @@ func Run(ctx context.Context) error { return nil }
 
 	got := string(out.Generated["onlava_internal_main/main.go"])
 	for _, want := range []string{
+		`_ "github.com/pbrazdil/onlava/temporal"`,
 		`Temporal: onlavaruntime.TemporalConfig{`,
 		`Enabled: true`,
 		`Mode: "local"`,
@@ -438,6 +463,8 @@ func Run(ctx context.Context) error { return nil }
 }
 
 func TestGenerateMainImportsTemporalDeclarationPackages(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/temporaldecl\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"temporaldecl"}`)

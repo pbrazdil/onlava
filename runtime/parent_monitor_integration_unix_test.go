@@ -46,7 +46,10 @@ func TestSupervisorParentMonitorCancelsWhenWrapperDies(t *testing.T) {
 		t.Fatalf("start monitor helper: %v", err)
 	}
 	helperDone := make(chan error, 1)
-	go func() { helperDone <- helper.Wait() }()
+	go func() {
+		helperDone <- helper.Wait()
+		close(helperDone)
+	}()
 	defer func() {
 		if helper.Process != nil {
 			_ = helper.Process.Kill()

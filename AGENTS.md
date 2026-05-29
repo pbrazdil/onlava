@@ -2,6 +2,8 @@
 
 Keep dependencies minimal. Prefer the Go standard library unless an external dependency has a clear, concrete payoff that justifies the added maintenance and upgrade surface.
 
+Do not add legacy compatibility aliases or backwards-compatibility shims for renamed or removed onlava APIs. Prefer one current public surface and remove obsolete spellings rather than carrying deprecated paths.
+
 # Workflow
 
 - After every repository change, rebuild any binaries from this repo that are expected to be available in `PATH`. For onlava, run `go install ./cmd/onlava` before finishing the task.

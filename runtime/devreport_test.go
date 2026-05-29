@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devreport"
 	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
@@ -22,13 +22,13 @@ func TestDevReporterDisablesOnConnectionRefused(t *testing.T) {
 				return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
 			}),
 		},
-		queue: make(chan devdash.ReportEnvelope, 4),
+		queue: make(chan devreport.ReportEnvelope, 4),
 		done:  make(chan struct{}),
 		stop:  make(chan struct{}),
 	}
 
 	go reporter.loop()
-	reporter.enqueue(devdash.ReportEnvelope{Type: "trace-event"})
+	reporter.enqueue(devreport.ReportEnvelope{Type: "trace-event"})
 
 	select {
 	case <-reporter.done:
@@ -40,7 +40,7 @@ func TestDevReporterDisablesOnConnectionRefused(t *testing.T) {
 		t.Fatal("reporter should be disabled after connection refused")
 	}
 
-	reporter.enqueue(devdash.ReportEnvelope{Type: "trace-event"})
+	reporter.enqueue(devreport.ReportEnvelope{Type: "trace-event"})
 }
 
 func TestDevReporterAddsSessionIdentity(t *testing.T) {
@@ -50,12 +50,12 @@ func TestDevReporterAddsSessionIdentity(t *testing.T) {
 		appRootHash: "root123",
 		branch:      "feature/a",
 		worktree:    "onlv-a",
-		queue:       make(chan devdash.ReportEnvelope, 4),
+		queue:       make(chan devreport.ReportEnvelope, 4),
 		stop:        make(chan struct{}),
 	}
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type: "trace-summary",
-		TraceSummary: &devdash.TraceSummary{
+		TraceSummary: &devreport.TraceSummary{
 			TraceID: "trace-1",
 			SpanID:  "span-1",
 		},
@@ -79,7 +79,7 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestTracedRoundTripperRedactsSensitiveURLAndError(t *testing.T) {
 	reporter := &devReporter{
 		appID: "app",
-		queue: make(chan devdash.ReportEnvelope, 4),
+		queue: make(chan devreport.ReportEnvelope, 4),
 	}
 	restoreReporter := setTestReporter(reporter)
 	defer restoreReporter()

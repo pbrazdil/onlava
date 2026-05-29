@@ -16,17 +16,6 @@ type columnValue struct {
 }
 
 func (s *Store) CreateRecord(ctx context.Context, actor Actor, objectName string, req CreateRecordRequest) (*RecordResponse, error) {
-	state, err := s.loadState(ctx, req.TenantKey, objectName)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.perms.CanWriteObject(ctx, actor, objectRef(state)); err != nil {
-		return nil, err
-	}
-	values, changedFields, err := s.columnValuesForRecord(ctx, actor, state, req.Values)
-	if err != nil {
-		return nil, err
-	}
 	id, err := newUUID()
 	if err != nil {
 		return nil, err
@@ -34,11 +23,18 @@ func (s *Store) CreateRecord(ctx context.Context, actor Actor, objectName string
 	now := s.now()
 	var event *Event
 	var after Record
-	tx, err := s.db.Begin(ctx)
+	tx, state, err := s.beginRecordTxWithState(ctx, req.TenantKey, objectName)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := s.perms.CanWriteObject(ctx, actor, objectRef(state)); err != nil {
+		return nil, err
+	}
+	values, changedFields, err := s.columnValuesForRecord(ctx, actor, state, req.Values)
+	if err != nil {
+		return nil, err
+	}
 	if err := setOutboxTxContext(ctx, tx, actor, true); err != nil {
 		return nil, fmt.Errorf("set outbox transaction context: %w", err)
 	}
@@ -89,10 +85,11 @@ func (s *Store) CreateRecord(ctx context.Context, actor Actor, objectName string
 }
 
 func (s *Store) UpdateRecord(ctx context.Context, actor Actor, objectName, id string, req UpdateRecordRequest) (*RecordResponse, error) {
-	state, err := s.loadState(ctx, req.TenantKey, objectName)
+	tx, state, err := s.beginRecordTxWithState(ctx, req.TenantKey, objectName)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	if err := s.perms.CanWriteObject(ctx, actor, objectRef(state)); err != nil {
 		return nil, err
 	}
@@ -103,11 +100,6 @@ func (s *Store) UpdateRecord(ctx context.Context, actor Actor, objectName, id st
 	if len(values) == 0 {
 		return nil, fmt.Errorf("update record requires at least one value")
 	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 	if err := setOutboxTxContext(ctx, tx, actor, true); err != nil {
 		return nil, fmt.Errorf("set outbox transaction context: %w", err)
 	}
@@ -169,18 +161,14 @@ func (s *Store) UpdateRecord(ctx context.Context, actor Actor, objectName, id st
 }
 
 func (s *Store) DeleteRecord(ctx context.Context, actor Actor, objectName, id string, req DeleteRecordRequest) (*DeleteRecordResponse, error) {
-	state, err := s.loadState(ctx, req.TenantKey, objectName)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.perms.CanWriteObject(ctx, actor, objectRef(state)); err != nil {
-		return nil, err
-	}
-	tx, err := s.db.Begin(ctx)
+	tx, state, err := s.beginRecordTxWithState(ctx, req.TenantKey, objectName)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := s.perms.CanWriteObject(ctx, actor, objectRef(state)); err != nil {
+		return nil, err
+	}
 	if err := setOutboxTxContext(ctx, tx, actor, true); err != nil {
 		return nil, fmt.Errorf("set outbox transaction context: %w", err)
 	}
@@ -221,6 +209,34 @@ func (s *Store) DeleteRecord(ctx context.Context, actor Actor, objectName, id st
 	}
 	s.router.publish(event)
 	return &DeleteRecordResponse{ID: id, Event: event}, nil
+}
+
+func (s *Store) beginRecordTxWithState(ctx context.Context, tenantKey, objectName string) (pgxTx, *metadataState, error) {
+	if err := validateName("tenant", tenantKey); err != nil {
+		return nil, nil, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	returned := false
+	defer func() {
+		if !returned {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	if err := lockMetadataBootstrapRead(ctx, tx); err != nil {
+		return nil, nil, err
+	}
+	if err := lockRecordSchemaRead(ctx, tx, tenantKey); err != nil {
+		return nil, nil, err
+	}
+	state, err := s.loadStateWithQuery(ctx, tx, tenantKey, objectName)
+	if err != nil {
+		return nil, nil, err
+	}
+	returned = true
+	return tx, state, nil
 }
 
 func (s *Store) columnValuesForRecord(ctx context.Context, actor Actor, state *metadataState, values Record) ([]columnValue, []string, error) {

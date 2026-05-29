@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	sseHeartbeatInterval  = 25 * time.Second
-	sseOutboxPollInterval = time.Second
+	defaultSSEHeartbeatInterval  = 25 * time.Second
+	defaultSSEOutboxPollInterval = time.Second
 )
 
 func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWriter, req *http.Request) error {
@@ -114,9 +114,9 @@ func (s *Store) ServeEvents(ctx context.Context, actor Actor, w http.ResponseWri
 		flusher.Flush()
 	}
 
-	ticker := time.NewTicker(sseHeartbeatInterval)
+	ticker := time.NewTicker(s.sseHeartbeatEvery)
 	defer ticker.Stop()
-	pollTicker := time.NewTicker(sseOutboxPollInterval)
+	pollTicker := time.NewTicker(s.sseOutboxPollEvery)
 	defer pollTicker.Stop()
 	for {
 		select {

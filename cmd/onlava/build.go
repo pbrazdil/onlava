@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -56,51 +57,120 @@ func buildCommand(args []string) error {
 		return err
 	}
 
-	result, err := build.App(appRoot, cfg)
+	result, ok, err := build.LoadReusableBinary(appRoot, cfg)
 	if err != nil {
 		return err
 	}
-
-	if err := copyBinary(result.Binary, outputPath); err != nil {
+	if !ok {
+		result, err = build.App(appRoot, cfg)
+		if err != nil {
+			return err
+		}
+	} else if err := build.WriteLatestBuildManifest(result, "compiled"); err != nil {
 		return err
 	}
-	if err := signBuiltBinaryIfNeeded(outputPath); err != nil {
+
+	copied, err := copyBinary(result.Binary, outputPath)
+	if err != nil {
 		return err
+	}
+	if copied {
+		if err := signBuiltBinaryIfNeeded(outputPath); err != nil {
+			return err
+		}
 	}
 	fmt.Fprintf(os.Stdout, "onlava: built %s\n", outputPath)
 	return nil
 }
 
-func copyBinary(src, dst string) error {
+func copyBinary(src, dst string) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+		return false, err
 	}
 
 	in, err := os.Open(src)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer in.Close()
 
 	info, err := in.Stat()
 	if err != nil {
-		return err
+		return false, err
+	}
+	if same, err := sameFileContent(in, info, dst); err != nil {
+		return false, err
+	} else if same {
+		if err := os.Chmod(dst, info.Mode().Perm()); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if _, err := in.Seek(0, io.SeekStart); err != nil {
+		return false, err
 	}
 
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	_, copyErr := io.Copy(out, in)
 	closeErr := out.Close()
 	if copyErr != nil {
-		return copyErr
+		return false, copyErr
 	}
 	if closeErr != nil {
-		return closeErr
+		return false, closeErr
 	}
-	return os.Chmod(dst, info.Mode().Perm())
+	return true, os.Chmod(dst, info.Mode().Perm())
+}
+
+func sameFileContent(src *os.File, srcInfo os.FileInfo, dst string) (bool, error) {
+	dstFile, err := os.Open(dst)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer dstFile.Close()
+	dstInfo, err := dstFile.Stat()
+	if err != nil {
+		return false, err
+	}
+	if dstInfo.Size() != srcInfo.Size() {
+		return false, nil
+	}
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return false, err
+	}
+	equal, err := readersEqual(src, dstFile)
+	if err != nil {
+		return false, err
+	}
+	return equal, nil
+}
+
+func readersEqual(left, right io.Reader) (bool, error) {
+	leftBuf := make([]byte, 256*1024)
+	rightBuf := make([]byte, 256*1024)
+	for {
+		leftN, leftErr := left.Read(leftBuf)
+		rightN, rightErr := right.Read(rightBuf)
+		if leftN != rightN || !bytes.Equal(leftBuf[:leftN], rightBuf[:rightN]) {
+			return false, nil
+		}
+		if leftErr == io.EOF && rightErr == io.EOF {
+			return true, nil
+		}
+		if leftErr != nil && leftErr != io.EOF {
+			return false, leftErr
+		}
+		if rightErr != nil && rightErr != io.EOF {
+			return false, rightErr
+		}
+	}
 }
 
 func defaultBuildBinaryName(appName string) string {

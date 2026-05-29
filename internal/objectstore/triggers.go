@@ -32,12 +32,12 @@ func (s *Store) EnableOutboxTriggers(ctx context.Context, actor Actor, tenantKey
 		dropObjectOutboxTriggerDDL(state.Object.TableName, triggerName),
 		createObjectOutboxTriggerDDL(state, triggerName),
 	}
-	migrationID, err := s.startMigration(ctx, state.Tenant.ID, state.Object.ID, fromVersion, toVersion, ddl)
+	migrationID, err := newMigrationID(ddl)
 	if err != nil {
 		return nil, err
 	}
 	var event *Event
-	if err := s.withMigrationTx(ctx, state.Tenant.ID, state.Object.ID, migrationID, func(tx pgxTx) error {
+	if err := s.withMigrationTx(ctx, state.Tenant.Key, state.Tenant.ID, state.Object.ID, migrationID, fromVersion, toVersion, ddl, sharedTriggerFunctionLockName, func(tx pgxTx) error {
 		for _, stmt := range ddl {
 			if _, err := tx.Exec(ctx, stmt); err != nil {
 				return fmt.Errorf("enable outbox trigger for object %s: %w", state.Object.NameSingular, err)
@@ -50,11 +50,15 @@ func (s *Store) EnableOutboxTriggers(ctx context.Context, actor Actor, tenantKey
 		if !present {
 			return fmt.Errorf("outbox trigger %s was not created on %s.%s", triggerName, RecordsSchema, state.Object.TableName)
 		}
+		toVersion, err = s.bumpObjectSchemaVersion(ctx, tx, state.Object.ID)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `
 			update `+qualifiedIdent(MetadataSchema, "objects")+`
-			set outbox_triggers_enabled = true, schema_version = $1, updated_at = $2
-			where id = $3
-		`, toVersion, s.now(), state.Object.ID); err != nil {
+			set outbox_triggers_enabled = true, updated_at = $1
+			where id = $2
+		`, s.now(), state.Object.ID); err != nil {
 			return err
 		}
 		var outboxErr error

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -49,9 +50,6 @@ func runOnlavaTest(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := build.PrimeWorkspaceContext(ctx, result); err != nil {
-		return err
-	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -63,12 +61,43 @@ func runOnlavaTest(ctx context.Context, args []string) error {
 	}
 
 	goArgs := append([]string{"test"}, opts.GoArgs...)
+	err, output := runGeneratedWorkspaceGoTest(ctx, testDir, goArgs, false)
+	if err == nil {
+		_, _ = os.Stdout.Write(output)
+		return nil
+	}
+	if result.NeedsTidy && goTestNeedsWorkspaceTidy(output) {
+		if tidyErr := build.PrimeWorkspaceContext(ctx, result); tidyErr != nil {
+			_, _ = os.Stdout.Write(output)
+			return tidyErr
+		}
+		err, _ = runGeneratedWorkspaceGoTest(ctx, testDir, goArgs, true)
+		return err
+	}
+	_, _ = os.Stdout.Write(output)
+	return err
+}
+
+func runGeneratedWorkspaceGoTest(ctx context.Context, dir string, goArgs []string, stream bool) (error, []byte) {
 	cmd := execGoTestCommand(ctx, "go", goArgs...)
-	cmd.Dir = testDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "ONLAVA_RUNTIME_ENV=test")
-	return cmd.Run()
+	if stream {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run(), nil
+	}
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	return cmd.Run(), output.Bytes()
+}
+
+func goTestNeedsWorkspaceTidy(output []byte) bool {
+	text := string(output)
+	return strings.Contains(text, "missing go.sum entry") ||
+		strings.Contains(text, "updates to go.mod needed") ||
+		strings.Contains(text, "go.mod updates are needed")
 }
 
 func parseTestArgs(args []string) (testOptions, error) {

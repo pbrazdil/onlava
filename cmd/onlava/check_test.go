@@ -15,6 +15,8 @@ import (
 )
 
 func TestParseCheckArgs(t *testing.T) {
+	t.Parallel()
+
 	opts, err := parseCheckArgs([]string{"--app-root", "/tmp/app", "--json"})
 	if err != nil {
 		t.Fatalf("parseCheckArgs returned error: %v", err)
@@ -28,6 +30,8 @@ func TestParseCheckArgs(t *testing.T) {
 }
 
 func TestRunOnlavaCheckCompilesApp(t *testing.T) {
+	useFakeBuildGoRunner(t)
+
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
@@ -56,6 +60,8 @@ func TestRunOnlavaCheckCompilesApp(t *testing.T) {
 }
 
 func TestRunOnlavaCheckJSONSuccess(t *testing.T) {
+	useFakeBuildGoRunner(t)
+
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
@@ -94,8 +100,9 @@ func TestRunOnlavaCheckJSONSuccess(t *testing.T) {
 }
 
 func TestRunOnlavaCheckJSONReportsTypeScriptTemporalContractFailure(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", filepath.Join(t.TempDir(), "cache"))
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"checkts"}`)
 	writeTestAppFile(t, root, "go.mod", "module example.com/checkts\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRootForTest(t)+"\n")
 	writeTestAppFile(t, root, "svc/api.go", "package svc\n\nimport \"context\"\n\n//onlava:api public\nfunc Ping(context.Context) error { return nil }\n")
@@ -117,11 +124,8 @@ export const render = activity<RenderInput, RenderOutput>({
 }, async (_ctx, input) => ({ url: input.id }));
 `)
 
-	restore := chdirForTest(t, root)
-	defer restore()
-
 	var out bytes.Buffer
-	err := runOnlavaCheck(context.Background(), &out, []string{"--json"})
+	err := runOnlavaCheck(context.Background(), &out, []string{"--app-root", root, "--json"})
 	var silent *silentCLIError
 	if !errors.As(err, &silent) {
 		t.Fatalf("expected silent TypeScript contract error, got %v", err)
@@ -139,6 +143,8 @@ export const render = activity<RenderInput, RenderOutput>({
 }
 
 func TestRunOnlavaCheckReusesFreshCompiledBuild(t *testing.T) {
+	useFakeBuildGoRunner(t)
+
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
@@ -182,6 +188,28 @@ func TestRunOnlavaCheckReusesFreshCompiledBuild(t *testing.T) {
 }
 
 func TestRunOnlavaCheckRecompilesAfterSourceChange(t *testing.T) {
+	restoreRunner := build.SetGoRunnerForTesting(func(_ context.Context, dir string, args ...string) error {
+		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
+			return nil
+		}
+		if len(args) >= 4 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" {
+			source, err := os.ReadFile(filepath.Join(dir, "svc", "api.go"))
+			if err != nil {
+				return err
+			}
+			if strings.Contains(string(source), "MissingSymbol") {
+				return errors.New("svc/api.go:6:37: undefined: MissingSymbol")
+			}
+			out := args[3]
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+		}
+		return errors.New("unexpected fake go command: " + strings.Join(args, " "))
+	})
+	t.Cleanup(restoreRunner)
+
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
@@ -210,6 +238,17 @@ func TestRunOnlavaCheckRecompilesAfterSourceChange(t *testing.T) {
 }
 
 func TestRunOnlavaCheckJSONCompileFailure(t *testing.T) {
+	restoreRunner := build.SetGoRunnerForTesting(func(_ context.Context, _ string, args ...string) error {
+		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
+			return nil
+		}
+		if len(args) >= 4 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" {
+			return errors.New("go build -buildvcs=false failed: exit status 1\nsvc/api.go:6:37: undefined: MissingSymbol")
+		}
+		return errors.New("unexpected fake go command: " + strings.Join(args, " "))
+	})
+	t.Cleanup(restoreRunner)
+
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)

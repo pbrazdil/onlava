@@ -24,12 +24,13 @@ import (
 	"github.com/pbrazdil/onlava/internal/app"
 )
 
-const (
+var (
 	watchPollInterval       = 250 * time.Millisecond
 	watchBackupPollInterval = 2 * time.Second
 	watchSettleDelay        = 500 * time.Millisecond
-	stopTimeout             = 5 * time.Second
 )
+
+const stopTimeout = 5 * time.Second
 
 type fileStamp struct {
 	modTime time.Time

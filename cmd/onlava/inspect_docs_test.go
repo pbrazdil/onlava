@@ -7,6 +7,8 @@ import (
 )
 
 func TestRunOnlavaInspectDocs(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 
 	var out bytes.Buffer
@@ -36,6 +38,8 @@ func TestRunOnlavaInspectDocs(t *testing.T) {
 }
 
 func TestValidateDocsKnowledgeReportsMissingDocument(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 	writeTestAppFile(t, root, "docs/knowledge.json", `{
   "schema_version": "onlava.docs.index.v1",

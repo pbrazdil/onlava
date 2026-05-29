@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	appcfg "github.com/pbrazdil/onlava/internal/app"
@@ -19,7 +22,15 @@ import (
 	"github.com/pbrazdil/onlava/internal/wiremodel"
 	"github.com/pbrazdil/onlava/internal/workers"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	onlavatemporal "github.com/pbrazdil/onlava/temporal"
 )
+
+var inspectAppModelCache = struct {
+	sync.Mutex
+	items map[string]*model.App
+}{
+	items: map[string]*model.App{},
+}
 
 type inspectOptions struct {
 	Subject  string
@@ -201,7 +212,7 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 		} else if ok {
 			return writeInspectJSON(stdout, payload)
 		}
-		model, err := parse.App(appRoot, cfg.Name)
+		model, err := cachedInspectAppModel(appRoot, cfg.Name)
 		if err != nil {
 			return err
 		}
@@ -212,7 +223,7 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 		} else if ok {
 			return writeInspectJSON(stdout, payload)
 		}
-		model, err := parse.App(appRoot, cfg.Name)
+		model, err := cachedInspectAppModel(appRoot, cfg.Name)
 		if err != nil {
 			return err
 		}
@@ -223,7 +234,7 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 		} else if ok {
 			return writeInspectJSON(stdout, payload)
 		}
-		model, err := parse.App(appRoot, cfg.Name)
+		model, err := cachedInspectAppModel(appRoot, cfg.Name)
 		if err != nil {
 			return err
 		}
@@ -234,7 +245,7 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 		} else if ok {
 			return writeInspectJSON(stdout, payload)
 		}
-		model, err := parse.App(appRoot, cfg.Name)
+		model, err := cachedInspectAppModel(appRoot, cfg.Name)
 		if err != nil {
 			return err
 		}
@@ -245,7 +256,7 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 		} else if ok {
 			return writeInspectJSON(stdout, payload)
 		}
-		model, err := parse.App(appRoot, cfg.Name)
+		model, err := cachedInspectAppModel(appRoot, cfg.Name)
 		if err != nil {
 			return err
 		}
@@ -365,6 +376,67 @@ func writeInspectJSON(w io.Writer, payload any) error {
 	return enc.Encode(payload)
 }
 
+func cachedInspectAppModel(appRoot, appName string) (*model.App, error) {
+	key, err := inspectAppModelCacheKey(appRoot, appName)
+	if err != nil {
+		return nil, err
+	}
+	inspectAppModelCache.Lock()
+	defer inspectAppModelCache.Unlock()
+	if app := inspectAppModelCache.items[key]; app != nil {
+		return app, nil
+	}
+	appModel, err := parse.App(appRoot, appName)
+	if err != nil {
+		return nil, err
+	}
+	inspectAppModelCache.items[key] = appModel
+	return appModel, nil
+}
+
+func inspectAppModelCacheKey(appRoot, appName string) (string, error) {
+	h := sha256.New()
+	_, _ = h.Write([]byte(appName))
+	_, _ = h.Write([]byte{0})
+	err := filepath.WalkDir(appRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(appRoot, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			switch rel {
+			case ".":
+				return nil
+			case ".onlava", "node_modules", "dist", "out":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch {
+		case rel == ".onlava.json", rel == "go.mod", rel == "go.sum", strings.HasSuffix(rel, ".go"):
+		default:
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, _ = h.Write([]byte(rel))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 func buildInspectBuildResponse(appRoot string, cfg appcfg.Config) (inspectBuildResponse, error) {
 	if manifest, ok, err := build.ReadLatestBuildManifest(appRoot); err != nil {
 		return inspectBuildResponse{}, err
@@ -458,8 +530,8 @@ func buildInspectPathsResponse(appRoot string, cfg appcfg.Config) (inspectPathsR
 func buildInspectTemporalResponse(ctx context.Context, appRoot string, cfg appcfg.Config) (inspectTemporalResponse, error) {
 	checkCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	info, status := onlavaruntime.CheckTemporalConnection(checkCtx, cfg.Name, temporalRuntimeConfigFromApp(cfg.Temporal))
-	appModel, err := parse.App(appRoot, cfg.Name)
+	info, status := onlavatemporal.CheckConnection(checkCtx, cfg.Name, temporalRuntimeConfigFromApp(cfg.Temporal))
+	appModel, err := cachedInspectAppModel(appRoot, cfg.Name)
 	if err != nil {
 		return inspectTemporalResponse{}, err
 	}
@@ -592,7 +664,7 @@ func knownTemporalActivityNames(appModel *model.App) []string {
 }
 
 func knownTemporalActivityNamesFromRoot(appRoot, appName string) []string {
-	appModel, err := parse.App(appRoot, appName)
+	appModel, err := cachedInspectAppModel(appRoot, appName)
 	if err != nil {
 		return nil
 	}

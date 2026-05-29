@@ -15,6 +15,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/app"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	onlavatemporal "github.com/pbrazdil/onlava/temporal"
 )
 
 const temporalDeploymentTimeout = 30 * time.Second
@@ -180,7 +181,7 @@ func runTemporalDeployment(ctx context.Context, action string, opts temporalDepl
 	if opts.Deployment != "" {
 		info.DeploymentName = opts.Deployment
 	}
-	client, err := onlavaruntime.DialTemporal(ctx, info)
+	client, err := onlavatemporal.Dial(ctx, info)
 	if err != nil {
 		return err
 	}

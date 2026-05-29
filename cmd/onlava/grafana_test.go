@@ -204,9 +204,18 @@ func TestResolveGrafanaBinaryRejectsWrongPathVersion(t *testing.T) {
 	cfg.Download = false
 	pathDir := t.TempDir()
 	pathBinary := filepath.Join(pathDir, "grafana")
-	if err := os.WriteFile(pathBinary, []byte("#!/bin/sh\necho 'Version 0.0.0'\n"), 0o755); err != nil {
+	if err := os.WriteFile(pathBinary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	oldProbe := grafanaVersionProbe
+	grafanaVersionProbe = func(ctx context.Context, path string) ([]byte, error) {
+		if path != pathBinary {
+			t.Fatalf("grafanaVersionProbe path = %q, want %q", path, pathBinary)
+		}
+		return []byte("Version 0.0.0\n"), nil
+	}
+	t.Cleanup(func() { grafanaVersionProbe = oldProbe })
+
 	t.Setenv("PATH", pathDir)
 	_, _, err := resolveGrafanaBinary(context.Background(), cfg)
 	if err == nil || !strings.Contains(err.Error(), "does not match pinned version") {

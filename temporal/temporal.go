@@ -164,7 +164,9 @@ var serviceAccessors = struct {
 }
 
 func init() {
+	onlavaruntime.RegisterTemporalRuntimeStarter(StartRuntime)
 	onlavaruntime.RegisterTemporalWorkerStarter(startWorkerRuntime)
+	onlavaruntime.RegisterTemporalCronStarter(startCronRuntime)
 }
 
 func NewWorkflow[I, O any](name string, cfg WorkflowConfig, handler func(workflow.Context, I) (O, error)) *Workflow[I, O] {
@@ -335,7 +337,7 @@ func Start[I, O any](ctx context.Context, w *Workflow[I, O], input I, identity W
 		return Run[O]{}, errors.New("temporal: workflow start requires WorkflowID or WorkflowIDPrefix")
 	}
 	startOpts := applyStartOptions(w.config, opts...)
-	client, info, ok := onlavaruntime.ActiveTemporalClient()
+	client, info, ok := ActiveClient()
 	if !ok || client == nil {
 		return Run[O]{}, errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")
 	}
@@ -505,7 +507,7 @@ func WithWorkflowIDReusePolicy(policy WorkflowIDReusePolicy) StartOption {
 }
 
 func GetWorkflow[O any](ctx context.Context, workflowID, runID string) Run[O] {
-	client, _, ok := onlavaruntime.ActiveTemporalClient()
+	client, _, ok := ActiveClient()
 	if !ok || client == nil {
 		return Run[O]{workflowID: workflowID, runID: runID, err: errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")}
 	}
@@ -552,7 +554,7 @@ func (r Run[O]) Cancel(ctx context.Context) error {
 	}
 	client := r.client
 	if client == nil {
-		client, _, _ = onlavaruntime.ActiveTemporalClient()
+		client, _, _ = ActiveClient()
 	}
 	if client == nil {
 		return errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")
@@ -570,7 +572,7 @@ func (r Run[O]) Terminate(ctx context.Context, reason string) error {
 	}
 	client := r.client
 	if client == nil {
-		client, _, _ = onlavaruntime.ActiveTemporalClient()
+		client, _, _ = ActiveClient()
 	}
 	if client == nil {
 		return errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")
@@ -676,7 +678,7 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 	if len(items) == 0 || strings.EqualFold(strings.TrimSpace(cfg.Role), "api") {
 		return func(context.Context) error { return nil }, nil
 	}
-	client, info, ok := onlavaruntime.ActiveTemporalClient()
+	client, info, ok := ActiveClient()
 	if !ok || client == nil {
 		return nil, errors.New("temporal: declarations require temporal.enabled in .onlava.json")
 	}
@@ -709,7 +711,7 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 		workers = append(workers, worker)
 	}
 	if onlavaruntime.ShouldAutoPromoteTemporalWorkerDeployment(info) {
-		if err := onlavaruntime.EnsureTemporalWorkerDeploymentCurrentVersion(ctx, client, info); err != nil {
+		if err := EnsureWorkerDeploymentCurrentVersion(ctx, client, info); err != nil {
 			for _, started := range workers {
 				started.Stop()
 			}
@@ -801,7 +803,7 @@ func normalizeSelectedTaskQueues(selected []string) []string {
 }
 
 func temporalWorkerOptionsForQueue(info onlavaruntime.TemporalRuntimeInfo, role, queue string, items []declaration) temporalworker.Options {
-	opts := onlavaruntime.TemporalWorkerOptions(info, role, queue)
+	opts := TemporalWorkerOptions(info, role, queue)
 	for _, item := range items {
 		max := item.maxConcurrentActivityExecutions()
 		if max <= 0 {
@@ -905,7 +907,7 @@ func temporalClientForRun[O any](run Run[O]) (temporalclient.Client, error) {
 	}
 	client := run.client
 	if client == nil {
-		client, _, _ = onlavaruntime.ActiveTemporalClient()
+		client, _, _ = ActiveClient()
 	}
 	if client == nil {
 		return nil, errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")

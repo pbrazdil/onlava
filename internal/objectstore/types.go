@@ -33,10 +33,12 @@ type Options struct {
 }
 
 type Store struct {
-	db     DB
-	perms  Permissions
-	now    func() time.Time
-	router *LiveRouter
+	db                 DB
+	perms              Permissions
+	now                func() time.Time
+	router             *LiveRouter
+	sseHeartbeatEvery  time.Duration
+	sseOutboxPollEvery time.Duration
 }
 
 type Tenant struct {

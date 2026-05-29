@@ -3,6 +3,8 @@ package main
 import "testing"
 
 func TestParseGenClientArgsAcceptsTargetInvocation(t *testing.T) {
+	t.Parallel()
+
 	opts, err := parseGenClientArgs([]string{
 		"demoapp-dev",
 		"--lang=typescript",

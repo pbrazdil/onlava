@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devreport"
 	"github.com/pbrazdil/onlava/runtime/shared"
 )
 
 func TestTraceDBQueryRecordsChildSpan(t *testing.T) {
 	reporter := &devReporter{
 		appID: "app",
-		queue: make(chan devdash.ReportEnvelope, 8),
+		queue: make(chan devreport.ReportEnvelope, 8),
 	}
 	restoreReporter := setTestReporter(reporter)
 	defer restoreReporter()
@@ -86,7 +86,7 @@ func TestTraceDBQueryRecordsChildSpan(t *testing.T) {
 func TestTraceDBQueryWithoutRequestIsNoop(t *testing.T) {
 	reporter := &devReporter{
 		appID: "app",
-		queue: make(chan devdash.ReportEnvelope, 4),
+		queue: make(chan devreport.ReportEnvelope, 4),
 	}
 	restoreReporter := setTestReporter(reporter)
 	defer restoreReporter()
@@ -104,7 +104,7 @@ func TestTraceDBQueryWithoutRequestIsNoop(t *testing.T) {
 func TestTraceDBQueryRedactsInlineLiterals(t *testing.T) {
 	reporter := &devReporter{
 		appID: "app",
-		queue: make(chan devdash.ReportEnvelope, 4),
+		queue: make(chan devreport.ReportEnvelope, 4),
 	}
 	restoreReporter := setTestReporter(reporter)
 	defer restoreReporter()
@@ -136,7 +136,7 @@ func TestTraceDBQueryRedactsInlineLiterals(t *testing.T) {
 func TestTraceDBQueryUsesSQLCQueryNameAsOperation(t *testing.T) {
 	reporter := &devReporter{
 		appID: "app",
-		queue: make(chan devdash.ReportEnvelope, 4),
+		queue: make(chan devreport.ReportEnvelope, 4),
 	}
 	restoreReporter := setTestReporter(reporter)
 	defer restoreReporter()

@@ -4,17 +4,25 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -23,7 +31,50 @@ import (
 	temporalclient "go.temporal.io/sdk/client"
 )
 
-var onlavaProcessSlots = make(chan struct{}, 2)
+const integrationPollInterval = 20 * time.Millisecond
+const integrationChildGOMAXPROCS = "2"
+
+var onlavaProcessSlots = make(chan struct{}, integrationProcessSlotCount())
+
+var sharedTemporalDevServer temporalDevServerState
+
+var sharedIntegration struct {
+	mu       sync.Mutex
+	cacheDir string
+}
+
+type temporalDevServerState struct {
+	once   sync.Once
+	addr   string
+	err    error
+	cancel context.CancelFunc
+	cmd    *exec.Cmd
+	output bytes.Buffer
+}
+
+type missingTemporalCLIError struct {
+	err error
+}
+
+func (e missingTemporalCLIError) Error() string {
+	return e.err.Error()
+}
+
+func integrationProcessSlotCount() int {
+	if configured := strings.TrimSpace(os.Getenv("ONLAVA_INTEGRATION_PROCESS_SLOTS")); configured != "" {
+		if count, err := strconv.Atoi(configured); err == nil && count > 0 {
+			return count
+		}
+	}
+	count := runtime.GOMAXPROCS(0) / 2
+	if count < 2 {
+		return 2
+	}
+	if count > 6 {
+		return 6
+	}
+	return count
+}
 
 func limitOnlavaProcessConcurrency(t *testing.T) {
 	t.Helper()
@@ -38,6 +89,10 @@ func limitOnlavaProcessConcurrency(t *testing.T) {
 func buildOnlavaBinary(t *testing.T, repo string) string {
 	t.Helper()
 	buildOnlavaBinaryOnce.Do(func() {
+		if path, ok := freshInstalledOnlavaBinary(repo); ok {
+			buildOnlavaBinaryPath = path
+			return
+		}
 		binDir, err := os.MkdirTemp("", "onlava-test-bin-*")
 		if err != nil {
 			buildOnlavaBinaryErr = err
@@ -59,9 +114,120 @@ func buildOnlavaBinary(t *testing.T, repo string) string {
 	return buildOnlavaBinaryPath
 }
 
+func freshInstalledOnlavaBinary(repo string) (string, bool) {
+	candidates := []string{}
+	if configured := strings.TrimSpace(os.Getenv("ONLAVA_BIN")); configured != "" {
+		candidates = append(candidates, configured)
+	}
+	if found, err := exec.LookPath("onlava"); err == nil {
+		candidates = append(candidates, found)
+	}
+	latest, ok, err := latestIntegrationSourceModTime(repo)
+	if err != nil || !ok {
+		return "", false
+	}
+	for _, candidate := range candidates {
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if !info.ModTime().Before(latest) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func latestIntegrationSourceModTime(repo string) (time.Time, bool, error) {
+	paths := []string{
+		"go.mod",
+		"go.sum",
+		"auth",
+		"cmd",
+		"cron",
+		"errs",
+		"internal",
+		"middleware",
+		"pgxpool",
+		"rlog",
+		"runtime",
+		"runtimeapp",
+		"temporal",
+	}
+	var latest time.Time
+	found := false
+	for _, rel := range paths {
+		modTime, ok, err := latestPathModTime(filepath.Join(repo, filepath.FromSlash(rel)))
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		if ok && (!found || modTime.After(latest)) {
+			latest = modTime
+			found = true
+		}
+	}
+	return latest, found, nil
+}
+
+func latestPathModTime(root string) (time.Time, bool, error) {
+	info, err := os.Stat(root)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, err
+	}
+	if !info.IsDir() {
+		return info.ModTime(), true, nil
+	}
+	var latest time.Time
+	found := false
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			switch rel {
+			case ".", "node_modules", "dist", "testpostgres", "relocatedtests":
+				if rel == "." {
+					return nil
+				}
+				return filepath.SkipDir
+			}
+			if strings.HasPrefix(rel, "node_modules/") || strings.HasPrefix(rel, "dist/") ||
+				strings.HasPrefix(rel, "testpostgres/") || strings.HasPrefix(rel, "relocatedtests/") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !found || info.ModTime().After(latest) {
+			latest = info.ModTime()
+			found = true
+		}
+		return nil
+	})
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return latest, found, nil
+}
+
 func onlavaRunEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
+		"GOMAXPROCS="+integrationChildGOMAXPROCS,
 		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
 		"ONLAVA_LOCAL_PROXY=0",
 	)
@@ -70,6 +236,7 @@ func onlavaRunEnv(repo, dashboardAddr, cacheDir string) []string {
 func onlavaDevEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
+		"GOMAXPROCS="+integrationChildGOMAXPROCS,
 		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
 		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
 		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
@@ -82,6 +249,7 @@ func onlavaDevEnv(repo, dashboardAddr, cacheDir string) []string {
 func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
 	env := append(
 		os.Environ(),
+		"GOMAXPROCS="+integrationChildGOMAXPROCS,
 		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
 		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
 		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
@@ -97,18 +265,132 @@ func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, front
 	return env
 }
 
+func sharedIntegrationCache(t *testing.T) string {
+	t.Helper()
+	sharedIntegration.mu.Lock()
+	defer sharedIntegration.mu.Unlock()
+	if sharedIntegration.cacheDir != "" {
+		return sharedIntegration.cacheDir
+	}
+	repo := repoRoot(t)
+	dir := strings.TrimSpace(os.Getenv("ONLAVA_INTEGRATION_CACHE_DIR"))
+	if dir == "" {
+		userCache, err := os.UserCacheDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256([]byte(repo))
+		dir = filepath.Join(userCache, "onlava", "integration-test", hex.EncodeToString(sum[:8]))
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := integrationSourceFingerprint(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, "source-fingerprint")
+	if data, err := os.ReadFile(marker); err == nil && strings.TrimSpace(string(data)) != fingerprint {
+		if err := os.RemoveAll(filepath.Join(dir, "cache")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(marker, []byte(fingerprint+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sharedIntegration.cacheDir = filepath.Join(dir, "cache")
+	return sharedIntegration.cacheDir
+}
+
+func integrationSourceFingerprint(repo string) (string, error) {
+	h := sha256.New()
+	err := filepath.WalkDir(repo, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(repo, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			switch {
+			case rel == ".":
+				return nil
+			case rel == ".git" || rel == ".onlava" || rel == "cmd" || rel == "scripts" || rel == "internal/testpostgres" || rel == "internal/relocatedtests" || rel == "ui/node_modules" || rel == "ui/dist":
+				return filepath.SkipDir
+			case strings.HasPrefix(rel, ".onlava/") || strings.HasPrefix(rel, "cmd/") || strings.HasPrefix(rel, "scripts/") || strings.HasPrefix(rel, "internal/testpostgres/") || strings.HasPrefix(rel, "internal/relocatedtests/") || strings.HasPrefix(rel, "ui/node_modules/") || strings.HasPrefix(rel, "ui/dist/"):
+				return filepath.SkipDir
+			default:
+				return nil
+			}
+		}
+		switch filepath.Ext(path) {
+		case ".go":
+			if strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+		case ".mod", ".sum":
+		default:
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, _ = h.Write([]byte(rel))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func withSharedWorkspace(env []string, key string) []string {
+	return append(env, "ONLAVA_TEST_WORKSPACE_KEY="+key)
+}
+
 func startTemporalDevServerForTest(t *testing.T, cacheDir string) string {
 	t.Helper()
+	_ = cacheDir
+	sharedTemporalDevServer.once.Do(func() {
+		sharedTemporalDevServer.addr, sharedTemporalDevServer.err = startSharedTemporalDevServer()
+	})
+	if sharedTemporalDevServer.err != nil {
+		var missing missingTemporalCLIError
+		if errors.As(sharedTemporalDevServer.err, &missing) {
+			t.Skipf("temporal CLI not found in PATH: %v", missing.err)
+		}
+		t.Fatal(sharedTemporalDevServer.err)
+	}
+	return sharedTemporalDevServer.addr
+}
+
+func startSharedTemporalDevServer() (string, error) {
 	path, err := exec.LookPath("temporal")
 	if err != nil {
-		t.Skipf("temporal CLI not found in PATH: %v", err)
+		return "", missingTemporalCLIError{err: err}
 	}
-	port := freePort(t)
-	uiPort := freePort(t)
+	port, err := freeTCPPort()
+	if err != nil {
+		return "", err
+	}
+	uiPort, err := freeTCPPort()
+	if err != nil {
+		return "", err
+	}
 	address := "127.0.0.1:" + port
+	cacheDir, err := os.MkdirTemp("", "onlava-temporal-dev-*")
+	if err != nil {
+		return "", err
+	}
 	dbPath := filepath.Join(cacheDir, "temporal", "test.sqlite")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, path,
@@ -121,28 +403,34 @@ func startTemporalDevServerForTest(t *testing.T, cacheDir string) string {
 		"--db-filename", dbPath,
 		"--log-level", "warn",
 	)
-	var output bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &output
+	cmd.Stdout = &sharedTemporalDevServer.output
+	cmd.Stderr = &sharedTemporalDevServer.output
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		cancel()
-		t.Fatalf("start temporal dev server: %v", err)
+		return "", fmt.Errorf("start temporal dev server: %w", err)
 	}
-	t.Cleanup(func() {
-		cancel()
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-	})
-	waitForTemporalAddress(t, address, &output)
-	return address
+	sharedTemporalDevServer.cancel = cancel
+	sharedTemporalDevServer.cmd = cmd
+	if err := waitForTemporalAddress(address, &sharedTemporalDevServer.output); err != nil {
+		stopSharedTemporalDevServer()
+		return "", err
+	}
+	return address, nil
 }
 
-func waitForTemporalAddress(t *testing.T, address string, output *bytes.Buffer) {
-	t.Helper()
+func stopSharedTemporalDevServer() {
+	if sharedTemporalDevServer.cancel != nil {
+		sharedTemporalDevServer.cancel()
+	}
+	if sharedTemporalDevServer.cmd != nil && sharedTemporalDevServer.cmd.Process != nil {
+		_ = syscall.Kill(-sharedTemporalDevServer.cmd.Process.Pid, syscall.SIGINT)
+		_ = sharedTemporalDevServer.cmd.Process.Kill()
+		_ = sharedTemporalDevServer.cmd.Wait()
+	}
+}
+
+func waitForTemporalAddress(address string, output *bytes.Buffer) error {
 	deadline := time.Now().Add(20 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
@@ -154,12 +442,12 @@ func waitForTemporalAddress(t *testing.T, address string, output *bytes.Buffer) 
 		cancel()
 		if err == nil {
 			client.Close()
-			return
+			return nil
 		}
 		lastErr = err
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(integrationPollInterval)
 	}
-	t.Fatalf("temporal dev server did not become reachable at %s: %v\n%s", address, lastErr, output.String())
+	return fmt.Errorf("temporal dev server did not become reachable at %s: %v\n%s", address, lastErr, output.String())
 }
 
 func stopOnlavaProcess(t *testing.T, cancel context.CancelFunc, cmd *exec.Cmd) {
@@ -400,7 +688,7 @@ func waitForMCPToolResult(t *testing.T, timeout time.Duration, fn func() map[str
 		if strings.Contains(fmt.Sprint(result["structuredContent"]), "trace_id") {
 			return result
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(integrationPollInterval)
 	}
 	t.Fatalf("timed out waiting for mcp tool result")
 	return nil
@@ -422,7 +710,7 @@ func waitForHTTPWithProcessOutput(t *testing.T, url string, outputs ...fmt.Strin
 			resp.Body.Close()
 			return
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(integrationPollInterval)
 	}
 	var detail strings.Builder
 	for i, output := range outputs {
@@ -443,7 +731,7 @@ func waitForURL(t *testing.T, client *http.Client, url string) {
 			resp.Body.Close()
 			return
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(integrationPollInterval)
 	}
 	t.Fatalf("server did not start: %s", url)
 }
@@ -455,7 +743,7 @@ func waitForFile(t *testing.T, path string) {
 		if _, err := os.Stat(path); err == nil {
 			return
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(integrationPollInterval)
 	}
 	t.Fatalf("file was not created: %s", path)
 }
@@ -471,7 +759,7 @@ func waitForJSONResponse(t *testing.T, url string, wantStatus int, want map[stri
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(integrationPollInterval)
 			continue
 		}
 		var got map[string]any
@@ -480,7 +768,7 @@ func waitForJSONResponse(t *testing.T, url string, wantStatus int, want map[stri
 		if decodeErr == nil && resp.StatusCode == wantStatus && mapsEqual(got, want) {
 			return
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(integrationPollInterval)
 	}
 	t.Fatalf("response did not settle to %v at %s", want, url)
 }
@@ -496,7 +784,7 @@ func waitForCronStatus(t *testing.T, url string) {
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(integrationPollInterval)
 			continue
 		}
 		var got map[string]any
@@ -509,7 +797,7 @@ func waitForCronStatus(t *testing.T, url string) {
 			toString(got["path"]) == "/service.Run" {
 			return
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(integrationPollInterval)
 	}
 	t.Fatalf("cron job did not execute at %s", url)
 }
@@ -777,12 +1065,20 @@ func mcpToolNames(items []any) map[string]bool {
 
 func freePort(t *testing.T) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	port, err := freeTCPPort()
 	if err != nil {
 		t.Fatal(err)
 	}
+	return port
+}
+
+func freeTCPPort() (string, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
 	defer ln.Close()
-	return strings.Split(ln.Addr().String(), ":")[1]
+	return strings.Split(ln.Addr().String(), ":")[1], nil
 }
 
 func repoRoot(t *testing.T) string {
@@ -840,6 +1136,153 @@ func copyFixtureApp(t *testing.T, repo, name string) string {
 	copyDir(t, src, dst)
 	rewriteFixtureReplace(t, filepath.Join(dst, "go.mod"), repo)
 	return dst
+}
+
+func cachedFixtureApp(t *testing.T, repo, name string) string {
+	t.Helper()
+	return cachedFixtureAppVariant(t, repo, name, "", nil, nil)
+}
+
+func cachedFixtureAppVariant(t *testing.T, repo, name, variant string, overrides map[string]string, removes []string) string {
+	t.Helper()
+	cacheDir := sharedIntegrationCache(t)
+	appsDir := filepath.Join(cacheDir, "apps")
+	cacheName := sanitizeIntegrationCacheName(t.Name() + "-" + name + "-" + variant)
+	dst := filepath.Join(appsDir, cacheName)
+	ready := filepath.Join(appsDir, cacheName+".ready")
+	fingerprint := fixtureAppVariantFingerprint(name, overrides, removes)
+
+	sharedIntegration.mu.Lock()
+	defer sharedIntegration.mu.Unlock()
+	if data, err := os.ReadFile(ready); err == nil && strings.TrimSpace(string(data)) == fingerprint {
+		return dst
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		t.Fatal(err)
+	}
+	copyDir(t, filepath.Join(repo, "testdata", "apps", name), dst)
+	rewriteFixtureReplace(t, filepath.Join(dst, "go.mod"), repo)
+	for _, rel := range removes {
+		if err := os.Remove(filepath.Join(dst, filepath.FromSlash(rel))); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+	}
+	overridePaths := make([]string, 0, len(overrides))
+	for rel := range overrides {
+		overridePaths = append(overridePaths, rel)
+	}
+	sort.Strings(overridePaths)
+	for _, rel := range overridePaths {
+		writeFile(t, filepath.Join(dst, filepath.FromSlash(rel)), overrides[rel])
+	}
+	if err := os.WriteFile(ready, []byte(fingerprint+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dst
+}
+
+func restoreFixtureFile(t *testing.T, repo, appDir, fixtureName, rel string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repo, "testdata", "apps", fixtureName, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(appDir, filepath.FromSlash(rel)), string(data))
+}
+
+func fixtureAppVariantFingerprint(name string, overrides map[string]string, removes []string) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(name))
+	_, _ = h.Write([]byte{0})
+	removePaths := append([]string(nil), removes...)
+	sort.Strings(removePaths)
+	for _, rel := range removePaths {
+		_, _ = h.Write([]byte("remove"))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(filepath.ToSlash(rel)))
+		_, _ = h.Write([]byte{0})
+	}
+	overridePaths := make([]string, 0, len(overrides))
+	for rel := range overrides {
+		overridePaths = append(overridePaths, filepath.ToSlash(rel))
+	}
+	sort.Strings(overridePaths)
+	for _, rel := range overridePaths {
+		_, _ = h.Write([]byte("override"))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(rel))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(overrides[rel]))
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func cachedSyntheticApp(t *testing.T, name string, files map[string]string) string {
+	t.Helper()
+	cacheDir := sharedIntegrationCache(t)
+	appsDir := filepath.Join(cacheDir, "apps")
+	cacheName := sanitizeIntegrationCacheName(t.Name() + "-" + name)
+	dst := filepath.Join(appsDir, cacheName)
+	ready := filepath.Join(appsDir, cacheName+".ready")
+	fingerprint := syntheticAppFingerprint(files)
+
+	sharedIntegration.mu.Lock()
+	defer sharedIntegration.mu.Unlock()
+	if data, err := os.ReadFile(ready); err == nil && strings.TrimSpace(string(data)) == fingerprint {
+		return dst
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, len(files))
+	for rel := range files {
+		paths = append(paths, rel)
+	}
+	sort.Strings(paths)
+	for _, rel := range paths {
+		writeFile(t, filepath.Join(dst, filepath.FromSlash(rel)), files[rel])
+	}
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ready, []byte(fingerprint+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dst
+}
+
+func syntheticAppFingerprint(files map[string]string) string {
+	paths := make([]string, 0, len(files))
+	for rel := range files {
+		paths = append(paths, filepath.ToSlash(rel))
+	}
+	sort.Strings(paths)
+	h := sha256.New()
+	for _, rel := range paths {
+		_, _ = h.Write([]byte(rel))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(files[rel]))
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func sanitizeIntegrationCacheName(value string) string {
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "app"
+	}
+	return out
 }
 
 func writeOnlavaApp(t *testing.T, appDir, contents string) {

@@ -20,7 +20,7 @@ The immediate user-facing problem is that several legacy/manual paths can still 
 - [x] 2026-05-27: Added managed Postgres port owner marker checks so a reachable saved port is reused only when its recorded owner verifies.
 - [x] 2026-05-27: Extended shared substrate ownership with per-component owner fingerprints, so each component PID is verified before interrupt.
 - [x] 2026-05-27: Added `onlava down --db --state --all` and `onlava db drop` for explicit managed DB/state cleanup.
-- [x] 2026-05-27: Added `onlava gc --older-than` for old non-running session registry/state cleanup.
+- [x] 2026-05-27: Added stale non-running session registry/state cleanup, now exposed as `onlava prune --older-than`.
 - [x] 2026-05-27: Added explicit `onlava dev --session <id>` and `onlava dev --new-session`, and preserved session ID/branch across later registrations.
 - [x] 2026-05-27: Persisted current-session selection by app root so `current` follows the latest registered session instead of incidental list ordering.
 - [x] 2026-05-27: Added visible warnings for legacy proxy and manual TCP listen/port escape hatches.
@@ -47,7 +47,7 @@ The immediate user-facing problem is that several legacy/manual paths can still 
 
 ## Outcomes & Retrospective
 
-Completed on 2026-05-27. The remaining PRD-5 review risks were addressed with explicit session control, cleanup/gc commands, stronger process ownership, explicit legacy escape-hatch warnings, shared Victoria dashboard wiring, and a self-harness parallel-session check. Validation is recorded in `.onlava/harness/self-latest.json`.
+Completed on 2026-05-27. The remaining PRD-5 review risks were addressed with explicit session control, cleanup/prune commands, stronger process ownership, explicit legacy escape-hatch warnings, shared Victoria dashboard wiring, and a self-harness parallel-session check. Validation is recorded in `.onlava/harness/self-latest.json`.
 
 ## Context and Orientation
 
@@ -63,7 +63,7 @@ Relevant files:
 ## Milestones
 
 1. Ownership safety: add owner fingerprints to sessions/substrates, verify before signaling, and avoid reusing stale owned resources when verification fails.
-2. Cleanup surfaces: implement `onlava down --db --state --all`, `onlava db drop`, and `onlava gc --older-than`.
+2. Cleanup surfaces: implement `onlava down --db --state --all`, `onlava db drop`, and `onlava prune --older-than`.
 3. Explicit session control: implement `onlava dev --session <id>` and `onlava dev --new-session`, then make `current` session resolution explicit.
 4. Escape-hatch hardening: make `--proxy`, explicit `--port`, and explicit `--listen` clearly legacy/manual or route through the agent.
 5. Parallel harness: run two dev sessions from fixture worktrees and prove routes, DBs, task queues, frontend backends, logs, and traces remain distinct.

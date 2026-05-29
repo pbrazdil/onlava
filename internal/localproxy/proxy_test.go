@@ -404,6 +404,7 @@ func TestProxyRoutesAndRedirects(t *testing.T) {
 	defer proxy.Close()
 
 	client := newProxyClient(t, cacheDir)
+	defer client.CloseIdleConnections()
 	apiEcho := getEcho(t, client, fmt.Sprintf("https://api.acme.localhost:%d/v1?x=1", httpsPort))
 	if apiEcho.Server != "api" || apiEcho.Host != fmt.Sprintf("api.acme.localhost:%d", httpsPort) || apiEcho.Path != "/v1" || apiEcho.RawQuery != "x=1" {
 		t.Fatalf("api echo = %+v", apiEcho)
@@ -495,6 +496,7 @@ func TestProxyServesHTTP2(t *testing.T) {
 	defer proxy.Close()
 
 	client := newProxyClient(t, cacheDir)
+	defer client.CloseIdleConnections()
 	resp, err := client.Get(fmt.Sprintf("https://api.acme.localhost:%d/v1", httpsPort))
 	if err != nil {
 		t.Fatalf("HTTP/2 proxy request error = %v", err)
@@ -565,6 +567,7 @@ func TestStartContinuesWhenHTTPRedirectPortUnavailable(t *testing.T) {
 	defer proxy.Close()
 
 	client := newProxyClient(t, cacheDir)
+	defer client.CloseIdleConnections()
 	echo := getEcho(t, client, fmt.Sprintf("https://api.acme.localhost:%d/v1", httpsPort))
 	if echo.Server != "api" {
 		t.Fatalf("echo server = %q, want api", echo.Server)
@@ -598,16 +601,11 @@ func TestStartInstallsTrustWhenNotSkipped(t *testing.T) {
 		installLocalCATrust = oldInstaller
 	})
 
-	proxy, err := Start(Config{
+	proxy := startProxyOnRandomPorts(t, Config{
 		Workspace:        "acme",
 		APIUpstream:      api.URL,
-		HTTPPort:         freeTCPPort(t),
-		HTTPSPort:        freeTCPPort(t),
 		SkipInstallTrust: false,
 	})
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
 	defer proxy.Close()
 	if calledPath == "" {
 		t.Fatal("trust installer was not called")
@@ -639,16 +637,11 @@ func TestStartSkipsTrustInstallerWhenAlreadyTrusted(t *testing.T) {
 		installLocalCATrust = oldInstaller
 	})
 
-	proxy, err := Start(Config{
+	proxy := startProxyOnRandomPorts(t, Config{
 		Workspace:        "acme",
 		APIUpstream:      api.URL,
-		HTTPPort:         freeTCPPort(t),
-		HTTPSPort:        freeTCPPort(t),
 		SkipInstallTrust: false,
 	})
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
 	defer proxy.Close()
 	if checkedPath == "" {
 		t.Fatal("trust status was not checked")
@@ -818,6 +811,25 @@ func freeTCPPort(t *testing.T) int {
 	}
 	defer ln.Close()
 	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func startProxyOnRandomPorts(t *testing.T, cfg Config) *Proxy {
+	t.Helper()
+	var lastErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		cfg.HTTPPort = freeTCPPort(t)
+		cfg.HTTPSPort = freeTCPPort(t)
+		proxy, err := Start(cfg)
+		if err == nil {
+			return proxy
+		}
+		lastErr = err
+		if !strings.Contains(err.Error(), "bind: address already in use") {
+			break
+		}
+	}
+	t.Fatalf("Start() error = %v", lastErr)
+	return nil
 }
 
 func fileMode(t *testing.T, path string) os.FileMode {

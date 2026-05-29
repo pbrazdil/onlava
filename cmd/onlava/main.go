@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/stdlog"
 )
+
+var cliStderr io.Writer = os.Stderr
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -45,8 +48,8 @@ func run(args []string) error {
 		return statusCommand(args[1:])
 	case "down":
 		return downCommand(args[1:])
-	case "gc":
-		return gcCommand(args[1:])
+	case "prune":
+		return pruneCommand(args[1:])
 	case "db":
 		return dbCommand(args[1:])
 	case "worker":
@@ -87,7 +90,7 @@ func usageError() error {
     onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
     onlava status --json [--app-root <path>] [--session <id>]
     onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
-    onlava gc --older-than <duration> [--app-root <path>] [--json]
+    onlava prune --older-than <duration> [--app-root <path>] [--json]
     onlava db psql [--app-root <path>] [psql args...]
     onlava db reset [--app-root <path>]
     onlava db drop [--app-root <path>]
@@ -265,10 +268,10 @@ func warnDevEscapeHatches(opts devOptions) {
 		return
 	}
 	if opts.ListenSet || opts.PortSet {
-		fmt.Fprintln(os.Stderr, "onlava: warning: --listen/--port force a manual TCP app backend; this is a debugging escape hatch and can be less parallel-safe than the default agent Unix-socket backend")
+		fmt.Fprintln(cliStderr, "onlava: warning: --listen/--port force a manual TCP app backend; this is a debugging escape hatch and can be less parallel-safe than the default agent Unix-socket backend")
 	}
 	if opts.Proxy || opts.Trust || devProxyEnabledByEnv() {
-		fmt.Fprintln(os.Stderr, "onlava: warning: local proxy mode uses legacy machine-global proxy ports; prefer default agent-routed session URLs for parallel worktrees")
+		fmt.Fprintln(cliStderr, "onlava: warning: local proxy mode uses legacy machine-global proxy ports; prefer default agent-routed session URLs for parallel worktrees")
 	}
 }
 

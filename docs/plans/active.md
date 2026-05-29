@@ -26,7 +26,17 @@ reuse IDs; this list can still be ordered by current priority.
   - Status: active
   - Owner: onlava runtime / ONLV integration
   - Created: 2026-05-27
-  - Focus: close the remaining agent-runtime edges around devdash storage, DB-aware GC, non-destructive restart, legacy proxy opt-in, setup policy, and the two-worktree gate.
+  - Focus: source-review gap closure around devdash storage, DB-aware prune, non-destructive restart, legacy proxy removal, setup policy, and the two-worktree ONLV gate.
+- [0049 Browser Direct API Routing](0049-browser-direct-api-routing.md)
+  - Status: active
+  - Owner: onlava runtime / ONLV Pulse integration
+  - Created: 2026-05-28
+  - Focus: replace Pulse's same-origin Vite API proxy with direct browser calls to the agent-routed API origin, with explicit auth, CORS, and sync validation.
+- [0050 Test Suite Speed and Stability](0050-test-suite-speed-hardening.md)
+  - Status: active
+  - Owner: onlava runtime / test infrastructure
+  - Created: 2026-05-28
+  - Focus: fix flaky Grafana version probing, silence expected CLI warnings in tests, add timing reports, and reduce warm-cache `go test -count=1 ./...` runtime.
 - [0047 TypeScript Temporal Workers](0047-typescript-temporal-workers.md)
   - Status: active
   - Owner: onlava runtime / Temporal

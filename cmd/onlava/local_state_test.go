@@ -8,6 +8,8 @@ import (
 )
 
 func TestEnsureOnlavaLocalStateIgnoredCreatesGitignore(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	if err := ensureOnlavaLocalStateIgnored(root); err != nil {
 		t.Fatalf("ensureOnlavaLocalStateIgnored: %v", err)
@@ -22,6 +24,8 @@ func TestEnsureOnlavaLocalStateIgnoredCreatesGitignore(t *testing.T) {
 }
 
 func TestEnsureOnlavaLocalStateIgnoredPreservesExistingGitignore(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	path := filepath.Join(root, ".onlava", ".gitignore")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -49,6 +53,8 @@ func TestEnsureOnlavaLocalStateIgnoredPreservesExistingGitignore(t *testing.T) {
 }
 
 func TestEnsureLocalStateDirIgnored(t *testing.T) {
+	t.Parallel()
+
 	root := filepath.Join(t.TempDir(), "custom-cache")
 	if err := ensureLocalStateDirIgnored(root); err != nil {
 		t.Fatalf("ensureLocalStateDirIgnored: %v", err)

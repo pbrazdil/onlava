@@ -18,6 +18,7 @@ type Store struct {
 }
 
 const sqliteBusyTimeoutMS = 5_000
+const SQLiteBusyTimeoutMS = sqliteBusyTimeoutMS
 
 func OpenStore(cacheRoot string) (*Store, error) {
 	if cacheRoot == "" {
@@ -52,6 +53,10 @@ func storeSQLiteDSN(dbPath string) string {
 		filepath.ToSlash(dbPath),
 		sqliteBusyTimeoutMS,
 	)
+}
+
+func StoreSQLiteDSN(dbPath string) string {
+	return storeSQLiteDSN(dbPath)
 }
 
 func (s *Store) Close() error {

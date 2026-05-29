@@ -9,9 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pbrazdil/onlava/internal/build"
 )
 
 func TestParseHarnessArgs(t *testing.T) {
+	t.Parallel()
+
 	opts, err := parseHarnessArgs([]string{"--app-root", "/tmp/app", "--json", "--write"})
 	if err != nil {
 		t.Fatalf("parseHarnessArgs returned error: %v", err)
@@ -25,6 +29,8 @@ func TestParseHarnessArgs(t *testing.T) {
 }
 
 func TestParseHarnessSelfArgs(t *testing.T) {
+	t.Parallel()
+
 	opts, err := parseHarnessSelfArgs([]string{"--repo-root", "/tmp/onlava", "--json", "--write"})
 	if err != nil {
 		t.Fatalf("parseHarnessSelfArgs returned error: %v", err)
@@ -38,6 +44,8 @@ func TestParseHarnessSelfArgs(t *testing.T) {
 }
 
 func TestFindOnlavaRepoRoot(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	nested := filepath.Join(root, "cmd", "onlava")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
@@ -57,6 +65,8 @@ func TestFindOnlavaRepoRoot(t *testing.T) {
 }
 
 func TestRunHarnessKnowledgeStepSuccess(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 	writeTestAppFile(t, root, "docs/local-contract.md", "[self](harness-engineering.md)\n")
 	writeTestAppFile(t, root, "docs/harness-engineering.md", "[schema](schemas/onlava.harness.self.v1.schema.json)\n")
@@ -75,6 +85,8 @@ func TestRunHarnessKnowledgeStepSuccess(t *testing.T) {
 }
 
 func TestRunHarnessKnowledgeStepReportsInvalidSchemaAndBrokenLink(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{`)
 	writeTestAppFile(t, root, "docs/local-contract.md", "[missing](missing.md)\n")
 	writeTestAppFile(t, root, "docs/harness-engineering.md", "\n")
@@ -97,6 +109,8 @@ func TestRunHarnessKnowledgeStepReportsInvalidSchemaAndBrokenLink(t *testing.T) 
 }
 
 func TestRunHarnessKnowledgeStepReportsInvalidExecPlan(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 	writeTestAppFile(t, root, "docs/plans/feature.md", "# Feature\n\nThis ExecPlan is a living document.\n\n## Purpose / Big Picture\n\nImplement a feature.\n")
 
@@ -114,6 +128,8 @@ func TestRunHarnessKnowledgeStepReportsInvalidExecPlan(t *testing.T) {
 }
 
 func TestRunHarnessKnowledgeStepReportsStaleSkill(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 	writeTestAppFile(t, root, "SKILL.md", "---\nname: onlava\n---\n\n# onlava\n\nOld skill.\n")
 
@@ -131,6 +147,8 @@ func TestRunHarnessKnowledgeStepReportsStaleSkill(t *testing.T) {
 }
 
 func TestRunOnlavaHarnessJSONSuccessWritesLatest(t *testing.T) {
+	useFakeBuildGoRunner(t)
+
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
@@ -166,6 +184,17 @@ func TestRunOnlavaHarnessJSONSuccessWritesLatest(t *testing.T) {
 }
 
 func TestRunOnlavaHarnessJSONFailureIncludesNextAction(t *testing.T) {
+	restoreRunner := build.SetGoRunnerForTesting(func(_ context.Context, _ string, args ...string) error {
+		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
+			return nil
+		}
+		if len(args) >= 4 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" {
+			return errors.New("go build -buildvcs=false failed: exit status 1\nsvc/api.go:6:37: undefined: MissingSymbol")
+		}
+		return errors.New("unexpected fake go command: " + strings.Join(args, " "))
+	})
+	t.Cleanup(restoreRunner)
+
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)

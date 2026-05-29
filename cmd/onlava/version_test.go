@@ -7,6 +7,8 @@ import (
 )
 
 func TestBuildVersionResponse(t *testing.T) {
+	t.Parallel()
+
 	resp := buildVersionResponse()
 	if resp.SchemaVersion != "onlava.version.v1" {
 		t.Fatalf("schema = %q", resp.SchemaVersion)
@@ -20,6 +22,8 @@ func TestBuildVersionResponse(t *testing.T) {
 }
 
 func TestWriteVersionJSON(t *testing.T) {
+	t.Parallel()
+
 	var out bytes.Buffer
 	if err := writeVersionJSON(&out, buildVersionResponse()); err != nil {
 		t.Fatalf("writeVersionJSON() error = %v", err)

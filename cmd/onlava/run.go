@@ -3,14 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"go/ast"
+	"go/token"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/build"
+	"github.com/pbrazdil/onlava/internal/model"
+	"github.com/pbrazdil/onlava/internal/parse"
 )
 
 type runOptions struct {
@@ -108,8 +114,33 @@ func runHeadless(addr string, opts runOptions) error {
 	if err != nil {
 		return err
 	}
-	result, err := build.App(root, cfg)
+	if !strings.EqualFold(strings.TrimSpace(opts.Env), "production") {
+		result, ok, err := build.LoadReusableBinary(root, cfg)
+		if err != nil {
+			return err
+		}
+		if ok {
+			if err := build.WriteLatestBuildManifest(result, "compiled"); err != nil {
+				return err
+			}
+			return startHeadlessApp(root, cfg, result.Binary, addr, opts)
+		}
+	}
+	appModel, err := parse.App(root, cfg.Name)
 	if err != nil {
+		return err
+	}
+	if err := validateHeadlessProductionSecrets(root, appModel, opts); err != nil {
+		return err
+	}
+	result, err := build.Prepare(root, appModel, cfg, build.PrepareOptions{})
+	if err != nil {
+		return err
+	}
+	if err := build.Compile(result); err != nil {
+		if result.Ephemeral {
+			_ = os.RemoveAll(result.Dir)
+		}
 		return err
 	}
 	return startHeadlessApp(root, cfg, result.Binary, addr, opts)
@@ -146,6 +177,138 @@ func startHeadlessApp(root string, cfg app.Config, binary, addr string, opts run
 func headlessRuntimeRole(cfg app.Config) string {
 	_ = cfg
 	return "api"
+}
+
+func validateHeadlessProductionSecrets(root string, appModel *model.App, opts runOptions) error {
+	if !strings.EqualFold(strings.TrimSpace(opts.Env), "production") {
+		return nil
+	}
+	env, err := appEnvWithDotEnv(os.Environ(), root)
+	if err != nil {
+		return err
+	}
+	values := map[string]string{}
+	for _, item := range env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	var missing []string
+	for _, field := range collectAppSecretFields(appModel) {
+		keys := headlessSecretEnvKeys(field)
+		found := false
+		for _, key := range keys {
+			if _, ok := values[key]; ok {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, fmt.Sprintf("%s (%s)", field, strings.Join(keys, ", ")))
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("runtime: missing required secrets for production: %s", strings.Join(missing, "; "))
+}
+
+func collectAppSecretFields(appModel *model.App) []string {
+	if appModel == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, pkg := range appModel.Packages {
+		for _, file := range pkg.Files {
+			for _, decl := range file.AST.Decls {
+				gen, ok := decl.(*ast.GenDecl)
+				if !ok || gen.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gen.Specs {
+					value, ok := spec.(*ast.ValueSpec)
+					if !ok || len(value.Names) != 1 || value.Names[0].Name != "secrets" {
+						continue
+					}
+					if structType, ok := value.Type.(*ast.StructType); ok {
+						collectSecretStructFields(structType, seen)
+					}
+					if len(value.Values) != 1 {
+						continue
+					}
+					lit, ok := value.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					if structType, ok := lit.Type.(*ast.StructType); ok {
+						collectSecretStructFields(structType, seen)
+					}
+				}
+			}
+		}
+	}
+	fields := make([]string, 0, len(seen))
+	for field := range seen {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	return fields
+}
+
+func collectSecretStructFields(structType *ast.StructType, seen map[string]bool) {
+	if structType == nil || structType.Fields == nil {
+		return
+	}
+	for _, field := range structType.Fields.List {
+		for _, name := range field.Names {
+			if ast.IsExported(name.Name) {
+				seen[name.Name] = true
+			}
+		}
+	}
+}
+
+func headlessSecretEnvKeys(fieldName string) []string {
+	keys := []string{fieldName}
+	alt := headlessSecretEnvKey(fieldName)
+	if alt != "" && alt != fieldName {
+		keys = append(keys, alt)
+	}
+	return keys
+}
+
+func headlessSecretEnvKey(name string) string {
+	if name == "" {
+		return ""
+	}
+	runes := []rune(name)
+	var b strings.Builder
+	for i, r := range runes {
+		if i > 0 && shouldInsertSecretUnderscore(runes[i-1], r, nextSecretRune(runes, i)) {
+			b.WriteByte('_')
+		}
+		b.WriteRune(unicode.ToUpper(r))
+	}
+	return b.String()
+}
+
+func nextSecretRune(runes []rune, index int) rune {
+	if index+1 >= len(runes) {
+		return 0
+	}
+	return runes[index+1]
+}
+
+func shouldInsertSecretUnderscore(prev, current, next rune) bool {
+	if !unicode.IsUpper(current) {
+		return false
+	}
+	if unicode.IsLower(prev) || unicode.IsDigit(prev) {
+		return true
+	}
+	return unicode.IsUpper(prev) && next != 0 && unicode.IsLower(next)
 }
 
 func appProcessEnv(root string, cfg app.Config, logFormat string, envName string, extra ...string) ([]string, error) {

@@ -1,11 +1,14 @@
 package build
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	appcfg "github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/codegen"
@@ -92,6 +95,33 @@ func Open(conn string) (*pgxpool.Pool, error) {
 	}
 	if !strings.Contains(got, `"github.com/pbrazdil/onlava/pgxpool"`) {
 		t.Fatalf("expected github.com/pbrazdil/onlava/pgxpool import to be present, got:\n%s", got)
+	}
+}
+
+func TestSeedOnlavaGoSumMergesWorkspaceAndRepoSums(t *testing.T) {
+	workspace := t.TempDir()
+	repo := t.TempDir()
+	writeBuildTestFile(t, workspace, "go.sum", "example.com/app v1.0.0 h1:app\n")
+	writeBuildTestFile(t, repo, "go.sum", "example.com/onlava-dep v1.0.0 h1:onlava\nexample.com/app v1.0.0 h1:app\n")
+
+	if err := seedOnlavaGoSum(workspace, repo); err != nil {
+		t.Fatalf("seedOnlavaGoSum() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "go.sum"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"example.com/app v1.0.0 h1:app\n",
+		"example.com/onlava-dep v1.0.0 h1:onlava\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("go.sum missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "example.com/app") != 1 {
+		t.Fatalf("go.sum duplicated workspace entry:\n%s", got)
 	}
 }
 
@@ -242,6 +272,7 @@ func Config(context.Context) error { return nil }
 }
 
 func TestPrepareAndCompileWriteLatestBuildManifest(t *testing.T) {
+	useFakeGoRunner(t)
 	cacheDir := t.TempDir()
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
 	appDir := newBuildTestApp(t)
@@ -293,7 +324,223 @@ func TestPrepareAndCompileWriteLatestBuildManifest(t *testing.T) {
 	}
 }
 
+func TestCompileRealGoBuildSmoke(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := t.TempDir()
+	writeBuildTestFile(t, appDir, ".onlava.json", `{"name":"smoke"}`)
+
+	workspace, err := workspaceDir(appDir, "smoke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBuildTestFile(t, workspace, "go.mod", "module example.com/smoke\n\ngo 1.26.0\n")
+	writeBuildTestFile(t, workspace, "onlava_internal_main/main.go", "package main\n\nfunc main() {}\n")
+
+	result := &Result{
+		AppRoot:        appDir,
+		AppName:        "smoke",
+		Dir:            workspace,
+		Binary:         filepath.Join(workspace, "onlava-app"),
+		NeedsTidy:      true,
+		SourceFiles:    []string{"go.mod"},
+		GeneratedFiles: []string{"onlava_internal_main/main.go"},
+	}
+	if err := Compile(result); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if result.NeedsTidy {
+		t.Fatal("expected Compile to clear NeedsTidy")
+	}
+	if _, err := os.Stat(result.Binary); err != nil {
+		t.Fatalf("expected real build binary: %v", err)
+	}
+	manifest, ok, err := ReadLatestBuildManifest(appDir)
+	if err != nil {
+		t.Fatalf("ReadLatestBuildManifest after compile: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected latest build manifest after compile")
+	}
+	if manifest.Build.Phase != "compiled" || !manifest.Build.BinaryExists || !manifest.Build.BuildStateExists {
+		t.Fatalf("manifest build = %+v", manifest.Build)
+	}
+}
+
+func TestCompileRunsTidyOnlyAfterBuildFailure(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := t.TempDir()
+	writeBuildTestFile(t, appDir, ".onlava.json", `{"name":"smoke"}`)
+
+	workspace, err := workspaceDir(appDir, "smoke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBuildTestFile(t, workspace, "go.mod", "module example.com/smoke\n\ngo 1.26.0\n")
+	writeBuildTestFile(t, workspace, "onlava_internal_main/main.go", "package main\n\nfunc main() {}\n")
+
+	var commands []string
+	tidied := false
+	old := runGo
+	runGo = func(_ context.Context, _ string, args ...string) error {
+		commands = append(commands, strings.Join(args, " "))
+		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
+			tidied = true
+			return nil
+		}
+		if len(args) == 5 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" && args[4] == "./onlava_internal_main" {
+			if !tidied {
+				return fmt.Errorf("go.mod updates needed")
+			}
+			out := args[3]
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+		}
+		return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
+	}
+	t.Cleanup(func() { runGo = old })
+
+	result := &Result{
+		AppRoot:        appDir,
+		AppName:        "smoke",
+		Dir:            workspace,
+		Binary:         filepath.Join(workspace, "onlava-app"),
+		NeedsTidy:      true,
+		SourceFiles:    []string{"go.mod"},
+		GeneratedFiles: []string{"onlava_internal_main/main.go"},
+	}
+	if err := Compile(result); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if got, want := strings.Join(commands, "|"), "build -buildvcs=false -o "+result.Binary+" ./onlava_internal_main|mod tidy|build -buildvcs=false -o "+result.Binary+" ./onlava_internal_main"; got != want {
+		t.Fatalf("go commands = %q, want %q", got, want)
+	}
+	if result.NeedsTidy {
+		t.Fatal("expected Compile to clear NeedsTidy")
+	}
+}
+
+func TestCompileRetriesTidyWhenBuildReportsStaleGoMod(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := t.TempDir()
+	writeBuildTestFile(t, appDir, ".onlava.json", `{"name":"smoke"}`)
+
+	workspace, err := workspaceDir(appDir, "smoke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBuildTestFile(t, workspace, "go.mod", "module example.com/smoke\n\ngo 1.26.0\n")
+	writeBuildTestFile(t, workspace, "onlava_internal_main/main.go", "package main\n\nfunc main() {}\n")
+
+	var commands []string
+	tidied := false
+	old := runGo
+	runGo = func(_ context.Context, _ string, args ...string) error {
+		commands = append(commands, strings.Join(args, " "))
+		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
+			tidied = true
+			return nil
+		}
+		if len(args) == 5 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" && args[4] == "./onlava_internal_main" {
+			if !tidied {
+				return fmt.Errorf("go build -buildvcs=false failed: exit status 1\ngo: updates to go.mod needed; to update it:\n\tgo mod tidy")
+			}
+			out := args[3]
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+		}
+		return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
+	}
+	t.Cleanup(func() { runGo = old })
+
+	result := &Result{
+		AppRoot:        appDir,
+		AppName:        "smoke",
+		Dir:            workspace,
+		Binary:         filepath.Join(workspace, "onlava-app"),
+		NeedsTidy:      false,
+		SourceFiles:    []string{"go.mod"},
+		GeneratedFiles: []string{"onlava_internal_main/main.go"},
+	}
+	if err := Compile(result); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if got, want := strings.Join(commands, "|"), "build -buildvcs=false -o "+result.Binary+" ./onlava_internal_main|mod tidy|build -buildvcs=false -o "+result.Binary+" ./onlava_internal_main"; got != want {
+		t.Fatalf("go commands = %q, want %q", got, want)
+	}
+}
+
+func TestCompileReusesSharedWorkspaceFingerprintBinary(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("ONLAVA_TEST_WORKSPACE_KEY", "shared-buildtest")
+
+	var builds int
+	old := runGo
+	runGo = func(_ context.Context, _ string, args ...string) error {
+		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
+			return nil
+		}
+		if len(args) == 5 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" && args[4] == "./onlava_internal_main" {
+			builds++
+			out := args[3]
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+		}
+		return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
+	}
+	t.Cleanup(func() { runGo = old })
+
+	firstRoot := newBuildTestAppNamed(t, "buildtest")
+	firstModel, err := parse.App(firstRoot, "buildtest")
+	if err != nil {
+		t.Fatalf("parse first app: %v", err)
+	}
+	first, err := Prepare(firstRoot, firstModel, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare first app: %v", err)
+	}
+	if first.ReuseCompiled {
+		t.Fatal("first compile unexpectedly reused a binary")
+	}
+	if err := Compile(first); err != nil {
+		t.Fatalf("compile first app: %v", err)
+	}
+
+	secondRoot := newBuildTestAppNamed(t, "buildtest")
+	secondModel, err := parse.App(secondRoot, "buildtest")
+	if err != nil {
+		t.Fatalf("parse second app: %v", err)
+	}
+	second, err := Prepare(secondRoot, secondModel, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare second app: %v", err)
+	}
+	if !second.ReuseCompiled {
+		t.Fatalf("second compile did not mark the fingerprinted binary reusable: first fingerprint=%s second fingerprint=%s second needs tidy=%v binary exists=%v",
+			first.BuildFingerprint, second.BuildFingerprint, second.NeedsTidy, pathExists(second.Binary))
+	}
+	if first.Binary != second.Binary {
+		t.Fatalf("binary paths differ: first=%s second=%s", first.Binary, second.Binary)
+	}
+	if err := Compile(second); err != nil {
+		t.Fatalf("compile second app: %v", err)
+	}
+	if builds != 1 {
+		t.Fatalf("go build calls = %d, want 1", builds)
+	}
+}
+
 func TestPrepareReusesPersistentWorkspace(t *testing.T) {
+	useFakeGoRunner(t)
 	cacheDir := t.TempDir()
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
 	appDir := newBuildTestApp(t)
@@ -333,7 +580,98 @@ func TestPrepareReusesPersistentWorkspace(t *testing.T) {
 	}
 }
 
+func TestLoadReusableBinaryRequiresMatchingSourceFingerprint(t *testing.T) {
+	useFakeGoRunner(t)
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+	cfg := appcfg.Config{Name: "buildtest"}
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, cfg, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	reused, ok, err := LoadReusableBinary(appDir, cfg)
+	if err != nil {
+		t.Fatalf("LoadReusableBinary() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("expected reusable binary")
+	}
+	if reused.Binary != result.Binary {
+		t.Fatalf("reused binary = %q, want %q", reused.Binary, result.Binary)
+	}
+
+	writeBuildTestFile(t, appDir, "svc/extra.go", "package svc\n\nfunc extra() {}\n")
+	reused, ok, err = LoadReusableBinary(appDir, cfg)
+	if err != nil {
+		t.Fatalf("LoadReusableBinary() after source change error = %v", err)
+	}
+	if ok || reused != nil {
+		t.Fatalf("expected source change to reject cached binary, got ok=%v result=%#v", ok, reused)
+	}
+}
+
+func TestCachedGeneratorFingerprintInvalidatesOnSourceMetadata(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	repo := t.TempDir()
+	sourcePath := filepath.Join(repo, "internal", "sample.go")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourcePath, []byte("package internal\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := cachedGeneratorFingerprint(repo)
+	if err != nil {
+		t.Fatalf("cachedGeneratorFingerprint(first) error = %v", err)
+	}
+	second, err := cachedGeneratorFingerprint(repo)
+	if err != nil {
+		t.Fatalf("cachedGeneratorFingerprint(second) error = %v", err)
+	}
+	if second != first {
+		t.Fatalf("cached fingerprint changed without source metadata change: %q != %q", second, first)
+	}
+	cachePath, err := generatorFingerprintCachePath(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cachePath); err != nil {
+		t.Fatalf("cache file missing: %v", err)
+	}
+
+	if err := os.WriteFile(sourcePath, []byte("package internal\n\nconst X = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	modTime := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(sourcePath, modTime, modTime); err != nil {
+		t.Fatal(err)
+	}
+	third, err := cachedGeneratorFingerprint(repo)
+	if err != nil {
+		t.Fatalf("cachedGeneratorFingerprint(third) error = %v", err)
+	}
+	if third == first {
+		t.Fatalf("cached fingerprint did not change after source metadata changed: %q", third)
+	}
+}
+
 func TestPrepareMarksTidyNeededWhenGoModChanges(t *testing.T) {
+	useFakeGoRunner(t)
 	cacheDir := t.TempDir()
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
 	appDir := newBuildTestApp(t)
@@ -394,24 +732,7 @@ func TestSyncWorkspaceRemovesStaleFiles(t *testing.T) {
 }
 
 func TestLoadCachedGraph(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	appDir := newBuildTestApp(t)
-
-	model, err := parse.App(appDir, "buildtest")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	result.GraphFingerprint = "graph-1"
-	result.Metadata = json.RawMessage(`{"ok":true}`)
-	result.APIEncoding = json.RawMessage(`{"api":"v1"}`)
-	if err := Compile(result); err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	appDir, _ := newCachedBuildTestWorkspace(t, "graph-1")
 
 	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
 	if err != nil {
@@ -435,22 +756,8 @@ func TestLoadCachedGraph(t *testing.T) {
 }
 
 func TestCompileCachedGraphWritesLatestBuildManifest(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	appDir := newBuildTestApp(t)
-
-	model, err := parse.App(appDir, "buildtest")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	result.GraphFingerprint = "graph-1"
-	if err := Compile(result); err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	useFakeGoRunner(t)
+	appDir, _ := newCachedBuildTestWorkspace(t, "graph-1")
 
 	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
 	if err != nil {
@@ -480,22 +787,7 @@ func TestCompileCachedGraphWritesLatestBuildManifest(t *testing.T) {
 }
 
 func TestLoadCachedGraphRejectsOldBuildStateVersion(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	appDir := newBuildTestApp(t)
-
-	model, err := parse.App(appDir, "buildtest")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	result.GraphFingerprint = "graph-1"
-	if err := Compile(result); err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	appDir, result := newCachedBuildTestWorkspace(t, "graph-1")
 
 	statePath := filepath.Join(result.Dir, buildStateFile)
 	data, err := os.ReadFile(statePath)
@@ -525,22 +817,7 @@ func TestLoadCachedGraphRejectsOldBuildStateVersion(t *testing.T) {
 }
 
 func TestRefreshCachedWorkspaceResyncsMissingSourceFiles(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	appDir := newBuildTestApp(t)
-
-	model, err := parse.App(appDir, "buildtest")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	result.GraphFingerprint = "graph-1"
-	if err := Compile(result); err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	appDir, _ := newCachedBuildTestWorkspace(t, "graph-1")
 
 	newFile := "svc/helper.go"
 	writeBuildTestFile(t, appDir, newFile, "package svc\n\nfunc helper() {}\n")
@@ -579,22 +856,7 @@ func TestRefreshCachedWorkspaceResyncsMissingSourceFiles(t *testing.T) {
 }
 
 func TestRefreshCachedWorkspaceMarksNeedsTidyWhenImportsChange(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	appDir := newBuildTestApp(t)
-
-	model, err := parse.App(appDir, "buildtest")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	result.GraphFingerprint = "graph-1"
-	if err := Compile(result); err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	appDir, _ := newCachedBuildTestWorkspace(t, "graph-1")
 
 	writeBuildTestFile(t, appDir, "svc/extra.go", `package svc
 
@@ -622,22 +884,7 @@ import _ "rsc.io/quote"
 }
 
 func TestRefreshCachedWorkspaceFallsBackWhenGeneratedFileMissing(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	appDir := newBuildTestApp(t)
-
-	model, err := parse.App(appDir, "buildtest")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	result, err := Prepare(appDir, model, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	result.GraphFingerprint = "graph-1"
-	if err := Compile(result); err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	appDir, result := newCachedBuildTestWorkspace(t, "graph-1")
 
 	target := filepath.Join(result.Dir, "svc", "onlava.gen.go")
 	if err := os.Remove(target); err != nil {
@@ -723,7 +970,15 @@ func TestSyncGeneratedFilesKeepsPathsThatAreNowRegularSourceFiles(t *testing.T) 
 
 func newBuildTestApp(t *testing.T) string {
 	t.Helper()
+	return newBuildTestAppNamed(t, "")
+}
+
+func newBuildTestAppNamed(t *testing.T, base string) string {
+	t.Helper()
 	root := t.TempDir()
+	if strings.TrimSpace(base) != "" {
+		root = filepath.Join(root, base)
+	}
 	writeBuildTestFile(t, root, "go.mod", "module example.com/buildtest\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeBuildTestFile(t, root, ".onlava.json", `{"name":"buildtest"}`)
 	writeBuildTestFile(t, root, "svc/api.go", `package svc
@@ -734,6 +989,72 @@ import "context"
 func Hello(ctx context.Context) error { return nil }
 `)
 	return root
+}
+
+func newCachedBuildTestWorkspace(t *testing.T, graphFingerprint string) (string, *Result) {
+	t.Helper()
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := t.TempDir()
+
+	const goMod = "module example.com/buildtest\n\ngo 1.26.0\n"
+	const serviceSource = `package svc
+
+import "context"
+
+//onlava:api public
+func Hello(ctx context.Context) error { return nil }
+`
+	writeBuildTestFile(t, appDir, ".onlava.json", `{"name":"buildtest"}`)
+	writeBuildTestFile(t, appDir, "go.mod", goMod)
+	writeBuildTestFile(t, appDir, "svc/api.go", serviceSource)
+
+	workspace, err := workspaceDir(appDir, "buildtest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBuildTestFile(t, workspace, "go.mod", goMod)
+	writeBuildTestFile(t, workspace, "svc/api.go", serviceSource)
+	writeBuildTestFile(t, workspace, "svc/onlava.gen.go", "package svc\n")
+	writeBuildTestFile(t, workspace, "onlava_internal_main/main.go", "package main\n\nfunc main() {}\n")
+
+	depFingerprint, err := dependencyFingerprintFromWorkspace(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceFiles := []string{"go.mod", "svc/api.go"}
+	generatedFiles := []string{"onlava_internal_main/main.go", "svc/onlava.gen.go"}
+	buildFingerprint, err := workspaceBuildFingerprint(workspace, sourceFiles, generatedFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := &Result{
+		AppRoot:               appDir,
+		AppName:               "buildtest",
+		Dir:                   workspace,
+		Binary:                filepath.Join(workspace, workspaceBinaryName(appDir, buildFingerprint)),
+		NeedsTidy:             false,
+		DependencyFingerprint: depFingerprint,
+		BuildFingerprint:      buildFingerprint,
+		GraphFingerprint:      graphFingerprint,
+		Metadata:              json.RawMessage(`{"ok":true}`),
+		APIEncoding:           json.RawMessage(`{"api":"v1"}`),
+		SourceFiles:           append([]string(nil), sourceFiles...),
+		GeneratedFiles:        append([]string(nil), generatedFiles...),
+	}
+	if err := saveBuildState(workspace, buildState{
+		Version:               buildStateVersion,
+		DependencyFingerprint: depFingerprint,
+		BuildFingerprint:      buildFingerprint,
+		GraphFingerprint:      graphFingerprint,
+		Metadata:              append([]byte(nil), result.Metadata...),
+		APIEncoding:           append([]byte(nil), result.APIEncoding...),
+		SourceFiles:           sourceFiles,
+		GeneratedFiles:        generatedFiles,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return appDir, result
 }
 
 func repoRoot(t *testing.T) string {
@@ -754,4 +1075,23 @@ func writeBuildTestFile(t *testing.T, root, rel, contents string) {
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func useFakeGoRunner(t *testing.T) {
+	t.Helper()
+	old := runGo
+	runGo = func(_ context.Context, _ string, args ...string) error {
+		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
+			return nil
+		}
+		if len(args) == 5 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" && args[4] == "./onlava_internal_main" {
+			out := args[3]
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+		}
+		return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
+	}
+	t.Cleanup(func() { runGo = old })
 }

@@ -230,7 +230,7 @@ onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-h
 onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava status --json [--app-root <path>] [--session <id>]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
-onlava gc --older-than <duration> [--app-root <path>] [--json]
+onlava prune --older-than <duration> [--app-root <path>] [--json]
 onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
@@ -288,7 +288,7 @@ Command split:
 - `onlava attach` follows the current agent session's logs by default. It is equivalent to `onlava logs --session current --follow` with the same app-root, limit, stream, and JSONL options, and it does not mutate session state.
 - `onlava agent restart` stops the currently reachable local agent process, starts a new background agent, waits until the control socket is reachable, and returns. The same `--socket`, `--router-listen`, `--router-tls`, `--trust`, and `--json` options apply to the restarted agent.
 - `onlava down` stops and unregisters the selected session but is non-destructive by default. `--db` drops that session's managed Postgres database, `--state` removes that session's `.onlava/sessions/<id>` state root, and `--all` enables both.
-- `onlava gc --older-than <duration>` prunes old agent sessions whose recorded owner is gone or mismatched, and removes their `.onlava/sessions/<id>` state roots. It accepts Go durations such as `336h` plus day shorthand such as `14d`. It does not drop managed databases; use `onlava down --db` or `onlava db drop` for destructive database cleanup.
+- `onlava prune --older-than <duration>` prunes old agent sessions whose recorded owner is gone or mismatched, and removes their `.onlava/sessions/<id>` state roots. It accepts Go durations such as `336h` plus day shorthand such as `14d`. It does not drop managed databases; use `onlava down --db` or `onlava db drop` for destructive database cleanup.
 - When the local agent is active, the agent starts the visible dashboard backend and routes `console.onlava.localhost/s/<session_id>` to it. The Unix-socket control API remains protected by filesystem permissions.
 - The agent router serves HTTPS by default, and newly registered sessions receive `https://...onlava.localhost` routes. `onlava agent --router-http` or `ONLAVA_AGENT_ROUTER_TLS=0` explicitly keeps the router on HTTP for local debugging. `onlava agent --router-tls` and `ONLAVA_AGENT_ROUTER_TLS=1` force HTTPS when an explicit setting is needed. `onlava agent --trust` and `ONLAVA_AGENT_TRUST=1` also enable router TLS and attempt to trust the existing onlava local CA. Trust installation failures are logged; the router still starts.
 - Agent session manifests always include `dashboard` and `mcp` routes for the global agent-owned dashboard. With the agent dashboard active, the manifest does not need matching per-session `dashboard` or `mcp` backends; direct/per-session dashboard endpoints are kept for agent-disabled, unavailable-agent, or explicit local-proxy fallback paths.

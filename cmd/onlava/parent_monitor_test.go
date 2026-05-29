@@ -3,6 +3,8 @@ package main
 import "testing"
 
 func TestParentMonitorShouldCancel(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		initial int

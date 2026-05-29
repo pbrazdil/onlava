@@ -46,7 +46,7 @@ var (
 
 func PinnedVersions() PinnedVersionsConfig {
 	pinnedVersionsOnce.Do(func() {
-		pinnedVersions, pinnedVersionsErr = parsePinnedVersions(pinnedVersionsJSON)
+		pinnedVersions, pinnedVersionsErr = ParsePinnedVersions(pinnedVersionsJSON)
 	})
 	if pinnedVersionsErr != nil {
 		panic(pinnedVersionsErr)
@@ -72,7 +72,7 @@ func GrafanaPluginPreinstallSync() string {
 	return strings.Join(plugins, ",")
 }
 
-func parsePinnedVersions(data []byte) (PinnedVersionsConfig, error) {
+func ParsePinnedVersions(data []byte) (PinnedVersionsConfig, error) {
 	var cfg PinnedVersionsConfig
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()

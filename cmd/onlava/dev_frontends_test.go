@@ -13,6 +13,8 @@ import (
 )
 
 func TestManagedFrontendCommandUsesViteLocalBin(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	writeFrontendPackage(t, root, `{"scripts":{"dev":"vite"}}`)
 	bin := writeFrontendBin(t, root, "vite")
@@ -30,6 +32,8 @@ func TestManagedFrontendCommandUsesViteLocalBin(t *testing.T) {
 }
 
 func TestManagedFrontendCommandUsesAstroLocalBin(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	writeFrontendPackage(t, root, `{"scripts":{"dev":"astro dev"}}`)
 	bin := writeFrontendBin(t, root, "astro")
@@ -47,6 +51,8 @@ func TestManagedFrontendCommandUsesAstroLocalBin(t *testing.T) {
 }
 
 func TestManagedFrontendPackageManagerUsesWorkspaceParent(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"packageManager":"bun@1.3.11"}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -62,6 +68,8 @@ func TestManagedFrontendPackageManagerUsesWorkspaceParent(t *testing.T) {
 }
 
 func TestFrontendDevEnvIncludesSessionRoutes(t *testing.T) {
+	t.Parallel()
+
 	env := frontendDevEnv([]string{"EXISTING=1"}, "/repo/app", "127.0.0.1:49231", localagent.Session{
 		SessionID: "main-abc123",
 		Routes: map[string]string{
@@ -87,6 +95,8 @@ func TestFrontendDevEnvIncludesSessionRoutes(t *testing.T) {
 }
 
 func TestManagedFrontendBackendsRequiresExplicitSharedUpstream(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	cfg := app.Config{
 		Proxy: app.ProxyConfig{
@@ -111,6 +121,8 @@ func TestManagedFrontendBackendsRequiresExplicitSharedUpstream(t *testing.T) {
 }
 
 func TestManagedFrontendBackendsAllowsExplicitSharedUpstream(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	cfg := app.Config{
 		Proxy: app.ProxyConfig{

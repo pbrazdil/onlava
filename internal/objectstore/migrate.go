@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -64,12 +65,12 @@ func (s *Store) CreateObject(ctx context.Context, actor Actor, req CreateObjectR
 	}
 
 	ddl := []string{createObjectTableDDL(obj.TableName)}
-	migrationID, err := s.startMigration(ctx, tenant.ID, obj.ID, 0, 1, ddl)
+	migrationID, err := newMigrationID(ddl)
 	if err != nil {
 		return nil, err
 	}
 	var event *Event
-	if err := s.withMigrationTx(ctx, tenant.ID, obj.ID, migrationID, func(tx pgxTx) error {
+	if err := s.withMigrationTx(ctx, tenant.Key, tenant.ID, obj.ID, migrationID, 0, 1, ddl, "", func(tx pgxTx) error {
 		if _, err := tx.Exec(ctx, ddl[0]); err != nil {
 			return fmt.Errorf("create object table %s: %w", obj.TableName, err)
 		}
@@ -219,12 +220,12 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 		return nil, err
 	}
 	ddl = append(ddl, relationDDL...)
-	migrationID, err := s.startMigration(ctx, state.Tenant.ID, state.Object.ID, fromVersion, toVersion, ddl)
+	migrationID, err := newMigrationID(ddl)
 	if err != nil {
 		return nil, err
 	}
 	var event *Event
-	if err := s.withMigrationTx(ctx, state.Tenant.ID, state.Object.ID, migrationID, func(tx pgxTx) error {
+	if err := s.withMigrationTx(ctx, state.Tenant.Key, state.Tenant.ID, state.Object.ID, migrationID, fromVersion, toVersion, ddl, "", func(tx pgxTx) error {
 		for _, stmt := range ddl {
 			if _, err := tx.Exec(ctx, stmt); err != nil {
 				return fmt.Errorf("apply field migration %s.%s: %w", state.Object.NameSingular, field.Name, err)
@@ -262,11 +263,8 @@ func (s *Store) CreateField(ctx context.Context, actor Actor, objectName string,
 			}
 			field.Options = append(field.Options, option)
 		}
-		if _, err := tx.Exec(ctx, `
-			update `+qualifiedIdent(MetadataSchema, "objects")+`
-			set schema_version = $1, updated_at = $2
-			where id = $3
-		`, toVersion, s.now(), state.Object.ID); err != nil {
+		toVersion, err = s.bumpObjectSchemaVersion(ctx, tx, state.Object.ID)
+		if err != nil {
 			return err
 		}
 		if err := s.verifyFieldColumns(ctx, tx, state.Object.TableName, field.Columns); err != nil {
@@ -324,39 +322,224 @@ type pgxTx interface {
 	Rollback(context.Context) error
 }
 
-func (s *Store) withMigrationTx(ctx context.Context, tenantID, objectID, migrationID string, fn func(pgxTx) error) error {
+const (
+	metadataBootstrapLockName       = "metadata-bootstrap"
+	physicalSchemaMigrationLockName = "physical-schema-migration"
+	sharedTriggerFunctionLockName   = "shared-trigger-function"
+	tenantSchemaMigrationLockName   = "tenant-schema-migration"
+	tenantRecordSchemaLockName      = "tenant-record-schema"
+	objectSchemaMigrationLockName   = "object-schema-migration"
+)
+
+func (s *Store) withMigrationTx(ctx context.Context, tenantKey, tenantID, objectID, migrationID string, fromVersion, toVersion int64, ddl []string, sharedLockName string, fn func(pgxTx) error) error {
+	for attempt := 0; ; attempt++ {
+		err := s.withMigrationTxOnce(ctx, tenantKey, tenantID, objectID, migrationID, fromVersion, toVersion, ddl, sharedLockName, fn)
+		if !isDeadlockDetected(err) {
+			return err
+		}
+		if retryErr := waitBeforeAdvisoryLockRetry(ctx, attempt); retryErr != nil {
+			return err
+		}
+	}
+}
+
+func (s *Store) withMigrationTxOnce(ctx context.Context, tenantKey, tenantID, objectID, migrationID string, fromVersion, toVersion int64, ddl []string, sharedLockName string, fn func(pgxTx) error) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock($1)`, advisoryLockKey("objectstore", tenantID, objectID)); err != nil {
+	if err := lockMetadataBootstrapRead(ctx, tx); err != nil {
 		return err
 	}
-	if err := fn(tx); err != nil {
+	if err := lockPhysicalSchemaMigration(ctx, tx); err != nil {
 		return err
+	}
+	if sharedLockName != "" {
+		if err := lockSharedSchemaMigration(ctx, tx, sharedLockName); err != nil {
+			return err
+		}
+	}
+	if err := lockTenantSchemaMigration(ctx, tx, tenantKey); err != nil {
+		return err
+	}
+	if err := lockRecordSchemaWrite(ctx, tx, tenantKey); err != nil {
+		return err
+	}
+	if err := lockObjectMigration(ctx, tx, tenantID, objectID); err != nil {
+		return err
+	}
+	if objectID != "" && fromVersion > 0 {
+		currentVersion, err := loadObjectSchemaVersion(ctx, tx, tenantID, objectID)
+		if err != nil {
+			return err
+		}
+		fromVersion = currentVersion
+		toVersion = currentVersion + 1
+	}
+	if err := s.insertMigration(ctx, tx, migrationID, tenantID, objectID, fromVersion, toVersion, ddl); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `savepoint onlava_objectstore_migration`); err != nil {
+		return fmt.Errorf("create migration savepoint: %w", err)
+	}
+	if err := fn(tx); err != nil {
+		if isDeadlockDetected(err) {
+			return err
+		}
+		if _, rollbackErr := tx.Exec(ctx, `rollback to savepoint onlava_objectstore_migration`); rollbackErr != nil {
+			return fmt.Errorf("%w; rollback migration savepoint: %v", err, rollbackErr)
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return fmt.Errorf("%w; commit migration marker: %v", err, commitErr)
+		}
+		return err
+	}
+	if _, err := tx.Exec(ctx, `release savepoint onlava_objectstore_migration`); err != nil {
+		return fmt.Errorf("release migration savepoint: %w", err)
 	}
 	return tx.Commit(ctx)
 }
 
-func (s *Store) startMigration(ctx context.Context, tenantID, objectID string, fromVersion, toVersion int64, ddl []string) (string, error) {
+func isDeadlockDetected(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
+}
+
+func waitBeforeAdvisoryLockRetry(ctx context.Context, attempt int) error {
+	const maxAttempts = 32
+	if attempt >= maxAttempts {
+		return fmt.Errorf("advisory lock retry attempts exhausted")
+	}
+	delay := time.Duration(attempt+1) * 5 * time.Millisecond
+	if delay > 50*time.Millisecond {
+		delay = 50 * time.Millisecond
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// DDL paths and tenant upserts acquire locks in this order:
+// 1. shared metadata-bootstrap lock, 2. global physical-schema DDL lock,
+// 3. optional shared-schema lock, 4. tenant schema lock,
+// 5. exclusive tenant record-schema barrier, 6. object lock.
+// Metadata bootstrap takes the bootstrap lock exclusively. Record writes take the
+// same bootstrap lock in shared mode, then the tenant record-schema barrier in
+// shared mode so writes in other tenants are not blocked by tenant-local DDL.
+func lockMetadataBootstrapWrite(ctx context.Context, q Queryer) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock($1)`, advisoryLockKey("objectstore", metadataBootstrapLockName)); err != nil {
+		return fmt.Errorf("lock metadata bootstrap: %w", err)
+	}
+	return nil
+}
+
+func lockMetadataBootstrapRead(ctx context.Context, q Queryer) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock_shared($1)`, advisoryLockKey("objectstore", metadataBootstrapLockName)); err != nil {
+		return fmt.Errorf("lock metadata bootstrap read: %w", err)
+	}
+	return nil
+}
+
+func lockPhysicalSchemaMigration(ctx context.Context, q Queryer) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock($1)`, advisoryLockKey("objectstore", physicalSchemaMigrationLockName)); err != nil {
+		return fmt.Errorf("lock physical schema migration: %w", err)
+	}
+	return nil
+}
+
+func lockTenantSchemaMigration(ctx context.Context, q Queryer, tenantKey string) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock($1)`, advisoryLockKey("objectstore", tenantSchemaMigrationLockName, tenantKey)); err != nil {
+		return fmt.Errorf("lock tenant schema migration: %w", err)
+	}
+	return nil
+}
+
+func lockSharedSchemaMigration(ctx context.Context, q Queryer, name string) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock($1)`, advisoryLockKey("objectstore", "shared-schema-migration", name)); err != nil {
+		return fmt.Errorf("lock shared schema migration: %w", err)
+	}
+	return nil
+}
+
+func lockRecordSchemaRead(ctx context.Context, q Queryer, tenantKey string) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock_shared($1)`, advisoryLockKey("objectstore", tenantRecordSchemaLockName, tenantKey)); err != nil {
+		return fmt.Errorf("lock record schema read: %w", err)
+	}
+	return nil
+}
+
+func lockRecordSchemaWrite(ctx context.Context, q Queryer, tenantKey string) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock($1)`, advisoryLockKey("objectstore", tenantRecordSchemaLockName, tenantKey)); err != nil {
+		return fmt.Errorf("lock record schema write: %w", err)
+	}
+	return nil
+}
+
+func lockObjectMigration(ctx context.Context, q Queryer, tenantID, objectID string) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock($1)`, advisoryLockKey("objectstore", objectSchemaMigrationLockName, tenantID, objectID)); err != nil {
+		return fmt.Errorf("lock object migration: %w", err)
+	}
+	return nil
+}
+
+func loadObjectSchemaVersion(ctx context.Context, q Queryer, tenantID, objectID string) (int64, error) {
+	var version int64
+	err := q.QueryRow(ctx, `
+		select schema_version
+		from `+qualifiedIdent(MetadataSchema, "objects")+`
+		where tenant_id = $1 and id = $2
+	`, tenantID, objectID).Scan(&version)
+	if err != nil {
+		return 0, fmt.Errorf("load object schema version: %w", err)
+	}
+	return version, nil
+}
+
+func (s *Store) bumpObjectSchemaVersion(ctx context.Context, q Queryer, objectID string) (int64, error) {
+	var version int64
+	err := q.QueryRow(ctx, `
+		update `+qualifiedIdent(MetadataSchema, "objects")+`
+		set schema_version = schema_version + 1, updated_at = $1
+		where id = $2
+		returning schema_version
+	`, s.now(), objectID).Scan(&version)
+	if err != nil {
+		return 0, fmt.Errorf("bump object schema version: %w", err)
+	}
+	return version, nil
+}
+
+func newMigrationID(ddl []string) (string, error) {
 	id, err := newUUID()
 	if err != nil {
 		return "", err
 	}
-	ddlData, err := json.Marshal(ddl)
-	if err != nil {
+	if _, err := json.Marshal(ddl); err != nil {
 		return "", err
 	}
-	_, err = s.db.Exec(ctx, `
+	return id, nil
+}
+
+func (s *Store) insertMigration(ctx context.Context, q Queryer, migrationID, tenantID, objectID string, fromVersion, toVersion int64, ddl []string) error {
+	ddlData, err := json.Marshal(ddl)
+	if err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `
 		insert into `+qualifiedIdent(MetadataSchema, "schema_migrations")+` (
 			id, tenant_id, object_id, from_version, to_version, status, ddl, started_at
 		) values ($1, $2, $3, $4, $5, 'running', $6, $7)
-	`, id, tenantID, nullableUUID(objectID), fromVersion, toVersion, string(ddlData), s.now())
+	`, migrationID, tenantID, nullableUUID(objectID), fromVersion, toVersion, string(ddlData), s.now())
 	if err != nil {
-		return "", fmt.Errorf("start schema migration: %w", err)
+		return fmt.Errorf("start schema migration: %w", err)
 	}
-	return id, nil
+	return nil
 }
 
 func (s *Store) finishMigration(ctx context.Context, migrationID, status, message string) error {

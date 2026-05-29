@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/pbrazdil/onlava/errs"
-	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/devreport"
 	"github.com/pbrazdil/onlava/internal/redact"
 	"github.com/pbrazdil/onlava/runtime/shared"
 )
@@ -48,7 +48,7 @@ type devReporter struct {
 	token       string
 
 	client *http.Client
-	queue  chan devdash.ReportEnvelope
+	queue  chan devreport.ReportEnvelope
 	done   chan struct{}
 	stop   chan struct{}
 
@@ -90,7 +90,7 @@ func startDevelopmentReporting(cfg AppConfig) func() {
 		url:         url,
 		token:       token,
 		client:      &http.Client{Timeout: 2 * time.Second},
-		queue:       make(chan devdash.ReportEnvelope, 1024),
+		queue:       make(chan devreport.ReportEnvelope, 1024),
 		done:        make(chan struct{}),
 		stop:        make(chan struct{}),
 	}
@@ -162,7 +162,7 @@ func (r *devReporter) loop() {
 	}
 }
 
-func (r *devReporter) post(env devdash.ReportEnvelope) error {
+func (r *devReporter) post(env devreport.ReportEnvelope) error {
 	body, err := json.Marshal(env)
 	if err != nil {
 		return err
@@ -184,7 +184,7 @@ func (r *devReporter) post(env devdash.ReportEnvelope) error {
 	return nil
 }
 
-func (r *devReporter) enqueue(env devdash.ReportEnvelope) {
+func (r *devReporter) enqueue(env devreport.ReportEnvelope) {
 	if r == nil || r.disabled.Load() {
 		return
 	}
@@ -312,10 +312,10 @@ func startRequestTrace(state *requestState) {
 	if reporter == nil || !state.traceEnabled {
 		return
 	}
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   span.traceID,
 			SpanID:    span.spanID,
 			EventID:   reporter.nextEventID(),
@@ -356,10 +356,10 @@ func finishRequestTrace(state *requestState, httpStatus int, payload any, err er
 		return
 	}
 	endpointName := optionalString(span.endpoint)
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   span.traceID,
 			SpanID:    span.spanID,
 			EventID:   reporter.nextEventID(),
@@ -379,7 +379,7 @@ func finishRequestTrace(state *requestState, httpStatus int, payload any, err er
 			},
 		},
 	})
-	summary := &devdash.TraceSummary{
+	summary := &devreport.TraceSummary{
 		AppID:         reporter.appID,
 		TraceID:       span.traceID,
 		SpanID:        span.spanID,
@@ -394,7 +394,7 @@ func finishRequestTrace(state *requestState, httpStatus int, payload any, err er
 	if span.parentSpanID != "" {
 		summary.ParentSpanID = &span.parentSpanID
 	}
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:         "trace-summary",
 		AppID:        reporter.appID,
 		TraceSummary: summary,
@@ -433,10 +433,10 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 
 	reporter := activeReporter()
 	if reporter != nil && authTraceEnabled {
-		reporter.enqueue(devdash.ReportEnvelope{
+		reporter.enqueue(devreport.ReportEnvelope{
 			Type:  "trace-event",
 			AppID: reporter.appID,
-			TraceEvent: &devdash.TraceEvent{
+			TraceEvent: &devreport.TraceEvent{
 				TraceID:   child.traceID,
 				SpanID:    child.spanID,
 				EventID:   reporter.nextEventID(),
@@ -456,10 +456,10 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 	info, err := invoke(callCtx)
 	logAuthHandlerCompleted(&clone, handler, info, err, time.Since(child.started))
 	if reporter != nil && authTraceEnabled {
-		reporter.enqueue(devdash.ReportEnvelope{
+		reporter.enqueue(devreport.ReportEnvelope{
 			Type:  "trace-event",
 			AppID: reporter.appID,
-			TraceEvent: &devdash.TraceEvent{
+			TraceEvent: &devreport.TraceEvent{
 				TraceID:   child.traceID,
 				SpanID:    child.spanID,
 				EventID:   reporter.nextEventID(),
@@ -478,10 +478,10 @@ func traceAuthCall(ctx context.Context, handler *AuthHandler, invoke func(contex
 				},
 			},
 		})
-		reporter.enqueue(devdash.ReportEnvelope{
+		reporter.enqueue(devreport.ReportEnvelope{
 			Type:  "trace-summary",
 			AppID: reporter.appID,
-			TraceSummary: &devdash.TraceSummary{
+			TraceSummary: &devreport.TraceSummary{
 				AppID:         reporter.appID,
 				TraceID:       child.traceID,
 				SpanID:        child.spanID,
@@ -517,10 +517,10 @@ func startInternalCallTrace(parent *requestState, child *requestState) {
 	if reporter == nil || !child.traceEnabled {
 		return
 	}
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   child.trace.traceID,
 			SpanID:    child.trace.spanID,
 			EventID:   reporter.nextEventID(),
@@ -551,10 +551,10 @@ func recordMiddlewareEvent(name, phase string, err error) {
 	if reporter == nil {
 		return
 	}
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   state.trace.traceID,
 			SpanID:    state.trace.spanID,
 			EventID:   reporter.nextEventID(),
@@ -584,10 +584,10 @@ func recordServiceInit(service string, duration time.Duration, err error) {
 	traceID := newTraceID()
 	spanID := newSpanID()
 	now := time.Now().UTC()
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   traceID,
 			SpanID:    spanID,
 			EventID:   reporter.nextEventID(),
@@ -601,10 +601,10 @@ func recordServiceInit(service string, duration time.Duration, err error) {
 			},
 		},
 	})
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-event",
 		AppID: reporter.appID,
-		TraceEvent: &devdash.TraceEvent{
+		TraceEvent: &devreport.TraceEvent{
 			TraceID:   traceID,
 			SpanID:    spanID,
 			EventID:   reporter.nextEventID(),
@@ -618,10 +618,10 @@ func recordServiceInit(service string, duration time.Duration, err error) {
 			},
 		},
 	})
-	reporter.enqueue(devdash.ReportEnvelope{
+	reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "trace-summary",
 		AppID: reporter.appID,
-		TraceSummary: &devdash.TraceSummary{
+		TraceSummary: &devreport.TraceSummary{
 			AppID:         reporter.appID,
 			TraceID:       traceID,
 			SpanID:        spanID,
@@ -784,10 +784,10 @@ func (h *reportingHandler) Handle(ctx context.Context, record slog.Record) error
 		traceID = state.trace.traceID
 		spanID = state.trace.spanID
 	}
-	h.reporter.enqueue(devdash.ReportEnvelope{
+	h.reporter.enqueue(devreport.ReportEnvelope{
 		Type:  "log",
 		AppID: h.reporter.appID,
-		LogEvent: &devdash.LogEvent{
+		LogEvent: &devreport.LogEvent{
 			AppID:     h.reporter.appID,
 			TraceID:   traceID,
 			SpanID:    spanID,
@@ -825,10 +825,10 @@ func (t *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		traceID = state.trace.traceID
 		spanID = state.trace.spanID
 		start = time.Now().UTC()
-		t.reporter.enqueue(devdash.ReportEnvelope{
+		t.reporter.enqueue(devreport.ReportEnvelope{
 			Type:  "trace-event",
 			AppID: t.reporter.appID,
-			TraceEvent: &devdash.TraceEvent{
+			TraceEvent: &devreport.TraceEvent{
 				TraceID:   traceID,
 				SpanID:    spanID,
 				EventID:   t.reporter.nextEventID(),
@@ -853,10 +853,10 @@ func (t *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		if err != nil {
 			end["err"] = map[string]any{"msg": redact.String(err.Error())}
 		}
-		t.reporter.enqueue(devdash.ReportEnvelope{
+		t.reporter.enqueue(devreport.ReportEnvelope{
 			Type:  "trace-event",
 			AppID: t.reporter.appID,
-			TraceEvent: &devdash.TraceEvent{
+			TraceEvent: &devreport.TraceEvent{
 				TraceID:   traceID,
 				SpanID:    spanID,
 				EventID:   t.reporter.nextEventID(),

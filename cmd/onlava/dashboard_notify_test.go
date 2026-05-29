@@ -10,6 +10,8 @@ import (
 )
 
 func TestDashboardNotifyDoesNotBlockOnSlowClient(t *testing.T) {
+	t.Parallel()
+
 	server := newTestDashboardServer(t)
 	conn := newBlockingDashboardConn(nil)
 	server.addClient(conn)
@@ -38,6 +40,8 @@ func TestDashboardNotifyDoesNotBlockOnSlowClient(t *testing.T) {
 }
 
 func TestDashboardClientWriteJSONUsesDeadline(t *testing.T) {
+	t.Parallel()
+
 	conn := newBlockingDashboardConn(nil)
 	close(conn.release)
 	client := &dashboardClient{conn: conn}
@@ -59,6 +63,8 @@ func TestDashboardClientWriteJSONUsesDeadline(t *testing.T) {
 }
 
 func TestDashboardBroadcastRemovesFailedClient(t *testing.T) {
+	t.Parallel()
+
 	server := newTestDashboardServer(t)
 	conn := newBlockingDashboardConn(errors.New("closed"))
 	client := server.addClient(conn)

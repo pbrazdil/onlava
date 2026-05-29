@@ -38,12 +38,13 @@ func (s *Store) CreateIndex(ctx context.Context, actor Actor, objectName string,
 	if err != nil {
 		return nil, err
 	}
-	migrationID, err := s.startMigration(ctx, state.Tenant.ID, state.Object.ID, fromVersion, toVersion, []string{ddl})
+	migrationDDL := []string{ddl}
+	migrationID, err := newMigrationID(migrationDDL)
 	if err != nil {
 		return nil, err
 	}
 	var event *Event
-	if err := s.withMigrationTx(ctx, state.Tenant.ID, state.Object.ID, migrationID, func(tx pgxTx) error {
+	if err := s.withMigrationTx(ctx, state.Tenant.Key, state.Tenant.ID, state.Object.ID, migrationID, fromVersion, toVersion, migrationDDL, "", func(tx pgxTx) error {
 		if _, err := tx.Exec(ctx, ddl); err != nil {
 			return fmt.Errorf("create index %s on object %s: %w", spec.Name, state.Object.NameSingular, err)
 		}
@@ -68,11 +69,8 @@ func (s *Store) CreateIndex(ctx context.Context, actor Actor, objectName string,
 				return fmt.Errorf("insert index field metadata %s.%s[%d]: %w", state.Object.NameSingular, spec.Name, field.Position, err)
 			}
 		}
-		if _, err := tx.Exec(ctx, `
-			update `+qualifiedIdent(MetadataSchema, "objects")+`
-			set schema_version = $1, updated_at = $2
-			where id = $3
-		`, toVersion, s.now(), state.Object.ID); err != nil {
+		toVersion, err = s.bumpObjectSchemaVersion(ctx, tx, state.Object.ID)
+		if err != nil {
 			return err
 		}
 		if err := s.verifyIndex(ctx, tx, state.Object.TableName, spec.PhysicalName); err != nil {

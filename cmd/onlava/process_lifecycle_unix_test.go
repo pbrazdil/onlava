@@ -17,24 +17,38 @@ import (
 )
 
 func TestSupervisorClosePropagatesCtrlCToAppProcessGroup(t *testing.T) {
+	if os.Getenv("ONLAVA_TEST_SUPERVISOR_CLOSE_HELPER") == "1" {
+		runSupervisorCloseHelper()
+		return
+	}
+	t.Parallel()
+
 	dir := t.TempDir()
 	readyPath := filepath.Join(dir, "ready")
 	interruptPath := filepath.Join(dir, "interrupted")
 	grandchildPath := filepath.Join(dir, "grandchild")
 
-	cmd, done := startShellProcessTree(t, `
-set -eu
-trap 'echo interrupted > "$ONLAVA_TEST_INTERRUPTED"; kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; exit 0' INT TERM
-sleep 30 &
-child=$!
-echo "$child" > "$ONLAVA_TEST_GRANDCHILD"
-echo ready > "$ONLAVA_TEST_READY"
-wait "$child"
-`, map[string]string{
-		"ONLAVA_TEST_READY":       readyPath,
-		"ONLAVA_TEST_INTERRUPTED": interruptPath,
-		"ONLAVA_TEST_GRANDCHILD":  grandchildPath,
+	cmd := exec.Command(os.Args[0], "-test.run=TestSupervisorClosePropagatesCtrlCToAppProcessGroup")
+	cmd.Env = append(os.Environ(),
+		"ONLAVA_TEST_SUPERVISOR_CLOSE_HELPER=1",
+		"ONLAVA_TEST_READY="+readyPath,
+		"ONLAVA_TEST_INTERRUPTED="+interruptPath,
+		"ONLAVA_TEST_GRANDCHILD="+grandchildPath,
+	)
+	cmd.Stdin = nil
+	configureChildProcess(cmd)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start supervisor close helper: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+		close(done)
+	}()
+	t.Cleanup(func() {
+		cleanupProcessTree(cmd, done)
 	})
+
 	waitForTestFile(t, readyPath, time.Second)
 	grandchildPID := readPIDFile(t, grandchildPath)
 
@@ -51,6 +65,8 @@ wait "$child"
 }
 
 func TestRunningAppWaitOrKillKillsStuckProcessGroup(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	readyPath := filepath.Join(dir, "ready")
 	grandchildPath := filepath.Join(dir, "grandchild")
@@ -90,6 +106,7 @@ func TestSecondCtrlCUsesDefaultSignalBehavior(t *testing.T) {
 		runSecondCtrlCHelper()
 		return
 	}
+	t.Parallel()
 
 	dir := t.TempDir()
 	readyPath := filepath.Join(dir, "ready")
@@ -107,7 +124,10 @@ func TestSecondCtrlCUsesDefaultSignalBehavior(t *testing.T) {
 		t.Fatalf("start helper: %v", err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	go func() {
+		done <- cmd.Wait()
+		close(done)
+	}()
 	defer cleanupProcessTree(cmd, done)
 
 	waitForTestFile(t, readyPath, time.Second)
@@ -148,6 +168,28 @@ func runSecondCtrlCHelper() {
 	<-ctx.Done()
 	_ = os.WriteFile(os.Getenv("ONLAVA_TEST_FIRST"), []byte("first"), 0o644)
 	select {}
+}
+
+func runSupervisorCloseHelper() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+
+	child := exec.Command("sleep", "30")
+	child.Stdin = nil
+	if err := child.Start(); err != nil {
+		os.Exit(2)
+	}
+	_ = os.WriteFile(os.Getenv("ONLAVA_TEST_GRANDCHILD"), []byte(strconv.Itoa(child.Process.Pid)), 0o644)
+	_ = os.WriteFile(os.Getenv("ONLAVA_TEST_READY"), []byte("ready"), 0o644)
+
+	<-signals
+	_ = os.WriteFile(os.Getenv("ONLAVA_TEST_INTERRUPTED"), []byte("interrupted"), 0o644)
+	if child.Process != nil {
+		_ = child.Process.Kill()
+	}
+	_ = child.Wait()
+	os.Exit(0)
 }
 
 func startShellProcessTree(t *testing.T, script string, env map[string]string) (*exec.Cmd, chan error) {

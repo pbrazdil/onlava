@@ -6,6 +6,8 @@ import (
 )
 
 func TestRunHarnessArchitectureStepSuccess(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 	writeArchitectureSupportFiles(t, root)
 	writeTestAppFile(t, root, "internal/example/example.go", "package example\n\nimport \"fmt\"\n\nfunc Format(v string) string { return fmt.Sprintf(\"%s\", v) }\n")
@@ -20,6 +22,8 @@ func TestRunHarnessArchitectureStepSuccess(t *testing.T) {
 }
 
 func TestRunHarnessArchitectureStepReportsViolations(t *testing.T) {
+	t.Parallel()
+
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
 	writeArchitectureSupportFiles(t, root)
 	writeTestAppFile(t, root, "go.mod", "module github.com/pbrazdil/onlava\n\ngo 1.26.0\n\nrequire github.com/example/newdep v1.0.0\n")

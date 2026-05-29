@@ -1,15 +1,18 @@
-package runtime
+package temporal
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/devdash"
 	temporalinterceptor "go.temporal.io/sdk/interceptor"
 	temporallog "go.temporal.io/sdk/log"
+
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
 const onlavaTemporalTraceHeader = "onlava-temporal-trace"
@@ -18,7 +21,7 @@ var onlavaTemporalSpanContextKey = &struct{ name string }{"onlava-temporal-span"
 
 type onlavaTemporalTracer struct {
 	temporalinterceptor.BaseTracer
-	info TemporalRuntimeInfo
+	info onlavaruntime.TemporalRuntimeInfo
 }
 
 type onlavaTemporalSpanRef struct {
@@ -36,7 +39,7 @@ type onlavaTemporalSpan struct {
 	started      time.Time
 }
 
-func newOnlavaTemporalTracer(info TemporalRuntimeInfo) *onlavaTemporalTracer {
+func newOnlavaTemporalTracer(info onlavaruntime.TemporalRuntimeInfo) *onlavaTemporalTracer {
 	return &onlavaTemporalTracer{info: info}
 }
 
@@ -137,58 +140,19 @@ func (s *onlavaTemporalSpan) Finish(options *temporalinterceptor.TracerFinishSpa
 	if s == nil || s.tracer == nil {
 		return
 	}
-	reporter := activeReporter()
-	if reporter == nil {
-		return
-	}
-	finished := time.Now().UTC()
-	started := s.started
-	if started.IsZero() || started.After(finished) {
-		started = finished
-	}
-	duration := finished.Sub(started)
 	var err error
 	if options != nil {
 		err = options.Error
 	}
-	endpointName := optionalString(s.name)
-	summary := &devdash.TraceSummary{
-		AppID:         reporter.appID,
-		TraceID:       s.traceID,
-		SpanID:        s.spanID,
-		Type:          temporalTraceType(s.operation),
-		IsRoot:        s.parentSpanID == "",
-		IsError:       err != nil,
-		StartedAt:     started,
-		DurationNanos: uint64(duration),
-		ServiceName:   "temporal",
-		EndpointName:  endpointName,
-	}
-	if s.parentSpanID != "" {
-		summary.ParentSpanID = optionalString(s.parentSpanID)
-	}
-	reporter.enqueue(devdash.ReportEnvelope{
-		Type:         "trace-summary",
-		AppID:        reporter.appID,
-		TraceSummary: summary,
-	})
-	reporter.enqueue(devdash.ReportEnvelope{
-		Type:  "log",
-		AppID: reporter.appID,
-		LogEvent: &devdash.LogEvent{
-			AppID:     reporter.appID,
-			TraceID:   s.traceID,
-			SpanID:    s.spanID,
-			Level:     temporalLogLevel(err),
-			Message:   "temporal operation completed",
-			Timestamp: finished,
-			Attrs: map[string]any{
-				"temporal":           true,
-				"temporal_operation": s.operation,
-				"temporal_name":      s.name,
-				"temporal_error":     errString(err),
-			},
-		},
+	onlavaruntime.ReportTemporalTrace(onlavaruntime.TemporalTraceReport{
+		TraceID:      s.traceID,
+		SpanID:       s.spanID,
+		ParentSpanID: s.parentSpanID,
+		Type:         temporalTraceType(s.operation),
+		Operation:    s.operation,
+		Name:         s.name,
+		StartedAt:    s.started,
+		Err:          err,
 	})
 }
 
@@ -221,19 +185,27 @@ func newTemporalTraceID(idempotencyKey, operation, name string) string {
 	if strings.TrimSpace(idempotencyKey) != "" {
 		return deterministicTemporalID(16, "trace", idempotencyKey, operation, name)
 	}
-	return newTraceID()
+	return newRandomHex(16)
 }
 
 func newTemporalSpanID(idempotencyKey, operation, name string) string {
 	if strings.TrimSpace(idempotencyKey) != "" {
 		return deterministicTemporalID(8, "span", idempotencyKey, operation, name)
 	}
-	return newSpanID()
+	return newRandomHex(8)
 }
 
 func deterministicTemporalID(size int, parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:size])
+}
+
+func newRandomHex(size int) string {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
 }
 
 func temporalTraceType(operation string) string {
@@ -253,20 +225,6 @@ func temporalTraceType(operation string) string {
 	default:
 		return "TEMPORAL_OPERATION"
 	}
-}
-
-func temporalLogLevel(err error) string {
-	if err != nil {
-		return "error"
-	}
-	return "info"
-}
-
-func errString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }
 
 func isTemporalTraceID(value string) bool {

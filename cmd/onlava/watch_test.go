@@ -103,6 +103,18 @@ func TestShouldIgnoreWatchPath(t *testing.T) {
 }
 
 func TestWaitForStableChangeEventsPollsWhenEventsAreMissed(t *testing.T) {
+	oldPollInterval := watchPollInterval
+	oldBackupPollInterval := watchBackupPollInterval
+	oldSettleDelay := watchSettleDelay
+	watchPollInterval = 10 * time.Millisecond
+	watchBackupPollInterval = 10 * time.Millisecond
+	watchSettleDelay = 10 * time.Millisecond
+	t.Cleanup(func() {
+		watchPollInterval = oldPollInterval
+		watchBackupPollInterval = oldBackupPollInterval
+		watchSettleDelay = oldSettleDelay
+	})
+
 	root := t.TempDir()
 	writeWatchFile(t, root, ".onlava.json", `{"name":"watchapp"}`)
 	writeWatchFile(t, root, "go.mod", "module example.com/watchapp\n\ngo 1.26.0\n")

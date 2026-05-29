@@ -194,6 +194,9 @@ func generateMain(appModel *model.App, cfg appcfg.Config) ([]byte, error) {
 		buf.WriteString("\tonlavaauth \"github.com/pbrazdil/onlava/auth\"\n")
 	}
 	buf.WriteString("\tonlavaruntime \"github.com/pbrazdil/onlava/runtime\"\n")
+	if effectiveTemporalConfig(appModel, cfg).Enabled {
+		buf.WriteString("\t_ \"github.com/pbrazdil/onlava/temporal\"\n")
+	}
 	for _, pkg := range appModel.Packages {
 		if hasResources(pkg) {
 			fmt.Fprintf(&buf, "\t_ %q\n", pkg.ImportPath)

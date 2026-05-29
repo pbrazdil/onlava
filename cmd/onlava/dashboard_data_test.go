@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,6 +17,8 @@ import (
 )
 
 func TestDashboardDataRPC(t *testing.T) {
+	t.Parallel()
+
 	setupCtx, setupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer setupCancel()
 	db, err := testpostgres.Start(setupCtx)
@@ -27,7 +32,11 @@ func TestDashboardDataRPC(t *testing.T) {
 			t.Errorf("terminate PostgreSQL testcontainer: %v", err)
 		}
 	})
-	t.Setenv("DATABASE_URL", db.URL)
+
+	appRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(appRoot, ".env"), []byte("DATABASE_URL="+db.URL+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, db.URL)
@@ -39,7 +48,7 @@ func TestDashboardDataRPC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("objectstore.Open: %v", err)
 	}
-	tenantKey := "dashboard_data_tenant"
+	tenantKey := fmt.Sprintf("dashboard_data_tenant_%d", time.Now().UnixNano())
 	actor := objectstore.Actor{ID: "test-user"}
 	if _, err := store.CreateObject(ctx, actor, objectstore.CreateObjectRequest{
 		TenantKey:    tenantKey,
@@ -78,7 +87,6 @@ func TestDashboardDataRPC(t *testing.T) {
 	}
 
 	server := newTestDashboardServer(t)
-	appRoot := t.TempDir()
 	if err := server.supervisor.store.UpsertApp(ctx, devdash.AppRecord{
 		ID:        "app-test",
 		Name:      "app-test",

@@ -6,6 +6,8 @@ import (
 )
 
 func TestResolveAppRoot(t *testing.T) {
+	t.Parallel()
+
 	if got, err := resolveAppRoot(""); err != nil || got != "." {
 		t.Fatalf("resolveAppRoot(\"\") = %q, %v; want \".\", nil", got, err)
 	}

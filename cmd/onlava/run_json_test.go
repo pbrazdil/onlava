@@ -13,6 +13,13 @@ import (
 	"github.com/pbrazdil/onlava/internal/app"
 )
 
+func silenceCLIStderr(t *testing.T) {
+	t.Helper()
+	old := cliStderr
+	cliStderr = io.Discard
+	t.Cleanup(func() { cliStderr = old })
+}
+
 func TestParseRunArgs(t *testing.T) {
 	opts, err := parseRunArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--app-root", "/tmp/app", "--env", "production", "--log-format", "json"})
 	if err != nil {
@@ -184,6 +191,7 @@ func TestDevCommandRespectsProxyDisableEnv(t *testing.T) {
 }
 
 func TestDevCommandProxyFlagOverridesDisableEnv(t *testing.T) {
+	silenceCLIStderr(t)
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
 	t.Setenv("ONLAVA_LOCAL_PROXY", "0")
@@ -232,6 +240,7 @@ func TestDevCommandPreservesTrustSkipEnv(t *testing.T) {
 }
 
 func TestDevCommandTrustFlagOverridesTrustSkipEnv(t *testing.T) {
+	silenceCLIStderr(t)
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
 	t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", "1")
@@ -257,6 +266,7 @@ func TestDevCommandTrustFlagOverridesTrustSkipEnv(t *testing.T) {
 }
 
 func TestDevCommandProxyEnvPrefersTCP(t *testing.T) {
+	silenceCLIStderr(t)
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
 	t.Setenv("ONLAVA_LOCAL_PROXY", "1")
@@ -278,6 +288,19 @@ func TestDevCommandProxyEnvPrefersTCP(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected watcher path to be called")
+	}
+}
+
+func TestWarnDevEscapeHatchesProxyMode(t *testing.T) {
+	var buf bytes.Buffer
+	old := cliStderr
+	cliStderr = &buf
+	t.Cleanup(func() { cliStderr = old })
+
+	warnDevEscapeHatches(devOptions{Proxy: true})
+
+	if got := buf.String(); !strings.Contains(got, "legacy machine-global proxy ports") {
+		t.Fatalf("warning = %q", got)
 	}
 }
 

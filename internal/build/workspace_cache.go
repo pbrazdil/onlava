@@ -122,13 +122,19 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 	if _, err := os.Stat(filepath.Join(root, "onlava_internal_main", "main.go")); err != nil {
 		return nil, false, nil
 	}
+	if state.BuildFingerprint == "" {
+		return nil, false, nil
+	}
 	result := &Result{
 		AppRoot:               appRoot,
 		AppName:               appName,
 		Dir:                   root,
-		Binary:                filepath.Join(root, "onlava-app"),
+		Binary:                filepath.Join(root, workspaceBinaryName(appRoot, state.BuildFingerprint)),
 		NeedsTidy:             false,
 		DependencyFingerprint: state.DependencyFingerprint,
+		SourceFingerprint:     state.SourceFingerprint,
+		GeneratorFingerprint:  state.GeneratorFingerprint,
+		BuildFingerprint:      state.BuildFingerprint,
 		GraphFingerprint:      state.GraphFingerprint,
 		Metadata:              append(json.RawMessage(nil), state.Metadata...),
 		APIEncoding:           append(json.RawMessage(nil), state.APIEncoding...),
@@ -171,6 +177,13 @@ func RefreshCachedWorkspace(appRoot string, result *Result) (bool, error) {
 	}
 	result.NeedsTidy = result.DependencyFingerprint != depFingerprint
 	result.DependencyFingerprint = depFingerprint
+	buildFingerprint, err := workspaceBuildFingerprint(result.Dir, result.SourceFiles, result.GeneratedFiles)
+	if err != nil {
+		return false, err
+	}
+	result.BuildFingerprint = buildFingerprint
+	result.Binary = filepath.Join(result.Dir, workspaceBinaryName(appRoot, buildFingerprint))
+	result.ReuseCompiled = !result.NeedsTidy && pathExists(result.Binary)
 	return true, nil
 }
 
@@ -180,6 +193,39 @@ func saveBuildState(root string, state buildState) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(root, buildStateFile), data, 0o644)
+}
+
+func workspaceBuildFingerprint(root string, groups ...[]string) (string, error) {
+	files := map[string]struct{}{}
+	for _, group := range groups {
+		for _, rel := range group {
+			rel = filepath.ToSlash(rel)
+			if rel == "" {
+				continue
+			}
+			files[rel] = struct{}{}
+		}
+	}
+	paths := make([]string, 0, len(files))
+	for rel := range files {
+		paths = append(paths, rel)
+	}
+	sort.Strings(paths)
+	h := sha256.New()
+	for _, rel := range paths {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return "", err
+		}
+		_, _ = h.Write([]byte(rel))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func syncGeneratedFiles(root, appRoot string, gen *codegen.Output, prev, sourceFiles []string) ([]string, error) {

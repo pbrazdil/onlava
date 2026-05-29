@@ -1,4 +1,4 @@
-package devdash
+package relocatedtests
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/pbrazdil/onlava/internal/devdash"
 	_ "modernc.org/sqlite"
 )
 
@@ -23,7 +24,7 @@ func TestOpenStoreConfiguresSQLiteForConcurrentDevReaders(t *testing.T) {
 		_ = store.Close()
 	})
 
-	db, err := sql.Open("sqlite", storeSQLiteDSN(filepath.Join(cacheRoot, "dev.db")))
+	db, err := sql.Open("sqlite", StoreSQLiteDSN(filepath.Join(cacheRoot, "dev.db")))
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
@@ -43,8 +44,8 @@ func TestOpenStoreConfiguresSQLiteForConcurrentDevReaders(t *testing.T) {
 	if err := db.QueryRowContext(context.Background(), "PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
 		t.Fatalf("query busy_timeout: %v", err)
 	}
-	if busyTimeout != sqliteBusyTimeoutMS {
-		t.Fatalf("busy_timeout = %d, want %d", busyTimeout, sqliteBusyTimeoutMS)
+	if busyTimeout != SQLiteBusyTimeoutMS {
+		t.Fatalf("busy_timeout = %d, want %d", busyTimeout, SQLiteBusyTimeoutMS)
 	}
 }
 
@@ -488,7 +489,7 @@ func TestStoreMigratesTraceSummaryUniquenessToSession(t *testing.T) {
 	t.Parallel()
 
 	cacheRoot := t.TempDir()
-	db, err := sql.Open("sqlite", storeSQLiteDSN(filepath.Join(cacheRoot, "dev.db")))
+	db, err := sql.Open("sqlite", StoreSQLiteDSN(filepath.Join(cacheRoot, "dev.db")))
 	if err != nil {
 		t.Fatal(err)
 	}

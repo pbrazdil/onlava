@@ -131,15 +131,15 @@ func TestParseDownArgsCleanupFlags(t *testing.T) {
 	}
 }
 
-func TestParseGCArgs(t *testing.T) {
-	opts, err := parseGCArgs([]string{"--older-than", "14d", "--app-root", "/tmp/app", "--json"})
+func TestParsePruneArgs(t *testing.T) {
+	opts, err := parsePruneArgs([]string{"--older-than", "14d", "--app-root", "/tmp/app", "--json"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if opts.OlderThan != 14*24*time.Hour || opts.AppRoot != "/tmp/app" || !opts.JSON {
 		t.Fatalf("opts = %+v", opts)
 	}
-	if _, err := parseGCArgs([]string{}); err == nil {
+	if _, err := parsePruneArgs([]string{}); err == nil {
 		t.Fatal("expected missing --older-than to fail")
 	}
 }
@@ -198,7 +198,7 @@ func TestDownCommandRemovesSessionState(t *testing.T) {
 	}
 }
 
-func TestGCCommandPrunesOldSessionState(t *testing.T) {
+func TestPruneCommandPrunesOldSessionState(t *testing.T) {
 	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
 	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
 	if err != nil {
@@ -244,17 +244,17 @@ func TestGCCommandPrunesOldSessionState(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	output := captureStdout(t, func() error {
-		return gcCommand([]string{"--app-root", appRoot, "--older-than", "1ms"})
+		return pruneCommand([]string{"--app-root", appRoot, "--older-than", "1ms"})
 	})
 	if !strings.Contains(output, "pruned onlava session old-session") {
-		t.Fatalf("gc output = %q", output)
+		t.Fatalf("prune output = %q", output)
 	}
 	sessions, err := client.List(ctx, appRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(sessions) != 0 {
-		t.Fatalf("sessions after gc = %+v, want none", sessions)
+		t.Fatalf("sessions after prune = %+v, want none", sessions)
 	}
 	if _, err := os.Stat(session.StateRoot); !os.IsNotExist(err) {
 		t.Fatalf("session state still exists or stat failed: %v", err)

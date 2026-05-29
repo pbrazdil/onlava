@@ -40,7 +40,7 @@ type downOptions struct {
 	All       bool
 }
 
-type gcOptions struct {
+type pruneOptions struct {
 	AppRoot   string
 	OlderThan time.Duration
 	JSON      bool
@@ -436,8 +436,8 @@ func removeSessionStateRoot(session localagent.Session) error {
 	return os.RemoveAll(clean)
 }
 
-func gcCommand(args []string) error {
-	opts, err := parseGCArgs(args)
+func pruneCommand(args []string) error {
+	opts, err := parsePruneArgs(args)
 	if err != nil {
 		return err
 	}
@@ -462,7 +462,7 @@ func gcCommand(args []string) error {
 	var pruned []string
 	var skipped []string
 	for _, session := range sessions {
-		if !gcSessionEligible(session, cutoff) {
+		if !pruneSessionEligible(session, cutoff) {
 			skipped = append(skipped, session.SessionID)
 			continue
 		}
@@ -485,43 +485,43 @@ func gcCommand(args []string) error {
 	for _, id := range pruned {
 		fmt.Fprintf(os.Stdout, "pruned onlava session %s\n", id)
 	}
-	fmt.Fprintf(os.Stdout, "onlava gc complete: pruned=%d skipped=%d\n", len(pruned), len(skipped))
+	fmt.Fprintf(os.Stdout, "onlava prune complete: pruned=%d skipped=%d\n", len(pruned), len(skipped))
 	return nil
 }
 
-func parseGCArgs(args []string) (gcOptions, error) {
-	var opts gcOptions
+func parsePruneArgs(args []string) (pruneOptions, error) {
+	var opts pruneOptions
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--app-root":
 			i++
 			if i >= len(args) {
-				return gcOptions{}, fmt.Errorf("missing value for --app-root")
+				return pruneOptions{}, fmt.Errorf("missing value for --app-root")
 			}
 			opts.AppRoot = args[i]
 		case "--older-than":
 			i++
 			if i >= len(args) {
-				return gcOptions{}, fmt.Errorf("missing value for --older-than")
+				return pruneOptions{}, fmt.Errorf("missing value for --older-than")
 			}
-			duration, err := parseGCAge(args[i])
+			duration, err := parsePruneAge(args[i])
 			if err != nil {
-				return gcOptions{}, err
+				return pruneOptions{}, err
 			}
 			opts.OlderThan = duration
 		case "--json":
 			opts.JSON = true
 		default:
-			return gcOptions{}, fmt.Errorf("unknown flag %q", args[i])
+			return pruneOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	if opts.OlderThan <= 0 {
-		return gcOptions{}, fmt.Errorf("gc requires --older-than <duration>")
+		return pruneOptions{}, fmt.Errorf("prune requires --older-than <duration>")
 	}
 	return opts, nil
 }
 
-func parseGCAge(value string) (time.Duration, error) {
+func parsePruneAge(value string) (time.Duration, error) {
 	value = strings.TrimSpace(value)
 	if strings.HasSuffix(value, "d") {
 		days, err := strconv.Atoi(strings.TrimSuffix(value, "d"))
@@ -537,7 +537,7 @@ func parseGCAge(value string) (time.Duration, error) {
 	return duration, nil
 }
 
-func gcSessionEligible(session localagent.Session, cutoff time.Time) bool {
+func pruneSessionEligible(session localagent.Session, cutoff time.Time) bool {
 	if session.UpdatedAt.IsZero() || session.UpdatedAt.After(cutoff) {
 		return false
 	}

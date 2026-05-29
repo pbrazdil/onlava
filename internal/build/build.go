@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"golang.org/x/mod/modfile"
 
@@ -32,17 +33,24 @@ type Result struct {
 	Binary                string
 	NeedsTidy             bool
 	DependencyFingerprint string
+	SourceFingerprint     string
+	GeneratorFingerprint  string
+	BuildFingerprint      string
 	GraphFingerprint      string
 	Metadata              json.RawMessage
 	APIEncoding           json.RawMessage
 	SourceFiles           []string
 	GeneratedFiles        []string
+	ReuseCompiled         bool
 	Ephemeral             bool
 }
 
 type buildState struct {
 	Version               string   `json:"version,omitempty"`
 	DependencyFingerprint string   `json:"dependency_fingerprint"`
+	SourceFingerprint     string   `json:"source_fingerprint,omitempty"`
+	GeneratorFingerprint  string   `json:"generator_fingerprint,omitempty"`
+	BuildFingerprint      string   `json:"build_fingerprint,omitempty"`
 	GraphFingerprint      string   `json:"graph_fingerprint,omitempty"`
 	Metadata              []byte   `json:"metadata,omitempty"`
 	APIEncoding           []byte   `json:"api_encoding,omitempty"`
@@ -161,6 +169,61 @@ func App(appRoot string, cfg app.Config) (*Result, error) {
 	return result, nil
 }
 
+func LoadReusableBinary(appRoot string, cfg app.Config) (*Result, bool, error) {
+	sourceFingerprint, err := currentAppSourceFingerprint(appRoot)
+	if err != nil {
+		return nil, false, err
+	}
+	generatorFingerprint, err := currentGeneratorFingerprint()
+	if err != nil {
+		return nil, false, err
+	}
+	workspaceDir, err := workspaceDir(appRoot, cfg.Name)
+	if err != nil {
+		return nil, false, err
+	}
+	unlock, err := lockWorkspace(workspaceDir)
+	if err != nil {
+		return nil, false, err
+	}
+	defer unlock()
+	state, err := loadBuildState(workspaceDir)
+	if err != nil {
+		return nil, false, err
+	}
+	if state.Version != buildStateVersion ||
+		state.SourceFingerprint == "" ||
+		state.SourceFingerprint != sourceFingerprint ||
+		state.GeneratorFingerprint == "" ||
+		state.GeneratorFingerprint != generatorFingerprint ||
+		state.BuildFingerprint == "" {
+		return nil, false, nil
+	}
+	binary := filepath.Join(workspaceDir, workspaceBinaryName(appRoot, state.BuildFingerprint))
+	if !pathExists(binary) {
+		return nil, false, nil
+	}
+	result := &Result{
+		AppRoot:               appRoot,
+		AppName:               cfg.Name,
+		AppID:                 cfg.ID,
+		Dir:                   workspaceDir,
+		Binary:                binary,
+		NeedsTidy:             false,
+		DependencyFingerprint: state.DependencyFingerprint,
+		SourceFingerprint:     state.SourceFingerprint,
+		GeneratorFingerprint:  state.GeneratorFingerprint,
+		BuildFingerprint:      state.BuildFingerprint,
+		GraphFingerprint:      state.GraphFingerprint,
+		Metadata:              append(json.RawMessage(nil), state.Metadata...),
+		APIEncoding:           append(json.RawMessage(nil), state.APIEncoding...),
+		SourceFiles:           append([]string(nil), state.SourceFiles...),
+		GeneratedFiles:        append([]string(nil), state.GeneratedFiles...),
+		ReuseCompiled:         true,
+	}
+	return result, true, nil
+}
+
 func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptions) (*Result, error) {
 	artifacts, err := writeGeneratedInspectArtifacts(appRoot, cfg, model)
 	if err != nil {
@@ -178,6 +241,11 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
 		return nil, err
 	}
+	unlock, err := lockWorkspace(workspaceDir)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	state, err := loadBuildState(workspaceDir)
 	if err != nil {
 		return nil, err
@@ -193,12 +261,27 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 	if err := removeUnexpectedFilesFromLists(workspaceDir, sourceFiles, generatedFiles); err != nil {
 		return nil, err
 	}
+	if err := seedOnlavaGoSum(workspaceDir, app.RepoRoot()); err != nil {
+		return nil, err
+	}
+	sourceFingerprint, err := currentAppSourceFingerprint(appRoot)
+	if err != nil {
+		return nil, err
+	}
+	generatorFingerprint, err := currentGeneratorFingerprint()
+	if err != nil {
+		return nil, err
+	}
 	depFingerprint, err := dependencyFingerprintFromWorkspace(workspaceDir)
 	if err != nil {
 		return nil, err
 	}
 	needsTidy := state.DependencyFingerprint != depFingerprint
-	binary := filepath.Join(workspaceDir, "onlava-app")
+	buildFingerprint, err := workspaceBuildFingerprint(workspaceDir, sourceFiles, generatedFiles)
+	if err != nil {
+		return nil, err
+	}
+	binary := filepath.Join(workspaceDir, workspaceBinaryName(appRoot, buildFingerprint))
 	result := &Result{
 		AppRoot:               appRoot,
 		AppName:               cfg.Name,
@@ -207,6 +290,10 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 		Binary:                binary,
 		NeedsTidy:             needsTidy,
 		DependencyFingerprint: depFingerprint,
+		SourceFingerprint:     sourceFingerprint,
+		GeneratorFingerprint:  generatorFingerprint,
+		BuildFingerprint:      buildFingerprint,
+		ReuseCompiled:         !needsTidy && buildFingerprint != "" && state.BuildFingerprint == buildFingerprint && pathExists(binary),
 		SourceFiles:           sourceFiles,
 		GeneratedFiles:        generatedFiles,
 	}
@@ -309,19 +396,33 @@ func PrimeWorkspaceContext(ctx context.Context, result *Result) error {
 		return fmt.Errorf("nil build result")
 	}
 	if result.NeedsTidy {
-		if err := runGoContext(ctx, result.Dir, "mod", "tidy"); err != nil {
+		if err := tidyWorkspace(ctx, result); err != nil {
 			return err
 		}
-		fingerprint, err := dependencyFingerprintFromWorkspace(result.Dir)
-		if err != nil {
-			return err
-		}
-		result.DependencyFingerprint = fingerprint
-		result.NeedsTidy = false
 	}
+	return savePrimedWorkspace(result)
+}
+
+func tidyWorkspace(ctx context.Context, result *Result) error {
+	if err := runGoContext(ctx, result.Dir, "mod", "tidy"); err != nil {
+		return err
+	}
+	fingerprint, err := dependencyFingerprintFromWorkspace(result.Dir)
+	if err != nil {
+		return err
+	}
+	result.DependencyFingerprint = fingerprint
+	result.NeedsTidy = false
+	return nil
+}
+
+func savePrimedWorkspace(result *Result) error {
 	if err := saveBuildState(result.Dir, buildState{
 		Version:               buildStateVersion,
 		DependencyFingerprint: result.DependencyFingerprint,
+		SourceFingerprint:     result.SourceFingerprint,
+		GeneratorFingerprint:  result.GeneratorFingerprint,
+		BuildFingerprint:      result.BuildFingerprint,
 		GraphFingerprint:      result.GraphFingerprint,
 		Metadata:              append([]byte(nil), result.Metadata...),
 		APIEncoding:           append([]byte(nil), result.APIEncoding...),
@@ -340,16 +441,52 @@ func CompileContext(ctx context.Context, result *Result) error {
 	if result == nil {
 		return fmt.Errorf("nil build result")
 	}
-	if err := PrimeWorkspaceContext(ctx, result); err != nil {
+	unlock, err := lockWorkspace(result.Dir)
+	if err != nil {
 		return err
 	}
-	if err := runGoContext(ctx, result.Dir, "build", "-o", result.Binary, "./onlava_internal_main"); err != nil {
+	defer unlock()
+	if !result.NeedsTidy {
+		if err := savePrimedWorkspace(result); err != nil {
+			return err
+		}
+	}
+	if result.ReuseCompiled {
+		return WriteLatestBuildManifest(result, "compiled")
+	}
+	err = runGoContext(ctx, result.Dir, goBuildArgs(result.Binary)...)
+	if err != nil && (result.NeedsTidy || goBuildNeedsWorkspaceTidy(err)) {
+		if tidyErr := tidyWorkspace(ctx, result); tidyErr != nil {
+			return tidyErr
+		}
+		if saveErr := savePrimedWorkspace(result); saveErr != nil {
+			return saveErr
+		}
+		err = runGoContext(ctx, result.Dir, goBuildArgs(result.Binary)...)
+	}
+	if err != nil {
 		return err
+	}
+	if result.NeedsTidy {
+		result.NeedsTidy = false
+		if err := savePrimedWorkspace(result); err != nil {
+			return err
+		}
 	}
 	if err := WriteLatestBuildManifest(result, "compiled"); err != nil {
 		return err
 	}
 	return nil
+}
+
+func goBuildNeedsWorkspaceTidy(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := err.Error()
+	return strings.Contains(text, "missing go.sum entry") ||
+		strings.Contains(text, "updates to go.mod needed") ||
+		strings.Contains(text, "go.mod updates are needed")
 }
 
 func copyTree(src, dst string) error {
@@ -490,6 +627,277 @@ func listSourceFiles(appRoot string) ([]string, error) {
 	return sortedKeys(files), nil
 }
 
+func currentAppSourceFingerprint(appRoot string) (string, error) {
+	files, err := listSourceFiles(appRoot)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	configPath := filepath.Join(appRoot, ".onlava.json")
+	if data, err := os.ReadFile(configPath); err == nil {
+		_, _ = h.Write([]byte(".onlava.json"))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	for _, rel := range files {
+		data, err := sourceFileData(filepath.Join(appRoot, filepath.FromSlash(rel)), rel)
+		if err != nil {
+			return "", err
+		}
+		_, _ = h.Write([]byte(rel))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+var generatorFingerprint struct {
+	once  sync.Once
+	value string
+	err   error
+}
+
+func currentGeneratorFingerprint() (string, error) {
+	generatorFingerprint.once.Do(func() {
+		generatorFingerprint.value, generatorFingerprint.err = cachedGeneratorFingerprint(app.RepoRoot())
+	})
+	return generatorFingerprint.value, generatorFingerprint.err
+}
+
+const generatorFingerprintCacheSchema = "onlava.generator-fingerprint.v1"
+
+type generatorFingerprintCache struct {
+	SchemaVersion       string `json:"schema_version"`
+	RepoRoot            string `json:"repo_root"`
+	MetadataFingerprint string `json:"metadata_fingerprint"`
+	Fingerprint         string `json:"fingerprint"`
+}
+
+func cachedGeneratorFingerprint(repoRoot string) (string, error) {
+	metadataFingerprint, err := generatorMetadataFingerprint(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	cachePath, err := generatorFingerprintCachePath(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	if cached, ok, err := loadGeneratorFingerprintCache(cachePath); err != nil {
+		return "", err
+	} else if ok &&
+		cached.SchemaVersion == generatorFingerprintCacheSchema &&
+		cached.RepoRoot == repoRoot &&
+		cached.MetadataFingerprint == metadataFingerprint &&
+		cached.Fingerprint != "" {
+		return cached.Fingerprint, nil
+	}
+	fingerprint, err := computeGeneratorFingerprint(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	if err := saveGeneratorFingerprintCache(cachePath, generatorFingerprintCache{
+		SchemaVersion:       generatorFingerprintCacheSchema,
+		RepoRoot:            repoRoot,
+		MetadataFingerprint: metadataFingerprint,
+		Fingerprint:         fingerprint,
+	}); err != nil {
+		return "", err
+	}
+	return fingerprint, nil
+}
+
+func generatorMetadataFingerprint(repoRoot string) (string, error) {
+	h := sha256.New()
+	paths := generatorFingerprintPaths()
+	for _, rel := range paths {
+		path := filepath.Join(repoRoot, filepath.FromSlash(rel))
+		if err := hashGeneratorMetadataPath(h, repoRoot, path); err != nil {
+			return "", err
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func computeGeneratorFingerprint(repoRoot string) (string, error) {
+	h := sha256.New()
+	for _, rel := range generatorFingerprintPaths() {
+		path := filepath.Join(repoRoot, filepath.FromSlash(rel))
+		if err := hashGeneratorPath(h, repoRoot, path); err != nil {
+			return "", err
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func generatorFingerprintPaths() []string {
+	return []string{
+		"go.mod",
+		"go.sum",
+		"auth",
+		"cron",
+		"data",
+		"errs",
+		"internal",
+		"middleware",
+		"pgxpool",
+		"rlog",
+		"runtime",
+		"runtimeapp",
+		"temporal",
+	}
+}
+
+func generatorFingerprintCachePath(repoRoot string) (string, error) {
+	cacheRoot, err := onlavaCacheRoot()
+	if err != nil {
+		return "", err
+	}
+	absRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(absRoot))
+	return filepath.Join(cacheRoot, "build", "generator-fingerprint-"+hex.EncodeToString(sum[:8])+".json"), nil
+}
+
+func loadGeneratorFingerprintCache(path string) (generatorFingerprintCache, bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return generatorFingerprintCache{}, false, nil
+		}
+		return generatorFingerprintCache{}, false, err
+	}
+	var cached generatorFingerprintCache
+	if err := json.Unmarshal(data, &cached); err != nil {
+		return generatorFingerprintCache{}, false, err
+	}
+	return cached, true, nil
+}
+
+func saveGeneratorFingerprintCache(path string, cached generatorFingerprintCache) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(cached)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func hashGeneratorMetadataPath(h interface{ Write([]byte) (int, error) }, repoRoot, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return hashGeneratorFileMetadata(h, repoRoot, path, info)
+	}
+	return filepath.WalkDir(path, func(child string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(path, child)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if rel == "." {
+				return nil
+			}
+			switch filepath.Base(rel) {
+			case "node_modules", "dist", "coverage":
+				return filepath.SkipDir
+			default:
+				return nil
+			}
+		}
+		if filepath.Ext(child) != ".go" || strings.HasSuffix(child, "_test.go") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		return hashGeneratorFileMetadata(h, repoRoot, child, info)
+	})
+}
+
+func hashGeneratorFileMetadata(h interface{ Write([]byte) (int, error) }, repoRoot, path string, info os.FileInfo) error {
+	rel, err := filepath.Rel(repoRoot, path)
+	if err != nil {
+		return err
+	}
+	_, _ = h.Write([]byte(filepath.ToSlash(rel)))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(fmt.Sprintf("%d:%d:%o", info.Size(), info.ModTime().UnixNano(), info.Mode().Perm())))
+	_, _ = h.Write([]byte{0})
+	return nil
+}
+
+func hashGeneratorPath(h interface{ Write([]byte) (int, error) }, repoRoot, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return hashGeneratorFile(h, repoRoot, path)
+	}
+	return filepath.WalkDir(path, func(child string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(path, child)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if rel == "." {
+				return nil
+			}
+			switch filepath.Base(rel) {
+			case "node_modules", "dist", "coverage":
+				return filepath.SkipDir
+			default:
+				return nil
+			}
+		}
+		if filepath.Ext(child) != ".go" || strings.HasSuffix(child, "_test.go") {
+			return nil
+		}
+		return hashGeneratorFile(h, repoRoot, child)
+	})
+}
+
+func hashGeneratorFile(h interface{ Write([]byte) (int, error) }, repoRoot, path string) error {
+	rel, err := filepath.Rel(repoRoot, path)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	_, _ = h.Write([]byte(filepath.ToSlash(rel)))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write(data)
+	_, _ = h.Write([]byte{0})
+	return nil
+}
+
 func shouldSkipDir(rel string) bool {
 	base := filepath.Base(rel)
 	if strings.HasPrefix(base, ".") {
@@ -591,7 +999,51 @@ func patchGoModData(data []byte, repoRoot string) ([]byte, error) {
 	return formatted, nil
 }
 
-func runGoContext(ctx context.Context, dir string, args ...string) error {
+func seedOnlavaGoSum(workspaceDir, repoRoot string) error {
+	repoSum, err := os.ReadFile(filepath.Join(repoRoot, "go.sum"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	workspaceSumPath := filepath.Join(workspaceDir, "go.sum")
+	workspaceSum, err := os.ReadFile(workspaceSumPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	lines := map[string]struct{}{}
+	for _, data := range [][]byte{workspaceSum, repoSum} {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			lines[line] = struct{}{}
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	merged := make([]string, 0, len(lines))
+	for line := range lines {
+		merged = append(merged, line)
+	}
+	sort.Strings(merged)
+	return writeFileIfChanged(workspaceDir, "go.sum", []byte(strings.Join(merged, "\n")+"\n"))
+}
+
+var runGo = runRealGo
+
+func SetGoRunnerForTesting(runner func(context.Context, string, ...string) error) func() {
+	old := runGo
+	runGo = runner
+	return func() {
+		runGo = old
+	}
+}
+
+func runRealGo(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
@@ -601,10 +1053,25 @@ func runGoContext(ctx context.Context, dir string, args ...string) error {
 	return nil
 }
 
+func runGoContext(ctx context.Context, dir string, args ...string) error {
+	return runGo(ctx, dir, args...)
+}
+
+func goBuildArgs(binary string) []string {
+	return []string{"build", "-buildvcs=false", "-o", binary, "./onlava_internal_main"}
+}
+
 func workspaceDir(appRoot, appName string) (string, error) {
 	cacheRoot, err := onlavaCacheRoot()
 	if err != nil {
 		return "", err
+	}
+	if key := strings.TrimSpace(os.Getenv("ONLAVA_TEST_WORKSPACE_KEY")); key != "" {
+		name := sanitizeWorkspaceLabel(appName)
+		if name == "" {
+			name = "app"
+		}
+		return filepath.Join(cacheRoot, "build", name+"-"+sanitizeWorkspaceLabel(key)), nil
 	}
 	absRoot, err := filepath.Abs(appRoot)
 	if err != nil {
@@ -616,6 +1083,26 @@ func workspaceDir(appRoot, appName string) (string, error) {
 		name = "app"
 	}
 	return filepath.Join(cacheRoot, "build", name+"-"+hex.EncodeToString(sum[:8])), nil
+}
+
+func workspaceBinaryName(appRoot, buildFingerprint string) string {
+	key := strings.TrimSpace(os.Getenv("ONLAVA_TEST_WORKSPACE_KEY"))
+	if key == "" {
+		return "onlava-app"
+	}
+	if buildFingerprint != "" {
+		const prefixLength = 16
+		if len(buildFingerprint) < prefixLength {
+			return "onlava-app-" + buildFingerprint
+		}
+		return "onlava-app-" + buildFingerprint[:prefixLength]
+	}
+	absRoot, err := filepath.Abs(appRoot)
+	if err != nil {
+		absRoot = appRoot
+	}
+	sum := sha256.Sum256([]byte(absRoot))
+	return "onlava-app-" + hex.EncodeToString(sum[:8])
 }
 
 func onlavaCacheRoot() (string, error) {
@@ -654,6 +1141,8 @@ type StateInfo struct {
 	Exists                bool
 	Version               string
 	DependencyFingerprint string
+	SourceFingerprint     string
+	GeneratorFingerprint  string
 	GraphFingerprint      string
 	MetadataPresent       bool
 	APIEncodingPresent    bool
@@ -680,6 +1169,8 @@ func ReadStateInfo(appRoot, appName string) (*StateInfo, error) {
 	info.Exists = true
 	info.Version = state.Version
 	info.DependencyFingerprint = state.DependencyFingerprint
+	info.SourceFingerprint = state.SourceFingerprint
+	info.GeneratorFingerprint = state.GeneratorFingerprint
 	info.GraphFingerprint = state.GraphFingerprint
 	info.MetadataPresent = len(state.Metadata) > 0
 	info.APIEncodingPresent = len(state.APIEncoding) > 0
@@ -793,6 +1284,7 @@ func removeUnexpectedFilesFromLists(root string, sourceFiles, generatedFiles []s
 		}
 	}
 	keepFiles["onlava-app"] = struct{}{}
+	keepFiles[".onlava-workspace.lock"] = struct{}{}
 	keepFiles[buildStateFile] = struct{}{}
 	keepFiles["go.sum"] = struct{}{}
 
@@ -814,7 +1306,7 @@ func removeUnexpectedFilesFromLists(root string, sourceFiles, generatedFiles []s
 			dirs = append(dirs, path)
 			return nil
 		}
-		if _, ok := keepFiles[rel]; ok {
+		if _, ok := keepFiles[rel]; ok || strings.HasPrefix(rel, "onlava-app-") {
 			return nil
 		}
 		files = append(files, path)

@@ -107,6 +107,10 @@ func ValidateWithKnownActivities(appRoot, appName string, knownActivities []stri
 	return result
 }
 
+func ValidateManifest(manifest Manifest, appName string) []Diagnostic {
+	return validateManifest(manifest, appName)
+}
+
 func manifestPaths(appRoot string) ([]string, error) {
 	if strings.TrimSpace(appRoot) == "" {
 		return nil, nil

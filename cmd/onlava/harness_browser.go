@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,10 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chromedp/cdproto/network"
-	"github.com/chromedp/cdproto/runtime"
-	"github.com/chromedp/chromedp"
 	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/harnessbrowser"
 	"github.com/pbrazdil/onlava/internal/inspect"
 )
 
@@ -375,134 +372,68 @@ func (p *harnessUIDevProcess) Stop() {
 }
 
 func runHarnessUIBrowserChecks(ctx context.Context, routes []harnessUIRouteSpec, artifactRoot string, headed bool) (harnessUIBrowserResult, error) {
-	if err := os.MkdirAll(filepath.Join(artifactRoot, "screenshots"), 0o755); err != nil {
+	checkRoutes := make([]harnessbrowser.RouteSpec, 0, len(routes))
+	for _, route := range routes {
+		checkRoutes = append(checkRoutes, harnessbrowser.RouteSpec{
+			Name:    route.Name,
+			Path:    route.Path,
+			Markers: append([]string(nil), route.Markers...),
+		})
+	}
+	result, err := harnessbrowser.RunChecks(ctx, checkRoutes, artifactRoot, headed)
+	if err != nil {
 		return harnessUIBrowserResult{}, err
 	}
-	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", !headed),
-		chromedp.Flag("ignore-certificate-errors", true),
-		chromedp.NoFirstRun,
-		chromedp.NoDefaultBrowserCheck,
-	)
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, allocOpts...)
-	defer cancelAlloc()
-	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
-	defer cancelBrowser()
-	browserCtx, cancelBrowserTimeout := context.WithTimeout(browserCtx, time.Duration(len(routes))*25*time.Second)
-	defer cancelBrowserTimeout()
+	return convertHarnessBrowserResult(result), nil
+}
 
-	var mu sync.Mutex
-	requestURLs := map[network.RequestID]string{}
-	consoleErrors := []harnessUIConsoleMessage{}
-	networkFailures := []harnessUINetworkFailure{}
-	currentRoute := ""
-	chromedp.ListenTarget(browserCtx, func(ev any) {
-		mu.Lock()
-		defer mu.Unlock()
-		switch event := ev.(type) {
-		case *network.EventRequestWillBeSent:
-			if event.Request != nil {
-				requestURLs[event.RequestID] = event.Request.URL
-			}
-		case *network.EventLoadingFailed:
-			if event.Canceled {
-				return
-			}
-			networkFailures = append(networkFailures, harnessUINetworkFailure{
-				Route: currentRoute,
-				URL:   requestURLs[event.RequestID],
-				Type:  string(event.Type),
-				Error: event.ErrorText,
-			})
-		case *runtime.EventConsoleAPICalled:
-			if event.Type != runtime.APITypeError {
-				return
-			}
-			consoleErrors = append(consoleErrors, harnessUIConsoleMessage{
-				Route:   currentRoute,
-				Level:   string(event.Type),
-				Message: remoteObjectMessages(event.Args),
-			})
-		case *runtime.EventExceptionThrown:
-			message := "unhandled exception"
-			if event.ExceptionDetails != nil {
-				message = event.ExceptionDetails.Text
-				if event.ExceptionDetails.Exception != nil && event.ExceptionDetails.Exception.Description != "" {
-					message = event.ExceptionDetails.Exception.Description
-				}
-			}
-			consoleErrors = append(consoleErrors, harnessUIConsoleMessage{
-				Route:   currentRoute,
-				Level:   "exception",
-				Message: message,
-			})
-		}
-	})
+func convertHarnessBrowserResult(result harnessbrowser.Result) harnessUIBrowserResult {
+	out := harnessUIBrowserResult{
+		ConsoleErrors:   convertHarnessBrowserConsoleMessages(result.ConsoleErrors),
+		NetworkFailures: convertHarnessBrowserNetworkFailures(result.NetworkFailures),
+		Artifacts:       make([]harnessArtifact, 0, len(result.Artifacts)),
+	}
+	for _, route := range result.Routes {
+		out.Routes = append(out.Routes, harnessUIRoute{
+			Name:            route.Name,
+			URL:             route.URL,
+			OK:              route.OK,
+			DurationMS:      route.DurationMS,
+			Markers:         convertHarnessBrowserMarkers(route.Markers),
+			Screenshot:      route.Screenshot,
+			ConsoleErrors:   convertHarnessBrowserConsoleMessages(route.ConsoleErrors),
+			NetworkFailures: convertHarnessBrowserNetworkFailures(route.NetworkFailures),
+			Error:           route.Error,
+		})
+	}
+	for _, artifact := range result.Artifacts {
+		out.Artifacts = append(out.Artifacts, harnessArtifact{Name: artifact.Name, Path: artifact.Path, Exists: artifact.Exists})
+	}
+	return out
+}
 
-	result := harnessUIBrowserResult{}
-	for _, spec := range routes {
-		routeStarted := time.Now()
-		mu.Lock()
-		currentRoute = spec.Name
-		consoleStart := len(consoleErrors)
-		networkStart := len(networkFailures)
-		mu.Unlock()
+func convertHarnessBrowserMarkers(markers []harnessbrowser.Marker) []harnessUIMarker {
+	out := make([]harnessUIMarker, 0, len(markers))
+	for _, marker := range markers {
+		out = append(out, harnessUIMarker{Selector: marker.Selector, Count: marker.Count, Found: marker.Found})
+	}
+	return out
+}
 
-		route := harnessUIRoute{Name: spec.Name, URL: spec.Path, OK: true}
-		var screenshot []byte
-		err := chromedp.Run(browserCtx,
-			network.Enable(),
-			chromedp.Navigate(spec.Path),
-			chromedp.WaitReady("body", chromedp.ByQuery),
-			chromedp.Sleep(250*time.Millisecond),
-		)
-		if err == nil {
-			for _, selector := range spec.Markers {
-				var count int
-				js := fmt.Sprintf("document.querySelectorAll(%q).length", selector)
-				markerErr := chromedp.Run(browserCtx, chromedp.Evaluate(js, &count))
-				if markerErr != nil {
-					err = markerErr
-					break
-				}
-				route.Markers = append(route.Markers, harnessUIMarker{Selector: selector, Count: count, Found: count > 0})
-				if count == 0 {
-					route.OK = false
-					route.Error = fmt.Sprintf("missing required DOM marker %s", selector)
-				}
-			}
-		}
-		screenshotPath := filepath.Join("screenshots", spec.Name+".png")
-		if shotErr := chromedp.Run(browserCtx, chromedp.CaptureScreenshot(&screenshot)); shotErr == nil && len(screenshot) > 0 {
-			abs := filepath.Join(artifactRoot, screenshotPath)
-			if writeErr := os.WriteFile(abs, screenshot, 0o644); writeErr == nil {
-				route.Screenshot = filepath.ToSlash(filepath.Join(".onlava", "harness", "ui", screenshotPath))
-				result.Artifacts = append(result.Artifacts, harnessArtifact{Name: "screenshot:" + spec.Name, Path: route.Screenshot, Exists: true})
-			}
-		}
-		if err != nil {
-			route.OK = false
-			route.Error = err.Error()
-		}
-		mu.Lock()
-		route.ConsoleErrors = append([]harnessUIConsoleMessage(nil), consoleErrors[consoleStart:]...)
-		route.NetworkFailures = append([]harnessUINetworkFailure(nil), networkFailures[networkStart:]...)
-		mu.Unlock()
-		if len(route.ConsoleErrors) > 0 || len(route.NetworkFailures) > 0 {
-			route.OK = false
-		}
-		route.DurationMS = time.Since(routeStarted).Milliseconds()
-		result.Routes = append(result.Routes, route)
+func convertHarnessBrowserConsoleMessages(messages []harnessbrowser.ConsoleMessage) []harnessUIConsoleMessage {
+	out := make([]harnessUIConsoleMessage, 0, len(messages))
+	for _, message := range messages {
+		out = append(out, harnessUIConsoleMessage{Route: message.Route, Level: message.Level, Message: message.Message})
 	}
-	result.ConsoleErrors = consoleErrors
-	result.NetworkFailures = networkFailures
-	if err := writeHarnessUIJSONL(filepath.Join(artifactRoot, "console.jsonl"), consoleErrors); err == nil {
-		result.Artifacts = append(result.Artifacts, harnessArtifact{Name: "console", Path: ".onlava/harness/ui/console.jsonl", Exists: true})
+	return out
+}
+
+func convertHarnessBrowserNetworkFailures(failures []harnessbrowser.NetworkFailure) []harnessUINetworkFailure {
+	out := make([]harnessUINetworkFailure, 0, len(failures))
+	for _, failure := range failures {
+		out = append(out, harnessUINetworkFailure{Route: failure.Route, URL: failure.URL, Type: failure.Type, Error: failure.Error})
 	}
-	if err := writeHarnessUIJSONL(filepath.Join(artifactRoot, "network.jsonl"), networkFailures); err == nil {
-		result.Artifacts = append(result.Artifacts, harnessArtifact{Name: "network", Path: ".onlava/harness/ui/network.jsonl", Exists: true})
-	}
-	return result, nil
+	return out
 }
 
 func buildHarnessUIRoutes(appURL string) []harnessUIRouteSpec {
@@ -601,20 +532,6 @@ func writeHarnessUIJSON(w io.Writer, payload harnessUIResponse) error {
 	return enc.Encode(payload)
 }
 
-func writeHarnessUIJSONL[T any](path string, items []T) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	for _, item := range items {
-		if err := enc.Encode(item); err != nil {
-			return err
-		}
-	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
-}
-
 func waitForHTTP(ctx context.Context, rawURL string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -650,20 +567,6 @@ func freeLoopbackAddr() (string, error) {
 	}
 	defer ln.Close()
 	return ln.Addr().String(), nil
-}
-
-func remoteObjectMessages(args []*runtime.RemoteObject) string {
-	parts := []string{}
-	for _, arg := range args {
-		if len(arg.Value) > 0 {
-			parts = append(parts, string(arg.Value))
-			continue
-		}
-		if arg.Description != "" {
-			parts = append(parts, arg.Description)
-		}
-	}
-	return strings.Join(parts, " ")
 }
 
 type safeLineTail struct {

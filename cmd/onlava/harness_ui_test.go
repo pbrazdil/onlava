@@ -9,6 +9,8 @@ import (
 )
 
 func TestUIStaticRegistryValidation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		itemJSON    string
@@ -67,6 +69,8 @@ func TestUIStaticRegistryValidation(t *testing.T) {
 }
 
 func TestUIStaticPackageScriptRejectsRawShadcn(t *testing.T) {
+	t.Parallel()
+
 	root := newUIStaticFixture(t)
 	writeFile(t, filepath.Join(root, "ui", "package.json"), `{
   "scripts": {
@@ -82,6 +86,8 @@ func TestUIStaticPackageScriptRejectsRawShadcn(t *testing.T) {
 }
 
 func TestUIImportSpecifiersCatchBypasses(t *testing.T) {
+	t.Parallel()
+
 	text := `
 import {
   Button
@@ -108,6 +114,8 @@ const req = require("@/components/ui/require");
 }
 
 func TestUIStaticImportBypassesRejected(t *testing.T) {
+	t.Parallel()
+
 	root := newUIStaticFixture(t)
 	writeFile(t, filepath.Join(root, "ui", "src", "routes", "bad.tsx"), `
 export { Button } from "@/components/ui/button";
@@ -128,6 +136,8 @@ const req = require("@radix-ui/react-dialog");
 }
 
 func TestUIStaticRegistrySourcesMayUseLowLevelDependencies(t *testing.T) {
+	t.Parallel()
+
 	root := newUIStaticFixture(t)
 	writeFile(t, filepath.Join(root, "ui", "src", "components", "registry", "primitives", "dialog.tsx"), `
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -158,6 +168,8 @@ export function Dialog() {
 }
 
 func TestUIClassNameDiagnosticsCatchExpressions(t *testing.T) {
+	t.Parallel()
+
 	longClass := strings.Repeat("grid ", 50)
 	text := `
 <div className={cn("` + longClass + `", active && "hover:[&>*]:text-red-500")} />

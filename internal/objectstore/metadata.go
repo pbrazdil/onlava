@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var bootstrappedDatabases sync.Map
 
 func Open(ctx context.Context, db DB, opts Options) (*Store, error) {
 	if db == nil {
@@ -21,10 +26,12 @@ func Open(ctx context.Context, db DB, opts Options) (*Store, error) {
 		perms = AllowAllPermissions{}
 	}
 	store := &Store{
-		db:     db,
-		perms:  perms,
-		now:    now,
-		router: newLiveRouter(),
+		db:                 db,
+		perms:              perms,
+		now:                now,
+		router:             newLiveRouter(),
+		sseHeartbeatEvery:  defaultSSEHeartbeatInterval,
+		sseOutboxPollEvery: defaultSSEOutboxPollInterval,
 	}
 	if err := store.bootstrap(ctx); err != nil {
 		return nil, err
@@ -33,6 +40,72 @@ func Open(ctx context.Context, db DB, opts Options) (*Store, error) {
 }
 
 func (s *Store) bootstrap(ctx context.Context) error {
+	cacheKey := bootstrapCacheKey(s.db)
+	if cacheKey != "" {
+		if _, ok := bootstrappedDatabases.Load(cacheKey); ok {
+			ready, err := s.bootstrapReady(ctx)
+			if err != nil {
+				bootstrappedDatabases.Delete(cacheKey)
+				return err
+			}
+			if ready {
+				return nil
+			}
+			bootstrappedDatabases.Delete(cacheKey)
+		}
+	}
+	for attempt := 0; ; attempt++ {
+		err := s.bootstrapOnce(ctx)
+		if !isDeadlockDetected(err) {
+			if err == nil && cacheKey != "" {
+				bootstrappedDatabases.Store(cacheKey, struct{}{})
+			}
+			return err
+		}
+		if retryErr := waitBeforeAdvisoryLockRetry(ctx, attempt); retryErr != nil {
+			return err
+		}
+	}
+}
+
+func bootstrapCacheKey(db DB) string {
+	pool, ok := db.(interface{ Config() *pgxpool.Config })
+	if !ok {
+		return ""
+	}
+	cfg := pool.Config()
+	if cfg == nil {
+		return ""
+	}
+	return "pgxpool:" + cfg.ConnString()
+}
+
+func (s *Store) bootstrapReady(ctx context.Context) (bool, error) {
+	var ready bool
+	err := s.db.QueryRow(ctx, `select to_regclass($1) is not null and to_regclass($2) is not null`,
+		MetadataSchema+".tenants",
+		MetadataSchema+".schema_migrations",
+	).Scan(&ready)
+	if err != nil {
+		return false, fmt.Errorf("inspect data metadata bootstrap state: %w", err)
+	}
+	return ready, nil
+}
+
+func (s *Store) bootstrapOnce(ctx context.Context) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("bootstrap data metadata: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	if err := lockMetadataBootstrapWrite(ctx, tx); err != nil {
+		return fmt.Errorf("bootstrap data metadata: %w", err)
+	}
 	stmts := []string{
 		`create schema if not exists ` + quoteIdent(MetadataSchema),
 		`create schema if not exists ` + quoteIdent(RecordsSchema),
@@ -193,10 +266,14 @@ func (s *Store) bootstrap(ctx context.Context) error {
 		recordChangeTriggerFunctionDDL(),
 	}
 	for _, stmt := range stmts {
-		if _, err := s.db.Exec(ctx, stmt); err != nil {
+		if _, err := tx.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("bootstrap data metadata: %w", err)
 		}
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("bootstrap data metadata: %w", err)
+	}
+	committed = true
 	return nil
 }
 
@@ -213,8 +290,39 @@ func (s *Store) EnsureTenant(ctx context.Context, key, name string) (*Tenant, er
 	if err != nil {
 		return nil, err
 	}
+	for attempt := 0; ; attempt++ {
+		tenant, err := s.ensureTenantOnce(ctx, id, key, name, now)
+		if !isDeadlockDetected(err) {
+			return tenant, err
+		}
+		if retryErr := waitBeforeAdvisoryLockRetry(ctx, attempt); retryErr != nil {
+			return nil, err
+		}
+	}
+}
+
+func (s *Store) ensureTenantOnce(ctx context.Context, id, key, name string, now time.Time) (*Tenant, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ensure data tenant %q: %w", key, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	if err := lockMetadataBootstrapRead(ctx, tx); err != nil {
+		return nil, fmt.Errorf("ensure data tenant %q: %w", key, err)
+	}
+	if err := lockPhysicalSchemaMigration(ctx, tx); err != nil {
+		return nil, fmt.Errorf("ensure data tenant %q: %w", key, err)
+	}
+	if err := lockTenantSchemaMigration(ctx, tx, key); err != nil {
+		return nil, fmt.Errorf("ensure data tenant %q: %w", key, err)
+	}
 	var tenant Tenant
-	err = s.db.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		insert into `+qualifiedIdent(MetadataSchema, "tenants")+` (id, key, name, created_at, updated_at)
 		values ($1, $2, $3, $4, $4)
 		on conflict (key) do update set name = excluded.name, updated_at = excluded.updated_at
@@ -223,15 +331,23 @@ func (s *Store) EnsureTenant(ctx context.Context, key, name string) (*Tenant, er
 	if err != nil {
 		return nil, fmt.Errorf("ensure data tenant %q: %w", key, err)
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("ensure data tenant %q: %w", key, err)
+	}
+	committed = true
 	return &tenant, nil
 }
 
 func (s *Store) loadTenant(ctx context.Context, key string) (*Tenant, error) {
+	return s.loadTenantWithQuery(ctx, s.db, key)
+}
+
+func (s *Store) loadTenantWithQuery(ctx context.Context, q Queryer, key string) (*Tenant, error) {
 	if err := validateName("tenant", key); err != nil {
 		return nil, err
 	}
 	var tenant Tenant
-	err := s.db.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		select id::text, key, name, created_at, updated_at
 		from `+qualifiedIdent(MetadataSchema, "tenants")+`
 		where key = $1
@@ -243,19 +359,23 @@ func (s *Store) loadTenant(ctx context.Context, key string) (*Tenant, error) {
 }
 
 func (s *Store) loadState(ctx context.Context, tenantKey, objectName string) (*metadataState, error) {
-	tenant, err := s.loadTenant(ctx, tenantKey)
+	return s.loadStateWithQuery(ctx, s.db, tenantKey, objectName)
+}
+
+func (s *Store) loadStateWithQuery(ctx context.Context, q Queryer, tenantKey, objectName string) (*metadataState, error) {
+	tenant, err := s.loadTenantWithQuery(ctx, q, tenantKey)
 	if err != nil {
 		return nil, err
 	}
-	object, err := s.loadObject(ctx, tenant.ID, objectName)
+	object, err := s.loadObjectWithQuery(ctx, q, tenant.ID, objectName)
 	if err != nil {
 		return nil, err
 	}
-	fields, err := s.loadFields(ctx, tenant.ID, object.ID)
+	fields, err := s.loadFieldsWithQuery(ctx, q, tenant.ID, object.ID)
 	if err != nil {
 		return nil, err
 	}
-	relations, err := s.loadRelationTargets(ctx, tenant.ID, fields)
+	relations, err := s.loadRelationTargetsWithQuery(ctx, q, tenant.ID, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -268,11 +388,15 @@ func (s *Store) loadState(ctx context.Context, tenantKey, objectName string) (*m
 }
 
 func (s *Store) loadObject(ctx context.Context, tenantID, objectName string) (*Object, error) {
+	return s.loadObjectWithQuery(ctx, s.db, tenantID, objectName)
+}
+
+func (s *Store) loadObjectWithQuery(ctx context.Context, q Queryer, tenantID, objectName string) (*Object, error) {
 	if err := validateName("object", objectName); err != nil {
 		return nil, err
 	}
 	var obj Object
-	err := s.db.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		select id::text, tenant_id::text, name_singular, name_plural, table_name,
 		       label_singular, label_plural, is_custom, is_system, schema_version,
 		       outbox_triggers_enabled, created_at, updated_at
@@ -290,8 +414,12 @@ func (s *Store) loadObject(ctx context.Context, tenantID, objectName string) (*O
 }
 
 func (s *Store) loadObjectByID(ctx context.Context, tenantID, objectID string) (*Object, error) {
+	return s.loadObjectByIDWithQuery(ctx, s.db, tenantID, objectID)
+}
+
+func (s *Store) loadObjectByIDWithQuery(ctx context.Context, q Queryer, tenantID, objectID string) (*Object, error) {
 	var obj Object
-	err := s.db.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		select id::text, tenant_id::text, name_singular, name_plural, table_name,
 		       label_singular, label_plural, is_custom, is_system, schema_version,
 		       outbox_triggers_enabled, created_at, updated_at
@@ -309,16 +437,20 @@ func (s *Store) loadObjectByID(ctx context.Context, tenantID, objectID string) (
 }
 
 func (s *Store) loadRelationTargets(ctx context.Context, tenantID string, fields map[string]*Field) (map[string]*relationTarget, error) {
+	return s.loadRelationTargetsWithQuery(ctx, s.db, tenantID, fields)
+}
+
+func (s *Store) loadRelationTargetsWithQuery(ctx context.Context, q Queryer, tenantID string, fields map[string]*Field) (map[string]*relationTarget, error) {
 	relations := map[string]*relationTarget{}
 	for name, field := range fields {
 		if field.Type != FieldRelation || strings.TrimSpace(field.RelationObjectID) == "" {
 			continue
 		}
-		object, err := s.loadObjectByID(ctx, tenantID, field.RelationObjectID)
+		object, err := s.loadObjectByIDWithQuery(ctx, q, tenantID, field.RelationObjectID)
 		if err != nil {
 			return nil, fmt.Errorf("load relation target for field %s: %w", field.Name, err)
 		}
-		targetFields, err := s.loadFields(ctx, tenantID, object.ID)
+		targetFields, err := s.loadFieldsWithQuery(ctx, q, tenantID, object.ID)
 		if err != nil {
 			return nil, fmt.Errorf("load relation target fields for %s: %w", field.Name, err)
 		}
@@ -328,7 +460,11 @@ func (s *Store) loadRelationTargets(ctx context.Context, tenantID string, fields
 }
 
 func (s *Store) loadFields(ctx context.Context, tenantID, objectID string) (map[string]*Field, error) {
-	rows, err := s.db.Query(ctx, `
+	return s.loadFieldsWithQuery(ctx, s.db, tenantID, objectID)
+}
+
+func (s *Store) loadFieldsWithQuery(ctx context.Context, q Queryer, tenantID, objectID string) (map[string]*Field, error) {
+	rows, err := q.Query(ctx, `
 		select id::text, tenant_id::text, object_id::text, name, label, type,
 		       is_custom, is_system, is_nullable, is_unique, is_array,
 		       is_searchable, search_weight,
@@ -382,7 +518,7 @@ func (s *Store) loadFields(ctx context.Context, tenantID, objectID string) (map[
 	rows.Close()
 	for _, fieldID := range fieldIDs {
 		field := fieldsByID[fieldID]
-		options, err := s.loadFieldOptions(ctx, tenantID, field.ID)
+		options, err := s.loadFieldOptionsWithQuery(ctx, q, tenantID, field.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -392,7 +528,11 @@ func (s *Store) loadFields(ctx context.Context, tenantID, objectID string) (map[
 }
 
 func (s *Store) loadFieldOptions(ctx context.Context, tenantID, fieldID string) ([]FieldOption, error) {
-	rows, err := s.db.Query(ctx, `
+	return s.loadFieldOptionsWithQuery(ctx, s.db, tenantID, fieldID)
+}
+
+func (s *Store) loadFieldOptionsWithQuery(ctx context.Context, q Queryer, tenantID, fieldID string) ([]FieldOption, error) {
+	rows, err := q.Query(ctx, `
 		select id::text, tenant_id::text, field_id::text, value, label, color, position, is_archived
 		from `+qualifiedIdent(MetadataSchema, "field_options")+`
 		where tenant_id = $1 and field_id = $2

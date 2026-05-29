@@ -40,6 +40,13 @@ const (
 	grafanaTemporalUID      = "onlava-dev-temporal"
 )
 
+var grafanaVersionProbeTimeout = 2 * time.Second
+
+var grafanaVersionProbe = func(ctx context.Context, path string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, path, "-v")
+	return cmd.CombinedOutput()
+}
+
 type grafanaMode string
 
 const (
@@ -539,10 +546,9 @@ func resolveGrafanaBinary(ctx context.Context, cfg grafanaConfig) (binaryPath, h
 }
 
 func verifyGrafanaPathBinaryVersion(ctx context.Context, path, want string) error {
-	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, grafanaVersionProbeTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(checkCtx, path, "-v")
-	output, err := cmd.CombinedOutput()
+	output, err := grafanaVersionProbe(checkCtx, path)
 	if err != nil {
 		return fmt.Errorf("PATH Grafana binary %s failed version probe: %w", path, err)
 	}

@@ -1,10 +1,12 @@
-package workers
+package relocatedtests
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	. "github.com/pbrazdil/onlava/internal/workers"
 )
 
 const (

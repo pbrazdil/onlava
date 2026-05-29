@@ -10,6 +10,8 @@ import (
 )
 
 func TestSyntaxFilePathsPrefersCompiledGoFilesWhenTheyMatchSyntax(t *testing.T) {
+	t.Parallel()
+
 	pkg := &packages.Package{
 		GoFiles:         []string{"api.go"},
 		CompiledGoFiles: []string{"api.go", "cgo_gen.go"},
@@ -24,6 +26,8 @@ func TestSyntaxFilePathsPrefersCompiledGoFilesWhenTheyMatchSyntax(t *testing.T) 
 }
 
 func TestServiceRootForPackagePrefersExplicitNestedServiceRoot(t *testing.T) {
+	t.Parallel()
+
 	projectsRoot := filepath.Join("solar", "projects")
 	explicit := map[string]bool{projectsRoot: true}
 
@@ -42,6 +46,8 @@ func TestServiceRootForPackagePrefersExplicitNestedServiceRoot(t *testing.T) {
 }
 
 func TestSyntaxFilePathsFallsBackToGoFilesWhenTheyMatchSyntax(t *testing.T) {
+	t.Parallel()
+
 	pkg := &packages.Package{
 		GoFiles:         []string{"api.go", "extra.go"},
 		CompiledGoFiles: []string{"api.go"},

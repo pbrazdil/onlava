@@ -15,6 +15,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	onlavatemporal "github.com/pbrazdil/onlava/temporal"
 )
 
 const temporalDevStartupTimeout = 20 * time.Second
@@ -40,7 +41,7 @@ func startTemporalDevServer(ctx context.Context, root string, cfg app.Config, co
 	}
 
 	checkCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-	_, status := onlavaruntime.CheckTemporalConnection(checkCtx, cfg.Name, rtCfg)
+	_, status := onlavatemporal.CheckConnection(checkCtx, cfg.Name, rtCfg)
 	cancel()
 	if status.Reachable {
 		if console != nil && console.verbose {
@@ -172,7 +173,7 @@ func (s *temporalDevServer) waitReady(ctx context.Context, appName string, cfg o
 			return fmt.Errorf("temporal: dev server at %s did not become ready within %s: %s", s.info.Address, temporalDevStartupTimeout, lastErr)
 		case <-ticker.C:
 			checkCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-			_, status := onlavaruntime.CheckTemporalConnection(checkCtx, appName, cfg)
+			_, status := onlavatemporal.CheckConnection(checkCtx, appName, cfg)
 			cancel()
 			if status.Reachable {
 				return nil
@@ -263,7 +264,7 @@ func (s *temporalDevServer) Reachable(ctx context.Context, appName string, cfg a
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	client, err := onlavaruntime.DialTemporal(checkCtx, s.info)
+	client, err := onlavatemporal.Dial(checkCtx, s.info)
 	if err != nil {
 		return false
 	}

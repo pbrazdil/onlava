@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,12 +20,10 @@ import (
 )
 
 func TestPostgresVerticalSlice(t *testing.T) {
-	dsn := postgresTestDatabaseURL(t)
+	t.Parallel()
+
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
+	pool := openPostgresPool(t)
 	t.Cleanup(pool.Close)
 
 	store, err := Open(ctx, pool, Options{})
@@ -290,12 +289,10 @@ func (p rowFilterPermissions) RowFilter(context.Context, Actor, ObjectRef) (*Fil
 }
 
 func TestPostgresBootstrapIdempotent(t *testing.T) {
-	dsn := postgresTestDatabaseURL(t)
+	t.Parallel()
+
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
+	pool := openPostgresPool(t)
 	t.Cleanup(pool.Close)
 
 	for i := 0; i < 3; i++ {
@@ -306,6 +303,8 @@ func TestPostgresBootstrapIdempotent(t *testing.T) {
 }
 
 func TestPostgresCreateObjectAndFieldAreIdempotent(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_idempotent_%d", time.Now().UnixNano())
@@ -368,6 +367,8 @@ func TestPostgresCreateObjectAndFieldAreIdempotent(t *testing.T) {
 }
 
 func TestPostgresCreateIndexAndCursorPagination(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_index_cursor_%d", time.Now().UnixNano())
@@ -511,6 +512,8 @@ func TestPostgresCreateIndexAndCursorPagination(t *testing.T) {
 }
 
 func TestPostgresRelationFieldsAndQueries(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_relation_%d", time.Now().UnixNano())
@@ -622,6 +625,8 @@ func TestPostgresRelationFieldsAndQueries(t *testing.T) {
 }
 
 func TestPostgresSavedViews(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_view_%d", time.Now().UnixNano())
@@ -736,6 +741,8 @@ func TestPostgresSavedViews(t *testing.T) {
 }
 
 func TestPostgresTenantKeyPermissionsAffectQueriesAndLiveSubscriptions(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_permissions_%d", time.Now().UnixNano())
@@ -775,6 +782,8 @@ func TestPostgresTenantKeyPermissionsAffectQueriesAndLiveSubscriptions(t *testin
 }
 
 func TestPostgresExportImportTenantRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	sourceTenant := fmt.Sprintf("tenant_export_source_%d", time.Now().UnixNano())
@@ -888,6 +897,8 @@ func TestPostgresExportImportTenantRoundTrip(t *testing.T) {
 }
 
 func TestPostgresConcurrentCreatesAreIdempotent(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	pool, store := openPostgresStore(t)
@@ -934,7 +945,144 @@ func TestPostgresConcurrentCreatesAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestPostgresConcurrentDistinctFieldMigrationsAdvanceSchemaVersion(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	pool := openPostgresPool(t)
+	t.Cleanup(pool.Close)
+	const fieldCount = 8
+	perms := &barrierWriteObjectPermissions{
+		objectName: "company",
+		want:       fieldCount,
+		release:    make(chan struct{}),
+	}
+	store, err := Open(ctx, pool, Options{Permissions: perms})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	tenantKey := fmt.Sprintf("tenant_distinct_field_migrations_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+			t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+		}
+	})
+	actor := Actor{ID: "tester"}
+
+	obj, err := store.CreateObject(ctx, actor, CreateObjectRequest{
+		TenantKey:    tenantKey,
+		TenantName:   "Tenant",
+		NameSingular: "company",
+		NamePlural:   "companies",
+	})
+	if err != nil {
+		t.Fatalf("CreateObject: %v", err)
+	}
+
+	perms.active.Store(true)
+	var nextField int64
+	fieldIDs := runConcurrent(t, fieldCount, func() (string, error) {
+		index := atomic.AddInt64(&nextField, 1) - 1
+		field, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{
+			TenantKey: tenantKey,
+			Name:      fmt.Sprintf("field_%d", index),
+			Type:      FieldText,
+		})
+		if err != nil {
+			return "", err
+		}
+		return field.ID, nil
+	})
+	if got := uniqueStrings(fieldIDs); len(got) != fieldCount {
+		t.Fatalf("field ids = %#v, want %d unique ids", got, fieldCount)
+	}
+	if got := countRows(t, pool, `select count(*) from `+qualifiedIdent(MetadataSchema, "fields")+` where object_id = $1`, obj.ID); got != fieldCount {
+		t.Fatalf("field count = %d, want %d", got, fieldCount)
+	}
+	if got := countRows(t, pool, `select schema_version from `+qualifiedIdent(MetadataSchema, "objects")+` where id = $1`, obj.ID); got != 1+fieldCount {
+		t.Fatalf("schema_version = %d, want %d", got, 1+fieldCount)
+	}
+}
+
+func TestPostgresTenantIsolatedFieldMigrationsDoNotDeadlock(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	pool, store := openPostgresStore(t)
+	actor := Actor{ID: "tester"}
+
+	const tenantCount = 4
+	const fieldsPerTenant = 3
+	tenantKeys := make([]string, tenantCount)
+	t.Cleanup(func() {
+		for _, tenantKey := range tenantKeys {
+			if tenantKey == "" {
+				continue
+			}
+			if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
+				t.Errorf("cleanup tenant %q: %v", tenantKey, err)
+			}
+		}
+	})
+	for i := 0; i < tenantCount; i++ {
+		tenantKeys[i] = fmt.Sprintf("tenant_parallel_field_ddl_%d_%d", time.Now().UnixNano(), i)
+		if _, err := store.CreateObject(ctx, actor, CreateObjectRequest{
+			TenantKey:    tenantKeys[i],
+			TenantName:   "Tenant",
+			NameSingular: "company",
+			NamePlural:   "companies",
+		}); err != nil {
+			t.Fatalf("CreateObject(%s): %v", tenantKeys[i], err)
+		}
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, tenantCount)
+	var wg sync.WaitGroup
+	wg.Add(tenantCount)
+	for i := 0; i < tenantCount; i++ {
+		tenantKey := tenantKeys[i]
+		go func() {
+			defer wg.Done()
+			<-start
+			for j := 0; j < fieldsPerTenant; j++ {
+				if _, err := store.CreateField(ctx, actor, "company", CreateFieldRequest{
+					TenantKey: tenantKey,
+					Name:      fmt.Sprintf("field_%d", j),
+					Type:      FieldText,
+				}); err != nil {
+					errs <- fmt.Errorf("CreateField(%s, field_%d): %w", tenantKey, j, err)
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tenantKey := range tenantKeys {
+		if got := countRows(t, pool, `
+			select count(*)
+			from `+qualifiedIdent(MetadataSchema, "fields")+` f
+			join `+qualifiedIdent(MetadataSchema, "tenants")+` t on t.id = f.tenant_id
+			where t.key = $1
+		`, tenantKey); got != fieldsPerTenant {
+			t.Fatalf("field count for %s = %d, want %d", tenantKey, got, fieldsPerTenant)
+		}
+	}
+}
+
 func TestPostgresFailedMigrationIsRecordedAndRetryCanSucceed(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_failed_migration_%d", time.Now().UnixNano())
@@ -974,12 +1122,11 @@ func TestPostgresFailedMigrationIsRecordedAndRetryCanSucceed(t *testing.T) {
 }
 
 func TestPostgresServeEventsHeartbeat(t *testing.T) {
-	oldInterval := sseHeartbeatInterval
-	sseHeartbeatInterval = 10 * time.Millisecond
-	t.Cleanup(func() { sseHeartbeatInterval = oldInterval })
+	t.Parallel()
 
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
+	store.sseHeartbeatEvery = 10 * time.Millisecond
 	tenantKey := fmt.Sprintf("tenant_heartbeat_%d", time.Now().UnixNano())
 	t.Cleanup(func() {
 		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
@@ -1038,6 +1185,8 @@ func TestPostgresServeEventsHeartbeat(t *testing.T) {
 }
 
 func TestPostgresTriggerBackedOutboxCapturesDirectSQL(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
 	tenantKey := fmt.Sprintf("tenant_trigger_%d", time.Now().UnixNano())
@@ -1170,12 +1319,11 @@ func TestPostgresTriggerBackedOutboxCapturesDirectSQL(t *testing.T) {
 }
 
 func TestPostgresTriggerBackedOutboxFeedsSSE(t *testing.T) {
-	oldPollInterval := sseOutboxPollInterval
-	sseOutboxPollInterval = 10 * time.Millisecond
-	t.Cleanup(func() { sseOutboxPollInterval = oldPollInterval })
+	t.Parallel()
 
 	ctx := context.Background()
 	pool, store := openPostgresStore(t)
+	store.sseOutboxPollEvery = 10 * time.Millisecond
 	tenantKey := fmt.Sprintf("tenant_trigger_sse_%d", time.Now().UnixNano())
 	t.Cleanup(func() {
 		if err := cleanupPostgresTenant(context.Background(), pool, tenantKey); err != nil {
@@ -1255,16 +1403,23 @@ func TestPostgresTriggerBackedOutboxFeedsSSE(t *testing.T) {
 func openPostgresStore(t *testing.T) (*pgxpool.Pool, *Store) {
 	t.Helper()
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, postgresTestDatabaseURL(t))
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
+	pool := openPostgresPool(t)
 	t.Cleanup(pool.Close)
 	store, err := Open(ctx, pool, Options{})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	return pool, store
+}
+
+func openPostgresPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, postgresTestDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	return pool
 }
 
 func runConcurrent(t *testing.T, n int, fn func() (string, error)) []string {
@@ -1363,6 +1518,33 @@ func (tenantKeyGuardPermissions) CanReadObject(_ context.Context, actor Actor, r
 		return errors.New("permission denied: tenant mismatch")
 	}
 	return nil
+}
+
+type barrierWriteObjectPermissions struct {
+	AllowAllPermissions
+	active     atomic.Bool
+	objectName string
+	want       int
+	arrived    atomic.Int64
+	release    chan struct{}
+}
+
+func (p *barrierWriteObjectPermissions) CanWriteObject(ctx context.Context, actor Actor, ref ObjectRef) error {
+	if err := p.AllowAllPermissions.CanWriteObject(ctx, actor, ref); err != nil {
+		return err
+	}
+	if !p.active.Load() || ref.Name != p.objectName {
+		return nil
+	}
+	if p.arrived.Add(1) == int64(p.want) {
+		close(p.release)
+	}
+	select {
+	case <-p.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func cleanupPostgresTenant(ctx context.Context, pool *pgxpool.Pool, tenantKey string) error {

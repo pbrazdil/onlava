@@ -3,11 +3,13 @@ package datainspect
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pbrazdil/onlava/internal/objectstore"
 )
@@ -151,6 +153,18 @@ func Build(ctx context.Context, opts Options) (Response, error) {
 }
 
 func BuildFromDB(ctx context.Context, db db, opts Options) (Response, error) {
+	for attempt := 0; ; attempt++ {
+		resp, err := buildFromDBOnce(ctx, db, opts)
+		if !isDeadlockDetected(err) {
+			return resp, err
+		}
+		if retryErr := waitBeforeDeadlockRetry(ctx, attempt); retryErr != nil {
+			return Response{}, err
+		}
+	}
+}
+
+func buildFromDBOnce(ctx context.Context, db db, opts Options) (Response, error) {
 	resp := Response{
 		SchemaVersion: schemaVersion,
 		Schemas: Schemas{
@@ -184,6 +198,30 @@ func BuildFromDB(ctx context.Context, db db, opts Options) (Response, error) {
 		return Response{}, err
 	}
 	return resp, nil
+}
+
+func isDeadlockDetected(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
+}
+
+func waitBeforeDeadlockRetry(ctx context.Context, attempt int) error {
+	const maxAttempts = 8
+	if attempt >= maxAttempts {
+		return fmt.Errorf("deadlock retry attempts exhausted")
+	}
+	delay := time.Duration(attempt+1) * 10 * time.Millisecond
+	if delay > 100*time.Millisecond {
+		delay = 100 * time.Millisecond
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func schemasReady(ctx context.Context, db db) (bool, []string, error) {

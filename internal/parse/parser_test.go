@@ -11,6 +11,8 @@ import (
 )
 
 func TestParseBasicApp(t *testing.T) {
+	t.Parallel()
+
 	appRoot := filepath.Join(repoRoot(t), "testdata", "apps", "basic")
 	app, err := parse.App(appRoot, "basicapp")
 	if err != nil {
@@ -58,6 +60,8 @@ func TestParseBasicApp(t *testing.T) {
 }
 
 func TestParseRuntimeDeclarations(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/runtimedecls\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"runtimedecls"}`)
@@ -131,6 +135,8 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 }
 
 func TestParseRejectsEmptyTemporalActivityTaskQueue(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/emptyactivityqueue\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"emptyactivityqueue"}`)
@@ -175,6 +181,8 @@ var _ = temporal.NewActivity[In, Out]("orders.Zero/v1", zero, func(ctx context.C
 }
 
 func TestParseAcceptsUnkeyedTemporalActivityConfig(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/unkeyedactivityqueue\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"unkeyedactivityqueue"}`)
@@ -221,6 +229,8 @@ var _ = temporal.NewActivity[In, Out]("orders.Capture/v1", temporal.ActivityConf
 }
 
 func TestParseRejectsLegacyTemporalStartCall(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/legacystart\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"legacystart"}`)
@@ -253,6 +263,8 @@ func Ping(ctx context.Context) error {
 }
 
 func TestParseRejectsRawEndpointCalls(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/rawcall\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"rawcall"}`)
@@ -278,6 +290,8 @@ func Call(w http.ResponseWriter, req *http.Request) {
 }
 
 func TestParseAllowsNestedPackageServiceStruct(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/nestedservice\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"nestedservice"}`)
@@ -321,6 +335,8 @@ func (s *Service) ListProjects(ctx context.Context, tenant_id string) (*ListProj
 }
 
 func TestParseRejectsPathParamMismatch(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/pathmismatch\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"pathmismatch"}`)
@@ -339,6 +355,8 @@ func Hello(ctx context.Context, wrong string) error { return nil }
 }
 
 func TestParseRejectsNonOnlavaDirectives(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/otherdirective\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"otherdirective"}`)
@@ -357,6 +375,8 @@ func Hello(ctx context.Context) error { return nil }
 }
 
 func TestParseMiddlewareTargetsAndTags(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/middlewareapp\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"middlewareapp"}`)
@@ -421,6 +441,8 @@ func Global(req middleware.Request, next middleware.Next) middleware.Response {
 }
 
 func TestParseRejectsAppsWithoutOnlavaDirectives(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/noonlava\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"noonlava"}`)
@@ -436,6 +458,8 @@ func Helper() {}
 }
 
 func TestParseRejectsInvalidServiceShutdownSignature(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/badshutdown\n\ngo 1.26.0\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRoot(t)+"\n")
 	writeFile(t, dir, ".onlava.json", `{"name":"badshutdown"}`)
