@@ -52,6 +52,11 @@ reuse IDs; this list can still be ordered by current priority.
   - Owner: onlava runtime / agent DX
   - Created: 2026-05-31
   - Focus: build a structured source-aware dev event spine, add log filters, then layer an observing-only terminal console and error summaries over the same stream.
+- [0056 Dev Event Backend Cutover and Parity](0056-dev-event-backend-cutover-and-parity.md)
+  - Status: active
+  - Owner: onlava runtime / agent DX
+  - Created: 2026-05-31
+  - Focus: unify SQLite and VictoriaLogs dev-event read/follow behavior behind one backend abstraction, then prove parity before making VictoriaLogs preferred.
 - [0047 TypeScript Temporal Workers](0047-typescript-temporal-workers.md)
   - Status: active
   - Owner: onlava runtime / Temporal

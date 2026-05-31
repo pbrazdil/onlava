@@ -11,6 +11,7 @@ import (
 	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
+	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
 func TestParseAgentArgs(t *testing.T) {
@@ -204,6 +205,8 @@ func TestDownCommandRemovesSessionState(t *testing.T) {
 
 func TestPruneCommandPrunesOldSessionState(t *testing.T) {
 	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
 	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
 	if err != nil {
 		t.Fatal(err)
@@ -245,6 +248,17 @@ func TestPruneCommandPrunesOldSessionState(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(session.StateRoot, "logs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	store, err := devdash.OpenStore(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := devdash.NewDevEvent("demo", session.SessionID, devdash.DevSource{ID: "api", Kind: "app"}, "info", "old event", nil, time.Now().UTC())
+	if err := store.WriteDevEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(2 * time.Millisecond)
 
 	output := captureStdout(t, func() error {
@@ -252,6 +266,9 @@ func TestPruneCommandPrunesOldSessionState(t *testing.T) {
 	})
 	if !strings.Contains(output, "pruned onlava session old-session") {
 		t.Fatalf("prune output = %q", output)
+	}
+	if !strings.Contains(output, "dev_events=1 dev_sources=1") {
+		t.Fatalf("prune output missing dev-event prune counts: %q", output)
 	}
 	sessions, err := client.List(ctx, appRoot)
 	if err != nil {
@@ -262,6 +279,18 @@ func TestPruneCommandPrunesOldSessionState(t *testing.T) {
 	}
 	if _, err := os.Stat(session.StateRoot); !os.IsNotExist(err) {
 		t.Fatalf("session state still exists or stat failed: %v", err)
+	}
+	store, err = devdash.OpenStore(cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	events, err := store.ListDevEvents(context.Background(), devdash.DevEventQuery{AppID: "demo", SessionID: session.SessionID, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("dev events after prune = %+v, want none", events)
 	}
 }
 

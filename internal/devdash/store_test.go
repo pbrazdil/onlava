@@ -244,6 +244,55 @@ func TestStoreDevEventsRoundTripAndFilters(t *testing.T) {
 	}
 }
 
+func TestStoreDevEventIDsAreAssignedBeforeInsert(t *testing.T) {
+	t.Parallel()
+
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	ctx := context.Background()
+	first := NewDevEvent("app-test", "session-a", DevSource{ID: "api", Kind: "app"}, "info", "first", nil, time.Now().UTC())
+	firstID, err := store.WriteDevEventReturningID(ctx, first)
+	if err != nil {
+		t.Fatalf("write first event: %v", err)
+	}
+	if firstID <= 0 {
+		t.Fatalf("first id = %d, want positive", firstID)
+	}
+
+	explicit := NewDevEvent("app-test", "session-a", DevSource{ID: "api", Kind: "app"}, "info", "explicit", nil, time.Now().UTC())
+	explicit.ID = firstID + 10
+	explicitID, err := store.WriteDevEventReturningID(ctx, explicit)
+	if err != nil {
+		t.Fatalf("write explicit event: %v", err)
+	}
+	if explicitID != explicit.ID {
+		t.Fatalf("explicit id = %d, want %d", explicitID, explicit.ID)
+	}
+
+	next := NewDevEvent("app-test", "session-a", DevSource{ID: "api", Kind: "app"}, "info", "next", nil, time.Now().UTC())
+	nextID, err := store.WriteDevEventReturningID(ctx, next)
+	if err != nil {
+		t.Fatalf("write next event: %v", err)
+	}
+	if nextID != explicit.ID+1 {
+		t.Fatalf("next id = %d, want %d", nextID, explicit.ID+1)
+	}
+
+	followed, err := store.ListDevEvents(ctx, DevEventQuery{AppID: "app-test", SessionID: "session-a", AfterID: explicit.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("list after id: %v", err)
+	}
+	if len(followed) != 1 || followed[0].ID != nextID || followed[0].Message != "next" {
+		t.Fatalf("followed events = %+v, want next id %d", followed, nextID)
+	}
+}
+
 func TestStoreKeepsDistinctAppSessionsForSameApp(t *testing.T) {
 	t.Parallel()
 

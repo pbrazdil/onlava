@@ -164,6 +164,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			parse_ok integer not null default 0,
 			created_at text not null
 		)`,
+		`create table if not exists dev_event_sequence (
+			name text primary key,
+			next_id integer not null
+		)`,
 		`create index if not exists idx_dev_events_app_session_id on dev_events (app_id, session_id, id)`,
 		`create index if not exists idx_dev_events_app_session_source on dev_events (app_id, session_id, source_id, id)`,
 		`create index if not exists idx_dev_events_app_session_kind on dev_events (app_id, session_id, source_kind, id)`,

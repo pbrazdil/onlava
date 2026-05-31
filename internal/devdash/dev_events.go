@@ -2,6 +2,7 @@ package devdash
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -94,6 +95,13 @@ func (s *Store) WriteDevEventReturningID(ctx context.Context, event DevEvent) (i
 	if s == nil || s.db == nil {
 		return 0, errors.New("devdash store is nil")
 	}
+	if event.ID <= 0 {
+		id, err := s.NextDevEventID(ctx)
+		if err != nil {
+			return 0, err
+		}
+		event.ID = id
+	}
 	if event.CreatedAt.IsZero() {
 		event.CreatedAt = time.Now().UTC()
 	}
@@ -121,21 +129,89 @@ func (s *Store) WriteDevEventReturningID(ctx context.Context, event DevEvent) (i
 	}
 	res, err := s.db.ExecContext(ctx, `
 		insert into dev_events (
-			app_id, session_id, source_id, source_kind, source_name, source_role, source_pid, source_stream,
+			id, app_id, session_id, source_id, source_kind, source_name, source_role, source_pid, source_stream,
 			source_restart_id, source_status, source_url, source_reason, level, message, fields_json, raw_output,
 			parse_format, parse_ok, created_at
 		)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, event.AppID, event.SessionID, event.Source.ID, event.Source.Kind, event.Source.Name, event.Source.Role, event.Source.PID, event.Source.Stream,
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, event.ID, event.AppID, event.SessionID, event.Source.ID, event.Source.Kind, event.Source.Name, event.Source.Role, event.Source.PID, event.Source.Stream,
 		event.Source.RestartID, event.Source.Status, event.Source.URL, event.Source.Reason, event.Level, event.Message, string(event.Fields), event.Raw,
 		event.Parse.Format, parseOK, event.CreatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return 0, err
 	}
-	if id, err := res.LastInsertId(); err == nil {
+	if event.ID > 0 {
+		if err := s.AdvanceDevEventID(ctx, event.ID+1); err != nil {
+			return 0, err
+		}
+	} else if id, err := res.LastInsertId(); err == nil {
 		event.ID = id
 	}
 	return event.ID, nil
+}
+
+func (s *Store) NextDevEventID(ctx context.Context) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, errors.New("devdash store is nil")
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if err := ensureDevEventSequence(ctx, tx); err != nil {
+		return 0, err
+	}
+	var id int64
+	if err := tx.QueryRowContext(ctx, `
+		update dev_event_sequence
+		set next_id = next_id + 1
+		where name = 'global'
+		returning next_id - 1
+	`).Scan(&id); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func (s *Store) AdvanceDevEventID(ctx context.Context, nextID int64) error {
+	if s == nil || s.db == nil {
+		return errors.New("devdash store is nil")
+	}
+	if nextID <= 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if err := ensureDevEventSequence(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		update dev_event_sequence
+		set next_id = case when next_id < ? then ? else next_id end
+		where name = 'global'
+	`, nextID, nextID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func ensureDevEventSequence(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
+		insert or ignore into dev_event_sequence (name, next_id)
+		values ('global', (select coalesce(max(id), 0) + 1 from dev_events))
+	`)
+	return err
 }
 
 func (s *Store) ListDevSources(ctx context.Context, appID, sessionID string) ([]DevSource, error) {
@@ -165,6 +241,26 @@ func (s *Store) ListDevSources(ctx context.Context, appID, sessionID string) ([]
 		sources = append(sources, source)
 	}
 	return sources, rows.Err()
+}
+
+func (s *Store) DeleteDevEventsForSession(ctx context.Context, appID, sessionID string) (int64, int64, error) {
+	if s == nil || s.db == nil {
+		return 0, 0, errors.New("devdash store is nil")
+	}
+	if strings.TrimSpace(appID) == "" || strings.TrimSpace(sessionID) == "" {
+		return 0, 0, nil
+	}
+	events, err := s.db.ExecContext(ctx, `delete from dev_events where app_id = ? and session_id = ?`, appID, sessionID)
+	if err != nil {
+		return 0, 0, err
+	}
+	sources, err := s.db.ExecContext(ctx, `delete from dev_sources where app_id = ? and session_id = ?`, appID, sessionID)
+	if err != nil {
+		return 0, 0, err
+	}
+	eventCount, _ := events.RowsAffected()
+	sourceCount, _ := sources.RowsAffected()
+	return eventCount, sourceCount, nil
 }
 
 func (s *Store) ListDevEvents(ctx context.Context, query DevEventQuery) ([]DevEvent, error) {

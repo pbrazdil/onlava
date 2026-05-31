@@ -337,6 +337,11 @@ func classifyHarnessChangedFile(path string) string {
 }
 
 func addHarnessChangedAreaKnowledge(path, category string, docs, risks, commands map[string]bool) {
+	if harnessDevEventBackendPath(path) {
+		docs["docs/plans/0056-dev-event-backend-cutover-and-parity.md"] = true
+		risks["dev-event-backend-parity"] = true
+		commands["onlava logs compare --session current --backend-a sqlite --backend-b victoria --limit 500 --json"] = true
+	}
 	switch category {
 	case "cli":
 		docs["docs/harness-engineering.md"] = true
@@ -375,6 +380,23 @@ func addHarnessChangedAreaKnowledge(path, category string, docs, risks, commands
 			docs["docs/plans/0047-typescript-temporal-workers.md"] = true
 			risks["temporal-runtime"] = true
 		}
+	}
+}
+
+func harnessDevEventBackendPath(path string) bool {
+	switch path {
+	case "cmd/onlava/logs.go",
+		"cmd/onlava/logs_test.go",
+		"cmd/onlava/dev_console.go",
+		"cmd/onlava/dev_console_test.go",
+		"cmd/onlava/dev_event_backend.go",
+		"cmd/onlava/victoria_dev_logs.go",
+		"internal/devdash/dev_events.go",
+		"internal/devdash/store.go",
+		"internal/devdash/store_test.go":
+		return true
+	default:
+		return false
 	}
 }
 

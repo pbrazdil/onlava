@@ -221,7 +221,7 @@ Current implemented grammar:
 ```text
 onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [-v|--verbose] [--json] [--proxy] [--trust] [--detach]
 onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria|sqlite] [--jsonl|--json] [--tui]
-onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>]
+onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria|sqlite]
 onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
@@ -250,6 +250,7 @@ onlava inspect traces --json [--session current|<id>] [--service <name>] [--endp
 onlava inspect metrics --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
 onlava admin traces clear --json [--app-root <path>]
 onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria|sqlite] [-f|--follow] [--jsonl|--json]
+onlava logs compare [--app-root <path>] [--session current|<id>] [--backend-a sqlite|victoria] [--backend-b sqlite|victoria] [--limit <n>] [--json]
 onlava test [--app-root <path>] [go test flags/packages...]
 onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 ```
@@ -281,12 +282,14 @@ Command split:
 - `onlava dev --session <id>` registers the dev process under an explicit session ID. `onlava dev --new-session` creates a fresh session ID for this run, even when the app root and branch already have a deterministic default session. These flags are mutually exclusive.
 - `onlava dev --detach` requires the local agent, starts the same dev supervisor in a background child process, waits for that child PID to register as the app root's agent session owner, prints the session URLs plus attach/stop commands, and returns. Detached child stdout/stderr from the supervisor is written under the agent directory; app process output continues to flow through the session-scoped dashboard log store.
 - `onlava attach` follows the current agent session's logs by default. It is equivalent to `onlava logs --session current --follow` with the same app-root, limit, stream, source, kind, level, grep, since, backend, and JSONL options, and it does not mutate session state.
-- `onlava logs` and plain `onlava attach` prefer the shared agent VictoriaLogs dev-event stream when it has matching structured events, then fall back to SQLite. `--backend victoria` and `--backend sqlite` force either side while the migration is being verified; `ONLAVA_LOGS_BACKEND` accepts the same values.
-- `onlava attach --tui` and `onlava console` open the source-aware terminal console when stdin/stdout are real TTYs. In CI, dumb terminals, or redirected output they fall back to normal log following.
+- `onlava logs`, plain `onlava attach`, `onlava attach --tui`, and `onlava console` use the same dev-event backend selector. `--backend victoria` and `--backend sqlite` force either side while the migration is being verified; `ONLAVA_LOGS_BACKEND` accepts the same values and applies to the TUI as well.
+- `--backend auto` prefers the shared agent VictoriaLogs dev-event stream when the agent has registered one. Non-following plain logs still fall back to SQLite or legacy process output when Victoria returns no rows for an existing local session. Fresh `--follow --backend auto` keeps following the selected backend even when the initial result set is empty, so new Victoria events are not missed.
+- `onlava logs compare` reads both selected backends and emits either a short human summary or machine-readable JSON mismatch diagnostics for event counts, IDs, source data, levels, messages, raw output, parsed fields, parse metadata, and timestamps.
+- `onlava attach --tui` and `onlava console` open the source-aware terminal console when stdin/stdout are real TTYs. In CI, dumb terminals, or redirected output they fall back to normal log following with the same backend option.
 - Structured dev logs carry source identity. Current source ids include `api`, `worker:typescript`, `build`, `supervisor`, `temporal`, `electric`, `grafana`, `victoria`, and `frontend:<name>`.
 - `onlava agent restart` stops the currently reachable local agent process, starts a new background agent, waits until the control socket is reachable, and returns. The same `--socket`, `--router-listen`, `--router-tls`, `--trust`, and `--json` options apply to the restarted agent.
 - `onlava down` stops and unregisters the selected session but is non-destructive by default. `--db` drops that session's managed Postgres database, `--state` removes that session's `.onlava/sessions/<id>` state root, and `--all` enables both.
-- `onlava prune --older-than <duration>` prunes old agent sessions whose recorded owner is gone or mismatched, and removes their `.onlava/sessions/<id>` state roots. It accepts Go durations such as `336h` plus day shorthand such as `14d`. It does not drop managed databases; use `onlava down --db` or `onlava db drop` for destructive database cleanup.
+- `onlava prune --older-than <duration>` prunes old agent sessions whose recorded owner is gone or mismatched, removes their `.onlava/sessions/<id>` state roots, and deletes matching SQLite `dev_events`/`dev_sources` compatibility-cache rows. It accepts Go durations such as `336h` plus day shorthand such as `14d`. It does not drop managed databases or delete VictoriaLogs storage; use `onlava down --db` or `onlava db drop` for destructive database cleanup.
 - When the local agent is active, the agent starts the visible dashboard backend and routes `console.onlava.localhost/s/<session_id>` to it. The Unix-socket control API remains protected by filesystem permissions.
 - The agent router serves HTTPS by default, and newly registered sessions receive `https://...onlava.localhost` routes. `onlava agent --router-http` or `ONLAVA_AGENT_ROUTER_TLS=0` explicitly keeps the router on HTTP for local debugging. `onlava agent --router-tls` and `ONLAVA_AGENT_ROUTER_TLS=1` force HTTPS when an explicit setting is needed. `onlava agent --trust` and `ONLAVA_AGENT_TRUST=1` also enable router TLS and attempt to trust the existing onlava local CA. Trust installation failures are logged; the router still starts.
 - Agent session manifests always include `dashboard` and `mcp` routes for the global agent-owned dashboard. With the agent dashboard active, the manifest does not need matching per-session `dashboard` or `mcp` backends; direct/per-session dashboard endpoints are kept for agent-disabled, unavailable-agent, or explicit local-proxy fallback paths.
@@ -435,7 +438,7 @@ onlava logs --json
 - each line conforms to `onlava.dev.event.v1`
 - one JSON object is emitted per stored structured dev event or legacy process-output chunk
 - structured events include app id/root, session id, source id/kind/name/role/pid/stream/status, level, message, parsed fields, raw output, and parse metadata
-- structured dev events are dual-written to SQLite and VictoriaLogs during the migration; the JSONL output shape is the same for both `--backend sqlite` and `--backend victoria`
+- structured dev events are assigned a stable integer ID before storage, then dual-written to SQLite and VictoriaLogs during the migration; the JSONL output shape is the same for both `--backend sqlite` and `--backend victoria`
 - human-readable raw output remains the default when neither flag is used
 
 Reserved grammar:

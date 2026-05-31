@@ -74,6 +74,10 @@ func runOnlavaConsole(ctx context.Context, stdin *os.File, stdout io.Writer, opt
 		return err
 	}
 	defer store.Close()
+	backend, err := selectDevEventBackend(ctx, store, opts)
+	if err != nil {
+		return err
+	}
 
 	restore, _ := enterRawTerminal(stdin)
 	defer restore()
@@ -93,7 +97,7 @@ func runOnlavaConsole(ctx context.Context, stdin *os.File, stdout io.Writer, opt
 
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	if err := state.refresh(ctx, store); err != nil {
+	if err := state.refresh(ctx, backend); err != nil {
 		return err
 	}
 	fmt.Fprint(stdout, "\x1b[H\x1b[2J"+renderDevConsole(state.snapshot()))
@@ -108,13 +112,13 @@ func runOnlavaConsole(ctx context.Context, stdin *os.File, stdout io.Writer, opt
 			if state.handleKey(key) {
 				return nil
 			}
-			if err := state.refresh(ctx, store); err != nil {
+			if err := state.refresh(ctx, backend); err != nil {
 				return err
 			}
 			fmt.Fprint(stdout, "\x1b[H\x1b[2J"+renderDevConsole(state.snapshot()))
 		case <-ticker.C:
 			if !state.frozen {
-				if err := state.refresh(ctx, store); err != nil {
+				if err := state.refresh(ctx, backend); err != nil {
 					return err
 				}
 				fmt.Fprint(stdout, "\x1b[H\x1b[2J"+renderDevConsole(state.snapshot()))
@@ -139,7 +143,7 @@ type devConsoleState struct {
 	sources   []devConsoleSource
 }
 
-func (s *devConsoleState) refresh(ctx context.Context, store *devdash.Store) error {
+func (s *devConsoleState) refresh(ctx context.Context, backend devEventBackend) error {
 	query := logsDevEventQuery(s.opts, s.appID, s.sessionID)
 	query.Limit = maxInt(s.opts.Limit, 300)
 	if s.selected != "" && s.selected != "all" {
@@ -151,11 +155,11 @@ func (s *devConsoleState) refresh(ctx context.Context, store *devdash.Store) err
 	if s.search != "" {
 		query.Grep = s.search
 	}
-	events, err := store.ListDevEvents(ctx, query)
+	events, err := backend.ListDevEvents(ctx, query)
 	if err != nil {
 		return err
 	}
-	sources, err := store.ListDevSources(ctx, s.appID, s.sessionID)
+	sources, err := backend.ListDevSources(ctx, s.appID, s.sessionID)
 	if err != nil {
 		return err
 	}

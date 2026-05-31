@@ -481,6 +481,12 @@ func pruneCommand(args []string) error {
 	cutoff := time.Now().UTC().Add(-opts.OlderThan)
 	var pruned []string
 	var skipped []string
+	devEventsPruned := int64(0)
+	devSourcesPruned := int64(0)
+	store, storeErr := openDevdashStore()
+	if storeErr == nil {
+		defer store.Close()
+	}
 	for _, session := range sessions {
 		if !pruneSessionEligible(session, cutoff) {
 			skipped = append(skipped, session.SessionID)
@@ -493,19 +499,29 @@ func pruneCommand(args []string) error {
 		if err := removeSessionStateRoot(deleted); err != nil {
 			return err
 		}
+		if store != nil {
+			events, sources, err := store.DeleteDevEventsForSession(ctx, deleted.BaseAppID, deleted.SessionID)
+			if err != nil {
+				return err
+			}
+			devEventsPruned += events
+			devSourcesPruned += sources
+		}
 		pruned = append(pruned, deleted.SessionID)
 	}
 	if opts.JSON {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
-			"cutoff":  cutoff.Format(time.RFC3339Nano),
-			"pruned":  pruned,
-			"skipped": skipped,
+			"cutoff":             cutoff.Format(time.RFC3339Nano),
+			"pruned":             pruned,
+			"skipped":            skipped,
+			"dev_events_pruned":  devEventsPruned,
+			"dev_sources_pruned": devSourcesPruned,
 		})
 	}
 	for _, id := range pruned {
 		fmt.Fprintf(os.Stdout, "pruned onlava session %s\n", id)
 	}
-	fmt.Fprintf(os.Stdout, "onlava prune complete: pruned=%d skipped=%d\n", len(pruned), len(skipped))
+	fmt.Fprintf(os.Stdout, "onlava prune complete: pruned=%d skipped=%d dev_events=%d dev_sources=%d\n", len(pruned), len(skipped), devEventsPruned, devSourcesPruned)
 	return nil
 }
 

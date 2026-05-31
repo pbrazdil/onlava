@@ -52,6 +52,39 @@ func TestAttachLogArgsDefaultsToCurrentSessionFollow(t *testing.T) {
 	}
 }
 
+func TestParseLogsCompareArgs(t *testing.T) {
+	t.Parallel()
+
+	opts, err := parseLogsCompareArgs([]string{"--app-root", "/tmp/app", "--session", "session-a", "--backend-a", "sqlite", "--backend-b", "victoria", "--limit", "25", "--json"})
+	if err != nil {
+		t.Fatalf("parseLogsCompareArgs returned error: %v", err)
+	}
+	if opts.AppRoot != "/tmp/app" || opts.Session != "session-a" || opts.BackendA != logsBackendSQLite || opts.BackendB != logsBackendVictoria || opts.Limit != 25 || !opts.JSON {
+		t.Fatalf("unexpected compare options: %#v", opts)
+	}
+}
+
+func TestCompareDevEventBackendsReportsParity(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 5, 31, 12, 44, 1, 0, time.UTC)
+	events := []devdash.DevEvent{
+		devdash.NewDevEvent("logsapp", "session-a", devdash.DevSource{ID: "api", Kind: "app"}, "info", "ok", map[string]any{"path": "/health"}, at),
+	}
+	events[0].ID = 7
+	result := compareDevEventBackends(logsBackendSQLite, logsBackendVictoria, "logsapp", "/repo/logsapp", events, events)
+	if !result.Equal || len(result.Mismatches) != 0 {
+		t.Fatalf("result = %+v, want equal", result)
+	}
+
+	changed := append([]devdash.DevEvent(nil), events...)
+	changed[0].Message = "changed"
+	result = compareDevEventBackends(logsBackendSQLite, logsBackendVictoria, "logsapp", "/repo/logsapp", events, changed)
+	if result.Equal || len(result.Mismatches) == 0 || result.Mismatches[0].Field != "message" {
+		t.Fatalf("result = %+v, want message mismatch", result)
+	}
+}
+
 func TestAttachCommandUsesLogsFollow(t *testing.T) {
 	prev := runOnlavaLogsFunc
 	defer func() { runOnlavaLogsFunc = prev }()

@@ -175,6 +175,40 @@ func TestBuildHarnessChangedAreaReportRecommendsPackageCommands(t *testing.T) {
 	}
 }
 
+func TestBuildHarnessChangedAreaReportRecommendsDevEventParity(t *testing.T) {
+	root := t.TempDir()
+
+	oldCollect := harnessCollectChangedFiles
+	oldList := harnessListGoPackages
+	harnessCollectChangedFiles = func(context.Context, string) ([]harnessChangedFile, []checkDiagnostic) {
+		return []harnessChangedFile{
+			{Path: "cmd/onlava/logs.go", Status: "modified"},
+			{Path: "internal/devdash/dev_events.go", Status: "modified"},
+		}, nil
+	}
+	harnessListGoPackages = func(context.Context, string) ([]harnessPackageInfo, error) {
+		return []harnessPackageInfo{
+			{ImportPath: "example.com/oracle/cmd/onlava", Dir: filepath.Join(root, "cmd", "onlava"), RelDir: "cmd/onlava"},
+			{ImportPath: "example.com/oracle/internal/devdash", Dir: filepath.Join(root, "internal", "devdash"), RelDir: "internal/devdash"},
+		}, nil
+	}
+	t.Cleanup(func() {
+		harnessCollectChangedFiles = oldCollect
+		harnessListGoPackages = oldList
+	})
+
+	report := buildHarnessChangedAreaReport(context.Background(), root)
+	if !stringSliceContains(report.RecommendedCommands, "onlava logs compare --session current --backend-a sqlite --backend-b victoria --limit 500 --json") {
+		t.Fatalf("recommended commands = %+v", report.RecommendedCommands)
+	}
+	if !stringSliceContains(report.RiskFlags, "dev-event-backend-parity") {
+		t.Fatalf("risk flags = %+v", report.RiskFlags)
+	}
+	if !stringSliceContains(report.RelevantDocs, "docs/plans/0056-dev-event-backend-cutover-and-parity.md") {
+		t.Fatalf("relevant docs = %+v", report.RelevantDocs)
+	}
+}
+
 func TestParseHarnessGoTestTimingReportsBudgets(t *testing.T) {
 	t.Parallel()
 
