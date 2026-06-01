@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${ONLAVA_RELEASE_GATE_LOG_DIR:-"$ROOT/.onlava/release-gate/$(date -u +%Y%m%dT%H%M%SZ)"}"
-ONLAVA_BIN_WAS_SET="${ONLAVA_BIN+x}"
+onlava_bin_was_set="${ONLAVA_BIN+x}"
 ONLAVA_BIN="${ONLAVA_BIN:-onlava}"
 EXTERNAL_APP_ROOT="${ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT:-}"
 
@@ -138,7 +138,7 @@ self_harness() {
 install_onlava() {
   cd "$ROOT"
   run go install ./cmd/onlava
-  if [[ -z "$ONLAVA_BIN_WAS_SET" ]]; then
+  if [[ -z "$onlava_bin_was_set" ]]; then
     local gobin
     gobin="$(go env GOBIN)"
     if [[ -z "$gobin" ]]; then

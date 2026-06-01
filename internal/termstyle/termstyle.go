@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -70,10 +72,10 @@ func (p Palette) wrap(code, text string) string {
 }
 
 func useColor(w io.Writer) bool {
-	if force := os.Getenv("CLICOLOR_FORCE"); force != "" && force != "0" {
+	if force := envpolicy.Get("CLICOLOR_FORCE"); force != "" && force != "0" {
 		return true
 	}
-	if os.Getenv("NO_COLOR") != "" {
+	if envpolicy.Get("NO_COLOR") != "" {
 		return false
 	}
 	file, ok := w.(*os.File)
@@ -87,7 +89,7 @@ func useColor(w io.Writer) bool {
 	if info.Mode()&os.ModeCharDevice == 0 {
 		return false
 	}
-	term := os.Getenv("TERM")
+	term := envpolicy.Get("TERM")
 	return term != "" && term != "dumb"
 }
 

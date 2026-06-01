@@ -17,6 +17,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/localproxy"
 )
 
@@ -412,7 +413,7 @@ func fileExists(path string) bool {
 }
 
 func managedFrontendDisabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("ONLAVA_DISABLE_FRONTEND_PROXY"))) {
+	switch strings.ToLower(strings.TrimSpace(envpolicy.Get("ONLAVA_DISABLE_FRONTEND_PROXY"))) {
 	case "1", "true", "yes", "on":
 		return true
 	default:

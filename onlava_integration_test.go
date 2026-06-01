@@ -2,6 +2,7 @@ package onlava_test
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -25,9 +27,62 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	code := m.Run()
+	code := 0
+	if err := prebuildOnlavaBinaryForSelectedTests(); err != nil {
+		fmt.Fprintf(os.Stderr, "prebuild onlava binary: %v\n", err)
+		code = 1
+	} else {
+		code = m.Run()
+	}
 	stopSharedTemporalDevServer()
 	os.Exit(code)
+}
+
+func prebuildOnlavaBinaryForSelectedTests() error {
+	if !shouldPrebuildOnlavaBinary() {
+		return nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	repo := filepath.Clean(wd)
+	buildOnlavaBinaryOnce.Do(func() {
+		buildOnlavaBinaryPath, buildOnlavaBinaryErr = buildOnlavaBinaryForRepo(repo)
+	})
+	return buildOnlavaBinaryErr
+}
+
+func shouldPrebuildOnlavaBinary() bool {
+	runFlag := flag.Lookup("test.run")
+	if runFlag == nil {
+		return true
+	}
+	pattern := strings.TrimSpace(runFlag.Value.String())
+	if pattern == "" {
+		return true
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return true
+	}
+	for _, name := range []string{
+		"TestOnlavaServeBasicApp",
+		"TestOnlavaServeStandardAuthDevBootstrap",
+		"TestOnlavaServeLoadsSecretsFromDotEnv",
+		"TestOnlavaServeProductionFailsForMissingSecrets",
+		"TestOnlavaServePopulatesSecretsBeforeTemporalPackageDeclarations",
+		"TestOnlavaServeInitializesServiceStructsAtStartup",
+		"TestOnlavaServeMiddlewareApp",
+		"TestOnlavaServeExecutesCronJobs",
+		"TestOnlavaBuiltBinaryIsHeadlessByDefault",
+		"TestOnlavaDevDashboardNotificationsAndMCP",
+	} {
+		if re.MatchString(name) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestOnlavaServeBasicApp(t *testing.T) {
@@ -45,13 +100,12 @@ func TestOnlavaServeBasicApp(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = append(withSharedWorkspace(onlavaServeEnv(repo, dashAddr, cacheDir), "fixture-basic-v1"), "ONLAVA_CORS_ALLOW_ORIGINS=http://localhost:5178")
+	cmd.Env = append(onlavaServeEnv(repo, dashAddr, cacheDir), "ONLAVA_CORS_ALLOW_ORIGINS=http://localhost:5178")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava serve: %v", err)
 	}
@@ -83,13 +137,12 @@ func TestOnlavaServeStandardAuthDevBootstrap(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = withSharedWorkspace(onlavaServeEnv(repo, dashAddr, cacheDir), "fixture-standard-auth-v1")
+	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava serve: %v", err)
 	}
@@ -121,13 +174,12 @@ func TestOnlavaServeLoadsSecretsFromDotEnv(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = withSharedWorkspace(onlavaServeEnv(repo, dashAddr, cacheDir), "fixture-secrets-v1")
+	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava serve: %v", err)
 	}
@@ -155,7 +207,7 @@ func TestOnlavaServeProductionFailsForMissingSecrets(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr, "--env", "production")
-	cmd.Env = withSharedWorkspace(onlavaServeEnv(repo, dashAddr, cacheDir), "fixture-secrets-v1")
+	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	output, err := cmd.CombinedOutput()
@@ -245,13 +297,12 @@ func Concurrency(ctx context.Context) (*Response, error) {
 
 	var output strings.Builder
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = append(withSharedWorkspace(onlavaServeEnv(repo, dashAddr, cacheDir), "fixture-temporal-secrets-v1"), "TEMPORAL_ADDRESS="+temporalAddr)
+	cmd.Env = append(onlavaServeEnv(repo, dashAddr, cacheDir), "TEMPORAL_ADDRESS="+temporalAddr)
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava serve: %v", err)
 	}
@@ -277,16 +328,19 @@ func TestOnlavaServeInitializesServiceStructsAtStartup(t *testing.T) {
 import (
 	"context"
 	"os"
+	"path/filepath"
 )
 
 //onlava:service
 type Service struct{}
 
 func initService() (*Service, error) {
-	if path := os.Getenv("ONLAVA_INIT_MARKER"); path != "" {
-		if err := os.WriteFile(path, []byte("started"), 0o644); err != nil {
-			return nil, err
-		}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".onlava-init.marker"), []byte("started"), 0o644); err != nil {
+		return nil, err
 	}
 	return &Service{}, nil
 }
@@ -295,7 +349,9 @@ func initService() (*Service, error) {
 func (s *Service) Hello(ctx context.Context) error { return nil }
 `,
 	})
-	markerPath := filepath.Join(t.TempDir(), "init.marker")
+	markerPath := filepath.Join(appDir, ".onlava-init.marker")
+	_ = os.Remove(markerPath)
+	t.Cleanup(func() { _ = os.Remove(markerPath) })
 
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
@@ -307,13 +363,12 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = append(withSharedWorkspace(onlavaServeEnv(repo, dashAddr, cacheDir), "fixture-service-init-v1"), "ONLAVA_INIT_MARKER="+markerPath)
+	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava serve: %v", err)
 	}
@@ -337,13 +392,12 @@ func TestOnlavaServeMiddlewareApp(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = withSharedWorkspace(onlavaServeEnv(repo, dashAddr, cacheDir), "fixture-middleware-v1")
+	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava serve: %v", err)
 	}
@@ -368,21 +422,20 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
-	tmpDir := t.TempDir()
 	apiCacheDir := sharedIntegrationCache(t)
 	workerCacheDir := apiCacheDir
-	temporalCacheDir := filepath.Join(tmpDir, "temporal-cache")
-	statePath := filepath.Join(tmpDir, "cron-state.json")
+	temporalCacheDir := filepath.Join(t.TempDir(), "temporal-cache")
+	statePath := filepath.Join(appDir, ".onlava-cron-state.json")
+	_ = os.Remove(statePath)
+	t.Cleanup(func() { _ = os.Remove(statePath) })
 	binary := buildOnlavaBinary(t, repo)
 	temporalAddr := startTemporalDevServerForTest(t, temporalCacheDir)
 	commonEnv := []string{
 		"TEMPORAL_ADDRESS=" + temporalAddr,
-		"ONLAVA_CRON_STATE_PATH=" + statePath,
-		"ONLAVA_TEST_TRIGGER_CRON_SCHEDULES=1",
 		"ONLAVA_BUILD_ID=test",
 	}
-	apiEnv := append(withSharedWorkspace(onlavaServeEnv(repo, dashAddr, apiCacheDir), "fixture-cron-v1"), commonEnv...)
-	workerEnv := append(withSharedWorkspace(onlavaServeEnv(repo, dashAddr, workerCacheDir), "fixture-cron-v1"), commonEnv...)
+	apiEnv := append(onlavaServeEnv(repo, dashAddr, apiCacheDir), commonEnv...)
+	workerEnv := append(onlavaServeEnv(repo, dashAddr, workerCacheDir), commonEnv...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -397,7 +450,6 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	workerCmd.Stdin = nil
 	workerCmd.Dir = appDir
 	workerCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := workerCmd.Start(); err != nil {
 		t.Fatalf("start onlava worker: %v", err)
 	}
@@ -447,7 +499,7 @@ func Ping(context.Context) (*Response, error) {
 
 	buildCmd := exec.Command(onlavaBinary, "build", "-o", outputPath)
 	buildCmd.Dir = appDir
-	buildCmd.Env = withSharedWorkspace(append(os.Environ(), "GOMAXPROCS="+integrationChildGOMAXPROCS, "ONLAVA_DEV_CACHE_DIR="+cacheDir), "fixture-headless-build-v1")
+	buildCmd.Env = append(os.Environ(), "ONLAVA_DEV_CACHE_DIR="+cacheDir)
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("onlava build failed: %v\n%s", err, buildOutput)
@@ -459,14 +511,12 @@ func Ping(context.Context) (*Response, error) {
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	httpsPort := freePort(t)
-	limitOnlavaProcessConcurrency(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, outputPath)
 	cmd.Env = append(
 		os.Environ(),
-		"GOMAXPROCS="+integrationChildGOMAXPROCS,
 		"ONLAVA_LISTEN_ADDR="+addr,
 		"ONLAVA_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
 		"ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
@@ -492,8 +542,6 @@ func Ping(context.Context) (*Response, error) {
 }
 
 func TestOnlavaDevDashboardNotificationsAndMCP(t *testing.T) {
-	t.Parallel()
-
 	repo := repoRoot(t)
 	serviceSource := `package service
 
@@ -562,13 +610,12 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr, "--proxy")
-	cmd.Env = withSharedWorkspace(onlavaDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, frontendAddr), "fixture-basic-dev-v1")
+	cmd.Env = onlavaDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, frontendAddr)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	limitOnlavaProcessConcurrency(t)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava dev: %v", err)
 	}

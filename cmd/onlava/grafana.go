@@ -24,6 +24,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/devtools"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/toolchain"
 )
 
@@ -199,7 +200,7 @@ func startGrafanaForDevWithRoot(ctx context.Context, root string, victoria *vict
 	}
 	cmd.Stdout = output
 	cmd.Stderr = output
-	cmd.Env = grafanaChildEnv(os.Environ(), cfg)
+	cmd.Env = grafanaChildEnv(envpolicy.Environ(), cfg)
 	if err := cmd.Start(); err != nil {
 		component.state = grafanaState(cfg, "unavailable", err.Error())
 		if cfg.Required {
@@ -247,7 +248,7 @@ func newGrafanaConfigForRoot(root string, victoria *victoriaStack, publicURL str
 	versions := devtools.PinnedVersions()
 	port := intEnvOrDefault("ONLAVA_GRAFANA_PORT", grafanaDefaultPort)
 	directURL := fmt.Sprintf("http://%s:%d", grafanaDefaultHost, port)
-	if value := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_PUBLIC_URL")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_PUBLIC_URL")); value != "" {
 		publicURL = value
 	}
 	if strings.TrimSpace(publicURL) == "" {
@@ -325,7 +326,7 @@ func setGrafanaPort(cfg *grafanaConfig, port int) {
 }
 
 func grafanaDevMode() grafanaMode {
-	value, ok := os.LookupEnv("ONLAVA_DEV_GRAFANA")
+	value, ok := envpolicy.Lookup("ONLAVA_DEV_GRAFANA")
 	if !ok || strings.TrimSpace(value) == "" {
 		return grafanaModeAuto
 	}
@@ -341,7 +342,7 @@ func grafanaDevMode() grafanaMode {
 }
 
 func grafanaDownloadEnabled() bool {
-	value, ok := os.LookupEnv("ONLAVA_DEV_GRAFANA_DOWNLOAD")
+	value, ok := envpolicy.Lookup("ONLAVA_DEV_GRAFANA_DOWNLOAD")
 	if !ok {
 		return true
 	}
@@ -349,7 +350,7 @@ func grafanaDownloadEnabled() bool {
 }
 
 func grafanaRootDir(appRoot string) string {
-	if value := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_DIR")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_DIR")); value != "" {
 		if filepath.IsAbs(value) {
 			return value
 		}
@@ -359,14 +360,14 @@ func grafanaRootDir(appRoot string) string {
 }
 
 func grafanaPluginPreinstall() string {
-	if value := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC")); value != "" {
 		return value
 	}
 	return devtools.GrafanaPluginPreinstallSync()
 }
 
 func explicitGrafanaPort() bool {
-	return strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_PORT")) != ""
+	return strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_PORT")) != ""
 }
 
 func explicitGrafanaReuseExternal() bool {
@@ -374,7 +375,7 @@ func explicitGrafanaReuseExternal() bool {
 }
 
 func envEnabled(key string, fallback bool) bool {
-	value, ok := os.LookupEnv(key)
+	value, ok := envpolicy.Lookup(key)
 	if !ok || strings.TrimSpace(value) == "" {
 		return fallback
 	}
@@ -506,7 +507,7 @@ func freeLoopbackPort() (int, error) {
 }
 
 func resolveGrafanaBinary(ctx context.Context, cfg grafanaConfig) (binaryPath, homePath string, err error) {
-	if path := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_BIN")); path != "" {
+	if path := strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_BIN")); path != "" {
 		if !isExecutableFile(path) {
 			return "", "", fmt.Errorf("ONLAVA_GRAFANA_BIN points to a non-executable file: %s", path)
 		}
@@ -523,7 +524,7 @@ func resolveGrafanaBinary(ctx context.Context, cfg grafanaConfig) (binaryPath, h
 		if syncErr == nil && status.ManagedPath != "" && status.Version != cfg.Version {
 			syncErr = fmt.Errorf("managed Grafana version is %s, expected %s from ONLAVA_GRAFANA_VERSION", status.Version, cfg.Version)
 		}
-		if strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_DOWNLOAD_URL")) != "" {
+		if strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_DOWNLOAD_URL")) != "" {
 			path, home, downloadErr := downloadGrafanaBinary(ctx, cfg)
 			if downloadErr == nil {
 				return path, home, nil
@@ -543,7 +544,7 @@ func resolveGrafanaBinary(ctx context.Context, cfg grafanaConfig) (binaryPath, h
 }
 
 func grafanaHomeForBinary(path, root string) string {
-	if home := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_HOME")); home != "" {
+	if home := strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_HOME")); home != "" {
 		return home
 	}
 	clean := filepath.Clean(path)
@@ -611,7 +612,7 @@ func syncManagedToolchainArtifactInDir(ctx context.Context, storeDir, name strin
 }
 
 func toolchainStoreDirForStateRoot(stateRoot string) string {
-	if strings.TrimSpace(os.Getenv("ONLAVA_TOOLCHAIN_DIR")) != "" {
+	if strings.TrimSpace(envpolicy.Get("ONLAVA_TOOLCHAIN_DIR")) != "" {
 		return toolchain.DefaultStoreDir("")
 	}
 	if stateRoot == "" {
@@ -705,7 +706,7 @@ func downloadGrafanaBinary(ctx context.Context, cfg grafanaConfig) (string, stri
 }
 
 func grafanaArchiveURL(cfg grafanaConfig) (string, error) {
-	if value := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_DOWNLOAD_URL")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_DOWNLOAD_URL")); value != "" {
 		return value, nil
 	}
 	goos := goruntime.GOOS
@@ -724,10 +725,10 @@ func grafanaArchiveURL(cfg grafanaConfig) (string, error) {
 }
 
 func verifyGrafanaArchiveChecksum(ctx context.Context, archiveURL string, data []byte) error {
-	if value := strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_DOWNLOAD_SHA256")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_DOWNLOAD_SHA256")); value != "" {
 		return verifyGrafanaSHA256(data, value)
 	}
-	if strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_DOWNLOAD_URL")) != "" {
+	if strings.TrimSpace(envpolicy.Get("ONLAVA_GRAFANA_DOWNLOAD_URL")) != "" {
 		return fmt.Errorf("ONLAVA_GRAFANA_DOWNLOAD_SHA256 is required when ONLAVA_GRAFANA_DOWNLOAD_URL is set")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL+".sha256", nil)

@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -101,7 +103,7 @@ func SkipInstallTrust() bool {
 }
 
 func FrontendOverride(name string) string {
-	value := strings.TrimSpace(os.Getenv("ONLAVA_FRONTEND_" + frontendEnvName(name) + "_ADDR"))
+	value := strings.TrimSpace(envpolicy.Get("ONLAVA_FRONTEND_" + frontendEnvName(name) + "_ADDR"))
 	if value == "" {
 		return ""
 	}
@@ -560,7 +562,7 @@ func discoverReachableLoopbackUpstream(port int) string {
 }
 
 func envInt(key string, fallback int) int {
-	value := strings.TrimSpace(os.Getenv(key))
+	value := strings.TrimSpace(envpolicy.Get(key))
 	if value == "" {
 		return fallback
 	}
@@ -572,7 +574,7 @@ func envInt(key string, fallback int) int {
 }
 
 func envBool(key string, fallback bool) bool {
-	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	value := strings.TrimSpace(strings.ToLower(envpolicy.Get(key)))
 	if value == "" {
 		return fallback
 	}

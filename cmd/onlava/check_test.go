@@ -50,7 +50,7 @@ func TestRunOnlavaCheckCompilesApp(t *testing.T) {
 		t.Fatalf("stdout = %q", out.String())
 	}
 
-	matches, err := filepath.Glob(filepath.Join(cacheRoot, "build", "checkapp-*", "onlava-app"))
+	matches, err := filepath.Glob(filepath.Join(cacheRoot, "build", "checkapp-*", "onlava-app-*"))
 	if err != nil {
 		t.Fatalf("Glob: %v", err)
 	}

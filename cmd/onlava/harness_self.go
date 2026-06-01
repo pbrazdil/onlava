@@ -174,11 +174,11 @@ const (
 )
 
 func harnessSelfGoTestCommand() []string {
-	return []string{"go", "test", "-count=1", "-p", "8", "-parallel", "12", "-json", "./..."}
+	return []string{"go", "test", "-count=1", "-json", "./..."}
 }
 
 func harnessSelfGoTestEnv() []string {
-	return []string{"GOMAXPROCS=12"}
+	return nil
 }
 
 func runHarnessInspectDocsStep(repoRoot string) harnessStep {
@@ -884,6 +884,7 @@ func buildHarnessSelfKnowledge(repoRoot string) harnessKnowledge {
 		"docs/harness-engineering.md",
 		"docs/local-contract.md",
 		"docs/environment.md",
+		"docs/environment.registry.json",
 		"docs/grafana.md",
 		"docs/app-development-cookbook.md",
 		"docs/ui-agent-contract.md",
@@ -896,6 +897,7 @@ func buildHarnessSelfKnowledge(repoRoot string) harnessKnowledge {
 		"docs/schemas/onlava.config.v1.schema.json",
 		"docs/schemas/onlava.build.latest.v1.schema.json",
 		"docs/schemas/onlava.docs.index.v1.schema.json",
+		"docs/schemas/onlava.environment.registry.v1.schema.json",
 		"docs/schemas/onlava.harness.self.v1.schema.json",
 		"docs/schemas/onlava.harness.toolchain.v1.schema.json",
 		"docs/schemas/onlava.harness.changed_area.v1.schema.json",

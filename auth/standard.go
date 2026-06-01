@@ -5,7 +5,6 @@ import (
 	"embed"
 	"fmt"
 	"net/http"
-	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	authdb "github.com/pbrazdil/onlava/auth/db/gen"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	onlavapgxpool "github.com/pbrazdil/onlava/pgxpool"
 	"github.com/pbrazdil/onlava/runtime"
 )
@@ -167,7 +167,7 @@ func firstEnv(names ...string) string {
 		if name == "" {
 			continue
 		}
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		if value := strings.TrimSpace(envpolicy.Get(name)); value != "" {
 			return value
 		}
 	}

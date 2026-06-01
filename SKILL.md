@@ -164,6 +164,8 @@ onlava toolchain verify --json
 
 Onlava-managed tools live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. Agents should not rely on system `PATH` binaries for managed Grafana, Victoria, or Temporal CLI issues; use `onlava toolchain sync --json` or an explicit per-tool env override.
 
+Do not introduce new onlava-owned production environment variables by default. Prefer `.onlava.json`, explicit CLI flags, or checked-in manifests; when an env variable is truly required, update `docs/environment.registry.json`, `docs/environment.md`, and tests together.
+
 ## Generated TypeScript Client
 
 ```sh

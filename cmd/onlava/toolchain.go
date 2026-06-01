@@ -59,7 +59,7 @@ func runToolchain(ctx context.Context, stdout io.Writer, args []string) error {
 		if err != nil {
 			return err
 		}
-		return renderToolchainStatus(stdout, opts.JSON, status)
+		return renderToolchainStatus(stdout, opts.JSON, opts.All, status)
 	case "verify":
 		status, err := store.Verify(ctx, common)
 		if err != nil {
@@ -75,7 +75,7 @@ func runToolchain(ctx context.Context, stdout io.Writer, args []string) error {
 				}
 			}
 		}
-		if renderErr := renderToolchainStatus(stdout, opts.JSON, status); renderErr != nil {
+		if renderErr := renderToolchainStatus(stdout, opts.JSON, opts.All, status); renderErr != nil {
 			return renderErr
 		}
 		return err
@@ -84,7 +84,7 @@ func runToolchain(ctx context.Context, stdout io.Writer, args []string) error {
 		if err != nil {
 			return err
 		}
-		return renderToolchainStatus(stdout, opts.JSON, status)
+		return renderToolchainStatus(stdout, opts.JSON, opts.All, status)
 	case "path":
 		if opts.Tool == "" {
 			return fmt.Errorf("onlava toolchain path requires --tool <name>")
@@ -156,7 +156,7 @@ func parseToolchainArgs(args []string) (toolchainOptions, error) {
 	return opts, nil
 }
 
-func renderToolchainStatus(stdout io.Writer, jsonMode bool, status toolchain.Status) error {
+func renderToolchainStatus(stdout io.Writer, jsonMode bool, includeAll bool, status toolchain.Status) error {
 	if jsonMode {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
@@ -166,8 +166,11 @@ func renderToolchainStatus(stdout io.Writer, jsonMode bool, status toolchain.Sta
 	fmt.Fprintf(stdout, "store: %s\n", status.StoreDir)
 	fmt.Fprintf(stdout, "platform: %s\n", status.Platform)
 	for _, artifact := range status.Artifacts {
+		if artifact.Kind == "plugin" && !includeAll {
+			continue
+		}
 		line := strings.TrimSpace(artifact.Name + " " + artifact.Version + " " + artifact.Status)
-		if artifact.ManagedPath != "" {
+		if includeAll && artifact.ManagedPath != "" {
 			line += " " + artifact.ManagedPath
 		}
 		fmt.Fprintln(stdout, line)

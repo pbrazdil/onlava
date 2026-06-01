@@ -18,9 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -31,9 +29,6 @@ import (
 )
 
 const integrationPollInterval = 20 * time.Millisecond
-const integrationChildGOMAXPROCS = "2"
-
-var onlavaProcessSlots = make(chan struct{}, integrationProcessSlotCount())
 
 var sharedTemporalDevServer temporalDevServerState
 
@@ -59,58 +54,33 @@ func (e missingTemporalCLIError) Error() string {
 	return e.err.Error()
 }
 
-func integrationProcessSlotCount() int {
-	if configured := strings.TrimSpace(os.Getenv("ONLAVA_INTEGRATION_PROCESS_SLOTS")); configured != "" {
-		if count, err := strconv.Atoi(configured); err == nil && count > 0 {
-			return count
-		}
-	}
-	count := runtime.GOMAXPROCS(0) + 2
-	if count < 2 {
-		return 2
-	}
-	if count > 12 {
-		return 12
-	}
-	return count
-}
-
-func limitOnlavaProcessConcurrency(t *testing.T) {
-	t.Helper()
-	select {
-	case onlavaProcessSlots <- struct{}{}:
-		t.Cleanup(func() { <-onlavaProcessSlots })
-	case <-time.After(2 * time.Minute):
-		t.Fatal("timed out waiting for onlava integration process slot")
-	}
-}
-
 func buildOnlavaBinary(t *testing.T, repo string) string {
 	t.Helper()
 	buildOnlavaBinaryOnce.Do(func() {
-		if path, ok := freshInstalledOnlavaBinary(repo); ok {
-			buildOnlavaBinaryPath = path
-			return
-		}
-		binDir, err := os.MkdirTemp("", "onlava-test-bin-*")
-		if err != nil {
-			buildOnlavaBinaryErr = err
-			return
-		}
-		binPath := filepath.Join(binDir, "onlava")
-		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/onlava")
-		cmd.Dir = repo
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			buildOnlavaBinaryErr = fmt.Errorf("build onlava binary: %w\n%s", err, output)
-			return
-		}
-		buildOnlavaBinaryPath = binPath
+		buildOnlavaBinaryPath, buildOnlavaBinaryErr = buildOnlavaBinaryForRepo(repo)
 	})
 	if buildOnlavaBinaryErr != nil {
 		t.Fatal(buildOnlavaBinaryErr)
 	}
 	return buildOnlavaBinaryPath
+}
+
+func buildOnlavaBinaryForRepo(repo string) (string, error) {
+	if path, ok := freshInstalledOnlavaBinary(repo); ok {
+		return path, nil
+	}
+	binDir, err := os.MkdirTemp("", "onlava-test-bin-*")
+	if err != nil {
+		return "", err
+	}
+	binPath := filepath.Join(binDir, "onlava")
+	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/onlava")
+	cmd.Dir = repo
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("build onlava binary: %w\n%s", err, output)
+	}
+	return binPath, nil
 }
 
 func freshInstalledOnlavaBinary(repo string) (string, bool) {
@@ -222,7 +192,6 @@ func latestPathModTime(root string) (time.Time, bool, error) {
 func onlavaServeEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
-		"GOMAXPROCS="+integrationChildGOMAXPROCS,
 		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
 		"ONLAVA_LOCAL_PROXY=0",
 	)
@@ -231,7 +200,6 @@ func onlavaServeEnv(repo, dashboardAddr, cacheDir string) []string {
 func onlavaDevEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
-		"GOMAXPROCS="+integrationChildGOMAXPROCS,
 		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
 		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
 		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
@@ -245,7 +213,6 @@ func onlavaDevEnv(repo, dashboardAddr, cacheDir string) []string {
 func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
 	env := append(
 		os.Environ(),
-		"GOMAXPROCS="+integrationChildGOMAXPROCS,
 		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
 		"ONLAVA_DEV_CACHE_DIR="+cacheDir,
 		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
@@ -257,9 +224,13 @@ func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, front
 		"ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
 	)
 	if frontendAddr != "" {
-		env = append(env, "ONLAVA_FRONTEND_WEB_ADDR="+frontendAddr)
+		env = append(env, frontendAddrEnv("web")+"="+frontendAddr)
 	}
 	return env
+}
+
+func frontendAddrEnv(name string) string {
+	return "ONLAVA_FRONTEND_" + strings.ToUpper(name) + "_ADDR"
 }
 
 func sharedIntegrationCache(t *testing.T) string {
@@ -270,15 +241,12 @@ func sharedIntegrationCache(t *testing.T) string {
 		return sharedIntegration.cacheDir
 	}
 	repo := repoRoot(t)
-	dir := strings.TrimSpace(os.Getenv("ONLAVA_INTEGRATION_CACHE_DIR"))
-	if dir == "" {
-		userCache, err := os.UserCacheDir()
-		if err != nil {
-			t.Fatal(err)
-		}
-		sum := sha256.Sum256([]byte(repo))
-		dir = filepath.Join(userCache, "onlava", "integration-test", hex.EncodeToString(sum[:8]))
+	userCache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
 	}
+	sum := sha256.Sum256([]byte(repo))
+	dir := filepath.Join(userCache, "onlava", "integration-test", hex.EncodeToString(sum[:8]))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -375,10 +343,6 @@ func integrationBinaryInputSkipDirName(name string) bool {
 	default:
 		return false
 	}
-}
-
-func withSharedWorkspace(env []string, key string) []string {
-	return append(env, "ONLAVA_ALLOW_TEST_WORKSPACE_KEY=1", "ONLAVA_TEST_WORKSPACE_KEY="+key)
 }
 
 func lockIntegrationFixtureMutation(t *testing.T, appDir string) func() {

@@ -60,11 +60,22 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 			SuggestedAction: "Run `onlava inspect docs --json` and fix the command before relying on schema validation.",
 		})
 	}
+	environmentRegistryPayload, environmentRegistryErr := harnessJSONFilePayload(filepath.Join(repoRoot, "docs", "environment.registry.json"))
+	if environmentRegistryErr != nil {
+		report.Diagnostics = append(report.Diagnostics, checkDiagnostic{
+			Stage:           "schema validation",
+			Severity:        "error",
+			File:            filepath.ToSlash(filepath.Join(repoRoot, "docs", "environment.registry.json")),
+			Message:         "failed to load environment registry JSON for schema validation: " + environmentRegistryErr.Error(),
+			SuggestedAction: "Fix docs/environment.registry.json so it can be validated.",
+		})
+	}
 	items := []struct {
 		name      string
 		schemaRel string
 		payload   any
 	}{
+		{name: "environment.registry", schemaRel: "docs/schemas/onlava.environment.registry.v1.schema.json", payload: environmentRegistryPayload},
 		{name: "version", schemaRel: "docs/schemas/onlava.version.v1.schema.json", payload: versionPayload},
 		{name: "doctor", schemaRel: "docs/schemas/onlava.doctor.result.v1.schema.json", payload: buildHarnessDoctorSchemaPayload(versionPayload)},
 		{name: "inspect.docs", schemaRel: "docs/schemas/onlava.inspect.docs.v1.schema.json", payload: inspectDocsPayload},
@@ -101,6 +112,18 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 		report.Validated = append(report.Validated, validation)
 	}
 	return report
+}
+
+func harnessJSONFilePayload(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 func buildHarnessDoctorSchemaPayload(versionPayload versionResponse) doctorResponse {

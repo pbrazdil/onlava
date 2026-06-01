@@ -6,6 +6,33 @@ Completed means implemented or shipped at least once. It does not imply stable
 v0 support. Use [../local-contract.md](../local-contract.md) as the source of
 truth for stable, beta, dev-only, and compatibility-mode classification.
 
+## ENV Harness
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-01
+- Quality: A-
+- ExecPlan: [0061 ENV Harness](0061-env-harness.md)
+
+Shipped:
+
+- Machine-readable env registry in `docs/environment.registry.json`, validated by `docs/schemas/onlava.environment.registry.v1.schema.json`.
+- Registry-backed self-harness drift checks for unregistered production env usage, test-only env leakage into production code, undocumented runtime env entries, and direct production `os.*env` calls outside `internal/envpolicy`.
+- `internal/envpolicy` as the small central env access and registry layer, with production env reads/writes migrated through it.
+- Secret redaction for live harness toolchain env capture based on registry secret metadata and secret-like names.
+- Docs and agent guidance updates that make `.onlava.json`, CLI flags, and checked-in manifests the default configuration surfaces.
+
+Validation:
+
+- `go test ./cmd/onlava -run 'TestHarness.*Env|TestEnvPolicy|TestHarnessSelf'` passed.
+- `go test ./internal/envpolicy` passed.
+- `go test ./cmd/onlava` passed.
+- `go test ./...` passed.
+- `go install ./cmd/onlava` passed.
+- `onlava inspect docs --json` passed.
+- `onlava harness self --json --write` passed.
+- `git diff --check` passed.
+
 ## onlava Script Runner
 
 - Status: completed

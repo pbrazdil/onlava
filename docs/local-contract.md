@@ -436,7 +436,8 @@ Local observability:
 
 Secrets and environment:
 
-- The human env-var reference is [Environment Reference](environment.md). Add new onlava-owned env vars there when adding or changing runtime/dev behavior.
+- The human env-var reference is [Environment Reference](environment.md). The machine-readable env contract is [environment.registry.json](environment.registry.json), and `onlava harness self` fails on unregistered production env usage.
+- Do not add a new onlava-owned production env var as a convenience escape hatch. Prefer `.onlava.json`, explicit CLI flags, or checked-in manifests; if env is truly required, add a registry entry with rationale, docs, and tests in the same change.
 - Process environment always wins over values loaded from local files.
 - The stable runtime path reads `.env` from the app root for local secret population when a value is not already present in the process environment.
 - Local startup requires `.env` to exist in the app root. If `.env` is missing, `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker` fail before serving or running with a clear error. `.env.local` is optional.

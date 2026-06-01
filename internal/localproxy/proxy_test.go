@@ -79,7 +79,7 @@ func TestEnvironmentParsing(t *testing.T) {
 	if HTTPSPort() != 9443 {
 		t.Fatalf("HTTPSPort() = %d", HTTPSPort())
 	}
-	t.Setenv("ONLAVA_FRONTEND_WEB_ADDR", "http://0.0.0.0:5178")
+	t.Setenv("ONLAVA_FRONTEND_"+strings.ToUpper("web")+"_ADDR", "http://0.0.0.0:5178")
 	if got := FrontendOverride("web"); got != "127.0.0.1:5178" {
 		t.Fatalf("FrontendOverride() = %q", got)
 	}

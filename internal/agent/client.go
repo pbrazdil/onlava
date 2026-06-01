@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 type Client struct {
@@ -108,7 +110,7 @@ func StartProcess(paths Paths, opts StartOptions) error {
 		args = append(args, "--router-http")
 	}
 	cmd := exec.Command(exe, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = envpolicy.Environ()
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Stdin = nil

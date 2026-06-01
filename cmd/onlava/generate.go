@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
 	"gopkg.in/yaml.v3"
 )
@@ -567,7 +568,7 @@ func executeGeneratorPlan(ctx context.Context, stdout io.Writer, appRoot string,
 }
 
 func runSQLCGenerator(ctx context.Context, stdout io.Writer, appRoot string, plan *sqlcGeneratorPlan, quiet bool) error {
-	env, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	env, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}

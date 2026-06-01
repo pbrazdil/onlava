@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/localproxy"
 	"github.com/pbrazdil/onlava/runtime"
 )
@@ -66,7 +67,7 @@ func startStandaloneDev(ctx context.Context, cfg runtime.AppConfig) (runtime.Sta
 }
 
 func standaloneDevEnabled() bool {
-	return os.Getenv("ONLAVA_STANDALONE_DEV") == "1"
+	return envpolicy.Get("ONLAVA_STANDALONE_DEV") == "1"
 }
 
 func startLocalHTTPSProxy(cfg runtime.AppConfig) (*localproxy.Proxy, error) {
@@ -85,7 +86,7 @@ func startLocalHTTPSProxy(cfg runtime.AppConfig) (*localproxy.Proxy, error) {
 		TemporalHost:      cfg.ProxyTemporalHost,
 		GrafanaHost:       cfg.ProxyGrafanaHost,
 		APIUpstream:       cfg.ListenAddr,
-		DashboardUpstream: strings.TrimSpace(os.Getenv("ONLAVA_DEV_DASHBOARD_ADDR")),
+		DashboardUpstream: strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_DASHBOARD_ADDR")),
 		TemporalUpstream:  standaloneTemporalUIUpstream(cfg),
 		Frontends:         localproxy.ResolveFrontends(mustGetwd(), runtimeProxyFrontends(cfg.ProxyFrontends)),
 	})
@@ -150,7 +151,7 @@ func standaloneFrontendURLs(routes localproxy.Routes) map[string]string {
 }
 
 func standaloneLocalProxyDisabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("ONLAVA_LOCAL_PROXY"))) {
+	switch strings.ToLower(strings.TrimSpace(envpolicy.Get("ONLAVA_LOCAL_PROXY"))) {
 	case "0", "false", "no", "off":
 		return true
 	default:
@@ -164,7 +165,7 @@ func mustGetwd() string {
 }
 
 func appRootFromEnvOrCWD() string {
-	if root := strings.TrimSpace(os.Getenv("ONLAVA_APP_ROOT")); root != "" {
+	if root := strings.TrimSpace(envpolicy.Get("ONLAVA_APP_ROOT")); root != "" {
 		return root
 	}
 	return mustGetwd()

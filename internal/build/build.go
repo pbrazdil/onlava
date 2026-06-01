@@ -22,6 +22,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/codegen"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
 	"github.com/pbrazdil/onlava/internal/model"
 	"github.com/pbrazdil/onlava/internal/parse"
@@ -1310,15 +1311,6 @@ func workspaceDir(appRoot, appName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if key, err := testWorkspaceKey(); err != nil {
-		return "", err
-	} else if key != "" {
-		name := sanitizeWorkspaceLabel(appName)
-		if name == "" {
-			name = "app"
-		}
-		return filepath.Join(cacheRoot, "build", name+"-"+sanitizeWorkspaceLabel(key)), nil
-	}
 	absRoot, err := filepath.Abs(appRoot)
 	if err != nil {
 		return "", err
@@ -1331,22 +1323,7 @@ func workspaceDir(appRoot, appName string) (string, error) {
 	return filepath.Join(cacheRoot, "build", name+"-"+hex.EncodeToString(sum[:8])), nil
 }
 
-func testWorkspaceKey() (string, error) {
-	key := strings.TrimSpace(os.Getenv("ONLAVA_TEST_WORKSPACE_KEY"))
-	if key == "" {
-		return "", nil
-	}
-	if strings.TrimSpace(os.Getenv("ONLAVA_ALLOW_TEST_WORKSPACE_KEY")) != "1" {
-		return "", fmt.Errorf("ONLAVA_TEST_WORKSPACE_KEY requires ONLAVA_ALLOW_TEST_WORKSPACE_KEY=1")
-	}
-	return key, nil
-}
-
 func workspaceBinaryName(appRoot, buildFingerprint string) string {
-	key, _ := testWorkspaceKey()
-	if key == "" {
-		return "onlava-app"
-	}
 	if buildFingerprint != "" {
 		const prefixLength = 16
 		if len(buildFingerprint) < prefixLength {
@@ -1363,7 +1340,7 @@ func workspaceBinaryName(appRoot, buildFingerprint string) string {
 }
 
 func onlavaCacheRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("ONLAVA_DEV_CACHE_DIR")); root != "" {
+	if root := strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_CACHE_DIR")); root != "" {
 		return root, nil
 	}
 	dir, err := os.UserCacheDir()

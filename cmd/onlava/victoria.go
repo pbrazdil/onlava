@@ -24,6 +24,7 @@ import (
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/devtools"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const victoriaDefaultHost = "127.0.0.1"
@@ -189,7 +190,7 @@ func (s *victoriaStack) Reachable() bool {
 }
 
 func victoriaEnabled() bool {
-	value, ok := os.LookupEnv("ONLAVA_DEV_VICTORIA")
+	value, ok := envpolicy.Lookup("ONLAVA_DEV_VICTORIA")
 	if !ok {
 		return true
 	}
@@ -197,7 +198,7 @@ func victoriaEnabled() bool {
 }
 
 func victoriaDownloadEnabled() bool {
-	value, ok := os.LookupEnv("ONLAVA_DEV_VICTORIA_DOWNLOAD")
+	value, ok := envpolicy.Lookup("ONLAVA_DEV_VICTORIA_DOWNLOAD")
 	if !ok {
 		return true
 	}
@@ -214,7 +215,7 @@ func isFalseEnv(value string) bool {
 }
 
 func victoriaRootDir(appRoot string) string {
-	if value := strings.TrimSpace(os.Getenv("ONLAVA_DEV_VICTORIA_DIR")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_VICTORIA_DIR")); value != "" {
 		return value
 	}
 	return filepath.Join(appRoot, ".onlava", "victoria")
@@ -278,14 +279,14 @@ func victoriaComponentSpecs() []victoriaComponentSpec {
 }
 
 func envOrDefault(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get(key)); value != "" {
 		return value
 	}
 	return fallback
 }
 
 func intEnvOrDefault(key string, fallback int) int {
-	value := strings.TrimSpace(os.Getenv(key))
+	value := strings.TrimSpace(envpolicy.Get(key))
 	if value == "" {
 		return fallback
 	}
@@ -389,7 +390,7 @@ func waitForVictoriaComponentReady(ctx context.Context, component *victoriaCompo
 }
 
 func resolveVictoriaBinary(ctx context.Context, spec victoriaComponentSpec, binDir string, download bool) (string, error) {
-	if path := strings.TrimSpace(os.Getenv(spec.EnvPrefix + "_BIN")); path != "" {
+	if path := strings.TrimSpace(envpolicy.Get(spec.EnvPrefix + "_BIN")); path != "" {
 		if isExecutableFile(path) {
 			return path, nil
 		}

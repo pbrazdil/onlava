@@ -3,7 +3,6 @@ package runtime
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/pbrazdil/onlava/internal/envfile"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 var (
@@ -42,10 +42,10 @@ func LoadDotEnvIntoEnv() error {
 		return err
 	}
 	for key, value := range env {
-		if _, exists := os.LookupEnv(key); exists {
+		if _, exists := envpolicy.Lookup(key); exists {
 			continue
 		}
-		if err := os.Setenv(key, value); err != nil {
+		if err := envpolicy.Set(key, value); err != nil {
 			return err
 		}
 	}
@@ -111,7 +111,7 @@ func logMissingSecrets(missing []missingSecret) {
 
 func strictSecretsRequired() bool {
 	for _, key := range []string{"ONLAVA_RUNTIME_ENV", "ONLAVA_ENV"} {
-		if strings.EqualFold(strings.TrimSpace(os.Getenv(key)), "production") {
+		if strings.EqualFold(strings.TrimSpace(envpolicy.Get(key)), "production") {
 			return true
 		}
 	}
@@ -202,7 +202,7 @@ func loadSecretsEnv() (map[string]string, error) {
 
 func lookupSecretValue(fileEnv map[string]string, keys []string) (string, bool) {
 	for _, key := range keys {
-		if value, ok := os.LookupEnv(key); ok {
+		if value, ok := envpolicy.Lookup(key); ok {
 			return value, true
 		}
 	}

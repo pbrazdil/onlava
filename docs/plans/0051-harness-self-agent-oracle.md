@@ -84,7 +84,7 @@ The outcome is not just more checks. The outcome is a default local harness that
 - [x] 2026-05-29: Rebuilt `onlava` and refreshed the default oracle after the cap-10 fanout change. `onlava harness self --json --write` passed with all steps green, zero drift errors, no schema-validation failures, and Go timing total 5.458s. Timing budget enforcement remains warning-mode.
 - [x] 2026-05-29: Continued the speed dependency by decoupling `data` from `auth` through `internal/authbridge`, reducing data-only dependency graph weight while preserving the public data/auth helpers. Focused behavior tests and full-suite samples stayed green, but the default oracle timing is still above the fatal budget.
 - [x] 2026-05-29: Reconciled this plan with the latest AI-agent DX scope. The plan now names documentation symbol freshness and hidden network/effect classification as first-class checks instead of only implied drift work.
-- [x] 2026-05-29: Removed the separate `internal/harnessbrowser` test package by moving the browser harness to a package-local CDP runner in `cmd/onlava`. This preserves the browser harness marker/network/console assertions, removes the stale chromedp dependency graph from the suite, and keeps an opt-in real-browser smoke under `ONLAVA_TEST_BROWSER=1`.
+- [x] 2026-05-29: Removed the separate `internal/harnessbrowser` test package by moving the browser harness to a package-local CDP runner in `cmd/onlava`. This preserves the browser harness marker/network/console assertions, removes the stale chromedp dependency graph from the suite, and keeps an opt-in real-browser smoke.
 - [x] 2026-05-29: Retuned the default self-harness Go command to `go test -count=1 -p 12 -parallel 8 -json ./...` after current-tree scheduler samples came in at 4.96s, 4.99s, and 4.90s, while nearby `-parallel 10` and `-parallel 6` samples were slower or less stable.
 - [x] 2026-05-29: Rebuilt `onlava` and refreshed the default oracle after the `-parallel 8` retune. The first post-edit harness run was cold at 6.574s, then the repeated default oracle passed with the same full command at 5.077s. Direct JSON-mode samples around nearby scheduler settings remained clustered at roughly 4.87s to 5.06s, so the timing budget remains warning-mode.
 - [x] 2026-05-29: Refreshed the oracle one final time for this pass after plan updates. It stayed green with zero drift diagnostics and 10 schema validations, but the Go timing artifact was 6.371s. This confirms the oracle correctness surface is intact while the strict timing budget remains unfinished.
@@ -100,6 +100,7 @@ The outcome is not just more checks. The outcome is a default local harness that
 - [x] 2026-05-29: Rebuilt `onlava` and verified the final fatal oracle with two default `onlava harness self --json --write` passes after the schema updates. They reported Go timing totals of 4.798s and 4.704s, zero drift diagnostics, and 10 successful schema validations.
 - [x] 2026-05-29: Changed the default fatal harness target from 5s to 7s. The Go gate still runs the full suite once with `go test -count=1 -p 8 -parallel 12 -json ./...` and `GOMAXPROCS=12`; package and individual-test overages remain diagnostic warnings.
 - [x] 2026-05-29: Rebuilt `onlava` and refreshed the default oracle after the 7s budget change. `ONLAVA_TEST_DATABASE_URL=postgres://localhost:5432/postgres?sslmode=disable onlava harness self --json --write` passed with Go timing total 6.260s, no timing errors, zero drift diagnostics, and 10 successful schema validations.
+- [x] 2026-06-01: Removed explicit self-harness scheduler caps by changing the default Go gate to `go test -count=1 -json ./...` with no harness-owned `GOMAXPROCS`, `-p`, or `-parallel` override.
 
 ## Surprises & Discoveries
 
@@ -135,6 +136,7 @@ The outcome is not just more checks. The outcome is a default local harness that
 - 2026-05-29: Cap 6 was not stable under the final harness, because root `t.Parallel` integration tests still queued behind the package and process schedulers. The final measured pair is package fanout 8 plus root process cap 12.
 - 2026-05-29: The Go gate needs to record its environment as part of the oracle. `GOMAXPROCS=12` materially changes scheduler behavior, so hiding it in the harness process would make the timing artifact hard to reproduce.
 - 2026-05-29: The five-second target was too close to ordinary scheduler noise for the default agent oracle. A seven-second fatal target preserves a useful regression gate while avoiding flakes from small root-integration/package-scheduler swings.
+- 2026-06-01: The default harness should not impose scheduler caps. Timing remains observable through the JSON artifact, but CPU and test/package fanout now come from Go defaults and the caller's environment.
 
 ## Decision Log
 
@@ -156,6 +158,7 @@ The outcome is not just more checks. The outcome is a default local harness that
 - 2026-05-29, Codex: Enforce only the total Go-suite timing budget as a default-harness failure. Rationale: the repository-level target is full-suite wall time; package/test budget overages are useful diagnostics but too workload-distributed to be separate hard failures right now.
 - 2026-05-29, Codex: Retune the default self-harness Go timing gate to `go test -count=1 -p 8 -parallel 8 -json ./...` with `GOMAXPROCS=12`. Rationale: this preserved the full `./...` suite and reduced scheduler variance enough for repeated fatal-budget passes.
 - 2026-05-29, Codex: Set the default fatal total Go-suite budget to seven seconds and use `go test -count=1 -p 8 -parallel 12 -json ./...` with `GOMAXPROCS=12`. Rationale: the harness remains a hard regression gate for the complete suite, but the threshold now matches observed run-to-run variance instead of making the default oracle flaky.
+- 2026-06-01, Codex: Remove self-harness scheduler caps and run `go test -count=1 -json ./...`. Rationale: the harness should not cap CPUs, package fanout, or in-package parallelism by default; callers can still choose environment or Go flags outside the harness when they intentionally want them.
 
 ## Outcomes & Retrospective
 
@@ -192,7 +195,7 @@ Generated artifacts under `.onlava/` are local outputs and should remain untrack
 
 Milestone 1: Lock the default correctness gate and timing evidence.
 
-The default self harness runs the full Go suite once with `go test -count=1 -p 8 -parallel 12 -json ./...` and `GOMAXPROCS=12`. It uses the process exit status as the correctness gate, captures package/test timing from the same output, records wall-clock duration for the Go test step, and emits warnings or errors when configured budgets are exceeded.
+The default self harness runs the full Go suite once with `go test -count=1 -json ./...`. It uses the process exit status as the correctness gate, captures package/test timing from the same output, records wall-clock duration for the Go test step, and emits warnings or errors when configured budgets are exceeded.
 
 Milestone 2: Add the changed-area oracle.
 
@@ -216,7 +219,7 @@ The harness summarizes fixture coverage under `testdata/apps/*`, classifies side
 
 Highest-leverage priority order:
 
-1. Run full `go test -count=1 -p 8 -parallel 12 ./...` in the default self harness.
+1. Run full `go test -count=1 ./...` in the default self harness.
 2. Emit a changed-area oracle with affected packages, risk flags, relevant docs, and recommended commands.
 3. Emit a slow-test timing artifact with package and test budgets.
 4. Validate stable JSON outputs against checked-in schemas.
@@ -251,7 +254,7 @@ For JSON schema validation, keep dependencies minimal. First check whether the s
    Confirm that `cmd/onlava/harness_self.go` runs the full Go suite:
 
    ```sh
-   GOMAXPROCS=12 go test -count=1 -p 8 -parallel 12 -json ./...
+   go test -count=1 -json ./...
    ```
 
    Add or keep tests in `cmd/onlava/harness_test.go` that assert the command is the full suite command, including `-count=1` and `./...`.
@@ -261,7 +264,7 @@ For JSON schema validation, keep dependencies minimal. First check whether the s
    Run the Go tests once in JSON mode from the harness:
 
    ```sh
-   GOMAXPROCS=12 go test -count=1 -p 8 -parallel 12 -json ./...
+   go test -count=1 -json ./...
    ```
 
    Parse package and test events. The report should include total wall time, per-package elapsed time, slow tests, and budget diagnostics. Use these initial budgets:
@@ -444,7 +447,7 @@ For JSON schema validation, keep dependencies minimal. First check whether the s
 
     onlava harness self
       all quick checks
-      go test -count=1 -p 8 -parallel 12 -json ./...
+      go test -count=1 -json ./...
       UI typecheck/build
       fixture matrix cheap checks
       binary freshness
@@ -482,7 +485,7 @@ go run ./scripts/slowtests.go < /tmp/onlava-test.json
 Acceptance criteria:
 
 - `onlava harness self --json --write` writes `.onlava/harness/self-latest.json` and `.onlava/harness/agent-context.json`.
-- The default self harness runs the full Go suite with `go test -count=1 -p 8 -parallel 12 -json ./...`.
+- The default self harness runs the full Go suite with `go test -count=1 -json ./...`.
 - The timing report identifies packages and tests over budget and includes enough data to reproduce the slow command.
 - The changed-area report includes dirty files, affected packages, recommended commands, and risk flags.
 - Stable JSON surfaces are validated against checked-in schemas or fail with explicit unsupported-schema diagnostics.

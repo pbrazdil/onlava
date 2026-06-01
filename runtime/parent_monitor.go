@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 var (
@@ -46,13 +48,13 @@ func startSupervisorParentMonitor(cancel context.CancelFunc) func() {
 }
 
 func parentMonitorEnabled() bool {
-	return launchedBySupervisor() || os.Getenv("ONLAVA_PARENT_MONITOR") == "1"
+	return launchedBySupervisor() || envpolicy.Get("ONLAVA_PARENT_MONITOR") == "1"
 }
 
 func parentMonitorPIDFromEnv() int {
-	value := os.Getenv("ONLAVA_PARENT_MONITOR_PID")
+	value := envpolicy.Get("ONLAVA_PARENT_MONITOR_PID")
 	if value == "" {
-		value = os.Getenv("ONLAVA_DEV_SUPERVISOR_PID")
+		value = envpolicy.Get("ONLAVA_DEV_SUPERVISOR_PID")
 	}
 	if value == "" {
 		return 0

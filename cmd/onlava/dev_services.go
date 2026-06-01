@@ -22,6 +22,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/toolchain"
 )
 
@@ -259,7 +260,7 @@ func (s *devSupervisor) ensureManagedElectric(ctx context.Context) error {
 	if _, _, ok := managedElectricDeclared(s.cfg); !ok {
 		return nil
 	}
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root, ".env", ".env.local")
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), s.root, ".env", ".env.local")
 	if err != nil {
 		return err
 	}
@@ -683,7 +684,7 @@ func postgresServiceVersion(cfg app.Config) string {
 
 func startLocalManagedPostgres(ctx context.Context, root, version string) (*managedPostgresServer, error) {
 	version = firstNonEmpty(strings.TrimSpace(version), devPostgresDefaultVersion)
-	binaries, err := resolveLocalPostgresBinaries(os.Environ())
+	binaries, err := resolveLocalPostgresBinaries(envpolicy.Environ())
 	var localVersion string
 	if err == nil {
 		if detected, versionErr := postgresBinaryMajorVersion(ctx, binaries.Postgres); versionErr == nil {
@@ -748,7 +749,7 @@ func startLocalManagedPostgresBinary(ctx context.Context, root, version string, 
 	cmd.Dir = root
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Env = os.Environ()
+	cmd.Env = envpolicy.Environ()
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
 		return nil, err
@@ -826,7 +827,7 @@ func startLocalManagedPostgresContainer(ctx context.Context, root, version, dock
 	cmd.Dir = root
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Env = os.Environ()
+	cmd.Env = envpolicy.Environ()
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
 		return nil, err

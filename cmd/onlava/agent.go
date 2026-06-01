@@ -15,6 +15,7 @@ import (
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 type agentOptions struct {
@@ -602,7 +603,7 @@ func dropSessionManagedDatabase(ctx context.Context, appRoot string, session loc
 	if err != nil {
 		return err
 	}
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}

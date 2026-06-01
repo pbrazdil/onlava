@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -442,7 +444,7 @@ func runHarnessGoTestTimingStepWithBudgets(ctx context.Context, repoRoot string,
 	}
 	cmd := commandTreeContext(ctx, path, command[1:]...)
 	cmd.Dir = repoRoot
-	cmd.Env = envWithOverrides(os.Environ(), testEnv...)
+	cmd.Env = envWithOverrides(envpolicy.Environ(), testEnv...)
 	outputFile, err := os.CreateTemp("", "onlava-go-test-*.json")
 	if err != nil {
 		step.OK = false

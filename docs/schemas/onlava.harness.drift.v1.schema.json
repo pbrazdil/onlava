@@ -7,7 +7,18 @@
   "properties": {
     "schema_version": { "const": "onlava.harness.drift.v1" },
     "cli": { "type": "object", "additionalProperties": true },
-    "env": { "type": "object", "additionalProperties": true },
+    "env": {
+      "type": "object",
+      "required": ["variables"],
+      "properties": {
+        "registry": { "type": "string" },
+        "variables": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/env_variable" }
+        }
+      },
+      "additionalProperties": false
+    },
     "artifacts": { "type": "object", "additionalProperties": true },
     "embeds": { "type": "object", "additionalProperties": true },
     "diagnostics": {
@@ -15,5 +26,45 @@
       "items": { "type": "object", "additionalProperties": true }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "env_variable": {
+      "type": "object",
+      "required": ["name", "scope", "used_in_code", "documented", "registered"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "type": "string" },
+        "used_in_code": { "type": "boolean" },
+        "documented": { "type": "boolean" },
+        "registered": { "type": "boolean" },
+        "registry_name": { "type": "string" },
+        "direction": { "type": "string" },
+        "stability": { "type": "string" },
+        "category": { "type": "string" },
+        "secret": { "type": "boolean" },
+        "files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file", "kind", "scope"],
+            "properties": {
+              "file": { "type": "string" },
+              "kind": { "type": "string" },
+              "scope": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "violations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

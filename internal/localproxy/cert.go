@@ -17,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -157,7 +159,7 @@ type certificatePaths struct {
 }
 
 func localProxyCacheDir() (string, error) {
-	root := os.Getenv("ONLAVA_DEV_CACHE_DIR")
+	root := envpolicy.Get("ONLAVA_DEV_CACHE_DIR")
 	if root == "" {
 		var err error
 		root, err = os.UserCacheDir()

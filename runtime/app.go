@@ -15,17 +15,19 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 func ListenAddrFromEnv() string {
-	if value := os.Getenv("ONLAVA_LISTEN_ADDR"); value != "" {
+	if value := envpolicy.Get("ONLAVA_LISTEN_ADDR"); value != "" {
 		return value
 	}
 	return "127.0.0.1:4000"
 }
 
 func ListenNetworkFromEnv() string {
-	switch value := strings.ToLower(strings.TrimSpace(os.Getenv("ONLAVA_LISTEN_NETWORK"))); value {
+	switch value := strings.ToLower(strings.TrimSpace(envpolicy.Get("ONLAVA_LISTEN_NETWORK"))); value {
 	case "", "tcp":
 		return "tcp"
 	case "unix":
@@ -172,7 +174,7 @@ const (
 )
 
 func runtimeRoleFromEnv() (runtimeRole, error) {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv("ONLAVA_ROLE")))
+	value := strings.ToLower(strings.TrimSpace(envpolicy.Get("ONLAVA_ROLE")))
 	switch value {
 	case "", string(runtimeRoleAll):
 		return runtimeRoleAll, nil
@@ -230,7 +232,7 @@ func shutdownRuntime(server *http.Server, stopTemporalWorkers func(context.Conte
 }
 
 func launchedBySupervisor() bool {
-	return os.Getenv("ONLAVA_DEV_SUPERVISOR") == "1"
+	return envpolicy.Get("ONLAVA_DEV_SUPERVISOR") == "1"
 }
 
 func printRuntimeBanner(out io.Writer, listenAddr string, info StandaloneDevInfo) {

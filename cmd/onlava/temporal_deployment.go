@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
@@ -164,7 +165,7 @@ func runTemporalDeployment(ctx context.Context, action string, opts temporalDepl
 	if err != nil {
 		return err
 	}
-	env, err := appEnvWithDotEnv(os.Environ(), root, ".env", ".env.local")
+	env, err := appEnvWithDotEnv(envpolicy.Environ(), root, ".env", ".env.local")
 	if err != nil {
 		return err
 	}
@@ -269,7 +270,7 @@ func temporalDeploymentCLIArgs(action string, opts temporalDeploymentOptions, in
 		"--output", "json",
 	)
 	if info.APIKeyEnvSet {
-		if value := strings.TrimSpace(os.Getenv(info.APIKeyEnv)); value != "" {
+		if value := strings.TrimSpace(envpolicy.Get(info.APIKeyEnv)); value != "" {
 			args = append(args, "--api-key", value)
 		}
 	}
@@ -280,17 +281,17 @@ func temporalDeploymentCLIArgs(action string, opts temporalDeploymentOptions, in
 		args = append(args, "--tls-server-name", info.TLSServerName)
 	}
 	if info.TLSCACertFileSet {
-		if value := strings.TrimSpace(os.Getenv(info.TLSCACertFileEnv)); value != "" {
+		if value := strings.TrimSpace(envpolicy.Get(info.TLSCACertFileEnv)); value != "" {
 			args = append(args, "--tls-ca-path", value)
 		}
 	}
 	if info.TLSCertFileSet {
-		if value := strings.TrimSpace(os.Getenv(info.TLSCertFileEnv)); value != "" {
+		if value := strings.TrimSpace(envpolicy.Get(info.TLSCertFileEnv)); value != "" {
 			args = append(args, "--tls-cert-path", value)
 		}
 	}
 	if info.TLSKeyFileSet {
-		if value := strings.TrimSpace(os.Getenv(info.TLSKeyFileEnv)); value != "" {
+		if value := strings.TrimSpace(envpolicy.Get(info.TLSKeyFileEnv)); value != "" {
 			args = append(args, "--tls-key-path", value)
 		}
 	}

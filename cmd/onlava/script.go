@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -487,7 +488,7 @@ func runScriptProcess(ctx context.Context, root string, cfg app.Config, program 
 	defer stopSignals()
 	cmd := scriptCommandContext(ctx, program, args...)
 	cmd.Dir = root
-	env, err := appEnvWithDotEnv(os.Environ(), root, ".env", ".env.local")
+	env, err := appEnvWithDotEnv(envpolicy.Environ(), root, ".env", ".env.local")
 	if err != nil {
 		return err
 	}

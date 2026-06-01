@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -31,7 +33,7 @@ type Paths struct {
 }
 
 func DefaultPaths() (Paths, error) {
-	home := strings.TrimSpace(os.Getenv(envAgentHome))
+	home := strings.TrimSpace(envpolicy.Get(envAgentHome))
 	if home == "" {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
@@ -42,7 +44,7 @@ func DefaultPaths() (Paths, error) {
 	home = filepath.Clean(home)
 	runDir := filepath.Join(home, "run")
 	agentDir := filepath.Join(home, "agent")
-	socketPath := strings.TrimSpace(os.Getenv(envAgentSocket))
+	socketPath := strings.TrimSpace(envpolicy.Get(envAgentSocket))
 	if socketPath == "" {
 		socketPath = filepath.Join(runDir, "agent.sock")
 		if len(socketPath) > 100 {
@@ -62,7 +64,7 @@ func DefaultPaths() (Paths, error) {
 }
 
 func RouterAddrFromEnv() string {
-	if value := strings.TrimSpace(os.Getenv(envAgentRouterAddr)); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get(envAgentRouterAddr)); value != "" {
 		return value
 	}
 	return defaultRouterAddr
@@ -73,7 +75,7 @@ func RouterTLSFromEnv() bool {
 }
 
 func RouterTLSDefault() bool {
-	value, ok := os.LookupEnv(envAgentRouterTLS)
+	value, ok := envpolicy.Lookup(envAgentRouterTLS)
 	if !ok || strings.TrimSpace(value) == "" {
 		return true
 	}
@@ -89,7 +91,7 @@ func DisabledByEnv() bool {
 }
 
 func envEnabled(name string) bool {
-	return envValueEnabled(os.Getenv(name))
+	return envValueEnabled(envpolicy.Get(name))
 }
 
 func envValueEnabled(value string) bool {

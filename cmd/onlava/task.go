@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
 )
 
@@ -167,7 +168,7 @@ func runConfiguredTask(ctx context.Context, appRoot string, cfg appcfg.Config, n
 }
 
 func runTaskShellCommand(ctx context.Context, appRoot string, task appcfg.TaskConfig) error {
-	env, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	env, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}

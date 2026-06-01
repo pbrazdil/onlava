@@ -26,6 +26,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/envfile"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 var dashboardUpgrader = websocket.Upgrader{
@@ -353,7 +354,7 @@ func dashboardAssetFS(assetsDir string) (fs.FS, error) {
 	if dir := strings.TrimSpace(assetsDir); dir != "" {
 		return os.DirFS(dir), nil
 	}
-	if dir := strings.TrimSpace(os.Getenv("ONLAVA_DEV_DASHBOARD_UI_DIR")); dir != "" {
+	if dir := strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_DASHBOARD_UI_DIR")); dir != "" {
 		return os.DirFS(dir), nil
 	}
 	return nil, fs.ErrNotExist
@@ -761,7 +762,7 @@ func openPostgres(ctx context.Context, root string) (*sql.DB, error) {
 
 func discoverDatabaseURL(root string) (string, string, error) {
 	for _, key := range []string{"DATABASE_URL", "DatabaseURL"} {
-		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		if value := strings.TrimSpace(envpolicy.Get(key)); value != "" {
 			return value, key, nil
 		}
 	}

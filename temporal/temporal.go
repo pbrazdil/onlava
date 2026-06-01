@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	temporalworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
@@ -727,7 +727,7 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 }
 
 func selectedTemporalTaskQueuesFromEnv() []string {
-	return splitTemporalTaskQueueList(os.Getenv("ONLAVA_TEMPORAL_TASK_QUEUE"))
+	return splitTemporalTaskQueueList(envpolicy.Get("ONLAVA_TEMPORAL_TASK_QUEUE"))
 }
 
 func scopedSelectedTemporalTaskQueues(info onlavaruntime.TemporalRuntimeInfo, selected []string) []string {

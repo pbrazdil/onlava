@@ -1,18 +1,16 @@
+//go:build browser
+
 package main
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 )
 
 func TestRunHarnessUIBrowserChecksWithLocalBrowser(t *testing.T) {
-	if os.Getenv("ONLAVA_TEST_BROWSER") != "1" {
-		t.Skip("set ONLAVA_TEST_BROWSER=1 to run the browser harness smoke")
-	}
 	if _, err := harnessBrowserExecutable(); err != nil {
 		t.Skip(err)
 	}

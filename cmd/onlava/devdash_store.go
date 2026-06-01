@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 func openDevdashStore() (*devdash.Store, error) {
@@ -16,7 +16,7 @@ func openDevdashStore() (*devdash.Store, error) {
 }
 
 func devdashCacheRoot() string {
-	if root := strings.TrimSpace(os.Getenv("ONLAVA_DEV_CACHE_DIR")); root != "" {
+	if root := strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_CACHE_DIR")); root != "" {
 		return root
 	}
 	if localagent.DisabledByEnv() {

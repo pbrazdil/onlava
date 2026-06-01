@@ -22,6 +22,7 @@ import (
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 var (
@@ -141,7 +142,7 @@ func applyWatchTimingOverridesFromEnv() {
 }
 
 func watchDurationFromEnv(name string, fallback time.Duration) time.Duration {
-	value := strings.TrimSpace(os.Getenv(name))
+	value := strings.TrimSpace(envpolicy.Get(name))
 	if value == "" {
 		return fallback
 	}
@@ -174,14 +175,14 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 	if localagent.DisabledByEnv() {
 		return nil, nil, fallback, restore, nil
 	}
-	if strings.TrimSpace(os.Getenv("ONLAVA_DEV_DASHBOARD_ADDR")) == "" {
+	if strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_DASHBOARD_ADDR")) == "" {
 		addr, err := freeLoopbackAddr()
 		if err != nil {
 			return nil, nil, devBackend{}, restore, err
 		}
-		_ = os.Setenv("ONLAVA_DEV_DASHBOARD_ADDR", addr)
+		_ = envpolicy.Set("ONLAVA_DEV_DASHBOARD_ADDR", addr)
 		restorers = append(restorers, func() {
-			_ = os.Unsetenv("ONLAVA_DEV_DASHBOARD_ADDR")
+			_ = envpolicy.Unset("ONLAVA_DEV_DASHBOARD_ADDR")
 		})
 	}
 	client, err := localagent.Ensure(ctx)
@@ -193,24 +194,24 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 		fmt.Fprintf(os.Stderr, "onlava: agent dashboard unavailable; continuing without routed session URLs: %v\n", err)
 		return nil, nil, fallback, restore, nil
 	}
-	if strings.TrimSpace(os.Getenv("ONLAVA_DEV_CACHE_DIR")) == "" {
+	if strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_CACHE_DIR")) == "" {
 		paths, err := localagent.DefaultPaths()
 		if err != nil {
 			return nil, nil, devBackend{}, restore, err
 		}
-		if strings.TrimSpace(os.Getenv("ONLAVA_AGENT_HOME")) == "" {
-			_ = os.Setenv("ONLAVA_AGENT_HOME", paths.Home)
+		if strings.TrimSpace(envpolicy.Get("ONLAVA_AGENT_HOME")) == "" {
+			_ = envpolicy.Set("ONLAVA_AGENT_HOME", paths.Home)
 			restorers = append(restorers, func() {
-				_ = os.Unsetenv("ONLAVA_AGENT_HOME")
+				_ = envpolicy.Unset("ONLAVA_AGENT_HOME")
 			})
 		}
-		_ = os.Setenv("ONLAVA_DEV_CACHE_DIR", filepath.Join(paths.AgentDir, "dashboard"))
+		_ = envpolicy.Set("ONLAVA_DEV_CACHE_DIR", filepath.Join(paths.AgentDir, "dashboard"))
 		restorers = append(restorers, func() {
-			_ = os.Unsetenv("ONLAVA_DEV_CACHE_DIR")
+			_ = envpolicy.Unset("ONLAVA_DEV_CACHE_DIR")
 		})
 	}
 	backends := map[string]localagent.Backend{}
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), root, ".env", ".env.local")
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), root, ".env", ".env.local")
 	if err != nil {
 		return nil, nil, devBackend{}, restore, err
 	}

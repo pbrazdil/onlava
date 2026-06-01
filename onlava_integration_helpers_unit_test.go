@@ -3,28 +3,9 @@ package onlava_test
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 )
-
-func TestIntegrationProcessSlotCountCapsDefaultFanout(t *testing.T) {
-	t.Setenv("ONLAVA_INTEGRATION_PROCESS_SLOTS", "")
-	old := runtime.GOMAXPROCS(10)
-	t.Cleanup(func() { runtime.GOMAXPROCS(old) })
-
-	if got, want := integrationProcessSlotCount(), 12; got != want {
-		t.Fatalf("integrationProcessSlotCount() = %d, want %d", got, want)
-	}
-}
-
-func TestIntegrationProcessSlotCountHonorsOverride(t *testing.T) {
-	t.Setenv("ONLAVA_INTEGRATION_PROCESS_SLOTS", "9")
-
-	if got, want := integrationProcessSlotCount(), 9; got != want {
-		t.Fatalf("integrationProcessSlotCount() = %d, want %d", got, want)
-	}
-}
 
 func TestLatestIntegrationSourceModTimeIncludesEmbeddedNonGoInputs(t *testing.T) {
 	t.Parallel()

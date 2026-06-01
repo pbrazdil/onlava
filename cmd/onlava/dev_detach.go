@@ -18,6 +18,7 @@ import (
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -83,7 +84,7 @@ func runDetachedDev(args []string, opts devOptions) error {
 	childArgs := append([]string{"dev"}, devArgsForDetachedChild(args, root)...)
 	cmd := exec.Command(exe, childArgs...)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), detachedDevChildEnv+"=1")
+	cmd.Env = append(envpolicy.Environ(), detachedDevChildEnv+"=1")
 	cmd.Stdin = nil
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -112,7 +113,7 @@ func runDetachedDev(args []string, opts devOptions) error {
 }
 
 func detachedDevChildMode() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(detachedDevChildEnv))) {
+	switch strings.ToLower(strings.TrimSpace(envpolicy.Get(detachedDevChildEnv))) {
 	case "1", "true", "yes", "on":
 		return true
 	default:

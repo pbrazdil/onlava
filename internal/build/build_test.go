@@ -589,81 +589,6 @@ func TestCompileRetriesTidyWhenBuildReportsStaleGoMod(t *testing.T) {
 	}
 }
 
-func TestCompileReusesSharedWorkspaceFingerprintBinary(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	t.Setenv("ONLAVA_ALLOW_TEST_WORKSPACE_KEY", "1")
-	t.Setenv("ONLAVA_TEST_WORKSPACE_KEY", "shared-buildtest")
-
-	var builds int
-	old := runGo
-	runGo = func(_ context.Context, _ string, args ...string) error {
-		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
-			return nil
-		}
-		if len(args) == 5 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" && args[4] == "./onlava_internal_main" {
-			builds++
-			out := args[3]
-			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-				return err
-			}
-			return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
-		}
-		return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
-	}
-	t.Cleanup(func() { runGo = old })
-
-	firstRoot := newBuildTestAppNamed(t, "buildtest")
-	firstModel, err := parse.App(firstRoot, "buildtest")
-	if err != nil {
-		t.Fatalf("parse first app: %v", err)
-	}
-	first, err := Prepare(firstRoot, firstModel, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare first app: %v", err)
-	}
-	if first.ReuseCompiled {
-		t.Fatal("first compile unexpectedly reused a binary")
-	}
-	if err := Compile(first); err != nil {
-		t.Fatalf("compile first app: %v", err)
-	}
-
-	secondRoot := newBuildTestAppNamed(t, "buildtest")
-	secondModel, err := parse.App(secondRoot, "buildtest")
-	if err != nil {
-		t.Fatalf("parse second app: %v", err)
-	}
-	second, err := Prepare(secondRoot, secondModel, appcfg.Config{Name: "buildtest"}, PrepareOptions{})
-	if err != nil {
-		t.Fatalf("prepare second app: %v", err)
-	}
-	if !second.ReuseCompiled {
-		t.Fatalf("second compile did not mark the fingerprinted binary reusable: first fingerprint=%s second fingerprint=%s second needs tidy=%v binary exists=%v",
-			first.BuildFingerprint, second.BuildFingerprint, second.NeedsTidy, pathExists(second.Binary))
-	}
-	if first.Binary != second.Binary {
-		t.Fatalf("binary paths differ: first=%s second=%s", first.Binary, second.Binary)
-	}
-	if err := Compile(second); err != nil {
-		t.Fatalf("compile second app: %v", err)
-	}
-	if builds != 1 {
-		t.Fatalf("go build calls = %d, want 1", builds)
-	}
-}
-
-func TestWorkspaceDirRejectsUnguardedTestWorkspaceKey(t *testing.T) {
-	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
-	t.Setenv("ONLAVA_TEST_WORKSPACE_KEY", "shared-buildtest")
-
-	_, err := workspaceDir(t.TempDir(), "buildtest")
-	if err == nil || !strings.Contains(err.Error(), "ONLAVA_ALLOW_TEST_WORKSPACE_KEY=1") {
-		t.Fatalf("workspaceDir() error = %v, want guarded test workspace key error", err)
-	}
-}
-
 func TestPrepareReusesPersistentWorkspace(t *testing.T) {
 	useFakeGoRunner(t)
 	cacheDir := t.TempDir()
@@ -698,6 +623,61 @@ func TestPrepareReusesPersistentWorkspace(t *testing.T) {
 	}
 	if err := Compile(second); err != nil {
 		t.Fatalf("second compile without tidy: %v", err)
+	}
+}
+
+func TestPrepareUsesFingerprintSpecificWorkspaceBinary(t *testing.T) {
+	useFakeGoRunner(t)
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+	cfg := appcfg.Config{Name: "buildtest"}
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	first, err := Prepare(appDir, model, cfg, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("first prepare: %v", err)
+	}
+	if err := Compile(first); err != nil {
+		t.Fatalf("first compile: %v", err)
+	}
+
+	writeBuildTestFile(t, appDir, "svc/api.go", `package svc
+
+import "context"
+
+//onlava:api public
+func Hello(ctx context.Context) error { return nil }
+
+func Changed() {}
+`)
+	model, err = parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse updated app: %v", err)
+	}
+	second, err := Prepare(appDir, model, cfg, PrepareOptions{ChangedPaths: []string{"svc/api.go"}})
+	if err != nil {
+		t.Fatalf("second prepare: %v", err)
+	}
+	if second.Dir != first.Dir {
+		t.Fatalf("workspace dir = %q, want %q", second.Dir, first.Dir)
+	}
+	if first.BuildFingerprint == "" || second.BuildFingerprint == "" {
+		t.Fatalf("expected build fingerprints, got first=%q second=%q", first.BuildFingerprint, second.BuildFingerprint)
+	}
+	if first.BuildFingerprint == second.BuildFingerprint {
+		t.Fatalf("expected source change to update build fingerprint %q", first.BuildFingerprint)
+	}
+	if first.Binary == second.Binary {
+		t.Fatalf("expected source change to use a new binary path, got %q", second.Binary)
+	}
+	for _, binary := range []string{first.Binary, second.Binary} {
+		if !strings.HasPrefix(filepath.Base(binary), "onlava-app-") {
+			t.Fatalf("binary %q is not fingerprint-specific", binary)
+		}
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/workers"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
@@ -97,7 +98,7 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 	}
 	cmd := commandTreeContext(s.ctx, runtimeName, runtimeArgs...)
 	cmd.Dir = outputDir
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root, ".env", ".env.local")
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), s.root, ".env", ".env.local")
 	if err != nil {
 		return nil, err
 	}

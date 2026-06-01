@@ -11,6 +11,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/build"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/parse"
 )
 
@@ -106,7 +107,7 @@ func prepareTestWorkspace(ctx context.Context, appRoot string, cfg app.Config) (
 func runGeneratedWorkspaceGoTest(ctx context.Context, dir string, goArgs []string, stream bool) (error, []byte) {
 	cmd := execGoTestCommand(ctx, "go", goArgs...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "ONLAVA_RUNTIME_ENV=test")
+	cmd.Env = append(envpolicy.Environ(), "ONLAVA_RUNTIME_ENV=test")
 	if stream {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

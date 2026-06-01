@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/stdlog"
 )
 
@@ -280,11 +281,11 @@ func configureDevProcessEnv(opts devOptions) func() {
 		changes["ONLAVA_LOCAL_PROXY"] = "1"
 		if opts.Trust {
 			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
-		} else if _, ok := os.LookupEnv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
+		} else if _, ok := envpolicy.Lookup("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
 			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
 		}
 	} else if devProxyEnabledByEnv() {
-		if _, ok := os.LookupEnv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
+		if _, ok := envpolicy.Lookup("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
 			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
 		}
 	}
@@ -304,7 +305,7 @@ func warnDevEscapeHatches(opts devOptions) {
 }
 
 func devProxyEnabledByEnv() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("ONLAVA_LOCAL_PROXY"))) {
+	switch strings.ToLower(strings.TrimSpace(envpolicy.Get("ONLAVA_LOCAL_PROXY"))) {
 	case "1", "true", "yes", "on":
 		return true
 	default:
@@ -322,16 +323,16 @@ func applyTemporaryEnv(values map[string]string) func() {
 	}
 	previous := make(map[string]previousValue, len(values))
 	for key, value := range values {
-		old, ok := os.LookupEnv(key)
+		old, ok := envpolicy.Lookup(key)
 		previous[key] = previousValue{value: old, ok: ok}
-		_ = os.Setenv(key, value)
+		_ = envpolicy.Set(key, value)
 	}
 	return func() {
 		for key, old := range previous {
 			if old.ok {
-				_ = os.Setenv(key, old.value)
+				_ = envpolicy.Set(key, old.value)
 			} else {
-				_ = os.Unsetenv(key)
+				_ = envpolicy.Unset(key)
 			}
 		}
 	}

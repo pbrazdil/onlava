@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -319,7 +321,7 @@ func envValue(name string) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	value, ok := os.LookupEnv(name)
+	value, ok := envpolicy.Lookup(name)
 	if !ok {
 		return "", false
 	}
@@ -331,7 +333,7 @@ func envValue(name string) (string, bool) {
 }
 
 func temporalHostResourceReportingFromEnv() (bool, bool) {
-	value, ok := os.LookupEnv(DefaultTemporalHostReportingEnv)
+	value, ok := envpolicy.Lookup(DefaultTemporalHostReportingEnv)
 	if !ok {
 		return true, false
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 type dashboardRunState struct {
@@ -157,7 +158,7 @@ func reapOwnedDashboard(statePath string, expected dashboardRunState) error {
 }
 
 func onlavaCacheRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("ONLAVA_DEV_CACHE_DIR")); root != "" {
+	if root := strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_CACHE_DIR")); root != "" {
 		return root, nil
 	}
 	dir, err := os.UserCacheDir()

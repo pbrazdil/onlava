@@ -14,6 +14,7 @@ import (
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
@@ -127,7 +128,7 @@ func startTemporalDevServer(ctx context.Context, root string, cfg app.Config, co
 }
 
 func resolveTemporalCLI(ctx context.Context, storeDir string, download bool) (string, error) {
-	if path := strings.TrimSpace(os.Getenv("ONLAVA_TEMPORAL_BIN")); path != "" {
+	if path := strings.TrimSpace(envpolicy.Get("ONLAVA_TEMPORAL_BIN")); path != "" {
 		if isExecutableFile(path) {
 			return path, nil
 		}
@@ -150,7 +151,7 @@ func resolveTemporalCLI(ctx context.Context, storeDir string, download bool) (st
 }
 
 func temporalToolchainStoreDir(root string) string {
-	if strings.TrimSpace(os.Getenv("ONLAVA_TOOLCHAIN_DIR")) != "" {
+	if strings.TrimSpace(envpolicy.Get("ONLAVA_TOOLCHAIN_DIR")) != "" {
 		return toolchainStoreDirForStateRoot("")
 	}
 	if filepath.Base(filepath.Clean(root)) == "temporal" {

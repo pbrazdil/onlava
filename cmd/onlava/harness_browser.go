@@ -18,6 +18,7 @@ import (
 	"time"
 
 	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/inspect"
 )
 
@@ -253,7 +254,7 @@ func startHarnessUIDevProcess(ctx context.Context, appRoot string) (*harnessUIDe
 	}
 	cmd := exec.CommandContext(ctx, exe, "dev", "--app-root", appRoot, "--listen", appAddr, "--json")
 	cmd.Dir = appRoot
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(envpolicy.Environ(),
 		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
 		"ONLAVA_DEV_VICTORIA=0",
 		"ONLAVA_DEV_VICTORIA_DOWNLOAD=0",

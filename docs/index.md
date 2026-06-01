@@ -52,6 +52,7 @@ Start with:
 
 - [onlava.config.v1](schemas/onlava.config.v1.schema.json)
 - [onlava.check.result.v1](schemas/onlava.check.result.v1.schema.json)
+- [onlava.environment.registry.v1](schemas/onlava.environment.registry.v1.schema.json)
 - [onlava.harness.result.v1](schemas/onlava.harness.result.v1.schema.json)
 - [onlava.harness.self.v1](schemas/onlava.harness.self.v1.schema.json)
 - [onlava.inspect.docs.v1](schemas/onlava.inspect.docs.v1.schema.json)

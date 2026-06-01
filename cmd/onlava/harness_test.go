@@ -54,7 +54,7 @@ func TestHarnessSelfGoTestCommandRunsFullSuiteInJSONMode(t *testing.T) {
 	t.Parallel()
 
 	got := strings.Join(harnessSelfGoTestCommand(), " ")
-	if got != "go test -count=1 -p 8 -parallel 12 -json ./..." {
+	if got != "go test -count=1 -json ./..." {
 		t.Fatalf("harnessSelfGoTestCommand() = %q", got)
 	}
 }
@@ -423,7 +423,7 @@ func TestBuildHarnessSchemaValidationReport(t *testing.T) {
 		Artifacts: []harnessArtifact{{Name: "self-harness", Path: ".onlava/harness/self-latest.json", Exists: true}},
 	}
 	report := buildHarnessSchemaValidationReport(root, resp)
-	if len(report.Validated) != 8 {
+	if len(report.Validated) != 9 {
 		t.Fatalf("validated = %+v", report.Validated)
 	}
 	if hasErrorDiagnostics(report.Diagnostics) {
@@ -468,7 +468,27 @@ func TestBuildHarnessDriftReport(t *testing.T) {
 	t.Parallel()
 
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
-	writeTestAppFile(t, root, "cmd/onlava/env.go", "package main\n\nconst _ = \"ONLAVA_TEST_UNDOCUMENTED_ONLY\"\n")
+	writeTestAppFile(t, root, "docs/environment.md", "Environment.\n\n`ONLAVA_APP_ID`\n")
+	writeTestAppFile(t, root, "docs/environment.registry.json", `{
+  "schema_version": "onlava.environment.registry.v1",
+  "variables": [
+    {
+      "name": "ONLAVA_APP_ID",
+      "match": "exact",
+      "scope": "runtime",
+      "direction": "injected",
+      "category": "app.identity",
+      "stability": "injected",
+      "secret": false,
+      "allowed_in": ["code", "docs", "tests"],
+      "owner": "onlava runtime",
+      "rationale": "Injected app identity.",
+      "preferred_surface": ".onlava.json",
+      "docs": ["docs/environment.md"]
+    }
+  ]
+}`)
+	writeTestAppFile(t, root, "cmd/onlava/env.go", "package main\n\nconst _ = \"ONLAVA_APP_ID\"\n")
 	writeTestAppFile(t, root, "internal/build/build.go", "package build\n\nconst _ = `.env .DS_Store __MACOSX node_modules coverage`\n")
 
 	report := buildHarnessDriftReport(context.Background(), root)
@@ -483,6 +503,146 @@ func TestBuildHarnessDriftReport(t *testing.T) {
 	}
 	if hasErrorDiagnostics(report.Diagnostics) {
 		t.Fatalf("drift diagnostics = %+v", report.Diagnostics)
+	}
+}
+
+func TestBuildHarnessEnvVarReportFailsOnUnregisteredRuntimeEnv(t *testing.T) {
+	t.Parallel()
+
+	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
+	writeTestAppFile(t, root, "docs/environment.registry.json", `{
+  "schema_version": "onlava.environment.registry.v1",
+  "variables": [
+    {
+      "name": "ONLAVA_TEST_",
+      "match": "prefix",
+      "scope": "test_only",
+      "direction": "test_input",
+      "category": "tests",
+      "stability": "test_only",
+      "secret": false,
+      "allowed_in": ["docs", "tests"],
+      "owner": "onlava runtime",
+      "rationale": "Test-only controls.",
+      "preferred_surface": "tests",
+      "docs": ["docs/environment.md"]
+    }
+  ]
+}`)
+	writeTestAppFile(t, root, "cmd/onlava/env.go", "package main\n\nconst _ = \"ONLAVA_FAKE_NEW_ENV\"\n")
+
+	report, diagnostics := buildHarnessEnvVarReport(root, nil)
+	if !hasErrorDiagnostics(diagnostics) {
+		t.Fatalf("expected env diagnostics, got report %+v", report)
+	}
+	if !diagnosticsContain(diagnostics, "ONLAVA_FAKE_NEW_ENV") {
+		t.Fatalf("diagnostics = %+v", diagnostics)
+	}
+}
+
+func TestBuildHarnessEnvVarReportFailsOnTestOnlyEnvInRuntimeCode(t *testing.T) {
+	t.Parallel()
+
+	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
+	writeTestAppFile(t, root, "docs/environment.registry.json", `{
+  "schema_version": "onlava.environment.registry.v1",
+  "variables": [
+    {
+      "name": "ONLAVA_TEST_",
+      "match": "prefix",
+      "scope": "test_only",
+      "direction": "test_input",
+      "category": "tests",
+      "stability": "test_only",
+      "secret": false,
+      "allowed_in": ["docs", "tests"],
+      "owner": "onlava runtime",
+      "rationale": "Test-only controls.",
+      "preferred_surface": "tests",
+      "docs": ["docs/environment.md"]
+    }
+  ]
+}`)
+	writeTestAppFile(t, root, "cmd/onlava/env.go", "package main\n\nconst _ = \"ONLAVA_TEST_ONLY_EXAMPLE\"\n")
+
+	report, diagnostics := buildHarnessEnvVarReport(root, nil)
+	if !hasErrorDiagnostics(diagnostics) {
+		t.Fatalf("expected env diagnostics, got report %+v", report)
+	}
+	if !diagnosticsContain(diagnostics, "test-only environment variable used by production code") {
+		t.Fatalf("diagnostics = %+v", diagnostics)
+	}
+}
+
+func TestBuildHarnessToolchainPreflightReportRedactsSecretEnv(t *testing.T) {
+	t.Setenv("ONLAVA_AUTH_JWT_SECRET", "example")
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", "cache")
+
+	oldProbe := harnessProbeTool
+	harnessProbeTool = func(_ context.Context, name, scope string, required bool, _ []string) harnessToolchainTool {
+		return harnessToolchainTool{Name: name, Scope: scope, Required: required, Present: true}
+	}
+	t.Cleanup(func() { harnessProbeTool = oldProbe })
+
+	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
+	writeTestAppFile(t, root, "docs/environment.registry.json", `{
+  "schema_version": "onlava.environment.registry.v1",
+  "variables": [
+    {
+      "name": "ONLAVA_AUTH_JWT_SECRET",
+      "match": "exact",
+      "scope": "runtime",
+      "direction": "user_input",
+      "category": "auth",
+      "stability": "secret",
+      "secret": true,
+      "allowed_in": ["code", "docs", "tests"],
+      "owner": "onlava runtime",
+      "rationale": "JWT signing secret.",
+      "preferred_surface": "secret manager or local env",
+      "docs": ["docs/environment.md"]
+    },
+    {
+      "name": "ONLAVA_DEV_CACHE_DIR",
+      "match": "exact",
+      "scope": "runtime",
+      "direction": "user_input",
+      "category": "dev",
+      "stability": "dev_escape_hatch",
+      "secret": false,
+      "allowed_in": ["code", "docs", "tests"],
+      "owner": "onlava runtime",
+      "rationale": "Cache override.",
+      "preferred_surface": ".onlava.json",
+      "docs": ["docs/environment.md"]
+    }
+  ]
+}`)
+
+	report := buildHarnessToolchainPreflightReport(context.Background(), root)
+	values := map[string]string{}
+	for _, item := range report.Env {
+		values[item.Name] = item.Value
+	}
+	if values["ONLAVA_AUTH_JWT_SECRET"] != "<redacted>" {
+		t.Fatalf("secret env was not redacted: %+v", report.Env)
+	}
+	if values["ONLAVA_DEV_CACHE_DIR"] != "cache" {
+		t.Fatalf("non-secret env was redacted or missing: %+v", report.Env)
+	}
+}
+
+func TestDirectOSEnvUsagesCatchProductionCode(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTestAppFile(t, root, "cmd/onlava/bad.go", "package main\n\nimport \"os\"\n\nvar _ = os.Getenv(\"ONLAVA_BAD\")\n")
+	writeTestAppFile(t, root, "cmd/onlava/bad_test.go", "package main\n\nimport \"os\"\n\nvar _ = os.Getenv(\"ONLAVA_TEST_OK\")\n")
+	writeTestAppFile(t, root, "internal/envpolicy/lookup.go", "package envpolicy\n\nimport \"os\"\n\nfunc Get(k string) string { return os.Getenv(k) }\n")
+
+	got := directOSEnvUsages(root)
+	if len(got) != 1 || got[0] != "cmd/onlava/bad.go" {
+		t.Fatalf("directOSEnvUsages() = %+v", got)
 	}
 }
 
@@ -760,6 +920,7 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 	writeTestAppFile(t, root, "docs/index.md", "See [local](local-contract.md), [plans](plans/active.md), and [debt](tech-debt.md).\n")
 	writeTestAppFile(t, root, "docs/local-contract.md", "Contract.\n")
 	writeTestAppFile(t, root, "docs/environment.md", "Environment.\n")
+	writeTestAppFile(t, root, "docs/environment.registry.json", `{"schema_version":"onlava.environment.registry.v1","variables":[{"name":"ONLAVA_TEST_","match":"prefix","scope":"test_only","direction":"test_input","category":"tests","stability":"test_only","secret":false,"allowed_in":["docs","tests"],"owner":"onlava runtime","rationale":"Test-only controls.","preferred_surface":"tests","docs":["docs/environment.md"]}]}`)
 	writeTestAppFile(t, root, "docs/app-development-cookbook.md", "Cookbook.\n")
 	writeTestAppFile(t, root, "docs/ui-agent-contract.md", "UI contract.\n")
 	writeTestAppFile(t, root, "docs/harness-engineering.md", "Harness.\n")
@@ -771,6 +932,7 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 		"docs/schemas/onlava.config.v1.schema.json",
 		"docs/schemas/onlava.build.latest.v1.schema.json",
 		"docs/schemas/onlava.docs.index.v1.schema.json",
+		"docs/schemas/onlava.environment.registry.v1.schema.json",
 		"docs/schemas/onlava.harness.self.v1.schema.json",
 		"docs/schemas/onlava.harness.toolchain.v1.schema.json",
 		"docs/schemas/onlava.harness.changed_area.v1.schema.json",

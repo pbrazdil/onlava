@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/pbrazdil/onlava/internal/toolchain"
 )
 
 func TestParseToolchainArgs(t *testing.T) {
@@ -46,6 +48,42 @@ func TestRunToolchainListJSON(t *testing.T) {
 	}
 	if len(payload.Artifacts) == 0 || len(payload.SourceLocks) == 0 {
 		t.Fatalf("payload missing artifacts or source locks: %+v", payload)
+	}
+}
+
+func TestRenderToolchainStatusHidesPluginsByDefault(t *testing.T) {
+	status := toolchain.Status{
+		ManifestSHA256: "abc123",
+		StoreDir:       "/tmp/store",
+		Platform:       "darwin/arm64",
+		Artifacts: []toolchain.ArtifactStatus{
+			{Name: "grafana", Kind: "binary", Version: "13.0.1", Status: "missing", ManagedPath: "/tmp/store/grafana"},
+			{Name: "victoriametrics-metrics-datasource", Kind: "plugin", Version: "0.24.0", Status: "declared"},
+			{Name: "victoria-metrics", Kind: "binary", Version: "v1.141.0", Status: "missing"},
+		},
+	}
+	var out bytes.Buffer
+	if err := renderToolchainStatus(&out, false, false, status); err != nil {
+		t.Fatalf("renderToolchainStatus: %v", err)
+	}
+	if strings.Contains(out.String(), "victoriametrics-metrics-datasource") {
+		t.Fatalf("default output included plugin:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "grafana 13.0.1 missing") || !strings.Contains(out.String(), "victoria-metrics v1.141.0 missing") {
+		t.Fatalf("default output missing binary artifacts:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "/tmp/store/grafana") {
+		t.Fatalf("default output included managed path:\n%s", out.String())
+	}
+	out.Reset()
+	if err := renderToolchainStatus(&out, false, true, status); err != nil {
+		t.Fatalf("renderToolchainStatus all: %v", err)
+	}
+	if !strings.Contains(out.String(), "victoriametrics-metrics-datasource 0.24.0 declared") {
+		t.Fatalf("--all output omitted plugin:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "/tmp/store/grafana") {
+		t.Fatalf("--all output omitted managed path:\n%s", out.String())
 	}
 }
 

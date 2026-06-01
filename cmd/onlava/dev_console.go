@@ -13,6 +13,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 type devConsoleSnapshot struct {
@@ -50,7 +51,7 @@ func runOnlavaConsoleOrFallback(ctx context.Context, stdin *os.File, stdout io.W
 	if opts.Session == "" {
 		opts.Session = "current"
 	}
-	if !isTerminal(stdin) || !writerIsTerminal(stdout) || strings.EqualFold(os.Getenv("TERM"), "dumb") || os.Getenv("CI") != "" {
+	if !isTerminal(stdin) || !writerIsTerminal(stdout) || strings.EqualFold(envpolicy.Get("TERM"), "dumb") || envpolicy.Get("CI") != "" {
 		return runOnlavaLogsFunc(ctx, stdout, logArgsFromOptions(opts, true))
 	}
 	return runOnlavaConsole(ctx, stdin, stdout, opts)

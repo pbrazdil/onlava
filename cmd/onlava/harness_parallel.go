@@ -14,6 +14,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
@@ -236,15 +237,15 @@ func prepareHarnessParallelSession(ctx context.Context, root string, cfg app.Con
 	if err := os.WriteFile(filepath.Join(root, ".onlava.json"), []byte(`{"name":"parallel","id":"parallel-app"}`), 0o644); err != nil {
 		return nil, func() {}, err
 	}
-	prevElectric, hadElectric := os.LookupEnv(devElectricUpstreamEnv)
-	if err := os.Setenv(devElectricUpstreamEnv, "http://"+electricAddr); err != nil {
+	prevElectric, hadElectric := envpolicy.Lookup(devElectricUpstreamEnv)
+	if err := envpolicy.Set(devElectricUpstreamEnv, "http://"+electricAddr); err != nil {
 		return nil, func() {}, err
 	}
 	client, session, _, restore, err := prepareDevAgentSession(ctx, root, cfg, devListenRequest{SessionID: sessionID})
 	if hadElectric {
-		_ = os.Setenv(devElectricUpstreamEnv, prevElectric)
+		_ = envpolicy.Set(devElectricUpstreamEnv, prevElectric)
 	} else {
-		_ = os.Unsetenv(devElectricUpstreamEnv)
+		_ = envpolicy.Unset(devElectricUpstreamEnv)
 	}
 	if err != nil {
 		restore()
@@ -390,20 +391,20 @@ func patchEnv(values map[string]*string) func() {
 	}
 	old := make(map[string]oldValue, len(values))
 	for key, next := range values {
-		value, ok := os.LookupEnv(key)
+		value, ok := envpolicy.Lookup(key)
 		old[key] = oldValue{value: value, ok: ok}
 		if next == nil {
-			_ = os.Unsetenv(key)
+			_ = envpolicy.Unset(key)
 		} else {
-			_ = os.Setenv(key, *next)
+			_ = envpolicy.Set(key, *next)
 		}
 	}
 	return func() {
 		for key, value := range old {
 			if value.ok {
-				_ = os.Setenv(key, value.value)
+				_ = envpolicy.Set(key, value.value)
 			} else {
-				_ = os.Unsetenv(key)
+				_ = envpolicy.Unset(key)
 			}
 		}
 	}

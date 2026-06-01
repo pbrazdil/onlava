@@ -15,6 +15,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/build"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/model"
 	"github.com/pbrazdil/onlava/internal/parse"
 )
@@ -183,7 +184,7 @@ func validateHeadlessProductionSecrets(root string, appModel *model.App, opts se
 	if !strings.EqualFold(strings.TrimSpace(opts.Env), "production") {
 		return nil
 	}
-	env, err := appEnvWithDotEnv(os.Environ(), root)
+	env, err := appEnvWithDotEnv(envpolicy.Environ(), root)
 	if err != nil {
 		return err
 	}
@@ -316,7 +317,7 @@ func appProcessEnv(root string, cfg app.Config, logFormat string, envName string
 	if strings.EqualFold(strings.TrimSpace(envName), "production") {
 		envLoader = appEnvWithDotEnv
 	}
-	baseEnv, err := envLoader(os.Environ(), root)
+	baseEnv, err := envLoader(envpolicy.Environ(), root)
 	if err != nil {
 		return nil, err
 	}

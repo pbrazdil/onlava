@@ -2,10 +2,10 @@ package devdash
 
 import (
 	"encoding/json"
-	"os"
 	"time"
 
 	"github.com/pbrazdil/onlava/internal/devreport"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 )
 
 func ListenAddr() string {
-	if value := os.Getenv("ONLAVA_DEV_DASHBOARD_ADDR"); value != "" {
+	if value := envpolicy.Get("ONLAVA_DEV_DASHBOARD_ADDR"); value != "" {
 		return value
 	}
 	return DashboardAddr

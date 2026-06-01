@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const EnvDatabaseURL = "ONLAVA_TEST_DATABASE_URL"
@@ -25,7 +26,7 @@ type Database struct {
 }
 
 func Start(ctx context.Context) (*Database, error) {
-	if dsn := strings.TrimSpace(os.Getenv(EnvDatabaseURL)); dsn != "" {
+	if dsn := strings.TrimSpace(envpolicy.Get(EnvDatabaseURL)); dsn != "" {
 		url, err := ensurePackageDatabase(ctx, dsn)
 		if err != nil {
 			return nil, err

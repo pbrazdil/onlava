@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 func runCDPBrowserChecks(ctx context.Context, routes []harnessUIRouteSpec, artifactRoot string, headed bool) (harnessUIBrowserResult, error) {
@@ -217,7 +218,7 @@ func (b *harnessBrowserProcess) newPage(ctx context.Context) (*harnessCDPClient,
 
 func harnessBrowserExecutable() (string, error) {
 	for _, env := range []string{"CHROME_BIN", "CHROMIUM_BIN"} {
-		if value := strings.TrimSpace(os.Getenv(env)); value != "" {
+		if value := strings.TrimSpace(envpolicy.Get(env)); value != "" {
 			return value, nil
 		}
 	}
@@ -230,7 +231,7 @@ func harnessBrowserExecutable() (string, error) {
 		for _, path := range []string{
 			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 			"/Applications/Chromium.app/Contents/MacOS/Chromium",
-			filepath.Join(os.Getenv("HOME"), "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+			filepath.Join(envpolicy.Get("HOME"), "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
 		} {
 			if info, err := os.Stat(path); err == nil && !info.IsDir() {
 				return path, nil

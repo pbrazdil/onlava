@@ -1,6 +1,8 @@
 # onlava Environment Reference
 
-This page is the human reference for onlava-owned environment variables. Prefer `.onlava.json` for stable app configuration. Use environment variables for local overrides, secrets, process identity, or explicit escape hatches.
+This page is the human reference for onlava-owned environment variables. The machine-readable source of truth is [environment.registry.json](environment.registry.json), validated by `onlava harness self`.
+
+Prefer `.onlava.json` for stable app configuration. Use environment variables for local overrides, secrets, process identity, or explicit escape hatches. New production env names must be added to the registry with rationale, docs, and tests; otherwise self-harness fails.
 
 Process environment wins over values loaded from `.env` and `.env.local`. `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker` require an app-root `.env`; `.env.local` is optional.
 
@@ -180,9 +182,8 @@ onlava also injects standard OpenTelemetry endpoint variables when Victoria side
 | `ONLAVA_BIN` | user input | Target-app helper override for the onlava binary path. |
 | `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` | user input | Optional external app root for release-gate smoke validation. |
 | `ONLAVA_RELEASE_GATE_LOG_DIR` | user input | Release-gate log directory override. |
-| `ONLAVA_ALLOW_TEST_WORKSPACE_KEY` | test input | Must be `1` before the production binary honors `ONLAVA_TEST_WORKSPACE_KEY`; prevents accidental real-dev build workspace collisions. |
 | `ONLAVA_TEST_DATABASE_URL` | test input | PostgreSQL admin URL for integration tests that need a real database; tests create package-scoped databases from it. |
-| `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS` | test input | Overrides `onlava dev` file-watch settle delay in integration tests so reload assertions do not wait on production debounce timing. |
+| `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS` | test escape hatch | Overrides `onlava dev` file-watch settle delay in integration tests so reload assertions do not wait on production debounce timing. This is intentionally registry-approved because the process under test is production dev code. |
 | `ONLAVA_SHADCN_REGISTRY_ROOT` | user input | UI registry root override for the dashboard shadcn wrapper. |
 | `ONLAVA_SHADCN_VERSION` | user input | shadcn CLI version override for the dashboard wrapper. |
 | `ONLAVA_SHADCN_OVERWRITE` | user input | `1` permits overwrite operations in the dashboard shadcn wrapper. |

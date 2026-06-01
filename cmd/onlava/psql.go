@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	appcfg "github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 type psqlOptions struct {
@@ -68,7 +69,7 @@ func runDatabaseApplyProvider(ctx context.Context, appRoot string, apply appcfg.
 	if provider != "exec" {
 		return fmt.Errorf("unsupported database apply provider %q", apply.Provider)
 	}
-	env, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	env, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}
@@ -97,7 +98,7 @@ func dbDropCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}
@@ -137,7 +138,7 @@ func psqlCommandWithOptions(args []string, useManaged bool) error {
 	if err != nil {
 		return err
 	}
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}
@@ -167,7 +168,7 @@ func dbResetCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}
@@ -198,7 +199,7 @@ func dbSnapshotCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), appRoot)
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
 		return err
 	}

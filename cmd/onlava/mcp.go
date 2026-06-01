@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const mcpProtocolVersion = "2024-11-05"
@@ -448,7 +449,7 @@ func (s *dashboardServer) mcpGetSecrets(ctx context.Context, session *mcpSession
 			valueSource := ""
 			keys := secretLookupKeys(name)
 			for _, key := range keys {
-				if _, ok := os.LookupEnv(key); ok {
+				if _, ok := envpolicy.Lookup(key); ok {
 					valueSource = key
 					break
 				}

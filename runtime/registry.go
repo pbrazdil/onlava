@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/runtimeapi"
 	onlavamiddleware "github.com/pbrazdil/onlava/middleware"
 	"github.com/pbrazdil/onlava/runtime/shared"
@@ -162,21 +162,21 @@ var global = &registry{
 func SetAppConfig(cfg AppConfig) {
 	global.mu.Lock()
 	defer global.mu.Unlock()
-	baseAppID := strings.TrimSpace(os.Getenv("ONLAVA_BASE_APP_ID"))
+	baseAppID := strings.TrimSpace(envpolicy.Get("ONLAVA_BASE_APP_ID"))
 	if baseAppID == "" {
 		baseAppID = cfg.Name
 	}
-	runtimeAppID := strings.TrimSpace(os.Getenv("ONLAVA_RUNTIME_APP_ID"))
+	runtimeAppID := strings.TrimSpace(envpolicy.Get("ONLAVA_RUNTIME_APP_ID"))
 	if runtimeAppID == "" {
 		runtimeAppID = baseAppID
 	}
 	global.meta.AppID = cfg.Name
 	global.meta.BaseAppID = baseAppID
 	global.meta.RuntimeAppID = runtimeAppID
-	global.meta.SessionID = strings.TrimSpace(os.Getenv("ONLAVA_SESSION_ID"))
+	global.meta.SessionID = strings.TrimSpace(envpolicy.Get("ONLAVA_SESSION_ID"))
 	global.meta.Environment = defaultEnvironment()
 	global.observability = cfg.Observability
-	if publicBaseURL := strings.TrimSpace(os.Getenv("ONLAVA_PUBLIC_BASE_URL")); publicBaseURL != "" {
+	if publicBaseURL := strings.TrimSpace(envpolicy.Get("ONLAVA_PUBLIC_BASE_URL")); publicBaseURL != "" {
 		global.meta.APIBaseURL = publicBaseURL
 		return
 	}
@@ -197,7 +197,7 @@ func Meta() *shared.AppMetadata {
 }
 
 func defaultEnvironment() shared.Environment {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("ONLAVA_RUNTIME_ENV")), "test") {
+	if strings.EqualFold(strings.TrimSpace(envpolicy.Get("ONLAVA_RUNTIME_ENV")), "test") {
 		return shared.Environment{
 			Name:  "test",
 			Type:  shared.EnvTest,

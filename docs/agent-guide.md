@@ -80,7 +80,7 @@ Keep these layers synchronized when behavior changes:
 - Agent workflows and MCP: `docs/agent-guide.md`, `AGENTS.md`, `SKILL.md`.
 - Human overview: `README.md`.
 - App recipes: `docs/app-development-cookbook.md`.
-- Environment variables: `docs/environment.md`.
+- Environment variables: `docs/environment.md` for humans and `docs/environment.registry.json` for the self-harness contract.
 - Indexed docs metadata: `docs/knowledge.json`.
 
 ## Working In An onlava App
@@ -248,6 +248,7 @@ MCP is not a replacement for generated clients. MCP is for agents and developmen
 ## Environment
 
 - List required environment names in docs; never include values.
+- Do not add new onlava-owned production env vars unless the user explicitly asks for one or an active ExecPlan records the exception. Prefer `.onlava.json`, CLI flags, or checked-in manifests, and update `docs/environment.registry.json` when env is truly required.
 - Process environment wins over local files.
 - Local startup expects app-root `.env` for `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker`.
 - `.env.local` is optional and overrides `.env` only when the parent process did not already define a key.

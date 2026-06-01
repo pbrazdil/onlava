@@ -15,6 +15,7 @@ import (
 	temporalworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
@@ -234,7 +235,7 @@ func envValue(name string) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	value, ok := os.LookupEnv(name)
+	value, ok := envpolicy.Lookup(name)
 	if !ok {
 		return "", false
 	}

@@ -121,6 +121,7 @@ When changing behavior, update all affected layers in one change:
 - `README.md` for human-facing overview and install/run examples.
 - `docs/app-development-cookbook.md` for practical app recipes.
 - `docs/environment.md` for onlava-owned env vars.
+- `docs/environment.registry.json` for the machine-readable env registry enforced by self-harness. Do not add production env usage unless the user explicitly asks for env or an active ExecPlan records the exception.
 - `docs/knowledge.json` when adding, removing, or materially changing indexed docs.
 
 If a PRD is historical, do not silently rewrite it into current contract prose. Add a short "current contract lives in ..." note or update the docs index/knowledge metadata instead.

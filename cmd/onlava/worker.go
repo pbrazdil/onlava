@@ -14,6 +14,7 @@ import (
 
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/build"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/workers"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
@@ -326,7 +327,7 @@ func startTypeScriptWorker(root string, cfg app.Config, info onlavaruntime.Tempo
 	if len(taskQueues) > 0 {
 		extra = append(extra, "ONLAVA_TEMPORAL_TASK_QUEUE="+strings.Join(taskQueues, ","))
 	}
-	cmd.Env = envWithOverrides(os.Environ(), extra...)
+	cmd.Env = envWithOverrides(envpolicy.Environ(), extra...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = nil

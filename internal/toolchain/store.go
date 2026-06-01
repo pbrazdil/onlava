@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 var ErrDockerUnavailable = errors.New("docker unavailable")
@@ -120,7 +122,7 @@ type InstallMetadata struct {
 }
 
 func DefaultStoreDir(appRoot string) string {
-	if value := strings.TrimSpace(os.Getenv("ONLAVA_TOOLCHAIN_DIR")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_TOOLCHAIN_DIR")); value != "" {
 		return value
 	}
 	if strings.TrimSpace(appRoot) == "" {
@@ -163,7 +165,7 @@ func (s *Store) Sync(ctx context.Context, opts Options) (Status, error) {
 		if status.Status == "installed" {
 			continue
 		}
-		if isFalseEnv(os.Getenv("ONLAVA_TOOLCHAIN_DOWNLOAD")) {
+		if isFalseEnv(envpolicy.Get("ONLAVA_TOOLCHAIN_DOWNLOAD")) {
 			return Status{}, fmt.Errorf("toolchain downloads disabled by ONLAVA_TOOLCHAIN_DOWNLOAD=0")
 		}
 		if err := s.installArtifact(ctx, artifact, opts.Platform); err != nil {

@@ -30,6 +30,7 @@ import (
 	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/devmeta"
 	"github.com/pbrazdil/onlava/internal/envfile"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/localproxy"
 	"github.com/pbrazdil/onlava/internal/model"
 	"github.com/pbrazdil/onlava/internal/parse"
@@ -618,7 +619,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	configureChildProcess(cmd)
 	cmd.WaitDelay = stopTimeout + time.Second
 	cmd.Dir = s.root
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root, ".env", ".env.local")
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), s.root, ".env", ".env.local")
 	if err != nil {
 		return nil, err
 	}
@@ -695,7 +696,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 }
 
 func (s *devSupervisor) runDevSetup(ctx context.Context) error {
-	baseEnv, err := appEnvWithDotEnv(os.Environ(), s.root, ".env", ".env.local")
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), s.root, ".env", ".env.local")
 	if err != nil {
 		return err
 	}

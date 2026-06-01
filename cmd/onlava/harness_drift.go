@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 const (
@@ -63,13 +65,23 @@ type harnessCLIContractCommand struct {
 
 type harnessEnvVarReport struct {
 	Variables []harnessEnvVarFinding `json:"variables"`
+	Registry  string                 `json:"registry,omitempty"`
 }
 
 type harnessEnvVarFinding struct {
-	Name       string `json:"name"`
-	Scope      string `json:"scope"`
-	UsedInCode bool   `json:"used_in_code"`
-	Documented bool   `json:"documented"`
+	Name         string                `json:"name"`
+	Scope        string                `json:"scope"`
+	UsedInCode   bool                  `json:"used_in_code"`
+	Documented   bool                  `json:"documented"`
+	Registered   bool                  `json:"registered"`
+	RegistryName string                `json:"registry_name,omitempty"`
+	Direction    string                `json:"direction,omitempty"`
+	Stability    string                `json:"stability,omitempty"`
+	Category     string                `json:"category,omitempty"`
+	Secret       bool                  `json:"secret,omitempty"`
+	Files        []string              `json:"files,omitempty"`
+	References   []envpolicy.Reference `json:"references,omitempty"`
+	Violations   []string              `json:"violations,omitempty"`
 }
 
 type harnessArtifactHygieneReport struct {
@@ -163,10 +175,16 @@ func buildHarnessToolchainPreflightReport(ctx context.Context, repoRoot string) 
 		}
 		report.Tools = append(report.Tools, tool)
 	}
-	for _, name := range sortedOnlavaEnv(os.Environ()) {
-		report.Env = append(report.Env, harnessEnvValue{Name: name, Value: os.Getenv(name)})
+	registry, _ := envpolicy.LoadRegistry(envpolicy.RegistryPath(repoRoot))
+	for _, name := range sortedHarnessEnv(envpolicy.Environ()) {
+		value := envpolicy.Get(name)
+		if registry != nil {
+			value = registry.RedactValue(name, value)
+		} else if envpolicy.SecretLikeName(name) {
+			value = envpolicy.RedactedValue
+		}
+		report.Env = append(report.Env, harnessEnvValue{Name: name, Value: value})
 	}
-	_ = repoRoot
 	return report
 }
 
@@ -221,6 +239,7 @@ func buildHarnessDriftReport(ctx context.Context, repoRoot string) *harnessDrift
 	report := &harnessDriftReport{SchemaVersion: harnessDriftSchema}
 	report.CLI, report.Diagnostics = buildHarnessCLIContractReport(repoRoot, report.Diagnostics)
 	report.Env, report.Diagnostics = buildHarnessEnvVarReport(repoRoot, report.Diagnostics)
+	report.Diagnostics = appendDirectOSEnvDiagnostics(repoRoot, report.Diagnostics)
 	report.Artifacts, report.Diagnostics = buildHarnessArtifactHygieneReport(ctx, repoRoot, report.Diagnostics)
 	report.Embeds, report.Diagnostics = buildHarnessEmbedReport(repoRoot, report.Diagnostics)
 	return report
@@ -284,44 +303,165 @@ func buildHarnessCLIContractReport(repoRoot string, diagnostics []checkDiagnosti
 }
 
 func buildHarnessEnvVarReport(repoRoot string, diagnostics []checkDiagnostic) (harnessEnvVarReport, []checkDiagnostic) {
-	used := scanHarnessEnvVars(repoRoot, []string{".go"})
+	registryPath := envpolicy.RegistryPath(repoRoot)
+	registry, err := envpolicy.LoadRegistry(registryPath)
+	registryRel, relErr := filepath.Rel(repoRoot, registryPath)
+	if relErr != nil {
+		registryRel = registryPath
+	}
+	report := harnessEnvVarReport{Registry: filepath.ToSlash(registryRel)}
+	if err != nil {
+		diagnostics = append(diagnostics, checkDiagnostic{
+			Stage:           "contract drift checks",
+			Severity:        "error",
+			File:            filepath.ToSlash(registryPath),
+			Message:         "environment registry is missing or invalid: " + err.Error(),
+			SuggestedAction: "Restore docs/environment.registry.json with schema_version " + envpolicy.SchemaVersion + ".",
+		})
+		return report, diagnostics
+	}
 	documentedText := readOptionalText(filepath.Join(repoRoot, "docs", "environment.md")) + "\n" +
 		readOptionalText(filepath.Join(repoRoot, "docs", "local-contract.md")) + "\n" +
 		readOptionalText(filepath.Join(repoRoot, "docs", "grafana.md")) + "\n" +
-		readOptionalText(filepath.Join(repoRoot, "SKILL.md"))
-	var report harnessEnvVarReport
-	for _, name := range sortedEnvVarNames(used) {
-		scope := used[name]
-		if scope == "" {
-			scope = "runtime"
-		}
-		if scope == "test" || strings.HasPrefix(name, "ONLAVA_TEST_") || strings.HasPrefix(name, "ONLAVA_INTEGRATION_") {
-			report.Variables = append(report.Variables, harnessEnvVarFinding{Name: name, Scope: "test", UsedInCode: true, Documented: strings.Contains(documentedText, name)})
-			continue
-		}
+		readOptionalText(filepath.Join(repoRoot, "SKILL.md")) + "\n" +
+		readOptionalText(filepath.Join(repoRoot, "AGENTS.md"))
+	scan := envpolicy.Scan(envpolicy.ScanOptions{
+		RepoRoot: repoRoot,
+		SkipDir:  architectureSkipDir,
+	})
+	for _, name := range envpolicy.VariableNames(scan) {
+		refs := scan.Variables[name]
+		scope := envpolicy.EffectiveScope(refs, name)
 		documented := strings.Contains(documentedText, name)
-		report.Variables = append(report.Variables, harnessEnvVarFinding{Name: name, Scope: "runtime", UsedInCode: true, Documented: documented})
-		if !documented {
+		finding := harnessEnvFinding(name, scope, documented, refs, registry)
+		report.Variables = append(report.Variables, finding)
+		for _, violation := range finding.Violations {
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "contract drift checks",
-				Severity:        "warning",
-				File:            filepath.ToSlash(filepath.Join(repoRoot, "docs", "environment.md")),
-				Message:         "ONLAVA environment variable used in code but not documented: " + name,
-				SuggestedAction: "Document the variable in docs/environment.md or mark it test-only with an ONLAVA_TEST_ prefix.",
+				Severity:        severityForEnvViolation(finding, violation),
+				File:            envFindingDiagnosticFile(repoRoot, finding),
+				Message:         violation,
+				SuggestedAction: envFindingSuggestedAction(finding),
+			})
+		}
+	}
+	for _, variable := range registry.Variables {
+		if variable.Scope == "test_only" || variable.Direction == "internal" || variable.Stability == "code_constant" {
+			continue
+		}
+		if len(variable.Docs) == 0 {
+			diagnostics = append(diagnostics, checkDiagnostic{
+				Stage:           "contract drift checks",
+				Severity:        "error",
+				File:            filepath.ToSlash(registryPath),
+				Message:         "registered environment variable is missing docs: " + variable.Name,
+				SuggestedAction: "Add docs/environment.md to the registry docs list and document the variable, or mark it internal/test-only.",
 			})
 		}
 	}
 	return report, diagnostics
 }
 
-func scanHarnessEnvVars(repoRoot string, extensions []string) map[string]string {
-	allowedExt := map[string]bool{}
-	for _, ext := range extensions {
-		allowedExt[ext] = true
+func harnessEnvFinding(name, scope string, documented bool, refs []envpolicy.Reference, registry *envpolicy.Registry) harnessEnvVarFinding {
+	finding := harnessEnvVarFinding{
+		Name:       name,
+		Scope:      scope,
+		UsedInCode: hasEnvCodeReference(refs),
+		Documented: documented,
+		Files:      envFindingFiles(refs),
+		References: refs,
 	}
-	found := map[string]string{}
+	variable, registered := registry.Find(name)
+	if !registered {
+		if scope == "runtime" {
+			finding.Violations = append(finding.Violations, "unregistered runtime environment variable used in code: "+name)
+		}
+		return finding
+	}
+	finding.Registered = true
+	finding.RegistryName = variable.Name
+	finding.Direction = variable.Direction
+	finding.Stability = variable.Stability
+	finding.Category = variable.Category
+	finding.Secret = variable.Secret
+	allowedScope := envpolicy.ScopeAllowedInRegistry(scope)
+	if !variable.Allows(allowedScope) {
+		finding.Violations = append(finding.Violations, "environment variable "+name+" is used in "+scope+" scope but registry allows only "+strings.Join(variable.AllowedIn, ", "))
+	}
+	if scope == "runtime" && variable.Scope == "test_only" {
+		finding.Violations = append(finding.Violations, "test-only environment variable used by production code: "+name)
+	}
+	if scope == "runtime" && !documented && variable.Scope != "internal" && variable.Stability != "code_constant" {
+		finding.Violations = append(finding.Violations, "registered runtime environment variable used in code but not documented: "+name)
+	}
+	return finding
+}
+
+func hasEnvCodeReference(refs []envpolicy.Reference) bool {
+	for _, ref := range refs {
+		if ref.Scope == "code" {
+			return true
+		}
+	}
+	return false
+}
+
+func envFindingFiles(refs []envpolicy.Reference) []string {
+	set := map[string]bool{}
+	for _, ref := range refs {
+		set[ref.File] = true
+	}
+	return sortedStringSet(set)
+}
+
+func severityForEnvViolation(finding harnessEnvVarFinding, violation string) string {
+	if finding.Scope == "runtime" || strings.Contains(violation, "registered environment variable is missing docs") {
+		return "error"
+	}
+	return "warning"
+}
+
+func envFindingDiagnosticFile(repoRoot string, finding harnessEnvVarFinding) string {
+	if len(finding.Files) > 0 {
+		return filepath.ToSlash(filepath.Join(repoRoot, filepath.FromSlash(finding.Files[0])))
+	}
+	return filepath.ToSlash(envpolicy.RegistryPath(repoRoot))
+}
+
+func envFindingSuggestedAction(finding harnessEnvVarFinding) string {
+	if !finding.Registered {
+		return "Remove the env usage, move configuration to `.onlava.json`, a CLI flag, or a checked-in manifest, or add a registry entry with rationale if explicitly approved."
+	}
+	if finding.Scope == "runtime" && finding.Stability == "test_only" {
+		return "Remove the test-only env from production code or replace it with a supported runtime configuration surface."
+	}
+	return "Update docs/environment.registry.json and docs/environment.md together, or change the code to use an approved configuration surface."
+}
+
+func appendDirectOSEnvDiagnostics(repoRoot string, diagnostics []checkDiagnostic) []checkDiagnostic {
+	for _, finding := range directOSEnvUsages(repoRoot) {
+		diagnostics = append(diagnostics, checkDiagnostic{
+			Stage:           "contract drift checks",
+			Severity:        "error",
+			File:            filepath.ToSlash(filepath.Join(repoRoot, filepath.FromSlash(finding))),
+			Message:         "production code reads or mutates process environment outside internal/envpolicy: " + finding,
+			SuggestedAction: "Route environment access through internal/envpolicy, or move configuration to `.onlava.json`, a CLI flag, or a checked-in manifest.",
+		})
+	}
+	return diagnostics
+}
+
+func directOSEnvUsages(repoRoot string) []string {
+	var findings []string
+	needles := []string{
+		"os." + "Getenv(",
+		"os." + "LookupEnv(",
+		"os." + "Environ(",
+		"os." + "Setenv(",
+		"os." + "Unsetenv(",
+	}
 	_ = filepath.WalkDir(repoRoot, func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
+		if err != nil {
 			return nil
 		}
 		rel, relErr := filepath.Rel(repoRoot, path)
@@ -329,59 +469,34 @@ func scanHarnessEnvVars(repoRoot string, extensions []string) map[string]string 
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		if architectureSkipDir(filepath.Dir(rel)) || !allowedExt[filepath.Ext(rel)] {
+		if entry.IsDir() {
+			if rel != "." && architectureSkipDir(rel) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(rel) != ".go" ||
+			strings.HasSuffix(rel, "_test.go") ||
+			strings.HasPrefix(rel, "internal/envpolicy/") ||
+			strings.HasPrefix(rel, "testdata/") ||
+			strings.HasPrefix(rel, "benchmarks/") {
 			return nil
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil
 		}
-		scope := "runtime"
-		if strings.HasSuffix(rel, "_test.go") || strings.HasPrefix(rel, "testdata/") {
-			scope = "test"
-		}
-		for _, token := range extractOnlavaEnvTokens(string(data)) {
-			if found[token] != "runtime" {
-				found[token] = scope
+		text := string(data)
+		for _, needle := range needles {
+			if strings.Contains(text, needle) {
+				findings = append(findings, rel)
+				break
 			}
 		}
 		return nil
 	})
-	return found
-}
-
-func sortedEnvVarNames(values map[string]string) []string {
-	out := make([]string, 0, len(values))
-	for value := range values {
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func extractOnlavaEnvTokens(text string) []string {
-	var tokens []string
-	for i := 0; i < len(text); i++ {
-		if !strings.HasPrefix(text[i:], "ONLAVA_") {
-			continue
-		}
-		j := i + len("ONLAVA_")
-		for j < len(text) {
-			ch := text[j]
-			if (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' {
-				j++
-				continue
-			}
-			break
-		}
-		token := text[i:j]
-		if strings.Trim(token, "_") != "ONLAVA" {
-			tokens = append(tokens, token)
-		}
-		i = j
-	}
-	sort.Strings(tokens)
-	return compactStrings(tokens)
+	sort.Strings(findings)
+	return findings
 }
 
 func buildHarnessArtifactHygieneReport(ctx context.Context, repoRoot string, diagnostics []checkDiagnostic) (harnessArtifactHygieneReport, []checkDiagnostic) {
@@ -702,11 +817,11 @@ func harnessStepEffects(step harnessStep) []string {
 	return sortedStringSet(set)
 }
 
-func sortedOnlavaEnv(env []string) []string {
+func sortedHarnessEnv(env []string) []string {
 	set := map[string]bool{}
 	for _, item := range env {
 		name, _, ok := strings.Cut(item, "=")
-		if ok && strings.HasPrefix(name, "ONLAVA_") {
+		if ok && (strings.HasPrefix(name, "ONLAVA_") || envpolicy.SecretLikeName(name)) {
 			set[name] = true
 		}
 	}

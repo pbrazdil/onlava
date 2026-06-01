@@ -22,6 +22,7 @@ import (
 
 	"github.com/pbrazdil/onlava/errs"
 	"github.com/pbrazdil/onlava/internal/devreport"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/redact"
 	"github.com/pbrazdil/onlava/runtime/shared"
 )
@@ -885,7 +886,7 @@ func redactURL(value *url.URL) string {
 // Small wrappers keep this file testable without making os/strings/bytes direct globals in tests.
 var (
 	bytesReader = func(data []byte) io.Reader { return bytes.NewReader(data) }
-	osGetenv    = os.Getenv
+	osGetenv    = envpolicy.Get
 	osStderr    = func() io.Writer { return os.Stderr }
 	stringsTrim = strings.TrimSpace
 )

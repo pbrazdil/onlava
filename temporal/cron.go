@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -20,10 +19,7 @@ import (
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
-const (
-	temporalCronWorkflowName = "onlava.cron.Invoke/v1"
-	testTriggerCronSchedules = "ONLAVA_TEST_TRIGGER_CRON_SCHEDULES"
-)
+const temporalCronWorkflowName = "onlava.cron.Invoke/v1"
 
 type temporalCronInput struct {
 	AppID                string
@@ -93,9 +89,6 @@ func reconcileTemporalCronSchedule(ctx context.Context, client temporalclient.Cl
 	}
 	schedules := client.ScheduleClient()
 	if _, err := schedules.Create(ctx, options); err == nil {
-		if temporalCronTestTriggerEnabled() {
-			return schedules.GetHandle(ctx, options.ID).Trigger(ctx, temporalclient.ScheduleTriggerOptions{})
-		}
 		return nil
 	} else if !isTemporalAlreadyExistsError(err) {
 		return fmt.Errorf("runtime: create temporal cron schedule %s: %w", options.ID, err)
@@ -121,19 +114,7 @@ func reconcileTemporalCronSchedule(ctx context.Context, client temporalclient.Cl
 	}); err != nil {
 		return err
 	}
-	if temporalCronTestTriggerEnabled() {
-		return handle.Trigger(ctx, temporalclient.ScheduleTriggerOptions{})
-	}
 	return nil
-}
-
-func temporalCronTestTriggerEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(testTriggerCronSchedules))) {
-	case "1", "true", "yes":
-		return true
-	default:
-		return false
-	}
 }
 
 func temporalCronScheduleOptions(cfg onlavaruntime.AppConfig, info onlavaruntime.TemporalRuntimeInfo, taskQueue string, job *onlavaruntime.CronJob) (temporalclient.ScheduleOptions, error) {

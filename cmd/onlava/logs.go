@@ -14,6 +14,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 type logsOptions struct {
@@ -492,7 +493,7 @@ func parseLogsArgs(args []string) (logsOptions, error) {
 		Stream:  "all",
 		Backend: logsBackendAuto,
 	}
-	if backend := strings.TrimSpace(os.Getenv("ONLAVA_LOGS_BACKEND")); backend != "" {
+	if backend := strings.TrimSpace(envpolicy.Get("ONLAVA_LOGS_BACKEND")); backend != "" {
 		normalized := normalizeLogsBackend(backend)
 		if normalized == "" {
 			return logsOptions{}, fmt.Errorf("invalid logs backend %q", backend)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 
 	onlava "github.com/pbrazdil/onlava"
@@ -37,7 +38,7 @@ func Run(ctx context.Context) error {
 }
 
 func readCronState() StatusResponse {
-	path := os.Getenv("ONLAVA_CRON_STATE_PATH")
+	path := cronStatePath()
 	if path == "" {
 		return cronState
 	}
@@ -53,7 +54,7 @@ func readCronState() StatusResponse {
 }
 
 func writeCronState(state StatusResponse) error {
-	path := os.Getenv("ONLAVA_CRON_STATE_PATH")
+	path := cronStatePath()
 	if path == "" {
 		return nil
 	}
@@ -62,6 +63,14 @@ func writeCronState(state StatusResponse) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func cronStatePath() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(cwd, ".onlava-cron-state.json")
 }
 
 //onlava:api public path=/cron/status method=GET

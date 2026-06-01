@@ -128,7 +128,21 @@
       "last_reviewed": "2026-06-01",
       "review_after": "2026-06-26",
       "summary": "Human reference for onlava-owned environment variables, app-injected process identity, managed toolchain controls, local dev overrides, and tooling escape hatches.",
-      "tags": ["environment", "env", "contract", "dev", "runtime", "toolchain"]
+      "tags": ["environment", "env", "contract", "dev", "runtime", "toolchain"],
+      "schema_refs": ["docs/schemas/onlava.environment.registry.v1.schema.json"]
+    },
+    {
+      "path": "docs/environment.registry.json",
+      "title": "onlava Environment Registry",
+      "owner": "onlava runtime",
+      "status": "active",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-06-01",
+      "review_after": "2026-07-01",
+      "summary": "Machine-readable registry of approved environment variables, families, metadata, documentation links, and secret flags enforced by self-harness.",
+      "tags": ["environment", "env", "json", "contract", "harness"],
+      "schema_refs": ["docs/schemas/onlava.environment.registry.v1.schema.json"]
     },
     {
       "path": "docs/grafana.md",

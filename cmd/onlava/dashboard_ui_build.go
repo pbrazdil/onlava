@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 type uiBuildSpec struct {
@@ -55,7 +56,7 @@ func dashboardUIBuildStale(uiRoot string) (bool, error) {
 }
 
 func prepareUIDir(ctx context.Context, console *runConsole, spec uiBuildSpec) (string, error) {
-	if dir := strings.TrimSpace(os.Getenv(spec.envVar)); dir != "" {
+	if dir := strings.TrimSpace(envpolicy.Get(spec.envVar)); dir != "" {
 		return dir, nil
 	}
 	if _, err := os.Stat(filepath.Join(spec.root, "package.json")); err != nil {
