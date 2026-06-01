@@ -156,12 +156,12 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 	}
 }
 
-func TestGenerateMainImportsCronOnlyPackages(t *testing.T) {
+func TestGenerateMainImportsRuntimeDeclarationPackages(t *testing.T) {
 	t.Parallel()
 
-	dir := persistentCodegenTestApp(t, "cronapp", map[string]string{
-		"go.mod":       "module example.com/cronapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"cronapp"}`,
+	dir := persistentCodegenTestApp(t, "runtimeimports", map[string]string{
+		"go.mod":       "module example.com/runtimeimports\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
+		".onlava.json": `{"name":"runtimeimports"}`,
 		"service/api.go": `package service
 
 import "context"
@@ -172,7 +172,7 @@ func Run(ctx context.Context) error { return nil }
 		"jobs/jobs.go": `package jobs
 
 import (
-	"example.com/cronapp/service"
+	"example.com/runtimeimports/service"
 	"github.com/pbrazdil/onlava/cron"
 )
 
@@ -182,9 +182,25 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 	Endpoint: service.Run,
 })
 `,
+		"workers/workflows.go": `package workers
+
+import "github.com/pbrazdil/onlava/temporal"
+
+type Input struct {
+	ID string
+}
+
+type Output struct {
+	ID string
+}
+
+var Fulfill = temporal.NewWorkflow[Input, Output]("orders.Fulfill/v1", temporal.WorkflowConfig{}, func(ctx temporal.WorkflowContext, in Input) (Output, error) {
+	return Output{ID: in.ID}, nil
+})
+`,
 	})
 
-	app, err := parse.App(dir, "cronapp")
+	app, err := parse.App(dir, "runtimeimports")
 	if err != nil {
 		t.Fatalf("parse app: %v", err)
 	}
@@ -194,11 +210,14 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 	}
 
 	got := string(out.Generated["onlava_internal_main/main.go"])
-	if !strings.Contains(got, `_ "example.com/cronapp/jobs"`) {
+	if !strings.Contains(got, `_ "example.com/runtimeimports/jobs"`) {
 		t.Fatalf("expected generated main to import cron package, got:\n%s", got)
 	}
+	if !strings.Contains(got, `_ "example.com/runtimeimports/workers"`) {
+		t.Fatalf("expected generated main to import temporal declaration package, got:\n%s", got)
+	}
 	if !strings.Contains(got, `Temporal: onlavaruntime.TemporalConfig{Enabled: true}`) {
-		t.Fatalf("expected generated main to enable temporal runtime for cron, got:\n%s", got)
+		t.Fatalf("expected generated main to enable temporal runtime, got:\n%s", got)
 	}
 }
 
@@ -313,54 +332,6 @@ func Run(ctx context.Context) error { return nil }
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected generated main to contain %q, got:\n%s", want, got)
 		}
-	}
-}
-
-func TestGenerateMainImportsTemporalDeclarationPackages(t *testing.T) {
-	t.Parallel()
-
-	dir := persistentCodegenTestApp(t, "temporaldecl", map[string]string{
-		"go.mod":       "module example.com/temporaldecl\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"temporaldecl"}`,
-		"svc/api.go": `package svc
-
-import "context"
-
-//onlava:api private
-func Run(ctx context.Context) error { return nil }
-`,
-		"workers/workflows.go": `package workers
-
-import "github.com/pbrazdil/onlava/temporal"
-
-type Input struct {
-	ID string
-}
-
-type Output struct {
-	ID string
-}
-
-var Fulfill = temporal.NewWorkflow[Input, Output]("orders.Fulfill/v1", temporal.WorkflowConfig{}, func(ctx temporal.WorkflowContext, in Input) (Output, error) {
-	return Output{ID: in.ID}, nil
-})
-`,
-	})
-
-	app, err := parse.App(dir, "temporaldecl")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	out, err := codegen.Generate(app)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-	got := string(out.Generated["onlava_internal_main/main.go"])
-	if !strings.Contains(got, `_ "example.com/temporaldecl/workers"`) {
-		t.Fatalf("expected generated main to import temporal declaration package, got:\n%s", got)
-	}
-	if !strings.Contains(got, `Temporal: onlavaruntime.TemporalConfig{Enabled: true}`) {
-		t.Fatalf("expected generated main to enable temporal runtime, got:\n%s", got)
 	}
 }
 

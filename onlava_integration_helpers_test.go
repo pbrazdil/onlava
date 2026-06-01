@@ -493,17 +493,25 @@ type sseEvent struct {
 
 func wsCall(t *testing.T, conn *websocket.Conn, id int, method string, params map[string]any) map[string]any {
 	t.Helper()
+	result, err := wsCallErr(conn, id, method, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func wsCallErr(conn *websocket.Conn, id int, method string, params map[string]any) (map[string]any, error) {
 	if err := conn.WriteJSON(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id,
 		"method":  method,
 		"params":  params,
 	}); err != nil {
-		t.Fatalf("write websocket rpc: %v", err)
+		return nil, fmt.Errorf("write websocket rpc: %w", err)
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	if err := conn.SetReadDeadline(deadline); err != nil {
-		t.Fatalf("set websocket deadline: %v", err)
+		return nil, fmt.Errorf("set websocket deadline: %w", err)
 	}
 	for time.Now().Before(deadline) {
 		var message map[string]any
@@ -511,29 +519,38 @@ func wsCall(t *testing.T, conn *websocket.Conn, id int, method string, params ma
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				break
 			}
-			t.Fatalf("read websocket rpc: %v", err)
+			return nil, fmt.Errorf("read websocket rpc: %w", err)
 		}
 		if int(toFloat(message["id"])) != id {
 			continue
 		}
 		if errPayload, ok := message["error"]; ok && errPayload != nil {
-			t.Fatalf("websocket rpc %s returned error: %#v", method, message)
+			return nil, fmt.Errorf("websocket rpc %s returned error: %#v", method, message)
 		}
-		return toMap(message["result"])
+		result := toMap(message["result"])
+		if method == "version" && toString(result["version"]) == "" {
+			return nil, fmt.Errorf("dashboard version response missing version: %#v", result)
+		}
+		return result, nil
 	}
-	t.Fatalf("timed out waiting for websocket rpc response %s", method)
-	return nil
+	return nil, fmt.Errorf("timed out waiting for websocket rpc response %s", method)
 }
 
 func waitForWSMethods(t *testing.T, conn *websocket.Conn, timeout time.Duration, methods ...string) {
 	t.Helper()
+	if err := waitForWSMethodsErr(conn, timeout, methods...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func waitForWSMethodsErr(conn *websocket.Conn, timeout time.Duration, methods ...string) error {
 	remaining := make(map[string]bool, len(methods))
 	for _, method := range methods {
 		remaining[method] = true
 	}
 	deadline := time.Now().Add(timeout)
 	if err := conn.SetReadDeadline(deadline); err != nil {
-		t.Fatalf("set websocket deadline: %v", err)
+		return fmt.Errorf("set websocket deadline: %w", err)
 	}
 	for len(remaining) > 0 && time.Now().Before(deadline) {
 		var message map[string]any
@@ -541,14 +558,15 @@ func waitForWSMethods(t *testing.T, conn *websocket.Conn, timeout time.Duration,
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				break
 			}
-			t.Fatalf("read websocket notification: %v", err)
+			return fmt.Errorf("read websocket notification: %w", err)
 		}
 		method, _ := message["method"].(string)
 		delete(remaining, method)
 	}
 	if len(remaining) > 0 {
-		t.Fatalf("timed out waiting for websocket notifications: %v", remaining)
+		return fmt.Errorf("timed out waiting for websocket notifications: %v", remaining)
 	}
+	return nil
 }
 
 func waitForHTTP(t *testing.T, url string) {
@@ -581,16 +599,68 @@ func waitForHTTPWithProcessOutput(t *testing.T, url string, outputs ...fmt.Strin
 
 func waitForURL(t *testing.T, client *http.Client, url string) {
 	t.Helper()
+	if err := waitForStatusWithClientErr(client, url, 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func waitForStatusWithClientErr(client *http.Client, url string, wantStatus int) error {
 	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
+			status := resp.StatusCode
 			resp.Body.Close()
-			return
+			if wantStatus == 0 || status == wantStatus {
+				return nil
+			}
+			lastErr = fmt.Errorf("status %d, want %d", status, wantStatus)
+		} else {
+			lastErr = err
 		}
 		time.Sleep(integrationPollInterval)
 	}
-	t.Fatalf("server did not start: %s", url)
+	return fmt.Errorf("server did not start: %s: %w", url, lastErr)
+}
+
+func waitForJSONWithClientErr(client *http.Client, url string, wantStatus int, want map[string]any) error {
+	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		if err := assertJSONResponseWithClientErr(client, req, wantStatus, want, nil); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		time.Sleep(integrationPollInterval)
+	}
+	return fmt.Errorf("JSON response did not settle at %s: %w", url, lastErr)
+}
+
+func waitForBodyWithClientErr(client *http.Client, url string, wantStatus int, wantBody string) error {
+	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(url)
+		if err != nil {
+			lastErr = err
+			time.Sleep(integrationPollInterval)
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == wantStatus && string(body) == wantBody {
+			return nil
+		}
+		lastErr = fmt.Errorf("status=%d body=%q, want status=%d body=%q", resp.StatusCode, body, wantStatus, wantBody)
+		time.Sleep(integrationPollInterval)
+	}
+	return fmt.Errorf("body response did not settle at %s: %w", url, lastErr)
 }
 
 func waitForFile(t *testing.T, path string) {
@@ -808,27 +878,34 @@ func assertJSONResponseWithHeaders(t *testing.T, req *http.Request, wantStatus i
 
 func assertJSONResponseWithClient(t *testing.T, client *http.Client, req *http.Request, wantStatus int, want map[string]any, wantHeaders map[string]string) {
 	t.Helper()
+	if err := assertJSONResponseWithClientErr(client, req, wantStatus, want, wantHeaders); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertJSONResponseWithClientErr(client *http.Client, req *http.Request, wantStatus int, want map[string]any, wantHeaders map[string]string) error {
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != wantStatus {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("unexpected status %d, want %d: %s", resp.StatusCode, wantStatus, body)
+		return fmt.Errorf("unexpected status %d, want %d: %s", resp.StatusCode, wantStatus, body)
 	}
 	for key, wantValue := range wantHeaders {
 		if got := resp.Header.Get(key); got != wantValue {
-			t.Fatalf("unexpected header %s=%q, want %q", key, got, wantValue)
+			return fmt.Errorf("unexpected header %s=%q, want %q", key, got, wantValue)
 		}
 	}
 	var got map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if !mapsEqual(got, want) {
-		t.Fatalf("unexpected body: got=%v want=%v", got, want)
+		return fmt.Errorf("unexpected body: got=%v want=%v", got, want)
 	}
+	return nil
 }
 
 func insecureHTTPSClient() *http.Client {

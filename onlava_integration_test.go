@@ -539,6 +539,29 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	var apiOutput strings.Builder
+	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
+	cmd.Env = apiEnv
+	cmd.Stdout = &apiOutput
+	cmd.Stderr = &apiOutput
+	cmd.Stdin = nil
+	cmd.Dir = appDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start onlava serve: %v", err)
+	}
+	defer killOnlavaProcess(t, cancel, cmd)
+
+	waitForHTTPWithProcessOutput(t, "http://"+addr+"/cron/status", &apiOutput)
+	temporalCtx, temporalCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer temporalCancel()
+	temporalClient, err := temporalclient.Dial(temporalclient.Options{HostPort: temporalAddr})
+	if err != nil {
+		t.Fatalf("dial temporal: %v", err)
+	}
+	defer temporalClient.Close()
+	waitForCronScheduleReconciliation(t, &apiOutput, "onlava-tick", "onlava.cronapp.cron.go")
+
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	var workerOutput strings.Builder
@@ -554,21 +577,10 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	}
 	defer killOnlavaProcess(t, workerCancel, workerCmd)
 
-	var apiOutput strings.Builder
-	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = apiEnv
-	cmd.Stdout = &apiOutput
-	cmd.Stderr = &apiOutput
-	cmd.Stdin = nil
-	cmd.Dir = appDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start onlava serve: %v", err)
-	}
-	defer killOnlavaProcess(t, cancel, cmd)
-
-	waitForHTTPWithProcessOutput(t, "http://"+addr+"/cron/status", &apiOutput, &workerOutput)
-	startTemporalCronWorkflow(t, temporalAddr, "onlava-cronapp.cron.onlava-tick")
+	// Temporal's local dev schedule Describe/List/Trigger returned inconsistent
+	// scheduler state in this environment; start the same cron workflow
+	// deterministically after the API logs successful schedule reconciliation.
+	startTemporalCronWorkflow(t, temporalCtx, temporalClient, "onlava-cronapp.cron.onlava-tick")
 	waitForCronStatus(t, "http://"+addr+"/cron/status")
 }
 
@@ -581,16 +593,24 @@ type temporalCronInputForTest struct {
 	ActivityRetryPolicy  onlavaruntime.CronRetryPolicy
 }
 
-func startTemporalCronWorkflow(t *testing.T, temporalAddr, workflowID string) {
+func waitForCronScheduleReconciliation(t *testing.T, output fmt.Stringer, jobID, taskQueue string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := temporalclient.Dial(temporalclient.Options{HostPort: temporalAddr})
-	if err != nil {
-		t.Fatalf("dial temporal: %v", err)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		logs := output.String()
+		if strings.Contains(logs, "cron schedule reconciled") &&
+			strings.Contains(logs, "id="+jobID) &&
+			strings.Contains(logs, "task_queue="+taskQueue) {
+			return
+		}
+		time.Sleep(integrationPollInterval)
 	}
-	defer client.Close()
-	_, err = client.ExecuteWorkflow(ctx, temporalclient.StartWorkflowOptions{
+	t.Fatalf("cron schedule reconciliation log not observed\nprocess output:\n%s", output.String())
+}
+
+func startTemporalCronWorkflow(t *testing.T, ctx context.Context, client temporalclient.Client, workflowID string) {
+	t.Helper()
+	_, err := client.ExecuteWorkflow(ctx, temporalclient.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: "onlava.cronapp.cron.go",
 	}, "onlava.cron.Invoke/v1", temporalCronInputForTest{
@@ -744,8 +764,9 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 
 	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr, "--proxy")
 	cmd.Env = onlavaDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, frontendAddr)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	var devOutput strings.Builder
+	cmd.Stdout = &devOutput
+	cmd.Stderr = &devOutput
 	cmd.Stdin = nil
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -754,49 +775,60 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 	}
 	defer killOnlavaProcess(t, cancel, cmd)
 
-	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
-	waitForHTTP(t, "http://"+dashAddr+"/basicapp")
-
 	client := insecureHTTPSClient()
+	directURL := "http://" + addr + "/service.CallPrivate"
 	apiURL := "https://api.acme.localhost:" + httpsPort + "/service.CallPrivate"
-	getJSONWithClient(t, client, apiURL, nil, http.StatusOK, map[string]any{"message": "secret:hi"})
-
 	consoleURL := "https://console.acme.localhost:" + httpsPort + "/"
-	waitForURL(t, client, consoleURL)
-	resp, err := client.Get(consoleURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusFound {
-		t.Fatalf("unexpected console status %d", resp.StatusCode)
-	}
-
 	frontendURL := "https://web.acme.localhost:" + httpsPort + "/"
-	waitForURL(t, client, frontendURL)
-	resp, err = client.Get(frontendURL)
-	if err != nil {
-		t.Fatal(err)
+	type wsProbeResult struct {
+		conn *websocket.Conn
+		err  error
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || string(body) != "frontend ok" {
-		t.Fatalf("unexpected frontend response status=%d body=%q", resp.StatusCode, body)
+	routeErrs := make(chan error, 4)
+	wsReady := make(chan error, 1)
+	wsResult := make(chan wsProbeResult, 1)
+	go func() {
+		routeErrs <- waitForJSONWithClientErr(&http.Client{Timeout: time.Second}, directURL, http.StatusOK, map[string]any{"message": "secret:hi"})
+	}()
+	go func() {
+		routeErrs <- waitForStatusWithClientErr(client, consoleURL, http.StatusFound)
+	}()
+	go func() {
+		routeErrs <- waitForBodyWithClientErr(client, frontendURL, http.StatusOK, "frontend ok")
+	}()
+	go func() {
+		if err := <-wsReady; err != nil {
+			routeErrs <- err
+			return
+		}
+		routeErrs <- waitForJSONWithClientErr(client, apiURL, http.StatusOK, map[string]any{"message": "secret:hi"})
+	}()
+	go func() {
+		wsConn, err := dialDashboardWebsocketWithVersion(dashAddr)
+		if err != nil {
+			wsReady <- err
+			wsResult <- wsProbeResult{err: err}
+			return
+		}
+		wsReady <- nil
+		if err := waitForWSMethodsErr(wsConn, 10*time.Second, "trace/new"); err != nil {
+			_ = wsConn.Close()
+			wsResult <- wsProbeResult{err: err}
+			return
+		}
+		wsResult <- wsProbeResult{conn: wsConn}
+	}()
+	for range 4 {
+		if err := <-routeErrs; err != nil {
+			t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
+		}
 	}
-
-	wsConn, _, err := websocket.DefaultDialer.Dial("ws://"+dashAddr+"/__onlava", nil)
-	if err != nil {
-		t.Fatalf("dial dashboard websocket: %v", err)
+	wsProbe := <-wsResult
+	if wsProbe.err != nil {
+		t.Fatalf("%v\nprocess output:\n%s", wsProbe.err, devOutput.String())
 	}
+	wsConn := wsProbe.conn
 	defer wsConn.Close()
-
-	version := wsCall(t, wsConn, 1, "version", map[string]any{})
-	if toString(version["version"]) == "" {
-		t.Fatalf("dashboard version response missing version: %#v", version)
-	}
-
-	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
-	waitForWSMethods(t, wsConn, 10*time.Second, "trace/new")
 
 	data, err := os.ReadFile(apiPath)
 	if err != nil {
@@ -810,6 +842,31 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 		t.Fatal(err)
 	}
 
-	waitForWSMethods(t, wsConn, 15*time.Second, "process/compile-start", "process/output", "process/reload")
-	waitForJSONResponse(t, "http://"+addr+"/service.CallPrivate", http.StatusOK, map[string]any{"message": "secret:dashboard"})
+	if err := waitForWSMethodsErr(wsConn, 15*time.Second, "process/compile-start", "process/output", "process/reload"); err != nil {
+		t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
+	}
+	if err := waitForJSONWithClientErr(&http.Client{Timeout: time.Second}, directURL, http.StatusOK, map[string]any{"message": "secret:dashboard"}); err != nil {
+		t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
+	}
+}
+
+func dialDashboardWebsocketWithVersion(dashboardAddr string) (*websocket.Conn, error) {
+	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, _, err := websocket.DefaultDialer.Dial("ws://"+dashboardAddr+"/__onlava", nil)
+		if err != nil {
+			lastErr = err
+			time.Sleep(integrationPollInterval)
+			continue
+		}
+		if _, err := wsCallErr(conn, 1, "version", map[string]any{}); err != nil {
+			_ = conn.Close()
+			lastErr = err
+			time.Sleep(integrationPollInterval)
+			continue
+		}
+		return conn, nil
+	}
+	return nil, fmt.Errorf("dashboard websocket/version did not become ready: %w", lastErr)
 }

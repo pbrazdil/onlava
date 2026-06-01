@@ -373,18 +373,18 @@ func TestDevtoolsPinnedVersionsRejectsMissingValues(t *testing.T) {
 func TestClientgenNamedAliasesAndWireCapabilities(t *testing.T) {
 	t.Parallel()
 
-	appRoot := t.TempDir()
-	writeRelocatedUnitTestFile(t, appRoot, "go.mod", "module example.com/clientwireapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+appcfg.RepoRoot()+"\n")
-	writeRelocatedUnitTestFile(t, appRoot, ".onlava.json", `{"name":"clientwireapp"}`)
-	writeRelocatedUnitTestFile(t, appRoot, "point/point.go", `package point
+	appRoot := persistentParseTestApp(t, "clientwireapp", map[string]string{
+		"go.mod":       "module example.com/clientwireapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + appcfg.RepoRoot() + "\n",
+		".onlava.json": `{"name":"clientwireapp"}`,
+		"point/point.go": `package point
 
 type Point3 struct {
-	X int `+"`json:\"x\"`"+`
-	Y int `+"`json:\"y\"`"+`
-	Z int `+"`json:\"z\"`"+`
+	X int ` + "`json:\"x\"`" + `
+	Y int ` + "`json:\"y\"`" + `
+	Z int ` + "`json:\"z\"`" + `
 }
-`)
-	writeRelocatedUnitTestFile(t, appRoot, "maps/api.go", `package maps
+`,
+		"maps/api.go": `package maps
 
 import (
 	"context"
@@ -395,12 +395,12 @@ import (
 type TaskStatus string
 
 type Response struct {
-	Status TaskStatus `+"`json:\"status\"`"+`
-	Point  point.Point3 `+"`json:\"point\"`"+`
+	Status TaskStatus ` + "`json:\"status\"`" + `
+	Point  point.Point3 ` + "`json:\"point\"`" + `
 }
 
 type UnsupportedResponse struct {
-	Meta map[string]any `+"`json:\"meta\"`"+`
+	Meta map[string]any ` + "`json:\"meta\"`" + `
 }
 
 //onlava:api public
@@ -412,7 +412,8 @@ func Get(ctx context.Context) (*Response, error) {
 func Unsupported(ctx context.Context) (*UnsupportedResponse, error) {
 	return &UnsupportedResponse{}, nil
 }
-`)
+`,
+	})
 	model, err := parse.App(appRoot, "clientwireapp")
 	if err != nil {
 		t.Fatalf("parse.App() error = %v", err)

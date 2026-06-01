@@ -62,7 +62,8 @@ func TestOnlavaTestHelperProcess(t *testing.T) {
 }
 
 func TestOnlavaTestRunsGoTestInGeneratedWorkspace(t *testing.T) {
-	t.Parallel()
+	useFakeBuildGoRunner(t)
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", filepath.Join(t.TempDir(), "cache"))
 
 	root := persistentTestAppRoot(t, "generated-workspace")
 	files := map[string]string{

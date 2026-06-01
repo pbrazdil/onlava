@@ -373,6 +373,23 @@ func Global(req middleware.Request, next middleware.Next) middleware.Response {
 	return next(req)
 }
 `,
+		"jobs/runtime.go": `package jobs
+
+import "github.com/pbrazdil/onlava/temporal"
+
+type In struct{}
+type Out struct{}
+
+func workflowConfig() temporal.WorkflowConfig {
+	return temporal.WorkflowConfig{TaskQueue: "custom.worker.go"}
+}
+
+var cfg = workflowConfig()
+
+var _ = temporal.NewWorkflow[In, Out]("jobs.Run/v1", cfg, func(ctx temporal.WorkflowContext, in In) (Out, error) {
+	return Out{}, nil
+})
+`,
 	})
 
 	inspectArgs := func(subject string) []string {
@@ -441,63 +458,33 @@ func Global(req middleware.Request, next middleware.Next) middleware.Response {
 			}
 		}
 	})
-}
 
-func TestInspectTemporalLeavesUnresolvedWorkflowQueueEmpty(t *testing.T) {
-	t.Parallel()
+	t.Run("temporal unresolved queue", func(t *testing.T) {
+		t.Parallel()
 
-	root := persistentTestAppRoot(t, "inspect-temporal-unresolved")
-	preparePersistentTestApp(t, root, map[string]string{
-		".onlava.json": `{"name":"inspectapp"}`,
-		"go.mod":       "module example.com/inspectapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRootForTest(t) + "\n",
-		"svc/api.go": `package svc
-
-import "context"
-
-//onlava:api public
-func Ping(ctx context.Context) error { return nil }
-`,
-		"jobs/runtime.go": `package jobs
-
-import "github.com/pbrazdil/onlava/temporal"
-
-type In struct{}
-type Out struct{}
-
-func workflowConfig() temporal.WorkflowConfig {
-	return temporal.WorkflowConfig{TaskQueue: "custom.worker.go"}
-}
-
-var cfg = workflowConfig()
-
-var _ = temporal.NewWorkflow[In, Out]("jobs.Run/v1", cfg, func(ctx temporal.WorkflowContext, in In) (Out, error) {
-	return Out{}, nil
-})
-`,
+		var out bytes.Buffer
+		if err := runOnlavaInspect(inspectArgs("temporal"), &out); err != nil {
+			t.Fatalf("runOnlavaInspect(temporal) error = %v", err)
+		}
+		var payload struct {
+			Declarations []struct {
+				Kind              string `json:"kind"`
+				Name              string `json:"name"`
+				TaskQueue         string `json:"task_queue"`
+				TaskQueueExplicit bool   `json:"task_queue_explicit"`
+			} `json:"declarations"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal(temporal) error = %v\n%s", err, out.String())
+		}
+		if len(payload.Declarations) != 1 {
+			t.Fatalf("declarations = %+v", payload.Declarations)
+		}
+		decl := payload.Declarations[0]
+		if decl.Kind != "temporal_workflow" || decl.Name != "jobs.Run/v1" || decl.TaskQueue != "" || decl.TaskQueueExplicit {
+			t.Fatalf("workflow declaration = %+v", decl)
+		}
 	})
-
-	var out bytes.Buffer
-	if err := runOnlavaInspect([]string{"temporal", "--json", "--app-root", root}, &out); err != nil {
-		t.Fatalf("runOnlavaInspect(temporal) error = %v", err)
-	}
-	var payload struct {
-		Declarations []struct {
-			Kind              string `json:"kind"`
-			Name              string `json:"name"`
-			TaskQueue         string `json:"task_queue"`
-			TaskQueueExplicit bool   `json:"task_queue_explicit"`
-		} `json:"declarations"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
-		t.Fatalf("json.Unmarshal(temporal) error = %v\n%s", err, out.String())
-	}
-	if len(payload.Declarations) != 1 {
-		t.Fatalf("declarations = %+v", payload.Declarations)
-	}
-	decl := payload.Declarations[0]
-	if decl.Kind != "temporal_workflow" || decl.Name != "jobs.Run/v1" || decl.TaskQueue != "" || decl.TaskQueueExplicit {
-		t.Fatalf("workflow declaration = %+v", decl)
-	}
 }
 
 func TestRunOnlavaInspectBuildUsesLatestManifest(t *testing.T) {
