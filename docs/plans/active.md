@@ -62,6 +62,11 @@ reuse IDs; this list can still be ordered by current priority.
   - Owner: onlava runtime / release tooling / agent DX
   - Created: 2026-06-01
   - Focus: add a root frozen toolchain manifest, managed local tool store, `onlava toolchain` CLI, and remove implicit system `PATH` resolution for Onlava-managed tools.
+- [0060 onlava Doctor Command](0060-onlava-doctor-command.md)
+  - Status: active
+  - Owner: onlava runtime / agent DX
+  - Created: 2026-06-01
+  - Focus: add a fast, read-only `onlava doctor` command that reports host readiness, resources, version metadata, dependency checks, and app-sensitive diagnostics for humans and agents.
 - [0047 TypeScript Temporal Workers](0047-typescript-temporal-workers.md)
   - Status: active
   - Owner: onlava runtime / Temporal

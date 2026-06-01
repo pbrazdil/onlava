@@ -49,12 +49,15 @@ Stable v0 API details live in [docs/local-contract.md](docs/local-contract.md). 
 - Bun, only when working on the dashboard UI or the benchmark fixture
 - `psql`, only when using `onlava db psql`
 
+Run `onlava doctor --json` after install when you want a read-only readiness report for the host, Go toolchain, disk/memory resources, and optional local-development dependencies.
+
 ## Install From Source
 
 ```sh
 git clone https://github.com/pbrazdil/onlava.git onlava
 cd onlava
 go install ./cmd/onlava
+onlava doctor --json
 onlava version --json
 ```
 
@@ -214,6 +217,7 @@ onlava toolchain list [--json] [--include-source-locks] [--images]
 onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
 onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
 onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
+onlava doctor [--app-root <path>] [--json]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava generate [--app-root <path>] [--dry-run] [--json]

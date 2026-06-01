@@ -21,6 +21,7 @@ same as the stable v0 support surface.
 - `onlava worker`
 - `onlava version --json`
 - `onlava toolchain list|sync|verify|path`
+- `onlava doctor --json`
 - `onlava check --json`
 - `onlava generate`
 - `onlava generate client`
@@ -98,6 +99,7 @@ Dev-only or beta surface:
 - `onlava inspect generators --json`
 - `onlava inspect temporal --json`
 - `onlava toolchain list|sync|verify|path`
+- `onlava doctor --json`
 - `onlava worker`
 - `onlava admin traces clear --json`
 - `onlava harness ui --json`
@@ -298,6 +300,7 @@ onlava toolchain list [--json] [--include-source-locks] [--images]
 onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
 onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
 onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
+onlava doctor [--app-root <path>] [--json]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava db psql [--app-root <path>] [psql args...]
@@ -335,6 +338,14 @@ onlava psql [--app-root <path>] [psql args...]
 ```
 
 `onlava db psql` is the PRD-facing spelling. When `dev.services.postgres` is configured and an agent session is active, it connects to the managed session database; otherwise it falls back to the older beta `onlava psql` behavior. `onlava db reset`, `onlava db drop`, and `onlava db snapshot create|restore` are only available for managed session databases. `onlava db sync` is beta and runs only an explicit `database.apply` provider before dependent SQLC generation.
+
+Doctor rules:
+- `onlava doctor` is a fast, read-only local environment diagnostic. It does not install tools, download managed artifacts, start services, run builds, connect to databases, or mutate `.onlava/`.
+- `onlava doctor --json` emits `onlava.doctor.result.v1` and exits non-zero only when required checks have status `error`.
+- Check statuses are `ok`, `warn`, `error`, and `skipped`. Check severities are `required`, `optional`, and `informational`.
+- Required failures currently cover baseline host readiness such as missing/old Go, very low memory, very low disk space, or an explicitly invalid `--app-root`.
+- Optional missing tools such as `bun`, `psql`, `pg_dump`, `docker`, `atlas`, `sqlc`, and `git` warn by default. App configuration can make their messages more specific, but the initial doctor contract does not make optional tools fatal.
+- `--app-root` tunes app-sensitive diagnostics from `.onlava.json`. If omitted, doctor tries current-directory app discovery and silently continues with environment-only checks when no app is found.
 
 Inspect rules:
 - `onlava inspect` requires a subject.
@@ -624,6 +635,7 @@ Implemented now:
 - [onlava.logs.event.v1.schema.json](schemas/onlava.logs.event.v1.schema.json)
 - [onlava.admin.result.v1.schema.json](schemas/onlava.admin.result.v1.schema.json)
 - [onlava.version.v1.schema.json](schemas/onlava.version.v1.schema.json)
+- [onlava.doctor.result.v1.schema.json](schemas/onlava.doctor.result.v1.schema.json)
 - [onlava.toolchain.v1.schema.json](schemas/onlava.toolchain.v1.schema.json)
 - [onlava.toolchain.status.v1.schema.json](schemas/onlava.toolchain.status.v1.schema.json)
 

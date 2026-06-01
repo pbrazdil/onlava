@@ -66,6 +66,7 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 		payload   any
 	}{
 		{name: "version", schemaRel: "docs/schemas/onlava.version.v1.schema.json", payload: versionPayload},
+		{name: "doctor", schemaRel: "docs/schemas/onlava.doctor.result.v1.schema.json", payload: buildHarnessDoctorSchemaPayload(versionPayload)},
 		{name: "inspect.docs", schemaRel: "docs/schemas/onlava.inspect.docs.v1.schema.json", payload: inspectDocsPayload},
 		{name: "harness.self", schemaRel: "docs/schemas/onlava.harness.self.v1.schema.json", payload: resp},
 		{name: "harness.toolchain", schemaRel: "docs/schemas/onlava.harness.toolchain.v1.schema.json", payload: resp.Toolchain},
@@ -100,6 +101,54 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 		report.Validated = append(report.Validated, validation)
 	}
 	return report
+}
+
+func buildHarnessDoctorSchemaPayload(versionPayload versionResponse) doctorResponse {
+	resp := doctorResponse{
+		SchemaVersion: doctorSchemaVersion,
+		OK:            true,
+		Onlava:        versionPayload,
+		App: &doctorAppInfo{
+			Root:       "/tmp/onlava-doctor-fixture",
+			ConfigPath: "/tmp/onlava-doctor-fixture/.onlava.json",
+			Name:       "doctorfixture",
+			ID:         "doctorfixture",
+		},
+		Environment: doctorEnvironment{
+			GOOS:             "linux",
+			GOARCH:           "amd64",
+			NumCPU:           8,
+			TotalMemoryBytes: 8 * 1024 * 1024 * 1024,
+			Paths: []doctorPathReport{{
+				Kind:       "app_root",
+				Path:       "/tmp/onlava-doctor-fixture",
+				FreeBytes:  20 * 1024 * 1024 * 1024,
+				TotalBytes: 40 * 1024 * 1024 * 1024,
+			}},
+		},
+		Checks: []doctorCheck{
+			{
+				ID:       "os.runtime",
+				Category: "host",
+				Name:     "Operating system",
+				Status:   doctorStatusOK,
+				Severity: doctorSeverityInformational,
+				Message:  "linux/amd64",
+				Observed: map[string]any{"goos": "linux", "goarch": "amd64"},
+			},
+			{
+				ID:       "tool.go",
+				Category: "dependency",
+				Name:     "Go toolchain",
+				Status:   doctorStatusOK,
+				Severity: doctorSeverityRequired,
+				Message:  "go version go1.26.3 linux/amd64 at /usr/local/go/bin/go",
+				Observed: map[string]any{"path": "/usr/local/go/bin/go", "version": "go version go1.26.3 linux/amd64"},
+			},
+		},
+	}
+	resp.Summary = summarizeDoctorChecks(resp.Checks)
+	return resp
 }
 
 func harnessInspectDocsPayload(repoRoot string) (map[string]any, error) {

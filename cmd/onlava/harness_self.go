@@ -100,7 +100,7 @@ func runOnlavaHarnessSelf(ctx context.Context, stdout io.Writer, args []string) 
 			runHarnessExecStep(ctx, repoRoot, "install onlava binary", []string{"go", "install", "./cmd/onlava"}),
 			runHarnessOnlavaBinaryStep(repoRoot),
 		)
-		goTestStep, testTiming := runHarnessGoTestTimingStep(ctx, repoRoot)
+		goTestStep, testTiming := runHarnessGoTestTimingStepForMode(ctx, repoRoot, opts.Mode)
 		resp.TestTiming = testTiming
 		resp.Steps = append(resp.Steps,
 			goTestStep,

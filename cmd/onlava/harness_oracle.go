@@ -401,6 +401,18 @@ func harnessDevEventBackendPath(path string) bool {
 }
 
 func runHarnessGoTestTimingStep(ctx context.Context, repoRoot string) (harnessStep, *harnessTestTimingReport) {
+	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, defaultHarnessTestTimingBudgets())
+}
+
+func runHarnessGoTestTimingStepForMode(ctx context.Context, repoRoot, mode string) (harnessStep, *harnessTestTimingReport) {
+	budgets := defaultHarnessTestTimingBudgets()
+	if mode == harnessSelfModeRelease {
+		budgets.Mode = "enforce-total"
+	}
+	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, budgets)
+}
+
+func runHarnessGoTestTimingStepWithBudgets(ctx context.Context, repoRoot string, budgets harnessTestTimingBudgets) (harnessStep, *harnessTestTimingReport) {
 	started := time.Now()
 	command := harnessSelfGoTestCommand()
 	testEnv := harnessSelfGoTestEnv()
@@ -424,7 +436,7 @@ func runHarnessGoTestTimingStep(ctx context.Context, repoRoot string) (harnessSt
 			Command:       command,
 			Env:           testEnv,
 			TotalSeconds:  float64(step.DurationMS) / 1000,
-			Budgets:       defaultHarnessTestTimingBudgets(),
+			Budgets:       budgets,
 			Diagnostics:   step.Diagnostics,
 		}
 	}
@@ -447,7 +459,7 @@ func runHarnessGoTestTimingStep(ctx context.Context, repoRoot string) (harnessSt
 			Command:       command,
 			Env:           testEnv,
 			TotalSeconds:  float64(step.DurationMS) / 1000,
-			Budgets:       defaultHarnessTestTimingBudgets(),
+			Budgets:       budgets,
 			Diagnostics:   step.Diagnostics,
 		}
 	}
@@ -465,7 +477,7 @@ func runHarnessGoTestTimingStep(ctx context.Context, repoRoot string) (harnessSt
 	if closeErr != nil && runErr == nil {
 		runErr = closeErr
 	}
-	report := parseHarnessGoTestTiming(output, command, elapsed)
+	report := parseHarnessGoTestTimingWithBudgets(output, command, elapsed, budgets)
 	report.Env = append([]string{}, testEnv...)
 	step.DurationMS = elapsed.Milliseconds()
 	step.Summary = map[string]any{
@@ -493,11 +505,15 @@ func runHarnessGoTestTimingStep(ctx context.Context, repoRoot string) (harnessSt
 }
 
 func parseHarnessGoTestTiming(output []byte, command []string, elapsed time.Duration) *harnessTestTimingReport {
+	return parseHarnessGoTestTimingWithBudgets(output, command, elapsed, defaultHarnessTestTimingBudgets())
+}
+
+func parseHarnessGoTestTimingWithBudgets(output []byte, command []string, elapsed time.Duration, budgets harnessTestTimingBudgets) *harnessTestTimingReport {
 	report := &harnessTestTimingReport{
 		SchemaVersion: harnessTestTimingSchema,
 		Command:       append([]string{}, command...),
 		TotalSeconds:  roundSeconds(elapsed.Seconds()),
-		Budgets:       defaultHarnessTestTimingBudgets(),
+		Budgets:       budgets,
 	}
 	packages := map[string]*harnessPackageTiming{}
 	scanner := bufio.NewScanner(bytes.NewReader(output))
@@ -563,11 +579,17 @@ func parseHarnessGoTestTiming(output []byte, command []string, elapsed time.Dura
 		}
 	}
 	if report.TotalSeconds >= report.Budgets.TotalSeconds {
+		severity := "warning"
+		suggestion := "Review `.onlava/harness/test-timing-latest.json` for regressions; timing is advisory in default self-harness mode."
+		if report.Budgets.Mode == "enforce-total" {
+			severity = "error"
+			suggestion = "Continue `docs/plans/0050-test-suite-speed-hardening.md` and reduce the full-suite runtime below the enforced harness budget."
+		}
 		report.Diagnostics = append(report.Diagnostics, checkDiagnostic{
 			Stage:           "go tests",
-			Severity:        "error",
+			Severity:        severity,
 			Message:         fmt.Sprintf("full Go suite took %.3fs, over %.3fs target", report.TotalSeconds, report.Budgets.TotalSeconds),
-			SuggestedAction: "Continue `docs/plans/0050-test-suite-speed-hardening.md` and reduce the full-suite runtime below the default harness budget.",
+			SuggestedAction: suggestion,
 		})
 	}
 	if err := scanner.Err(); err != nil {
@@ -586,7 +608,7 @@ func defaultHarnessTestTimingBudgets() harnessTestTimingBudgets {
 		TotalSeconds:   7,
 		PackageSeconds: 2,
 		TestSeconds:    0.5,
-		Mode:           "enforce-total",
+		Mode:           "observe-total",
 	}
 }
 

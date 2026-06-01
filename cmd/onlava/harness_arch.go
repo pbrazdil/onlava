@@ -31,6 +31,7 @@ var allowedDirectGoDeps = map[string]string{
 	"go.temporal.io/sdk/contrib/sysinfo": "Temporal-recommended host and cgroup resource reporting for worker heartbeats",
 	"golang.org/x/crypto":                "password hashing primitives for standard auth",
 	"golang.org/x/mod":                   "Go module parsing for self-harness dependency checks",
+	"golang.org/x/sys":                   "portable OS syscalls for doctor disk and memory readiness probes",
 	"golang.org/x/tools":                 "Go package loading/parser pipeline",
 	"gopkg.in/yaml.v3":                   "SQLC generator graph inspection from sqlc.yaml without shell parsing",
 	"modernc.org/sqlite":                 "CGO-free local dashboard state store",

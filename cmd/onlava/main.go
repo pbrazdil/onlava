@@ -68,6 +68,8 @@ func run(args []string) error {
 		return versionCommand(args[1:])
 	case "toolchain":
 		return toolchainCommand(args[1:])
+	case "doctor":
+		return doctorCommand(args[1:])
 	case "build":
 		return buildCommand(args[1:])
 	case "psql":
@@ -127,6 +129,7 @@ func usageError() error {
     onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
     onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
     onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
+    onlava doctor [--app-root <path>] [--json]
     onlava version [--json]
     onlava build [--app-root <path>] [-o <path>]
     onlava check [--app-root <path>] [--json]

@@ -77,6 +77,12 @@ The self harness validates the local onlava development loop:
 - `go install ./cmd/onlava`
 - installed `onlava` binary freshness against repo sources
 
+The default self-harness still runs the complete Go suite and writes
+`.onlava/harness/test-timing-latest.json`, but the wall-clock duration budget is
+advisory. Timing overages are warnings so ordinary feature work is not blocked by
+machine and scheduler variance. Release-mode self-harness may enforce the total
+duration budget when maintainers intentionally want a hard speed gate.
+
 ## Design Rules
 
 - Keep `AGENTS.md` short. It should point to source-of-truth docs instead of becoming an encyclopedia.

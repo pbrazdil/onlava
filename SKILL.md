@@ -20,6 +20,7 @@ Read next when needed:
 
 ```sh
 onlava check --json
+onlava doctor --json
 onlava inspect app --json
 onlava inspect routes --json
 onlava inspect endpoints --json
@@ -30,6 +31,8 @@ onlava harness --json --write
 ```
 
 Prefer JSON output for agent decisions. Prefer `onlava dev` for local development. Use `onlava serve` for headless API execution. Use `onlava run` for app-local operational scripts. Use `onlava worker` for worker-only cron/Temporal execution.
+
+Run `onlava doctor --json` before deep app debugging when local readiness is in doubt. It is read-only and reports host resources, Go version, optional tools, and app-sensitive dependency hints without building or starting services.
 
 ## Mental Model
 

@@ -23,6 +23,7 @@ If old prose disagrees with current JSON or tests, fix the drift. Do not add leg
 Inside an onlava app:
 
 ```sh
+onlava doctor --json
 onlava check --json
 onlava inspect app --json
 onlava inspect routes --json
@@ -142,6 +143,7 @@ Prefer JSON when output will feed another tool or decision.
 
 | Intent | Command |
 | --- | --- |
+| Check local environment readiness | `onlava doctor --json` |
 | Validate app model | `onlava check --json` |
 | Inspect app/root/config | `onlava inspect app --json` |
 | Inspect routes/endpoints/services | `onlava inspect routes --json`, `onlava inspect endpoints --json`, `onlava inspect services --json` |
@@ -158,11 +160,11 @@ Prefer JSON when output will feed another tool or decision.
 | Generate TypeScript client | `onlava gen client --lang typescript --output <path>` |
 | Run configured generation | `onlava generate --dry-run --json`, then `onlava generate` |
 | Sync configured dev DB | `onlava db sync` |
+| Connect to managed Postgres | `onlava db psql` |
 | Run repo-local task | `onlava task list`, `onlava task run <name>` |
 | Run app-local operational script | `onlava run list --json`, `onlava run <domain>:<script>` |
 
-When local dev fails because Grafana, Victoria, Temporal CLI, Postgres, or Electric tooling is missing, inspect the managed toolchain first. Do not install global binaries as a hidden fix; use `onlava toolchain sync --json`, set an explicit per-tool env override, or document the configured external service.
-| Connect to managed Postgres | `onlava db psql` |
+When local dev fails because the host may be missing Go, disk space, memory, or optional tools, run `onlava doctor --json` first. When the failure is specifically a managed Grafana, Victoria, Temporal CLI, Postgres, or Electric artifact, inspect the managed toolchain next. Do not install global binaries as a hidden fix; use `onlava toolchain sync --json`, set an explicit per-tool env override, or document the configured external service.
 
 Use non-JSON output only for human inspection.
 

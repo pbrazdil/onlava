@@ -71,6 +71,7 @@ Use JSON surfaces for inspection and automation:
 
 ```text
 onlava version --json
+onlava doctor --json
 onlava check --json
 onlava inspect app|routes|services|endpoints|wire|build|paths|docs --json
 onlava inspect temporal|traces|metrics --json
@@ -78,6 +79,8 @@ onlava logs --jsonl --limit 200
 onlava harness --json --write
 onlava harness self --json --write
 ```
+
+Use `onlava doctor --json` before expensive troubleshooting when the failure may be local environment readiness: missing or old Go, low disk or memory, absent optional tools, or an app root that is not discoverable.
 
 Use runtime commands according to intent:
 

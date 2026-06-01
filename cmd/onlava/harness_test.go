@@ -228,20 +228,34 @@ func TestParseHarnessGoTestTimingReportsBudgets(t *testing.T) {
 	if len(report.SlowTests) != 1 || report.SlowTests[0].Name != "TestSlow" {
 		t.Fatalf("slow tests = %+v", report.SlowTests)
 	}
-	if report.Budgets.Mode != "enforce-total" {
-		t.Fatalf("budget mode = %q, want enforce-total", report.Budgets.Mode)
+	if report.Budgets.Mode != "observe-total" {
+		t.Fatalf("budget mode = %q, want observe-total", report.Budgets.Mode)
 	}
-	var packageWarning, totalError bool
+	var packageWarning, totalWarning bool
 	for _, diagnostic := range report.Diagnostics {
 		if diagnostic.Severity == "warning" && strings.Contains(diagnostic.Message, "package example.com/oracle/cmd took") {
 			packageWarning = true
 		}
-		if diagnostic.Severity == "error" && strings.Contains(diagnostic.Message, "full Go suite took 8.000s") {
-			totalError = true
+		if diagnostic.Severity == "warning" && strings.Contains(diagnostic.Message, "full Go suite took 8.000s") {
+			totalWarning = true
 		}
 	}
-	if !packageWarning || !totalError {
-		t.Fatalf("diagnostics = %+v, want package warning and total budget error", report.Diagnostics)
+	if !packageWarning || !totalWarning {
+		t.Fatalf("diagnostics = %+v, want package warning and total budget warning", report.Diagnostics)
+	}
+}
+
+func TestParseHarnessGoTestTimingCanEnforceTotalBudget(t *testing.T) {
+	t.Parallel()
+
+	report := parseHarnessGoTestTimingWithBudgets(nil, harnessSelfGoTestCommand(), 8*time.Second, harnessTestTimingBudgets{
+		TotalSeconds:   7,
+		PackageSeconds: 2,
+		TestSeconds:    0.5,
+		Mode:           "enforce-total",
+	})
+	if !hasErrorDiagnostics(report.Diagnostics) {
+		t.Fatalf("diagnostics = %+v, want enforced total budget error", report.Diagnostics)
 	}
 }
 
@@ -409,7 +423,7 @@ func TestBuildHarnessSchemaValidationReport(t *testing.T) {
 		Artifacts: []harnessArtifact{{Name: "self-harness", Path: ".onlava/harness/self-latest.json", Exists: true}},
 	}
 	report := buildHarnessSchemaValidationReport(root, resp)
-	if len(report.Validated) != 7 {
+	if len(report.Validated) != 8 {
 		t.Fatalf("validated = %+v", report.Validated)
 	}
 	if hasErrorDiagnostics(report.Diagnostics) {
@@ -768,6 +782,7 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 		"docs/schemas/onlava.harness.result.v1.schema.json",
 		"docs/schemas/onlava.harness.ui.v1.schema.json",
 		"docs/schemas/onlava.check.result.v1.schema.json",
+		"docs/schemas/onlava.doctor.result.v1.schema.json",
 		"docs/schemas/onlava.gen.manifest.v1.schema.json",
 		"docs/schemas/onlava.inspect.app.v1.schema.json",
 		"docs/schemas/onlava.inspect.build.v1.schema.json",
