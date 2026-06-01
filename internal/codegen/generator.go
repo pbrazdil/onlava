@@ -34,7 +34,8 @@ func GenerateWithConfig(appModel *model.App, cfg appcfg.Config) (*Output, error)
 		Generated: make(map[string][]byte),
 	}
 
-	rewriteEndpointDecls(appModel)
+	restoreEndpointDecls := rewriteEndpointDecls(appModel)
+	defer restoreEndpointDecls()
 	for _, pkg := range appModel.Packages {
 		for _, file := range pkg.Files {
 			rel, err := filepath.Rel(appModel.Root, file.Path)
@@ -102,10 +103,27 @@ func generateEarlyConfigFile(pkg *model.Package, hasSecrets bool) ([]byte, error
 	return format.Source([]byte(buf.String()))
 }
 
-func rewriteEndpointDecls(app *model.App) {
+func rewriteEndpointDecls(app *model.App) func() {
+	type rewrittenDecl struct {
+		ident *ast.Ident
+		name  string
+	}
+	var rewritten []rewrittenDecl
 	for _, svc := range app.Services {
 		for _, ep := range svc.Endpoints {
+			if ep.Decl == nil || ep.Decl.Name == nil {
+				continue
+			}
+			rewritten = append(rewritten, rewrittenDecl{
+				ident: ep.Decl.Name,
+				name:  ep.Decl.Name.Name,
+			})
 			ep.Decl.Name.Name = ep.ImplName
+		}
+	}
+	return func() {
+		for _, decl := range rewritten {
+			decl.ident.Name = decl.name
 		}
 	}
 }

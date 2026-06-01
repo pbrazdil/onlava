@@ -181,50 +181,12 @@ func Apply(req middleware.Request, next middleware.Next) middleware.Response {
 	}
 }
 
-func TestGenerateRegistersServiceInitializer(t *testing.T) {
+func TestGenerateRegistersServiceLifecycle(t *testing.T) {
 	t.Parallel()
 
-	dir := persistentCodegenTestApp(t, "serviceinit", map[string]string{
-		"go.mod":       "module example.com/serviceinit\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"serviceinit"}`,
-		"svc/api.go": `package svc
-
-import "context"
-
-//onlava:service
-type Service struct{}
-
-func initService() (*Service, error) { return &Service{}, nil }
-
-//onlava:api public
-func (s *Service) Hello(ctx context.Context) error { return nil }
-`,
-	})
-
-	app, err := parse.App(dir, "serviceinit")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	out, err := codegen.Generate(app)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-
-	got := string(out.Generated["svc/onlava.gen.go"])
-	if !strings.Contains(got, `onlavaruntime.RegisterServiceInitializer("svc", func() error {`) {
-		t.Fatalf("expected service initializer registration, got:\n%s", got)
-	}
-	if !strings.Contains(got, "_, err := onlavaInternalGetService()") {
-		t.Fatalf("expected service initializer to call generated getter, got:\n%s", got)
-	}
-}
-
-func TestGenerateRegistersServiceShutdownAndMockLookup(t *testing.T) {
-	t.Parallel()
-
-	dir := persistentCodegenTestApp(t, "serviceshutdown", map[string]string{
-		"go.mod":       "module example.com/serviceshutdown\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"serviceshutdown"}`,
+	dir := persistentCodegenTestApp(t, "servicelifecycle", map[string]string{
+		"go.mod":       "module example.com/servicelifecycle\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
+		".onlava.json": `{"name":"servicelifecycle"}`,
 		"svc/api.go": `package svc
 
 import "context"
@@ -241,7 +203,7 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 `,
 	})
 
-	app, err := parse.App(dir, "serviceshutdown")
+	app, err := parse.App(dir, "servicelifecycle")
 	if err != nil {
 		t.Fatalf("parse app: %v", err)
 	}
@@ -252,6 +214,8 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 
 	got := string(out.Generated["svc/onlava.gen.go"])
 	for _, want := range []string{
+		`onlavaruntime.RegisterServiceInitializer("svc", func() error {`,
+		`_, err := onlavaInternalGetService()`,
 		`onlavaruntime.LookupServiceMock(onlavaruntime.TypeOf[*Service]())`,
 		`onlavaruntime.MarkServiceInitialized("svc", func(force context.Context) { onlavaInternalServiceService.svc.Shutdown(force) })`,
 		`onlavaruntime.RegisterEndpointFunc(Hello, "svc", "Hello")`,
@@ -336,12 +300,12 @@ type Service struct{}
 	}
 }
 
-func TestGenerateMainOmitsRuntimeAppByDefault(t *testing.T) {
+func TestGenerateMainConfigVariants(t *testing.T) {
 	t.Parallel()
 
-	dir := persistentCodegenTestApp(t, "headlessapp", map[string]string{
-		"go.mod":       "module example.com/headlessapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"headlessapp","proxy":{"api_host":"api.acme.localhost"}}`,
+	dir := persistentCodegenTestApp(t, "mainconfig", map[string]string{
+		"go.mod":       "module example.com/mainconfig\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
+		".onlava.json": `{"name":"mainconfig","proxy":{"api_host":"api.acme.localhost"}}`,
 		"svc/api.go": `package svc
 
 import "context"
@@ -351,7 +315,7 @@ func Run(ctx context.Context) error { return nil }
 `,
 	})
 
-	app, err := parse.App(dir, "headlessapp")
+	app, err := parse.App(dir, "mainconfig")
 	if err != nil {
 		t.Fatalf("parse app: %v", err)
 	}
@@ -364,28 +328,8 @@ func Run(ctx context.Context) error { return nil }
 	if strings.Contains(got, `github.com/pbrazdil/onlava/runtimeapp`) {
 		t.Fatalf("generated main imported runtimeapp by default:\n%s", got)
 	}
-}
 
-func TestGenerateMainIncludesObservabilityFiltersWhenConfigured(t *testing.T) {
-	t.Parallel()
-
-	dir := persistentCodegenTestApp(t, "obsapp", map[string]string{
-		"go.mod":       "module example.com/obsapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"obsapp"}`,
-		"svc/api.go": `package svc
-
-import "context"
-
-//onlava:api public
-func Run(ctx context.Context) error { return nil }
-`,
-	})
-
-	app, err := parse.App(dir, "obsapp")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	out, err := codegen.GenerateWithConfig(app, appcfg.Config{
+	out, err = codegen.GenerateWithConfig(app, appcfg.Config{
 		Observability: appcfg.ObservabilityConfig{
 			Logs: appcfg.EndpointFilterConfig{
 				ExcludeEndpoints: []string{"sync.*"},
@@ -394,43 +338,6 @@ func Run(ctx context.Context) error { return nil }
 				IncludeEndpoints: []string{"tenants.Config"},
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-
-	got := string(out.Generated["onlava_internal_main/main.go"])
-	for _, want := range []string{
-		`Observability: onlavaruntime.ObservabilityConfig{`,
-		`Logs: onlavaruntime.EndpointFilterConfig{ExcludeEndpoints: []string{"sync.*"}}`,
-		`Tracing: onlavaruntime.EndpointFilterConfig{IncludeEndpoints: []string{"tenants.Config"}}`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("expected generated main to contain %q, got:\n%s", want, got)
-		}
-	}
-}
-
-func TestGenerateMainIncludesTemporalConfigWhenConfigured(t *testing.T) {
-	t.Parallel()
-
-	dir := persistentCodegenTestApp(t, "temporalapp", map[string]string{
-		"go.mod":       "module example.com/temporalapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"temporalapp"}`,
-		"svc/api.go": `package svc
-
-import "context"
-
-//onlava:api public
-func Run(ctx context.Context) error { return nil }
-`,
-	})
-
-	app, err := parse.App(dir, "temporalapp")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	out, err := codegen.GenerateWithConfig(app, appcfg.Config{
 		Temporal: appcfg.TemporalConfig{
 			Enabled:         true,
 			Mode:            "local",
@@ -456,8 +363,11 @@ func Run(ctx context.Context) error { return nil }
 		t.Fatalf("generate: %v", err)
 	}
 
-	got := string(out.Generated["onlava_internal_main/main.go"])
+	got = string(out.Generated["onlava_internal_main/main.go"])
 	for _, want := range []string{
+		`Observability: onlavaruntime.ObservabilityConfig{`,
+		`Logs: onlavaruntime.EndpointFilterConfig{ExcludeEndpoints: []string{"sync.*"}}`,
+		`Tracing: onlavaruntime.EndpointFilterConfig{IncludeEndpoints: []string{"tenants.Config"}}`,
 		`_ "github.com/pbrazdil/onlava/temporal"`,
 		`Temporal: onlavaruntime.TemporalConfig{`,
 		`Enabled: true`,
