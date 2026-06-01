@@ -31,22 +31,38 @@ func TestGenerateBasicGolden(t *testing.T) {
 	assertGolden(t, filepath.Join(repoRoot(t), "testdata", "golden", "basic_main.go"), out.Generated["onlava_internal_main/main.go"])
 }
 
-func TestGenerateSanitizesBlankIdentifiers(t *testing.T) {
+func TestGenerateEndpointMiddlewareAndRawEdges(t *testing.T) {
 	t.Parallel()
 
-	dir := persistentCodegenTestApp(t, "blankident", map[string]string{
-		"go.mod":       "module example.com/blankident\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"blankident"}`,
+	dir := persistentCodegenTestApp(t, "endpointedges", map[string]string{
+		"go.mod":       "module example.com/endpointedges\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
+		".onlava.json": `{"name":"endpointedges"}`,
 		"svc/api.go": `package svc
 
 import "context"
 
-//onlava:api public
+//onlava:api public tag:foo
 func Hello(_ context.Context) error { return nil }
+`,
+		"svc/mw.go": `package svc
+
+import "github.com/pbrazdil/onlava/middleware"
+
+//onlava:middleware target=tag:foo
+func Apply(req middleware.Request, next middleware.Next) middleware.Response {
+	return next(req)
+}
+`,
+		"raw/api.go": `package raw
+
+import "net/http"
+
+//onlava:api public raw
+func Hook(w http.ResponseWriter, req *http.Request) {}
 `,
 	})
 
-	app, err := parse.App(dir, "blankident")
+	app, err := parse.App(dir, "endpointedges")
 	if err != nil {
 		t.Fatalf("parse app: %v", err)
 	}
@@ -65,44 +81,25 @@ func Hello(_ context.Context) error { return nil }
 	if !strings.Contains(got, "onlavaInternalImplHello(ctx)") {
 		t.Fatalf("expected invoke closure to use ctx, got:\n%s", got)
 	}
-}
-
-func TestGenerateRawOnlyPackageOmitsContextImport(t *testing.T) {
-	t.Parallel()
-
-	dir := persistentCodegenTestApp(t, "rawonly", map[string]string{
-		"go.mod":       "module example.com/rawonly\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"rawonly"}`,
-		"svc/api.go": `package svc
-
-import "net/http"
-
-//onlava:api public raw
-func Hook(w http.ResponseWriter, req *http.Request) {}
-`,
-	})
-
-	app, err := parse.App(dir, "rawonly")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
+	if !strings.Contains(got, "RegisterMiddleware(&onlavaruntime.Middleware") {
+		t.Fatalf("expected middleware registration, got:\n%s", got)
 	}
-	out, err := codegen.Generate(app)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
+	if !strings.Contains(got, `MiddlewareIDs:`) || !strings.Contains(got, `[]string{"example.com/endpointedges/svc.Apply"}`) {
+		t.Fatalf("expected endpoint middleware ids, got:\n%s", got)
 	}
 
-	got := string(out.Generated["svc/onlava.gen.go"])
-	if strings.Contains(got, "\"context\"") {
-		t.Fatalf("expected raw-only package to omit context import, got:\n%s", got)
+	rawGot := string(out.Generated["raw/onlava.gen.go"])
+	if strings.Contains(rawGot, "\"context\"") {
+		t.Fatalf("expected raw-only package to omit context import, got:\n%s", rawGot)
 	}
 }
 
-func TestGeneratePopulatesSecretsBeforePackageVarInitializers(t *testing.T) {
+func TestGenerateServiceLifecycleAndEarlySecrets(t *testing.T) {
 	t.Parallel()
 
-	dir := persistentCodegenTestApp(t, "earlysecrets", map[string]string{
-		"go.mod":       "module example.com/earlysecrets\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"earlysecrets"}`,
+	dir := persistentCodegenTestApp(t, "servicelifecycle", map[string]string{
+		"go.mod":       "module example.com/servicelifecycle\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
+		".onlava.json": `{"name":"servicelifecycle"}`,
 		"svc/api.go": `package svc
 
 import "context"
@@ -112,84 +109,6 @@ var secrets struct {
 }
 
 var maxConcurrency = secrets.TestQueueConcurrency
-
-//onlava:api public
-func Hello(ctx context.Context) error { return nil }
-`,
-	})
-
-	app, err := parse.App(dir, "earlysecrets")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	out, err := codegen.Generate(app)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-
-	got := string(out.Generated["svc/00_onlava_config.gen.go"])
-	for _, want := range []string{
-		`var onlavaInternalDotEnvInitialized = onlavaruntime.MustLoadDotEnvIntoEnv()`,
-		`var onlavaInternalSecretsInitialized = func() bool {`,
-		`onlavaruntime.MustPopulateSecrets(&secrets)`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("expected early secrets file to contain %q, got:\n%s", want, got)
-		}
-	}
-}
-
-func TestGenerateRegistersMiddlewareAndEndpointLinks(t *testing.T) {
-	t.Parallel()
-
-	dir := persistentCodegenTestApp(t, "middlewaregen", map[string]string{
-		"go.mod":       "module example.com/middlewaregen\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"middlewaregen"}`,
-		"svc/api.go": `package svc
-
-import "context"
-
-//onlava:api public tag:foo
-func Hello(ctx context.Context) error { return nil }
-`,
-		"svc/mw.go": `package svc
-
-import "github.com/pbrazdil/onlava/middleware"
-
-//onlava:middleware target=tag:foo
-func Apply(req middleware.Request, next middleware.Next) middleware.Response {
-	return next(req)
-}
-`,
-	})
-
-	app, err := parse.App(dir, "middlewaregen")
-	if err != nil {
-		t.Fatalf("parse app: %v", err)
-	}
-	out, err := codegen.Generate(app)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-
-	got := string(out.Generated["svc/onlava.gen.go"])
-	if !strings.Contains(got, "RegisterMiddleware(&onlavaruntime.Middleware") {
-		t.Fatalf("expected middleware registration, got:\n%s", got)
-	}
-	if !strings.Contains(got, `MiddlewareIDs:`) || !strings.Contains(got, `[]string{"example.com/middlewaregen/svc.Apply"}`) {
-		t.Fatalf("expected endpoint middleware ids, got:\n%s", got)
-	}
-}
-
-func TestGenerateRegistersServiceLifecycle(t *testing.T) {
-	t.Parallel()
-
-	dir := persistentCodegenTestApp(t, "servicelifecycle", map[string]string{
-		"go.mod":       "module example.com/servicelifecycle\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"servicelifecycle"}`,
-		"svc/api.go": `package svc
-
-import "context"
 
 //onlava:service
 type Service struct{}
@@ -210,6 +129,17 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 	out, err := codegen.Generate(app)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
+	}
+
+	configGot := string(out.Generated["svc/00_onlava_config.gen.go"])
+	for _, want := range []string{
+		`var onlavaInternalDotEnvInitialized = onlavaruntime.MustLoadDotEnvIntoEnv()`,
+		`var onlavaInternalSecretsInitialized = func() bool {`,
+		`onlavaruntime.MustPopulateSecrets(&secrets)`,
+	} {
+		if !strings.Contains(configGot, want) {
+			t.Fatalf("expected early secrets file to contain %q, got:\n%s", want, configGot)
+		}
 	}
 
 	got := string(out.Generated["svc/onlava.gen.go"])
