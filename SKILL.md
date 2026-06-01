@@ -127,7 +127,7 @@ onlava down
 
 ## UI Work
 
-Read `docs/ui-agent-contract.md` before dashboard or app UI work. Use onlava-owned primitives and the `@onlava registry`; add registry components with commands such as `bun run shadcn:add @onlava/button`.
+Read `docs/ui-agent-contract.md` before dashboard or app UI work. Use onlava-owned primitives and the `@onlava` registry; add registry components with commands such as `bun run shadcn:add @onlava/button`.
 
 ```sh
 cd ui
@@ -176,6 +176,24 @@ onlava generate
 
 Use `onlava db sync` for configured database mutation plus dependent SQLC regeneration; keep `onlava generate` for file generation only.
 
+## Operational Scripts
+
+Use `onlava script` for app-local operational scripts that should run from the app root without requiring the app model to parse cleanly.
+
+```sh
+onlava script list --json
+onlava script inspect <domain>:<script> --json
+onlava script run <domain>:<script> [script args...]
+onlava run <domain>:<script> [script args...]
+```
+
+Single-file Go scripts should live under a domain `scripts` directory and start with `//go:build ignore`, for example:
+
+```text
+billing/scripts/reconcile.script.go
+billing/scripts/reconcile/main.go
+```
+
 ## Command Reference
 
 Use `docs/local-contract.md` for the full grammar. Common agent commands:
@@ -195,6 +213,10 @@ onlava generate [--app-root <path>] [--dry-run] [--json]
 onlava task list [--app-root <path>] [--json]
 onlava task run <name> [--app-root <path>]
 onlava task graph --json [--app-root <path>]
+onlava script list [--app-root <path>] [--json]
+onlava script inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
+onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
+onlava run [--app-root <path>] [--env <name>] <domain>:<script> [script args...]
 onlava harness [--app-root <path>] --json --write
 onlava harness self [--repo-root <path>] --json --write
 onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|traces|metrics --json [--app-root <path>]

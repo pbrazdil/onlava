@@ -36,6 +36,8 @@ Available now:
 - Temporal workflow/activity and cron local runtime support
 - local HTTPS/frontend proxy with optional trust-store installation
 - dashboard, API explorer, and MCP endpoint
+- configured generators, SQLC refresh, database sync, and repo task commands
+- app-local operational scripts
 - TypeScript client generation
 - JSON/wire benchmark fixture
 
@@ -191,31 +193,48 @@ See [docs/agent-guide.md](docs/agent-guide.md) for the tool list and usage guida
 ## CLI Overview
 
 ```text
-onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [-v|--verbose] [--json] [--proxy] [--trust] [--detach]
+onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [-v|--verbose] [--json] [--proxy] [--trust] [--detach]
 onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria|sqlite] [--jsonl|--json] [--tui]
-onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>]
-onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls] [--trust] [--json]
-onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls] [--trust] [--json]
+onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria|sqlite]
+onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
-onlava down [--app-root <path>] [--session <id>]
+onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
+onlava prune --older-than <duration> [--app-root <path>] [--json]
 onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava run [--app-root <path>] [--env <name>] <domain>:<script> [script args...]
+onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
+onlava worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
+onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
+onlava temporal deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
+onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
 onlava version [--json]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava generate [--app-root <path>] [--dry-run] [--json]
+onlava generate client [<app-id>] [--lang typescript] [--output <path>] [--app-root <path>] [--dry-run] [--json]
+onlava generate sqlc [--app-root <path>] [--dry-run] [--json]
 onlava task list [--app-root <path>] [--json]
 onlava task run <name> [--app-root <path>]
 onlava task graph --json [--app-root <path>]
+onlava script list [--app-root <path>] [--json]
+onlava script inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
+onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 onlava harness [--app-root <path>] [--json] [--write]
-onlava harness self [--repo-root <path>] [--json] [--write]
-onlava inspect app|routes|services|endpoints|wire|build|paths|generators|traces|metrics --json [--app-root <path>]
+onlava harness self [--repo-root <path>] [--json] [--write] [--quick|--race|--release]
+onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
+onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|traces|metrics --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
+onlava admin traces clear --json [--app-root <path>]
 onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria|sqlite] [-f|--follow] [--jsonl|--json]
+onlava logs compare [--app-root <path>] [--session current|<id>] [--backend-a sqlite|victoria] [--backend-b sqlite|victoria] [--limit <n>] [--json]
 onlava test [--app-root <path>] [go test flags/packages...]
 onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 onlava db psql [--app-root <path>] [psql args...]
 onlava db sync [--app-root <path>]
 onlava db reset [--app-root <path>]
+onlava db drop [--app-root <path>]
 onlava db snapshot create|restore <name> [--app-root <path>]
 onlava psql [--app-root <path>] [psql args...]
 ```

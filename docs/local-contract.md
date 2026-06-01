@@ -27,8 +27,11 @@ same as the stable v0 support surface.
 - `onlava db psql`
 - `onlava db sync`
 - `onlava db reset`
+- `onlava db drop`
 - `onlava db snapshot create|restore`
 - `onlava task list|run|graph`
+- `onlava script list|inspect|run`
+- `onlava run <domain>:<script>`
 - `onlava psql`
 - `onlava harness --json`
 - `onlava harness self --json`
@@ -83,9 +86,12 @@ Dev-only or beta surface:
 - `onlava db psql`
 - `onlava db sync`
 - `onlava db reset`
+- `onlava db drop`
 - `onlava db snapshot create|restore`
 - `onlava generate`
 - `onlava task list|run|graph`
+- `onlava script list|inspect|run`
+- `onlava run <domain>:<script>`
 - `onlava psql`
 - `onlava inspect traces|metrics --json`
 - `onlava inspect generators --json`
@@ -237,6 +243,7 @@ Rules:
 - `generators.sqlc` is a beta lifecycle config for SQLC generation. `provider` may be empty or `sqlc`; `config` defaults to `sqlc.yaml`; `dev_url` defaults to `docker://postgres/18/dev`. When a SQLC schema path follows `<pkg>/db/gen/schema.sql` and `<pkg>/db/schema.hcl` exists, `onlava generate sqlc` refreshes the generated schema SQL with `atlas schema inspect` before running `sqlc generate`.
 - `database.apply` is a beta DB lifecycle escape hatch. Phase 1 supports only `provider: "exec"` with an explicit shell `command`, optional `cwd`, and string `env` overlay. `onlava db sync` runs this provider and then refreshes configured SQLC artifacts. It does not infer or apply migrations by convention.
 - `tasks` is a beta thin repo-task layer. Each task can define either `run` or `steps`, plus optional `cwd` and string `env`. `run` uses the platform shell from the app root or task cwd. `steps` currently accepts `task:<name>`, `check`, `test:go`, `generate`, `generate:client`, `generate:sqlc`, and `db:sync`.
+- Operational scripts are beta app-local script targets under `<domain>/scripts/`. `onlava script list`, `onlava script inspect`, and `onlava script run` discover and execute them without requiring the app model to parse cleanly. `onlava run <domain>:<script> [script args...]` is the runtime alias for executing a script target from the app root.
 - `dev.services.postgres` currently defaults to version `18` and `isolation: "database"`. Other isolation modes are rejected until implemented. With an active agent session, onlava creates or reuses a deterministic per-session database, registers Postgres substrate metadata, and injects session-scoped `DatabaseURL`/`DATABASE_URL` even when local env files already contain those keys. The admin cluster comes from `ONLAVA_DEV_POSTGRES_ADMIN_URL`, a reusable agent Postgres substrate, Docker when available for the requested version, or local `initdb`/`postgres` binaries under the agent state directory. Managed local Postgres starts with logical replication settings so `dev.services.electric` can attach. `ONLAVA_DEV_POSTGRES_INITDB` and `ONLAVA_DEV_POSTGRES_BIN` can point at explicit local binaries. Set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` to keep an explicit external `DatabaseURL`/`DATABASE_URL` instead of using the managed session database. Once registered, later sessions and `onlava db ...` commands can reuse the agent-recorded Postgres substrate URL.
 - `dev.services.electric` supports explicit upstream routing with `ONLAVA_DEV_ELECTRIC_UPSTREAM`; when set, onlava registers the upstream as a hidden session backend and injects `ELECTRIC_URL`/`ONLAVA_ELECTRIC_URL` using the agent route. Without an explicit upstream, onlava starts a hidden per-session Electric process from `ONLAVA_DEV_ELECTRIC_BIN` or, when `dev.services.electric.image` is set and Docker is available, from that image. Electric receives the managed Postgres session database URL when `dev.services.postgres` is declared, unless `ONLAVA_DEV_POSTGRES_EXTERNAL=1` is set; otherwise it receives explicit `DATABASE_URL`/`DatabaseURL`. onlava also sets a deterministic session-scoped `ELECTRIC_REPLICATION_STREAM_ID` by default so multiple sessions can share one Postgres cluster without colliding on Electric publication or replication-slot names. Configured `dev.services.electric.env` values stay on the Electric process/container and are not injected into the app process; an explicit `ELECTRIC_REPLICATION_STREAM_ID` there overrides the onlava default.
 - Standard auth uses the `github.com/pbrazdil/onlava/auth` top surface and stores DB-backed auth state in PostgreSQL schema `onlava_auth`.

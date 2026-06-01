@@ -1,6 +1,6 @@
 {
   "schema_version": "onlava.docs.index.v1",
-  "generated_at": "2026-05-31T00:00:00Z",
+  "generated_at": "2026-06-01T00:00:00Z",
   "owner_default": "onlava maintainers",
   "freshness_policy": {
     "default_review_days": 30,
@@ -112,9 +112,9 @@
       "status": "active",
       "quality": "A",
       "freshness": "current",
-      "last_reviewed": "2026-04-27",
-      "review_after": "2026-05-27",
-      "summary": "Frozen local developer and agent-facing contract for onlava CLI, JSON schemas, and generated artifacts.",
+      "last_reviewed": "2026-06-01",
+      "review_after": "2026-07-01",
+      "summary": "Frozen local developer and agent-facing contract for onlava CLI, JSON schemas, generated artifacts, generators, tasks, scripts, and local runtime surfaces.",
       "tags": ["contract", "cli", "agents", "schemas"]
     },
     {
@@ -160,9 +160,9 @@
       "status": "active",
       "quality": "B",
       "freshness": "current",
-      "last_reviewed": "2026-05-09",
-      "review_after": "2026-06-08",
-      "summary": "Practical recipes for building onlava apps, endpoints, auth, middleware, Temporal workers, cron, generated clients, proxy config, and validation workflows.",
+      "last_reviewed": "2026-06-01",
+      "review_after": "2026-07-01",
+      "summary": "Practical recipes for building onlava apps, endpoints, auth, middleware, Temporal workers, cron, configured generators, operational scripts, generated clients, proxy config, and validation workflows.",
       "tags": ["cookbook", "apps", "agents", "runtime"]
     },
     {
