@@ -44,6 +44,9 @@ func CaptureOwner(pid int, createdBy string) Owner {
 }
 
 func OwnerFromRequest(pid int, owner Owner, createdBy string) Owner {
+	if pid > 0 && owner.PID > 0 && owner.PID != pid {
+		owner = Owner{}
+	}
 	if owner.PID <= 0 {
 		owner.PID = pid
 	}
@@ -103,6 +106,9 @@ func VerifyOwner(owner Owner) error {
 }
 
 func ownerForSignal(pid int, owner Owner) (Owner, error) {
+	if pid > 0 && owner.PID > 0 && owner.PID != pid {
+		owner = Owner{}
+	}
 	if owner.PID <= 0 {
 		owner.PID = pid
 	}

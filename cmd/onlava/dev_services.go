@@ -85,6 +85,22 @@ type managedElectricService struct {
 	external bool
 }
 
+type electricPostgresLock struct {
+	PID           int
+	Kind          string
+	State         string
+	WaitEventType string
+	WaitEvent     string
+	Query         string
+}
+
+type managedElectricStreamProcess struct {
+	PID     int
+	Command string
+}
+
+var listManagedElectricStreamProcesses = scanManagedElectricStreamProcesses
+
 func managedPostgresDeclared(cfg app.Config) (string, app.DevServiceConfig, bool) {
 	for name, svc := range cfg.Dev.Services {
 		kind := strings.TrimSpace(svc.Kind)
@@ -289,6 +305,7 @@ func (s *devSupervisor) ensureManagedElectric(ctx context.Context) error {
 		Status:      firstNonEmpty(s.agentSession.Status, "starting"),
 		OwnerPID:    os.Getpid(),
 		AppPID:      s.agentSession.AppPID,
+		Processes:   s.sessionProcesses(s.agentSession.AppPID),
 		Backends:    backends,
 		ReportToken: s.reportToken,
 	})
@@ -320,6 +337,15 @@ func startManagedElectricService(ctx context.Context, root string, cfg app.Confi
 	if err != nil {
 		return nil, localagent.Backend{}, err
 	}
+	streamID := managedElectricReplicationStreamID(session)
+	if err := cleanupManagedElectricStreamProcesses(ctx, root, session, streamID); err != nil {
+		return nil, localagent.Backend{}, err
+	}
+	if managedElectricUsesManagedPostgres(cfg, baseEnv) {
+		if err := cleanupManagedElectricPostgresSlot(ctx, dbURL, streamID); err != nil {
+			return nil, localagent.Backend{}, err
+		}
+	}
 	port, err := freeLoopbackPort()
 	if err != nil {
 		return nil, localagent.Backend{}, err
@@ -329,16 +355,20 @@ func startManagedElectricService(ctx context.Context, root string, cfg app.Confi
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return nil, localagent.Backend{}, err
 	}
-	streamID := managedElectricReplicationStreamID(session)
 	if bin, _ := lookupEnvValue(baseEnv, devElectricBinEnv); bin != "" {
-		return startManagedElectricBinary(ctx, root, plan, baseEnv, dbURL, port, addr, logPath, bin, streamID)
+		return startManagedElectricBinary(ctx, root, session, plan, baseEnv, dbURL, port, addr, logPath, bin, streamID)
 	}
 	if plan.Image != "" {
 		if docker, err := execLookPath("docker"); err == nil {
-			return startManagedElectricContainer(ctx, root, plan, baseEnv, dbURL, port, addr, logPath, docker, streamID)
+			return startManagedElectricContainer(ctx, root, session, plan, baseEnv, dbURL, port, addr, logPath, docker, streamID)
 		}
 	}
 	return nil, localagent.Backend{}, fmt.Errorf("dev.services.%s needs %s, %s, or dev.services.%s.image with docker available", plan.ServiceName, devElectricUpstreamEnv, devElectricBinEnv, plan.ServiceName)
+}
+
+func managedElectricUsesManagedPostgres(cfg app.Config, baseEnv []string) bool {
+	_, _, ok := managedPostgresDeclared(cfg)
+	return ok && !managedPostgresUsesExternalDatabase(baseEnv)
 }
 
 func managedElectricDatabaseURL(ctx context.Context, root string, cfg app.Config, session *localagent.Session, plan *managedElectricPlan, baseEnv []string, agent *localagent.Client) (string, error) {
@@ -368,7 +398,7 @@ func managedElectricDatabaseURL(ctx context.Context, root string, cfg app.Config
 	return "", fmt.Errorf("dev.services.%s needs DATABASE_URL/DatabaseURL or dev.services.postgres", plan.ServiceName)
 }
 
-func startManagedElectricBinary(ctx context.Context, root string, plan *managedElectricPlan, baseEnv []string, dbURL string, port int, addr, logPath, bin, streamID string) (*managedElectricService, localagent.Backend, error) {
+func startManagedElectricBinary(ctx context.Context, root string, session *localagent.Session, plan *managedElectricPlan, baseEnv []string, dbURL string, port int, addr, logPath, bin, streamID string) (*managedElectricService, localagent.Backend, error) {
 	if !isExecutableFile(bin) {
 		return nil, localagent.Backend{}, fmt.Errorf("%s points to a non-executable file: %s", devElectricBinEnv, bin)
 	}
@@ -380,7 +410,7 @@ func startManagedElectricBinary(ctx context.Context, root string, plan *managedE
 	cmd.Dir = root
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Env = managedElectricProcessEnv(plan, baseEnv, dbURL, port, streamID)
+	cmd.Env = managedElectricProcessEnv(plan, baseEnv, dbURL, port, streamID, managedElectricSessionEnv(root, session)...)
 	service := &managedElectricService{Route: plan.Route, Addr: addr, Source: "binary", LogPath: logPath, cmd: cmd, done: make(chan error, 1)}
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
@@ -398,12 +428,12 @@ func startManagedElectricBinary(ctx context.Context, root string, plan *managedE
 	return service, localagent.Backend{Network: "tcp", Addr: addr}, nil
 }
 
-func startManagedElectricContainer(ctx context.Context, root string, plan *managedElectricPlan, baseEnv []string, dbURL string, port int, addr, logPath, docker, streamID string) (*managedElectricService, localagent.Backend, error) {
+func startManagedElectricContainer(ctx context.Context, root string, session *localagent.Session, plan *managedElectricPlan, baseEnv []string, dbURL string, port int, addr, logPath, docker, streamID string) (*managedElectricService, localagent.Backend, error) {
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return nil, localagent.Backend{}, err
 	}
-	containerEnv := managedElectricContainerEnv(plan, baseEnv, dbURL, streamID)
+	containerEnv := managedElectricContainerEnv(plan, baseEnv, dbURL, streamID, managedElectricSessionEnv(root, session)...)
 	args := []string{"run", "--rm", "--pull", "missing", "--add-host", "host.docker.internal:host-gateway", "-p", fmt.Sprintf("127.0.0.1:%d:%d", port, devElectricContainerPort)}
 	for _, item := range containerEnv {
 		args = append(args, "-e", item)
@@ -431,7 +461,7 @@ func startManagedElectricContainer(ctx context.Context, root string, plan *manag
 	return service, localagent.Backend{Network: "tcp", Addr: addr}, nil
 }
 
-func managedElectricProcessEnv(plan *managedElectricPlan, baseEnv []string, dbURL string, port int, streamID string) []string {
+func managedElectricProcessEnv(plan *managedElectricPlan, baseEnv []string, dbURL string, port int, streamID string, extra ...string) []string {
 	portValue := fmt.Sprintf("%d", port)
 	overrides := map[string]string{
 		"DatabaseURL":   dbURL,
@@ -441,6 +471,12 @@ func managedElectricProcessEnv(plan *managedElectricPlan, baseEnv []string, dbUR
 	}
 	if strings.TrimSpace(streamID) != "" {
 		overrides["ELECTRIC_REPLICATION_STREAM_ID"] = streamID
+	}
+	for _, item := range extra {
+		key, value, ok := strings.Cut(item, "=")
+		if ok && strings.TrimSpace(key) != "" {
+			overrides[strings.TrimSpace(key)] = value
+		}
 	}
 	env := envWithManagedOverrides(baseEnv, overrides)
 	values := envListMap(env)
@@ -453,11 +489,16 @@ func managedElectricProcessEnv(plan *managedElectricPlan, baseEnv []string, dbUR
 	return env
 }
 
-func managedElectricContainerEnv(plan *managedElectricPlan, baseEnv []string, dbURL string, streamID string) []string {
+func managedElectricContainerEnv(plan *managedElectricPlan, baseEnv []string, dbURL string, streamID string, extra ...string) []string {
 	dbURL = databaseURLForContainer(dbURL)
-	env := managedElectricProcessEnv(plan, baseEnv, dbURL, devElectricContainerPort, streamID)
+	env := managedElectricProcessEnv(plan, baseEnv, dbURL, devElectricContainerPort, streamID, extra...)
 	values := envListMap(env)
 	keys := []string{"DATABASE_URL", "DatabaseURL", "ELECTRIC_PORT", "PORT", "ELECTRIC_REPLICATION_STREAM_ID"}
+	for _, item := range extra {
+		if key, _, ok := strings.Cut(item, "="); ok {
+			keys = append(keys, key)
+		}
+	}
 	for key := range plan.Env {
 		keys = append(keys, key)
 	}
@@ -495,11 +536,275 @@ func databaseURLForContainer(raw string) string {
 	return parsed.String()
 }
 
+func managedElectricSessionEnv(root string, session *localagent.Session) []string {
+	if session == nil {
+		return nil
+	}
+	return []string{
+		"ONLAVA_APP_ROOT=" + root,
+		"ONLAVA_SESSION_ID=" + strings.TrimSpace(session.SessionID),
+		"ONLAVA_DEV_SUPERVISOR=1",
+		fmt.Sprintf("ONLAVA_DEV_SUPERVISOR_PID=%d", os.Getpid()),
+		"ONLAVA_ROLE=electric",
+	}
+}
+
 func managedElectricReplicationStreamID(session *localagent.Session) string {
 	if session == nil {
 		return ""
 	}
 	return managedPostgresDatabaseName("onlava", session.SessionID)
+}
+
+func managedElectricSlotName(streamID string) string {
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		return ""
+	}
+	return "electric_slot_" + streamID
+}
+
+func cleanupManagedElectricStreamProcesses(ctx context.Context, root string, session *localagent.Session, streamID string) error {
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		return nil
+	}
+	processes, err := listManagedElectricStreamProcesses(streamID)
+	if err != nil {
+		return err
+	}
+	if len(processes) == 0 {
+		return nil
+	}
+	var remaining []managedElectricStreamProcess
+	for _, process := range processes {
+		if process.PID <= 0 || process.PID == os.Getpid() {
+			continue
+		}
+		if managedElectricProcessMatchesSession(process.Command, root, session) {
+			if err := stopStaleSessionChildPID(ctx, process.PID); err != nil {
+				remaining = append(remaining, process)
+			}
+			continue
+		}
+		remaining = append(remaining, process)
+	}
+	if len(remaining) == 0 {
+		return nil
+	}
+	return fmt.Errorf("managed Electric stream %q is already owned by live process(es): %s", streamID, describeManagedElectricStreamProcesses(remaining))
+}
+
+func scanManagedElectricStreamProcesses(streamID string) ([]managedElectricStreamProcess, error) {
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		return nil, nil
+	}
+	output, err := exec.Command("ps", "-axo", "pid=,stat=,command=").Output()
+	if err != nil {
+		return nil, err
+	}
+	needle := "ELECTRIC_REPLICATION_STREAM_ID=" + streamID
+	var matches []managedElectricStreamProcess
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.Contains(line, needle) {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 || strings.Contains(fields[1], "Z") {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid <= 0 || pid == os.Getpid() {
+			continue
+		}
+		matches = append(matches, managedElectricStreamProcess{
+			PID:     pid,
+			Command: strings.Join(fields[2:], " "),
+		})
+	}
+	return matches, nil
+}
+
+func managedElectricProcessMatchesSession(command, root string, session *localagent.Session) bool {
+	if session == nil {
+		return false
+	}
+	return commandContainsEnvValue(command, "ONLAVA_APP_ROOT", root) &&
+		commandContainsEnvValue(command, "ONLAVA_SESSION_ID", strings.TrimSpace(session.SessionID)) &&
+		commandContainsEnvValue(command, "ONLAVA_DEV_SUPERVISOR", "1") &&
+		commandContainsEnvValue(command, "ONLAVA_ROLE", "electric")
+}
+
+func commandContainsEnvValue(command, name, value string) bool {
+	name = strings.TrimSpace(name)
+	value = strings.TrimSpace(value)
+	if name == "" || value == "" {
+		return false
+	}
+	for _, part := range strings.Fields(command) {
+		key, got, ok := strings.Cut(part, "=")
+		if !ok || key != name {
+			continue
+		}
+		if name == "ONLAVA_APP_ROOT" {
+			return cleanAbsPath(got) == cleanAbsPath(value)
+		}
+		return strings.TrimSpace(got) == value
+	}
+	return false
+}
+
+func describeManagedElectricStreamProcesses(processes []managedElectricStreamProcess) string {
+	if len(processes) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(processes))
+	for _, process := range processes {
+		command := strings.TrimSpace(process.Command)
+		if len(command) > 220 {
+			command = command[:220] + "..."
+		}
+		parts = append(parts, fmt.Sprintf("pid=%d cmd=%q", process.PID, command))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func cleanupManagedElectricPostgresSlot(ctx context.Context, dbURL, streamID string) error {
+	slotName := managedElectricSlotName(streamID)
+	if strings.TrimSpace(dbURL) == "" || slotName == "" {
+		return nil
+	}
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	cleanupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	locks, err := inspectElectricPostgresLocks(cleanupCtx, db, slotName)
+	if err != nil {
+		return err
+	}
+	if len(locks) == 0 {
+		return nil
+	}
+	var failed []electricPostgresLock
+	for _, lock := range locks {
+		if lock.PID <= 0 {
+			continue
+		}
+		terminated, err := terminatePostgresBackend(cleanupCtx, db, lock.PID)
+		if err != nil || !terminated {
+			failed = append(failed, lock)
+		}
+	}
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer waitCancel()
+	for {
+		remaining, err := inspectElectricPostgresLocks(waitCtx, db, slotName)
+		if err != nil {
+			return err
+		}
+		if len(remaining) == 0 {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			if len(failed) > 0 {
+				remaining = failed
+			}
+			return fmt.Errorf("managed Electric slot %s is still held or waited on after stale cleanup: %s", slotName, describeElectricPostgresLocks(remaining))
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+func inspectElectricPostgresLocks(ctx context.Context, db *sql.DB, slotName string) ([]electricPostgresLock, error) {
+	slotName = strings.TrimSpace(slotName)
+	if slotName == "" {
+		return nil, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+WITH candidates AS (
+	SELECT
+		a.pid,
+		'advisory-lock' AS kind,
+		COALESCE(a.state, '') AS state,
+		COALESCE(a.wait_event_type, '') AS wait_event_type,
+		COALESCE(a.wait_event, '') AS wait_event,
+		COALESCE(a.query, '') AS query
+	FROM pg_stat_activity a
+	WHERE a.pid <> pg_backend_pid()
+		AND a.query ILIKE '%' || $1 || '%'
+	UNION
+	SELECT
+		s.active_pid AS pid,
+		'replication-slot' AS kind,
+		'' AS state,
+		'' AS wait_event_type,
+		'' AS wait_event,
+		'active replication slot ' || s.slot_name AS query
+	FROM pg_replication_slots s
+	WHERE s.active_pid IS NOT NULL
+		AND s.slot_name = $1
+)
+SELECT DISTINCT pid, kind, state, wait_event_type, wait_event, query
+FROM candidates
+WHERE pid IS NOT NULL
+ORDER BY pid, kind
+`, slotName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var locks []electricPostgresLock
+	for rows.Next() {
+		var lock electricPostgresLock
+		if err := rows.Scan(&lock.PID, &lock.Kind, &lock.State, &lock.WaitEventType, &lock.WaitEvent, &lock.Query); err != nil {
+			return nil, err
+		}
+		locks = append(locks, lock)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return locks, nil
+}
+
+func terminatePostgresBackend(ctx context.Context, db *sql.DB, pid int) (bool, error) {
+	var terminated bool
+	if err := db.QueryRowContext(ctx, `SELECT pg_terminate_backend($1)`, pid).Scan(&terminated); err != nil {
+		return false, err
+	}
+	return terminated, nil
+}
+
+func describeElectricPostgresLocks(locks []electricPostgresLock) string {
+	if len(locks) == 0 {
+		return "none"
+	}
+	var parts []string
+	for _, lock := range locks {
+		query := strings.Join(strings.Fields(lock.Query), " ")
+		if len(query) > 160 {
+			query = query[:160] + "..."
+		}
+		wait := strings.TrimSpace(strings.TrimSpace(lock.WaitEventType) + "/" + strings.TrimSpace(lock.WaitEvent))
+		wait = strings.Trim(wait, "/")
+		detail := fmt.Sprintf("pid=%d kind=%s state=%s", lock.PID, firstNonEmpty(lock.Kind, "unknown"), firstNonEmpty(lock.State, "unknown"))
+		if wait != "" {
+			detail += " wait=" + wait
+		}
+		if query != "" {
+			detail += " query=" + strconv.Quote(query)
+		}
+		parts = append(parts, detail)
+	}
+	return strings.Join(parts, "; ")
 }
 
 func waitForManagedElectric(ctx context.Context, service *managedElectricService) error {
@@ -541,6 +846,13 @@ func (s *managedElectricService) Interrupt() error {
 		_ = killProcessTree(s.cmd)
 	}
 	return nil
+}
+
+func (s *managedElectricService) PID() int {
+	if s == nil || s.external || s.cmd == nil || s.cmd.Process == nil {
+		return 0
+	}
+	return s.cmd.Process.Pid
 }
 
 func managedPostgresPlanForCurrentSession(ctx context.Context, appRoot string, cfg app.Config, env []string) (*managedPostgresPlan, error) {

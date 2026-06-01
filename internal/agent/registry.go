@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -148,7 +149,8 @@ func (r *Registry) Upsert(req RegisterRequest) (Session, error) {
 		return Session{}, err
 	}
 	if existing != nil && !requestMayClaimSession(req, *existing, session) {
-		return Session{}, errors.New("session is owned by another live onlava dev process")
+		existingPID := firstPositive(existing.OwnerPID, existing.Owner.PID)
+		return Session{}, fmt.Errorf("onlava dev session %q is already running for app root %s under owner PID %d", sessionID, existing.AppRoot, existingPID)
 	}
 	r.sessions[session.SessionID] = session
 	r.currentByAppRoot[filepath.Clean(session.AppRoot)] = session.SessionID
@@ -162,22 +164,33 @@ func (r *Registry) Upsert(req RegisterRequest) (Session, error) {
 }
 
 func requestMayClaimSession(req RegisterRequest, existing, next Session) bool {
-	requestPID := firstPositive(req.Owner.PID, req.OwnerPID, next.Owner.PID, next.OwnerPID)
-	existingPID := firstPositive(existing.Owner.PID, existing.OwnerPID)
+	requestPID := firstPositive(req.OwnerPID, req.Owner.PID, next.OwnerPID, next.Owner.PID)
+	existingPID := firstPositive(existing.OwnerPID, existing.Owner.PID)
 	if requestPID <= 0 || existingPID <= 0 || requestPID == existingPID {
 		return true
 	}
-	if req.ClaimOwner {
-		return true
-	}
 	owner := existing.Owner
+	if owner.PID != existingPID {
+		owner = Owner{}
+	}
 	if owner.PID <= 0 {
 		owner.PID = existing.OwnerPID
 	}
 	if VerifyOwner(owner) != nil {
-		return true
+		if ownerProcessInspectable(existingPID) {
+			return false
+		}
+		return req.ClaimOwner
 	}
 	return false
+}
+
+func ownerProcessInspectable(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	owner := CaptureOwner(pid, "")
+	return owner.PID > 0 && (owner.StartedAt != "" || owner.CmdlineHash != "" || owner.Exe != "")
 }
 
 func (r *Registry) Get(id string) (Session, bool) {
@@ -220,11 +233,22 @@ func (r *Registry) FindByAppRoot(root string) []Session {
 }
 
 func (r *Registry) Delete(id string) (Session, bool, error) {
+	return r.delete(id, 0)
+}
+
+func (r *Registry) DeleteOwned(id string, ownerPID int) (Session, bool, error) {
+	return r.delete(id, ownerPID)
+}
+
+func (r *Registry) delete(id string, ownerPID int) (Session, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	session, ok := r.sessions[strings.TrimSpace(id)]
 	if !ok {
 		return Session{}, false, nil
+	}
+	if ownerPID > 0 && firstPositive(session.OwnerPID, session.Owner.PID) != ownerPID {
+		return session, false, nil
 	}
 	delete(r.sessions, id)
 	key := filepath.Clean(session.AppRoot)

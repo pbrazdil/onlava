@@ -75,6 +75,7 @@ type RegisterRequest struct {
 
 type RegisterResponse struct {
 	Session Session `json:"session"`
+	Deleted bool    `json:"deleted,omitempty"`
 }
 
 type StatusResponse struct {

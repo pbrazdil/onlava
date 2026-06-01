@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -234,6 +235,9 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 		}
 		sessionID = generated
 	}
+	if err := rejectLiveDuplicateDevSession(root, sessionID, existingSessions); err != nil {
+		return nil, nil, devBackend{}, restore, err
+	}
 	session, err := client.Register(ctx, localagent.RegisterRequest{
 		BaseAppID:  cfg.AppID(),
 		AppRoot:    root,
@@ -246,7 +250,7 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 	if err != nil {
 		return nil, nil, devBackend{}, restore, err
 	}
-	if err := cleanupSupersededDevSessions(ctx, session, existingSessions); err != nil {
+	if err := cleanupStaleDevSessionProcesses(ctx, session, existingSessions); err != nil {
 		return nil, nil, devBackend{}, restore, err
 	}
 	backend := fallback
@@ -297,6 +301,104 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 		}
 	}
 	return client, &session, backend.normalized(), restore, nil
+}
+
+func rejectLiveDuplicateDevSession(root, sessionID string, existing []localagent.Session) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		sessionID = localagent.SessionID(root, discoverDevGitBranch(root))
+	}
+	for _, session := range existing {
+		if cleanAbsPath(session.AppRoot) != cleanAbsPath(root) || strings.TrimSpace(session.SessionID) != sessionID {
+			continue
+		}
+		if sessionOwnerLive(session) {
+			pid := firstPositiveInt(session.OwnerPID, session.Owner.PID)
+			if pid > 0 && pid != os.Getpid() {
+				return fmt.Errorf("onlava dev session %q is already running for app root %s under owner PID %d", sessionID, root, pid)
+			}
+		}
+	}
+	if pid, ok := findLiveDevOwnerProcess(root, sessionID); ok && pid != os.Getpid() {
+		return fmt.Errorf("onlava dev session %q is already running for app root %s under owner PID %d", sessionID, root, pid)
+	}
+	return nil
+}
+
+func discoverDevGitBranch(root string) string {
+	out, err := exec.Command("git", "-C", root, "branch", "--show-current").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func findLiveDevOwnerProcess(root, sessionID string) (int, bool) {
+	output, err := exec.Command("ps", "-axo", "pid=,stat=,command=").Output()
+	if err != nil {
+		return 0, false
+	}
+	root = cleanAbsPath(root)
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid <= 0 || pid == os.Getpid() || strings.Contains(fields[1], "Z") {
+			continue
+		}
+		command := strings.Join(fields[2:], " ")
+		if !looksLikeOnlavaDevOwnerCommand(command) || !devCommandMatchesAppRoot(command, root) || !devCommandMatchesSession(command, sessionID) {
+			continue
+		}
+		return pid, true
+	}
+	return 0, false
+}
+
+func looksLikeOnlavaDevOwnerCommand(command string) bool {
+	args := strings.Fields(command)
+	if len(args) < 2 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(filepath.Base(args[0])), "onlava") && args[1] == "dev"
+}
+
+func devCommandMatchesAppRoot(command, root string) bool {
+	args := strings.Fields(command)
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "--app-root=") {
+			return cleanAbsPath(strings.TrimPrefix(arg, "--app-root=")) == root
+		}
+		if arg == "--app-root" && i+1 < len(args) {
+			return cleanAbsPath(args[i+1]) == root
+		}
+	}
+	return false
+}
+
+func devCommandMatchesSession(command, sessionID string) bool {
+	args := strings.Fields(command)
+	for i, arg := range args {
+		if arg == "--detach" {
+			return false
+		}
+		if arg == "--new-session" {
+			return false
+		}
+		if strings.HasPrefix(arg, "--session=") {
+			return strings.TrimSpace(strings.TrimPrefix(arg, "--session=")) == sessionID
+		}
+		if arg == "--session" && i+1 < len(args) {
+			return strings.TrimSpace(args[i+1]) == sessionID
+		}
+	}
+	return true
 }
 
 func ensureDevAgentDashboardBackend(ctx context.Context, client *localagent.Client) error {

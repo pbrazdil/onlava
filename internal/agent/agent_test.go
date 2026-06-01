@@ -239,15 +239,15 @@ func TestRegistryCapturesSessionOwnerFingerprint(t *testing.T) {
 	}
 }
 
-func TestRegistryRejectsSupersededOwnerUpdate(t *testing.T) {
+func TestRegistryRejectsDuplicateLiveSessionOwner(t *testing.T) {
 	root := t.TempDir()
-	replacement := exec.Command("sleep", "30")
-	if err := replacement.Start(); err != nil {
-		t.Fatalf("start replacement owner fixture: %v", err)
+	duplicate := exec.Command("sleep", "30")
+	if err := duplicate.Start(); err != nil {
+		t.Fatalf("start duplicate owner fixture: %v", err)
 	}
 	defer func() {
-		_ = replacement.Process.Kill()
-		_ = replacement.Wait()
+		_ = duplicate.Process.Kill()
+		_ = duplicate.Wait()
 	}()
 	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
 	if err != nil {
@@ -263,19 +263,211 @@ func TestRegistryRejectsSupersededOwnerUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := registry.Upsert(RegisterRequest{
+	if _, err := registry.Upsert(RegisterRequest{
 		BaseAppID:  "demo",
 		AppRoot:    root,
 		SessionID:  first.SessionID,
 		Status:     "starting",
-		OwnerPID:   replacement.Process.Pid,
+		OwnerPID:   duplicate.Process.Pid,
+		ClaimOwner: true,
+	}); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("duplicate live owner error = %v, want already running", err)
+	}
+	updated, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: first.SessionID,
+		Status:    "running",
+		OwnerPID:  os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.OwnerPID != os.Getpid() {
+		t.Fatalf("updated owner pid = %d, want %d", updated.OwnerPID, os.Getpid())
+	}
+}
+
+func TestRegistryRejectsDuplicateWhenOwnerPIDMovedPastStaleOwnerField(t *testing.T) {
+	root := t.TempDir()
+	duplicate := exec.Command("sleep", "30")
+	if err := duplicate.Start(); err != nil {
+		t.Fatalf("start duplicate owner fixture: %v", err)
+	}
+	defer func() {
+		_ = duplicate.Process.Kill()
+		_ = duplicate.Wait()
+	}()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "review-a",
+		Status:    "running",
+		OwnerPID:  os.Getpid(),
+		Owner: Owner{
+			PID:         99999996,
+			StartedAt:   "stale-owner-field",
+			CmdlineHash: "sha256:stale-owner-field",
+			Exe:         "/stale/owner",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Owner.PID != os.Getpid() {
+		t.Fatalf("stored owner pid = %d, want refreshed owner_pid %d", first.Owner.PID, os.Getpid())
+	}
+	if _, err := registry.Upsert(RegisterRequest{
+		BaseAppID:  "demo",
+		AppRoot:    root,
+		SessionID:  first.SessionID,
+		Status:     "starting",
+		OwnerPID:   duplicate.Process.Pid,
+		ClaimOwner: true,
+	}); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("duplicate live owner error = %v, want already running", err)
+	}
+}
+
+func TestOwnerFromRequestRefreshesMismatchedOwnerPID(t *testing.T) {
+	owner := OwnerFromRequest(os.Getpid(), Owner{
+		PID:         99999995,
+		StartedAt:   "stale-owner-field",
+		CmdlineHash: "sha256:stale-owner-field",
+		Exe:         "/stale/owner",
+	}, "test")
+	if owner.PID != os.Getpid() {
+		t.Fatalf("owner pid = %d, want %d", owner.PID, os.Getpid())
+	}
+	if err := VerifyOwner(owner); err != nil {
+		t.Fatalf("refreshed owner did not verify: %v", err)
+	}
+}
+
+func TestRegistryClaimsDeadSessionOwner(t *testing.T) {
+	root := t.TempDir()
+	stale := exec.Command("sleep", "30")
+	if err := stale.Start(); err != nil {
+		t.Fatalf("start stale owner fixture: %v", err)
+	}
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	if err := stale.Process.Kill(); err != nil {
+		t.Fatalf("kill stale owner fixture: %v", err)
+	}
+	_ = stale.Wait()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "review-a",
+		Status:    "running",
+		OwnerPID:  staleOwner.PID,
+		Owner:     staleOwner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := registry.Upsert(RegisterRequest{
+		BaseAppID:  "demo",
+		AppRoot:    root,
+		SessionID:  first.SessionID,
+		Status:     "starting",
+		OwnerPID:   os.Getpid(),
 		ClaimOwner: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.OwnerPID != replacement.Process.Pid {
-		t.Fatalf("replacement owner pid = %d, want %d", second.OwnerPID, replacement.Process.Pid)
+	if claimed.OwnerPID != os.Getpid() {
+		t.Fatalf("claimed owner pid = %d, want %d", claimed.OwnerPID, os.Getpid())
+	}
+}
+
+func TestRegistryOwnedDeleteDoesNotRemoveReplacedOwnerSession(t *testing.T) {
+	root := t.TempDir()
+	stale := exec.Command("sleep", "30")
+	if err := stale.Start(); err != nil {
+		t.Fatalf("start stale owner fixture: %v", err)
+	}
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	if err := stale.Process.Kill(); err != nil {
+		t.Fatalf("kill stale owner fixture: %v", err)
+	}
+	_ = stale.Wait()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "review-a",
+		Status:    "running",
+		OwnerPID:  staleOwner.PID,
+		Owner:     staleOwner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := registry.Upsert(RegisterRequest{
+		BaseAppID:  "demo",
+		AppRoot:    root,
+		SessionID:  first.SessionID,
+		Status:     "running",
+		OwnerPID:   os.Getpid(),
+		ClaimOwner: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, ok, err := registry.DeleteOwned(claimed.SessionID, staleOwner.PID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatalf("stale owner delete removed session: %+v", deleted)
+	}
+	current, ok := registry.Get(claimed.SessionID)
+	if !ok {
+		t.Fatal("session was removed by stale owner delete")
+	}
+	if current.OwnerPID != os.Getpid() || current.Owner.PID != os.Getpid() {
+		t.Fatalf("current owner = owner_pid:%d owner:%+v, want %d", current.OwnerPID, current.Owner, os.Getpid())
+	}
+}
+
+func TestRegistryRequiresClaimForDeadSessionOwner(t *testing.T) {
+	root := t.TempDir()
+	stale := exec.Command("sleep", "30")
+	if err := stale.Start(); err != nil {
+		t.Fatalf("start stale owner fixture: %v", err)
+	}
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	if err := stale.Process.Kill(); err != nil {
+		t.Fatalf("kill stale owner fixture: %v", err)
+	}
+	_ = stale.Wait()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "review-a",
+		Status:    "running",
+		OwnerPID:  staleOwner.PID,
+		Owner:     staleOwner,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, err := registry.Upsert(RegisterRequest{
 		BaseAppID: "demo",
@@ -284,7 +476,7 @@ func TestRegistryRejectsSupersededOwnerUpdate(t *testing.T) {
 		Status:    "running",
 		OwnerPID:  os.Getpid(),
 	}); err == nil {
-		t.Fatal("expected superseded owner update to fail")
+		t.Fatal("expected non-claiming replacement of dead owner to fail")
 	}
 }
 
@@ -495,6 +687,58 @@ func TestServerRegistersAndRoutesSessionBackend(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || string(body) != "backend ok" {
 		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerDeleteOwnedSkipsMismatchedOwnerPID(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		SessionID: "review-a",
+		Status:    "running",
+		OwnerPID:  os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletedSession, deleted, err := client.DeleteOwned(ctx, session.SessionID, 99999993, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Fatalf("mismatched owner delete removed session: %+v", deletedSession)
+	}
+	sessions, err := client.List(ctx, session.AppRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("sessions after skipped delete = %+v, want one", sessions)
+	}
+	current := sessions[0]
+	if current.OwnerPID != os.Getpid() {
+		t.Fatalf("current owner pid = %d, want %d", current.OwnerPID, os.Getpid())
 	}
 }
 

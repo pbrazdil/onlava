@@ -349,6 +349,28 @@ func TestManagedElectricProcessEnvExpandsDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestManagedElectricProcessEnvIncludesSessionIdentity(t *testing.T) {
+	t.Parallel()
+
+	plan := &managedElectricPlan{}
+	env := managedElectricProcessEnv(plan, []string{"PATH=/bin"}, "postgres://session/db", 3456, "onlava_session",
+		"ONLAVA_APP_ROOT=/repo/app",
+		"ONLAVA_SESSION_ID=main-dbe32e",
+		"ONLAVA_DEV_SUPERVISOR=1",
+		"ONLAVA_ROLE=electric",
+	)
+	for _, want := range []string{
+		"ONLAVA_APP_ROOT=/repo/app",
+		"ONLAVA_SESSION_ID=main-dbe32e",
+		"ONLAVA_DEV_SUPERVISOR=1",
+		"ONLAVA_ROLE=electric",
+	} {
+		if !containsString(env, want) {
+			t.Fatalf("managed electric env missing %q: %+v", want, env)
+		}
+	}
+}
+
 func TestManagedElectricProcessEnvAllowsConfiguredReplicationStreamID(t *testing.T) {
 	t.Parallel()
 
@@ -367,6 +389,71 @@ func TestManagedElectricReplicationStreamIDUsesSessionIdentifier(t *testing.T) {
 	got := managedElectricReplicationStreamID(&localagent.Session{SessionID: "feature/my-worktree-123456"})
 	if got != "onlava_feature_my_worktree_123456" {
 		t.Fatalf("stream id = %q", got)
+	}
+}
+
+func TestManagedElectricSlotDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	slot := managedElectricSlotName("onlava_main_dbe32e")
+	if slot != "electric_slot_onlava_main_dbe32e" {
+		t.Fatalf("slot = %q", slot)
+	}
+	got := describeElectricPostgresLocks([]electricPostgresLock{{
+		PID:           123,
+		Kind:          "advisory-lock",
+		State:         "active",
+		WaitEventType: "Lock",
+		WaitEvent:     "advisory",
+		Query:         "SELECT pg_advisory_lock(hashtext('electric_slot_onlava_main_dbe32e'))",
+	}})
+	for _, want := range []string{"pid=123", "kind=advisory-lock", "wait=Lock/advisory", "electric_slot_onlava_main_dbe32e"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("diagnostic %q missing %q", got, want)
+		}
+	}
+}
+
+func TestCleanupManagedElectricStreamProcessesStopsSameSessionProcess(t *testing.T) {
+	root := t.TempDir()
+	stale := startSleepProcessForCleanupTest(t)
+	defer func() {
+		_ = killProcessTree(stale)
+		_, _ = stale.Process.Wait()
+	}()
+	restore := listManagedElectricStreamProcesses
+	listManagedElectricStreamProcesses = func(streamID string) ([]managedElectricStreamProcess, error) {
+		if streamID != "onlava_main_dbe32e" {
+			t.Fatalf("streamID = %q", streamID)
+		}
+		return []managedElectricStreamProcess{{
+			PID:     stale.Process.Pid,
+			Command: "docker run -e ELECTRIC_REPLICATION_STREAM_ID=onlava_main_dbe32e -e ONLAVA_APP_ROOT=" + root + " -e ONLAVA_SESSION_ID=main-dbe32e -e ONLAVA_DEV_SUPERVISOR=1 -e ONLAVA_ROLE=electric electricsql/electric:canary",
+		}}, nil
+	}
+	defer func() { listManagedElectricStreamProcesses = restore }()
+
+	err := cleanupManagedElectricStreamProcesses(context.Background(), root, &localagent.Session{SessionID: "main-dbe32e"}, "onlava_main_dbe32e")
+	if err != nil {
+		t.Fatalf("cleanupManagedElectricStreamProcesses: %v", err)
+	}
+	_, _ = stale.Process.Wait()
+	waitForProcessExitForCleanupTest(t, stale.Process.Pid)
+}
+
+func TestCleanupManagedElectricStreamProcessesFailsForLiveUnownedStream(t *testing.T) {
+	restore := listManagedElectricStreamProcesses
+	listManagedElectricStreamProcesses = func(streamID string) ([]managedElectricStreamProcess, error) {
+		return []managedElectricStreamProcess{{
+			PID:     424242,
+			Command: "docker run -e ELECTRIC_REPLICATION_STREAM_ID=" + streamID + " electricsql/electric:canary",
+		}}, nil
+	}
+	defer func() { listManagedElectricStreamProcesses = restore }()
+
+	err := cleanupManagedElectricStreamProcesses(context.Background(), t.TempDir(), &localagent.Session{SessionID: "main-dbe32e"}, "onlava_main_dbe32e")
+	if err == nil || !strings.Contains(err.Error(), "pid=424242") || !strings.Contains(err.Error(), "onlava_main_dbe32e") {
+		t.Fatalf("cleanupManagedElectricStreamProcesses error = %v", err)
 	}
 }
 

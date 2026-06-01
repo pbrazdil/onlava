@@ -245,7 +245,7 @@ func (s *devSupervisor) Close() error {
 			}
 		}
 		if s.agent != nil && s.agentSession != nil {
-			if _, err := s.agent.Delete(context.Background(), s.agentSession.SessionID, false); err != nil {
+			if _, _, err := s.agent.DeleteOwned(context.Background(), s.agentSession.SessionID, os.Getpid(), false); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -2011,6 +2011,11 @@ func (s *devSupervisor) sessionProcesses(appPID string) map[string]localagent.Pr
 	if worker := s.currentTypeScriptWorker(); worker != nil {
 		if pid := atoiPID(worker.pid); pid > 0 {
 			processes["worker-typescript"] = localagent.Process{PID: pid}
+		}
+	}
+	if s.electric != nil {
+		if pid := s.electric.PID(); pid > 0 {
+			processes["electric"] = localagent.Process{PID: pid}
 		}
 	}
 	if len(processes) == 0 {

@@ -166,6 +166,25 @@ func (c *Client) Delete(ctx context.Context, sessionID string, signal bool) (Ses
 	return out.Session, nil
 }
 
+func (c *Client) DeleteOwned(ctx context.Context, sessionID string, ownerPID int, signal bool) (Session, bool, error) {
+	path := "/v1/sessions/" + url.PathEscape(sessionID)
+	values := url.Values{}
+	if signal {
+		values.Set("signal", "1")
+	}
+	if ownerPID > 0 {
+		values.Set("owner_pid", fmt.Sprint(ownerPID))
+	}
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var out RegisterResponse
+	if err := c.doJSON(ctx, http.MethodDelete, path, nil, &out); err != nil {
+		return Session{}, false, err
+	}
+	return out.Session, out.Deleted, nil
+}
+
 func (c *Client) UpsertSubstrate(ctx context.Context, req UpsertSubstrateRequest) (Substrate, error) {
 	var out SubstrateResponse
 	if err := c.postJSON(ctx, "/v1/substrates", req, &out); err != nil {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -487,16 +488,25 @@ func (s *Server) handleSession(w http.ResponseWriter, req *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, RegisterResponse{Session: session})
 	case http.MethodDelete:
-		session, ok, err := s.registry.Delete(id)
+		ownerPID := 0
+		if raw := strings.TrimSpace(req.URL.Query().Get("owner_pid")); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed <= 0 {
+				http.Error(w, "owner_pid must be a positive integer", http.StatusBadRequest)
+				return
+			}
+			ownerPID = parsed
+		}
+		session, ok, err := s.registry.DeleteOwned(id, ownerPID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if !ok {
+		if !ok && session.SessionID == "" {
 			http.NotFound(w, req)
 			return
 		}
-		if req.URL.Query().Get("signal") == "1" && (session.OwnerPID > 0 || session.Owner.PID > 0) {
+		if ok && req.URL.Query().Get("signal") == "1" && (session.OwnerPID > 0 || session.Owner.PID > 0) {
 			owner, err := ownerForSignal(session.OwnerPID, session.Owner)
 			if err != nil {
 				slog.Warn("skipping onlava dev owner interrupt because owner fingerprint did not verify", "pid", firstPositive(session.Owner.PID, session.OwnerPID), "err", err)
@@ -504,7 +514,7 @@ func (s *Server) handleSession(w http.ResponseWriter, req *http.Request) {
 				slog.Warn("failed to interrupt onlava dev owner", "pid", owner.PID, "err", err)
 			}
 		}
-		writeJSON(w, http.StatusOK, RegisterResponse{Session: session})
+		writeJSON(w, http.StatusOK, RegisterResponse{Session: session, Deleted: ok})
 	default:
 		methodNotAllowed(w, http.MethodGet, http.MethodDelete)
 	}

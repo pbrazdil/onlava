@@ -15,7 +15,7 @@ import (
 
 const staleSessionCleanupGrace = 2 * time.Second
 
-func cleanupSupersededDevSessions(ctx context.Context, current localagent.Session, previous []localagent.Session) error {
+func cleanupStaleDevSessionProcesses(ctx context.Context, current localagent.Session, previous []localagent.Session) error {
 	if strings.TrimSpace(current.AppRoot) == "" || strings.TrimSpace(current.SessionID) == "" {
 		return nil
 	}
@@ -25,7 +25,7 @@ func cleanupSupersededDevSessions(ctx context.Context, current localagent.Sessio
 		if !sameAgentSession(current, session) {
 			continue
 		}
-		errs = append(errs, stopSupersededSessionProcesses(ctx, current, session, seen))
+		errs = append(errs, stopStaleRegisteredSessionProcesses(ctx, current, session, seen))
 	}
 	errs = append(errs, stopSessionEnvProcesses(ctx, current, seen))
 	return errors.Join(errs...)
@@ -36,10 +36,10 @@ func sameAgentSession(a, b localagent.Session) bool {
 		strings.TrimSpace(a.SessionID) == strings.TrimSpace(b.SessionID)
 }
 
-func stopSupersededSessionProcesses(ctx context.Context, current, previous localagent.Session, seen map[int]bool) error {
+func stopStaleRegisteredSessionProcesses(ctx context.Context, current, previous localagent.Session, seen map[int]bool) error {
 	var errs []error
-	currentOwnerPID := firstPositiveInt(current.Owner.PID, current.OwnerPID)
-	previousOwnerPID := firstPositiveInt(previous.Owner.PID, previous.OwnerPID)
+	currentOwnerPID := firstPositiveInt(current.OwnerPID, current.Owner.PID)
+	previousOwnerPID := firstPositiveInt(previous.OwnerPID, previous.Owner.PID)
 	if previousOwnerPID > 0 && previousOwnerPID != os.Getpid() && previousOwnerPID != currentOwnerPID {
 		if shouldSignalSessionOwner(previous) {
 			errs = append(errs, stopSessionOwnerPID(ctx, previousOwnerPID))
@@ -60,6 +60,10 @@ func stopSupersededSessionProcesses(ctx context.Context, current, previous local
 
 func shouldSignalSessionOwner(session localagent.Session) bool {
 	owner := session.Owner
+	effectivePID := firstPositiveInt(session.OwnerPID, owner.PID)
+	if owner.PID != effectivePID {
+		owner = localagent.Owner{}
+	}
 	if owner.PID <= 0 {
 		owner.PID = session.OwnerPID
 	}

@@ -32,7 +32,7 @@ func TestCleanupSupersededDevSessionsStopsSameSessionChildren(t *testing.T) {
 		AppRoot:   root,
 		OwnerPID:  os.Getpid(),
 		Processes: map[string]localagent.Process{
-			"api": {PID: stale.Process.Pid, Owner: localagent.CaptureOwner(stale.Process.Pid, "test")},
+			"electric": {PID: stale.Process.Pid, Owner: localagent.CaptureOwner(stale.Process.Pid, "test")},
 		},
 	}
 	unrelated := localagent.Session{
@@ -40,12 +40,12 @@ func TestCleanupSupersededDevSessionsStopsSameSessionChildren(t *testing.T) {
 		AppRoot:   root,
 		OwnerPID:  os.Getpid(),
 		Processes: map[string]localagent.Process{
-			"api": {PID: other.Process.Pid, Owner: localagent.CaptureOwner(other.Process.Pid, "test")},
+			"electric": {PID: other.Process.Pid, Owner: localagent.CaptureOwner(other.Process.Pid, "test")},
 		},
 	}
 
-	if err := cleanupSupersededDevSessions(context.Background(), current, []localagent.Session{previous, unrelated}); err != nil {
-		t.Fatalf("cleanupSupersededDevSessions: %v", err)
+	if err := cleanupStaleDevSessionProcesses(context.Background(), current, []localagent.Session{previous, unrelated}); err != nil {
+		t.Fatalf("cleanupStaleDevSessionProcesses: %v", err)
 	}
 	_, _ = stale.Process.Wait()
 	waitForProcessExitForCleanupTest(t, stale.Process.Pid)
@@ -73,12 +73,44 @@ func TestMarkInconsistentStatusSessionsMarksDeadOwnerStale(t *testing.T) {
 				Exe:         "/not/live",
 			},
 		},
+		{
+			SessionID: "moved-owner",
+			Status:    "running",
+			OwnerPID:  os.Getpid(),
+			Owner: localagent.Owner{
+				PID:         99999998,
+				StartedAt:   "stale-owner-field",
+				CmdlineHash: "sha256:stale-owner-field",
+				Exe:         "/stale/owner",
+			},
+		},
 	})
 	if sessions[0].Status != "running" {
 		t.Fatalf("live status = %q, want running", sessions[0].Status)
 	}
 	if sessions[1].Status != "stale" {
 		t.Fatalf("dead status = %q, want stale", sessions[1].Status)
+	}
+	if sessions[2].Status != "running" {
+		t.Fatalf("moved owner status = %q, want running", sessions[2].Status)
+	}
+}
+
+func TestPruneSessionEligibleKeepsLiveOwnerPIDWhenOwnerFieldIsStale(t *testing.T) {
+	session := localagent.Session{
+		SessionID: "review-a",
+		Status:    "running",
+		UpdatedAt: time.Now().Add(-24 * time.Hour),
+		OwnerPID:  os.Getpid(),
+		Owner: localagent.Owner{
+			PID:         99999997,
+			StartedAt:   "stale-owner-field",
+			CmdlineHash: "sha256:stale-owner-field",
+			Exe:         "/stale/owner",
+		},
+	}
+	if pruneSessionEligible(session, time.Now()) {
+		t.Fatal("session with live owner_pid and stale owner field should not be pruned")
 	}
 }
 

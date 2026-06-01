@@ -23,7 +23,7 @@ import (
 
 const (
 	detachedDevChildEnv       = "ONLAVA_DEV_DETACHED_CHILD"
-	detachedDevStartupTimeout = 10 * time.Second
+	detachedDevStartupTimeout = 30 * time.Second
 )
 
 var detachedDevStartupInterval = 100 * time.Millisecond

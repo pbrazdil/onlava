@@ -367,14 +367,7 @@ func sessionStatusHealthy(status string) bool {
 }
 
 func sessionOwnerConsistent(session localagent.Session) bool {
-	owner := session.Owner
-	if owner.PID <= 0 {
-		owner.PID = session.OwnerPID
-	}
-	if owner.PID <= 0 {
-		return false
-	}
-	if err := localagent.VerifyOwner(owner); err != nil {
+	if !sessionOwnerLive(session) {
 		return false
 	}
 	if session.AppPID != "" {
@@ -387,6 +380,20 @@ func sessionOwnerConsistent(session localagent.Session) bool {
 		}
 	}
 	return true
+}
+
+func sessionOwnerLive(session localagent.Session) bool {
+	ownerPID := firstPositiveInt(session.OwnerPID, session.Owner.PID)
+	if ownerPID <= 0 {
+		return false
+	}
+	owner := session.Owner
+	if owner.PID != ownerPID {
+		owner = localagent.CaptureOwner(ownerPID, "onlava dev")
+	} else if owner.PID <= 0 {
+		owner.PID = ownerPID
+	}
+	return localagent.VerifyOwner(owner) == nil
 }
 
 func downCommand(args []string) error {
@@ -619,6 +626,9 @@ func parsePruneAge(value string) (time.Duration, error) {
 
 func pruneSessionEligible(session localagent.Session, cutoff time.Time) bool {
 	if session.UpdatedAt.IsZero() || session.UpdatedAt.After(cutoff) {
+		return false
+	}
+	if sessionOwnerLive(session) {
 		return false
 	}
 	owner := session.Owner

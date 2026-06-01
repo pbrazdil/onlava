@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -342,6 +343,54 @@ func TestPrepareDevAgentSessionNewSessionAddsSuffix(t *testing.T) {
 
 	cancel()
 	waitForTestAgentServer(t, agentDone)
+}
+
+func TestRejectLiveDuplicateDevSessionUsesEffectiveOwnerPID(t *testing.T) {
+	root := t.TempDir()
+	owner := exec.Command("sleep", "30")
+	if err := owner.Start(); err != nil {
+		t.Fatalf("start owner fixture: %v", err)
+	}
+	defer func() {
+		_ = owner.Process.Kill()
+		_ = owner.Wait()
+	}()
+	sessionID := "review-a"
+	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+		{
+			SessionID: sessionID,
+			AppRoot:   root,
+			Status:    "running",
+			OwnerPID:  owner.Process.Pid,
+			Owner: localagent.Owner{
+				PID:         99999994,
+				StartedAt:   "stale-owner-field",
+				CmdlineHash: "sha256:stale-owner-field",
+				Exe:         "/stale/owner",
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("duplicate error = %v, want already running", err)
+	}
+}
+
+func TestDevCommandMatchesSession(t *testing.T) {
+	if !devCommandMatchesSession("onlava dev --app-root /tmp/app", "main-abc123") {
+		t.Fatal("default dev command should match default session")
+	}
+	if !devCommandMatchesSession("onlava dev --app-root /tmp/app --session main-abc123", "main-abc123") {
+		t.Fatal("explicit matching session did not match")
+	}
+	if devCommandMatchesSession("onlava dev --app-root /tmp/app --session review-a", "main-abc123") {
+		t.Fatal("different explicit session should not match")
+	}
+	if devCommandMatchesSession("onlava dev --app-root /tmp/app --new-session", "main-abc123") {
+		t.Fatal("new session command should not match existing session")
+	}
+	if devCommandMatchesSession("onlava dev --app-root /tmp/app --detach", "main-abc123") {
+		t.Fatal("detach launcher command should not match existing session")
+	}
 }
 
 func TestPrepareDevAgentSessionFallsBackWhenAgentDisabled(t *testing.T) {
