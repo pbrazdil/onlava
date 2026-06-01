@@ -13,7 +13,7 @@ onlava harness self --json
 
 - [Repo Agent Instructions](../AGENTS.md): mandatory repo-local operating rules for agents changing onlava itself.
 - [Installable Skill](../SKILL.md): concise portable skill for agents using onlava in target apps.
-- [Agent Guide](agent-guide.md): agent workflows, MCP usage, generated artifacts, and client-app integration guidance.
+- [Agent Guide](agent-guide.md): agent workflows, generated artifacts, and client-app integration guidance.
 
 ## Core Contracts
 

@@ -14,7 +14,6 @@ const SERVICE_ORDER = [
   "grafana",
   "temporal",
   "electric",
-  "mcp",
 ];
 
 export function HomePage() {
@@ -101,9 +100,6 @@ function serviceLabel(name: string): string {
   if (key === "api") {
     return "API";
   }
-  if (key === "mcp") {
-    return "MCP";
-  }
   return name
     .split(/[-_\s]+/)
     .filter(Boolean)
@@ -121,9 +117,6 @@ function serviceKind(name: string): string {
   }
   if (key === "grafana" || key === "temporal") {
     return "Observability";
-  }
-  if (key === "mcp") {
-    return "Agent";
   }
   if (key === "electric") {
     return "Sync";

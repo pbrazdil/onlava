@@ -4,15 +4,15 @@
 
 onlava is a Go-native local runtime and toolchain for building service applications from ordinary Go packages.
 
-Applications mark their root with `.onlava.json`, declare endpoints with `//onlava:` directives, and run as one local HTTP server. onlava handles service discovery, route registration, auth context, request decoding, generated internal calls, local development supervision, inspection, logs, traces, metrics, MCP, and TypeScript client generation.
+Applications mark their root with `.onlava.json`, declare endpoints with `//onlava:` directives, and run as one local HTTP server. onlava handles service discovery, route registration, auth context, request decoding, generated internal calls, local development supervision, inspection, logs, traces, metrics, and TypeScript client generation.
 
-onlava is used in production. The stable v0 surface is intentionally small and Go-first; the local dashboard, MCP endpoint, observability, Grafana workbench, local HTTPS routing, Temporal worker tooling, and cron UI are development-focused capabilities. Their backing services and files are substrate details unless you intentionally debug them.
+onlava is used in production. The stable v0 surface is intentionally small and Go-first; the local dashboard, observability, Grafana workbench, local HTTPS routing, Temporal worker tooling, and cron UI are development-focused capabilities. Their backing services and files are substrate details unless you intentionally debug them.
 
 ## Why onlava?
 
 - **Go source is the app model.** Services, APIs, auth handlers, middleware, Temporal workflows and activities, and cron jobs are discovered from Go code.
 - **One local app server.** `onlava serve` builds once and starts a headless, production-like HTTP server.
-- **Full local dev loop.** `onlava dev` runs the app session with file watching, rebuild/restart supervision, dashboard, API explorer, MCP, logs, traces, metrics, Grafana, and optional HTTPS local domains.
+- **Full local dev loop.** `onlava dev` runs the app session with file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
 - **Typed HTTP by default.** onlava decodes path params, query params, headers, cookies, and JSON bodies into Go structs, then encodes typed responses.
 - **Generated internal calls.** Endpoint-to-endpoint calls are rewritten to generated helpers so private access, auth context, and routing semantics are preserved.
 - **Inspectable by tools and agents.** `onlava inspect`, `onlava check`, `onlava logs`, and `onlava harness` expose machine-readable JSON contracts.
@@ -35,7 +35,7 @@ Available now:
 - local observability and Grafana capabilities
 - Temporal workflow/activity and cron local runtime support
 - local HTTPS/frontend proxy with optional trust-store installation
-- dashboard, API explorer, and MCP endpoint
+- dashboard and API explorer
 - configured generators, SQLC refresh, database sync, and repo task commands
 - app-local operational scripts
 - TypeScript client generation
@@ -81,7 +81,7 @@ onlava includes an installable agent skill for using onlava apps:
 npx skills add https://github.com/pbrazdil/onlava
 ```
 
-The skill teaches agents the onlava app model, directives, local development workflow, debugging commands, MCP, observability, database inspection, and TypeScript client generation.
+The skill teaches agents the onlava app model, directives, local development workflow, debugging commands, observability, database inspection, and TypeScript client generation.
 
 The skill is shared runtime knowledge. Client apps should still keep a small app-local `AGENTS.md` for app root, frontend roots, generated client output paths, required environment names, validation commands, and product invariants. Do not copy the whole skill into every app; keep shared onlava behavior in `SKILL.md` and app-specific facts in the client repository.
 
@@ -169,7 +169,6 @@ Example proxy config:
     "workspace": "myteam",
     "api_host": "api.myteam.localhost",
     "console_host": "console.myteam.localhost",
-    "mcp_host": "mcp.myteam.localhost",
     "frontends": {
       "web": {
         "host": "web.myteam.localhost",
@@ -184,14 +183,6 @@ Example proxy config:
   }
 }
 ```
-
-## MCP
-
-`onlava dev` exposes MCP as an app-session capability. Use the printed `MCP SSE URL` from the startup banner or the session-scoped MCP route from the local agent manifest.
-
-Current MCP tools cover app metadata, service and endpoint lists, middleware, auth handlers, cron jobs, endpoint calls, source-file reads, referenced environment names, recent traces and spans, discovered PostgreSQL metadata, and SQL queries. MCP is a development convenience surface for agents. Stable automation should use `onlava inspect ... --json`, `onlava logs --jsonl`, schemas, and harness outputs.
-
-See [docs/agent-guide.md](docs/agent-guide.md) for the tool list and usage guidance.
 
 ## CLI Overview
 

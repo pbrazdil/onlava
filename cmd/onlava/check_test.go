@@ -100,7 +100,8 @@ func TestRunOnlavaCheckJSONSuccess(t *testing.T) {
 }
 
 func TestRunOnlavaCheckJSONReportsTypeScriptTemporalContractFailure(t *testing.T) {
-	t.Parallel()
+	useFakeBuildGoRunner(t)
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", filepath.Join(t.TempDir(), "cache"))
 
 	root := persistentTestAppRoot(t, "check-ts-contract")
 	preparePersistentTestApp(t, root, map[string]string{

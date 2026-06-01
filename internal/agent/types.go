@@ -10,7 +10,6 @@ const (
 	RouteAPI       = "api"
 	RouteDashboard = "dashboard"
 	RouteGrafana   = "grafana"
-	RouteMCP       = "mcp"
 	RouteTemporal  = "temporal"
 
 	SubstrateGrafana  = "grafana"

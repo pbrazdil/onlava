@@ -42,7 +42,7 @@
       "freshness": "current",
       "last_reviewed": "2026-05-31",
       "review_after": "2026-06-30",
-      "summary": "Repo-local operating manual for agents changing onlava itself, including the session/capability model, validation, MCP, docs, and client-app instruction rules.",
+      "summary": "Repo-local operating manual for agents changing onlava itself, including the session/capability model, validation, docs, and client-app instruction rules.",
       "tags": ["agents", "repo", "instructions", "workflow"]
     },
     {
@@ -54,8 +54,8 @@
       "freshness": "current",
       "last_reviewed": "2026-06-01",
       "review_after": "2026-06-30",
-      "summary": "Concise installed-skill entrypoint for using current onlava apps through app sessions and capabilities, including CLI JSON, MCP, managed toolchain diagnostics, debugging, databases, generated clients, and validation loops.",
-      "tags": ["skill", "agents", "onboarding", "mcp", "toolchain"]
+      "summary": "Concise installed-skill entrypoint for using current onlava apps through app sessions and capabilities, including CLI JSON, managed toolchain diagnostics, debugging, databases, generated clients, and validation loops.",
+      "tags": ["skill", "agents", "onboarding", "toolchain"]
     },
     {
       "path": "docs/agent-guide.md",
@@ -66,8 +66,8 @@
       "freshness": "current",
       "last_reviewed": "2026-06-01",
       "review_after": "2026-06-30",
-      "summary": "Agent workflow guide for using CLI JSON, MCP, app-session capabilities, managed toolchain commands, cache artifacts, TypeScript clients, and app-local instruction layering.",
-      "tags": ["agents", "mcp", "cli", "apps", "client-integration", "toolchain"]
+      "summary": "Agent workflow guide for using CLI JSON, app-session capabilities, managed toolchain commands, cache artifacts, TypeScript clients, and app-local instruction layering.",
+      "tags": ["agents", "cli", "apps", "client-integration", "toolchain"]
     },
     {
       "path": "PLAN.md",

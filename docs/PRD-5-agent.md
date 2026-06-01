@@ -75,7 +75,7 @@ session: onlv-fr-123-a81c7d
 api URL:      https://api.onlv-fr-123-a81c7d.onlava.localhost
 pulse URL:    https://pulse.onlv-fr-123-a81c7d.onlava.localhost
 console URL:  https://console.onlava.localhost/s/onlv-fr-123-a81c7d
-mcp URL:      https://mcp.onlv-fr-123-a81c7d.onlava.localhost/sse
+removed-agent-transport URL:      https://removed-agent-transport.onlv-fr-123-a81c7d.onlava.localhost/sse
 ```
 
 There is one trusted local CA, one router, one dashboard, one owner of process/session state.
@@ -204,7 +204,7 @@ single reverse proxy:
   https://<route>.<session>.onlava.localhost
 ```
 
-The daemon control API should be authenticated by filesystem permissions on the socket. Browser and MCP routes are machine-local development surfaces and do not require a separate browser token.
+The daemon control API should be authenticated by filesystem permissions on the socket. Browser and removed agent transport routes are machine-local development surfaces and do not require a separate browser token.
 
 This directly fixes the current issue where dashboard binding is global and cleanup can stop an existing onlava dev process that merely “looks like” an onlava dashboard process. The current dashboard default is `127.0.0.1:9401`, and the existing reaping logic is tied to the default dashboard address/process inspection.  
 
@@ -559,7 +559,7 @@ https://api.<session>.onlava.localhost
 https://pulse.<session>.onlava.localhost
 https://blog.<session>.onlava.localhost
 https://electric.<session>.onlava.localhost
-https://mcp.<session>.onlava.localhost
+https://removed-agent-transport.<session>.onlava.localhost
 ```
 
 Dashboard can be path-based because it is the daemon UI:
@@ -613,7 +613,7 @@ But the manifest focuses on identity and routes:
     "api": "https://api.onlv-fr-123-a81c7d.onlava.localhost",
     "pulse": "https://pulse.onlv-fr-123-a81c7d.onlava.localhost",
     "blog": "https://blog.onlv-fr-123-a81c7d.onlava.localhost",
-    "mcp": "https://mcp.onlv-fr-123-a81c7d.onlava.localhost/sse",
+    "removed-agent-transport": "https://removed-agent-transport.onlv-fr-123-a81c7d.onlava.localhost/sse",
     "dashboard": "https://console.onlava.localhost/s/onlv-fr-123-a81c7d",
     "electric": "https://electric.onlv-fr-123-a81c7d.onlava.localhost",
     "grafana": "https://grafana.onlava.localhost/d/onlava-dev-overview?var-session=onlv-fr-123-a81c7d",

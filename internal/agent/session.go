@@ -186,10 +186,9 @@ func routesForSession(sessionID, routerAddr, routerScheme string, backends map[s
 		routes[RouteAPI] = routeURL(routerScheme, "api."+sessionID+".onlava.localhost", routerAddr, "")
 	}
 	routes[RouteDashboard] = routeURL(routerScheme, "console.onlava.localhost", routerAddr, "/s/"+sessionID)
-	routes[RouteMCP] = routeURL(routerScheme, "mcp."+sessionID+".onlava.localhost", routerAddr, "/sse")
 	for kind := range backends {
 		switch kind {
-		case RouteAPI, RouteDashboard, RouteMCP:
+		case RouteAPI, RouteDashboard:
 			continue
 		}
 		routes[kind] = routeURL(routerScheme, kind+"."+sessionID+".onlava.localhost", routerAddr, "")

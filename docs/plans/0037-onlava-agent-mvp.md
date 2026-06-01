@@ -43,7 +43,7 @@ Shipped outcome:
 
 * Added `internal/agent`, a standard-library local daemon package with Unix control socket, JSON session registry, host-based HTTP router, session manifest writing, and a Unix-socket aware reverse proxy.
 * Added `onlava agent`, `onlava status --json`, and `onlava down` command surfaces.
-* `onlava dev` now auto-starts/connects to the agent unless `ONLAVA_AGENT_DISABLE=1`, registers the worktree session, writes `.onlava/sessions/<session_id>/manifest.json`, updates running/stopped/compile-error state, and advertises routed API/dashboard/MCP URLs when no explicit local proxy is active.
+* `onlava dev` now auto-starts/connects to the agent unless `ONLAVA_AGENT_DISABLE=1`, registers the worktree session, writes `.onlava/sessions/<session_id>/manifest.json`, updates running/stopped/compile-error state, and advertises routed API/dashboard/removed agent transport URLs when no explicit local proxy is active.
 * Existing direct `onlava dev --listen` and `--proxy` behavior remains intact. Existing integration helpers disable agent startup so they do not leak background daemon processes during tests.
 * Runtime servers now support `ONLAVA_LISTEN_NETWORK=unix` with TCP remaining the default.
 
@@ -129,7 +129,7 @@ git diff --check
 Observable behavior:
 
 * `onlava agent` creates a Unix control socket and serves a router.
-* `onlava dev` registers a session with API/dashboard/MCP route metadata and writes `.onlava/sessions/<session_id>/manifest.json`.
+* `onlava dev` registers a session with API/dashboard/removed agent transport route metadata and writes `.onlava/sessions/<session_id>/manifest.json`.
 * `onlava status --json --app-root <path>` returns the registered session.
 * `onlava down --app-root <path>` asks the daemon to stop that session.
 * An app runtime can listen on a Unix socket when `ONLAVA_LISTEN_NETWORK=unix`.

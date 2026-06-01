@@ -43,7 +43,7 @@ API explorer
 traces UI
 local HTTPS proxy
 frontend proxy
-MCP server
+removed agent transport server
 local Temporal worker controls
 local cron controls
 pretty logs
@@ -68,7 +68,7 @@ It should not include by default:
 dashboard
 local HTTPS proxy
 trust-store installation
-MCP
+removed agent transport
 frontend proxy
 file watching
 admin UI
@@ -248,7 +248,7 @@ Stable:
 Beta/dev:
   onlava dev dashboard
   local HTTPS proxy
-  MCP
+  removed agent transport
   Temporal worker tooling
   cron UI
 

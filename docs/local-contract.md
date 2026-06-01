@@ -96,7 +96,6 @@ Dev-only or beta surface:
 - `onlava admin traces clear --json`
 - `onlava harness ui --json`
 - dashboard and API Explorer
-- MCP server
 - local HTTPS/frontend proxy
 - trust-store installation
 - local observability and Grafana capabilities, backed today by Victoria/Grafana substrate and managed binary downloads
@@ -124,7 +123,6 @@ Current shape:
     "workspace": "acme",
     "api_host": "api.acme.localhost",
     "console_host": "console.acme.localhost",
-    "mcp_host": "mcp.acme.localhost",
     "frontends": {
       "app": {
         "host": "app.acme.localhost",
@@ -181,7 +179,7 @@ Current shape:
     },
     "dev_bootstrap": {
       "enabled": true,
-      "default_user_id": "dev-mcp",
+      "default_user_id": "dev-user",
       "default_tenant_id": "00000000-0000-0000-0000-000000000001"
     }
   },
@@ -376,14 +374,14 @@ Command split:
 - `onlava prune --older-than <duration>` prunes old agent sessions whose recorded owner is gone or mismatched and removes their `.onlava/sessions/<id>` state roots. It accepts Go durations such as `336h` plus day shorthand such as `14d`. It does not drop managed databases or delete VictoriaLogs storage; use `onlava down --db` or `onlava db drop` for destructive database cleanup.
 - When the local agent is active, the agent starts the visible dashboard backend and routes `console.onlava.localhost/s/<session_id>` to it. The Unix-socket control API remains protected by filesystem permissions.
 - The agent router serves HTTPS by default, and newly registered sessions receive `https://...onlava.localhost` routes. `onlava agent --router-http` or `ONLAVA_AGENT_ROUTER_TLS=0` explicitly keeps the router on HTTP for local debugging. `onlava agent --router-tls` and `ONLAVA_AGENT_ROUTER_TLS=1` force HTTPS when an explicit setting is needed. `onlava agent --trust` and `ONLAVA_AGENT_TRUST=1` also enable router TLS and attempt to trust the existing onlava local CA. Trust installation failures are logged; the router still starts.
-- Agent session manifests always include `dashboard` and `mcp` routes for the global agent-owned dashboard. With the agent dashboard active, the manifest does not need matching per-session `dashboard` or `mcp` backends; direct/per-session dashboard endpoints are kept for agent-disabled, unavailable-agent, or explicit local-proxy fallback paths.
+- Agent session manifests always include a `dashboard` route for the global agent-owned dashboard. With the agent dashboard active, the manifest does not need a matching per-session `dashboard` backend; direct/per-session dashboard endpoints are kept for agent-disabled, unavailable-agent, or explicit local-proxy fallback paths.
 - `onlava dev` exposes local observability and Grafana capabilities for the session. The current substrate may start local VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana when their managed toolchain binaries are installed or can be downloaded. When the local agent is active, those backing services are registered as shared agent substrates and later dev sessions reuse their endpoints. Grafana is also registered as the session `grafana` backend, so manifests expose `https://grafana.<session_id>.onlava.localhost:<agent-router-port>/` by default, or HTTP when the agent router is explicitly started with `--router-http` or `ONLAVA_AGENT_ROUTER_TLS=0`. Dashboard session metadata is stored as JSON under the agent directory when the agent is active and `ONLAVA_DEV_CACHE_DIR` is unset, so multiple worktrees for the same base app can appear in the global dashboard. These details are documented for intentional substrate debugging and are not the stable app-facing API.
 - The local agent home defaults to `~/.onlava` unless `ONLAVA_AGENT_HOME` is set. `ONLAVA_DEV_CACHE_DIR` controls build and dashboard cache locations, not machine-wide agent identity.
 - Managed frontend services start on session-private hidden loopback ports. A manual `ONLAVA_FRONTEND_<NAME>_ADDR` override is accepted, but configured frontend upstreams are ignored unless that frontend sets `"allow_shared_upstream": true`.
 - `onlava dev --proxy` enables the legacy local HTTPS/frontend proxy. This is a manual debugging escape hatch that binds machine-global proxy ports and is not the recommended path for parallel worktrees.
 - `onlava dev --proxy --trust` allows local trust-store installation. Without `--trust`, the proxy skips trust installation.
 - `onlava dev --port <n>` and `onlava dev --listen <addr>` force a manual TCP app backend. The default agent path uses a session-private Unix socket and should be preferred for worktree-safe development.
-- `onlava serve` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, frontend proxy, or file watcher.
+- `onlava serve` builds once and starts the app runtime headlessly. It does not start the dashboard, local proxy, frontend proxy, or file watcher.
 - `onlava serve` starts the generated binary with `ONLAVA_ROLE=api`, so it serves HTTP APIs without registering worker-only workflow or activity handlers.
 - `onlava run list|inspect` and `onlava run <domain>:<script> [script args...]` are the canonical local operational script surface. Script discovery is filesystem-first and does not parse or type-check the onlava app model. Targets use `<domain>:<script>` and map to `<app-root>/<domain>/scripts/<script>...`; the domain is a top-level path segment, not an onlava service name. Both target segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
 - Onlava script flags must appear before the target, such as `onlava run --env production billing:reconcile --dry-run`. Arguments after the target belong to the script; `--` is accepted but not required. `onlava run` no longer starts the API server; use `onlava serve` for headless API execution.
@@ -658,7 +656,6 @@ Schema rules:
       "workspace": "billing",
       "api_host": "api.billing.localhost",
       "console_host": "console.billing.localhost",
-      "mcp_host": "mcp.billing.localhost",
       "frontends": {
         "web": {
           "host": "web.billing.localhost",

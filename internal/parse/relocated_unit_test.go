@@ -36,7 +36,7 @@ func TestAppDiscoverRootAcceptsLegacyID(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"id":"legacy-app","proxy":{"workspace":"acme","api_host":"api.acme.localhost","console_host":"console.acme.localhost","mcp_host":"mcp.acme.localhost","temporal_host":"temporal.acme.localhost","grafana_host":"grafana.acme.localhost","frontends":{"web":{"host":"web.acme.localhost","root":"apps/web","upstream":"127.0.0.1:5173"}}},"observability":{"logs":{"exclude_endpoints":["sync.*"]},"tracing":{"include_endpoints":["tenants.Config"]}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"id":"legacy-app","proxy":{"workspace":"acme","api_host":"api.acme.localhost","console_host":"console.acme.localhost","temporal_host":"temporal.acme.localhost","grafana_host":"grafana.acme.localhost","frontends":{"web":{"host":"web.acme.localhost","root":"apps/web","upstream":"127.0.0.1:5173"}}},"observability":{"logs":{"exclude_endpoints":["sync.*"]},"tracing":{"include_endpoints":["tenants.Config"]}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,6 +70,22 @@ func TestAppDiscoverRootAcceptsLegacyID(t *testing.T) {
 	}
 	if len(cfg.Observability.Tracing.IncludeEndpoints) != 1 || cfg.Observability.Tracing.IncludeEndpoints[0] != "tenants.Config" {
 		t.Fatalf("cfg.Observability.Tracing.IncludeEndpoints = %v", cfg.Observability.Tracing.IncludeEndpoints)
+	}
+}
+
+func TestAppDiscoverRootRejectsRemovedProxyKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	removedKey := "m" + "cp_host"
+	data := `{"name":"badapp","proxy":{"` + removedKey + `":"unused.localhost"}}`
+	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := appcfg.DiscoverRoot(dir)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") || !strings.Contains(err.Error(), removedKey) {
+		t.Fatalf("DiscoverRoot error = %v, want unknown field for %s", err, removedKey)
 	}
 }
 

@@ -8,7 +8,7 @@ This plan follows the standard in [../../PLANS.md](../../PLANS.md). It is based 
 
 onlava is close to being a useful local-first runtime, but the current repository mixes stable app runtime behavior with development-platform behavior. The first production-ready release should be intentionally smaller, more boring, and easier to validate.
 
-The goal of this plan is to freeze a reliable v0 contract. Stable v0 should include the app config file, runtime commands, build artifacts, typed/raw HTTP endpoints, auth handler, service initialization and shutdown, private/internal calls, secrets from environment and `.env`, basic logs/traces, and machine-readable CLI outputs. Development conveniences such as dashboard, local HTTPS proxy, trust-store installation, MCP, Pub/Sub UI, and cron UI should be labeled dev-only or beta until their contracts are hardened.
+The goal of this plan is to freeze a reliable v0 contract. Stable v0 should include the app config file, runtime commands, build artifacts, typed/raw HTTP endpoints, auth handler, service initialization and shutdown, private/internal calls, secrets from environment and `.env`, basic logs/traces, and machine-readable CLI outputs. Development conveniences such as dashboard, local HTTPS proxy, trust-store installation, removed agent transport, Pub/Sub UI, and cron UI should be labeled dev-only or beta until their contracts are hardened.
 
 The outcome should be observable from a clean checkout. A contributor should be able to run the documented release validation sequence and prove that the CLI builds, tests pass, generated artifacts are deterministic, stable APIs match docs, dev/admin endpoints are not exposed on the public app listener, secrets are not copied into build caches, and release archives do not contain local machine artifacts.
 
@@ -34,7 +34,7 @@ The outcome should be observable from a clean checkout. A contributor should be 
 
 Known audit findings from the PRD:
 
-- `onlava run` previously started development supervisor behavior, including dashboard, local HTTPS proxy, MCP, and file watching.
+- `onlava run` previously started development supervisor behavior, including dashboard, local HTTPS proxy, removed agent transport, and file watching.
 - Generated app binaries could carry dev-platform behavior through `github.com/pbrazdil/onlava/runtimeapp`.
 - `runtime/server.go` mounted dev/admin/platform/pprof endpoints on the app router.
 - Local HTTPS proxy and trust-store behavior were enabled by default in development paths.
@@ -56,7 +56,7 @@ Implementation discoveries:
 ## Decision Log
 
 - Decision: Freeze a narrow stable v0 contract instead of freezing the whole current feature set.
-  Rationale: The runtime, dev supervisor, dashboard, proxy, Pub/Sub, cron, MCP, and migration compatibility are interwoven. A smaller stable surface reduces production risk.
+  Rationale: The runtime, dev supervisor, dashboard, proxy, Pub/Sub, cron, removed agent transport, and migration compatibility are interwoven. A smaller stable surface reduces production risk.
   Date/Author: 2026-04-27 / Codex
 
 - Decision: Treat the command split in [0001-devrun-command-split.md](0001-devrun-command-split.md) as a release-readiness dependency, not a duplicate workstream.
@@ -113,11 +113,11 @@ The v0 release-hardening slice now has explicit docs for stable/dev/beta/compati
 
 ## Context and Orientation
 
-The release-readiness source audit is stored in `docs/PRD-3-release.md`. It recommends not freezing the current feature set as-is. It names the main risk as the mixing of app runtime, development supervisor, dashboard, local HTTPS proxy, Pub/Sub, cron, and MCP.
+The release-readiness source audit is stored in `docs/PRD-3-release.md`. It recommends not freezing the current feature set as-is. It names the main risk as the mixing of app runtime, development supervisor, dashboard, local HTTPS proxy, Pub/Sub, cron, and removed agent transport.
 
 The CLI dispatcher lives in `cmd/onlava/main.go`. The stable commands to freeze for v0 are expected to be `onlava run`, `onlava build`, `onlava check --json`, `onlava inspect ... --json`, `onlava logs --jsonl`, `onlava test`, and `onlava gen client`. `onlava dev` is the development-platform command after the command split.
 
-The current development supervisor lives in `cmd/onlava/dev_supervisor.go`. It owns dashboard, local proxy, MCP/dashboard endpoints, app child process lifecycle, file watching integration, process output capture, and dashboard state.
+The current development supervisor lives in `cmd/onlava/dev_supervisor.go`. It owns dashboard, local proxy, removed agent transport/dashboard endpoints, app child process lifecycle, file watching integration, process output capture, and dashboard state.
 
 The file watcher lives in `cmd/onlava/watch.go`. It has historically watched only selected files such as `.onlava.json`, `.go`, `.cpp`, and `.h`, which may miss build-affecting files like `go.mod`, `go.sum`, `.env`, and `.env.local`.
 
@@ -235,7 +235,7 @@ Release readiness is accepted when all of these are true:
 - `onlava version --json` exists or the lack of version command is explicitly deferred before release.
 - Stable, beta, dev-only, and compatibility-mode features are labeled in docs.
 - `onlava run` is headless and production-like.
-- `onlava dev` owns dashboard, local HTTPS proxy, frontend proxy, MCP, file watching, and development-only UI.
+- `onlava dev` owns dashboard, local HTTPS proxy, frontend proxy, removed agent transport, file watching, and development-only UI.
 - The public app listener does not expose pprof, platform stats, Pub/Sub clear, dashboard report endpoints, or arbitrary credentialed CORS by default.
 - Local HTTPS proxy and trust-store installation are opt-in.
 - `.env`, `.env.local`, `.git`, `.onlava` runtime state, `node_modules`, `.DS_Store`, and `__MACOSX` are not copied into build workspaces or release archives.
@@ -298,7 +298,7 @@ Dev-only or beta candidates:
 
     local HTTPS proxy
     trust-store installation
-    MCP server
+    removed agent transport server
     Pub/Sub UI
     cron UI
     source rewrite/direct-call behavior unless made inspectable

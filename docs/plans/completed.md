@@ -419,8 +419,8 @@ Shipped:
 
 Shipped:
 
-- `onlava dev` owns the development supervisor, dashboard, MCP, local proxy, watch/rebuild loop, and development logs.
-- The headless runtime command builds once and starts the app without dashboard, local proxy, MCP, or file watching. It is now spelled `onlava serve`; the historical plan used `onlava run`.
+- `onlava dev` owns the development supervisor, dashboard, removed agent transport, local proxy, watch/rebuild loop, and development logs.
+- The headless runtime command builds once and starts the app without dashboard, local proxy, removed agent transport, or file watching. It is now spelled `onlava serve`; the historical plan used `onlava run`.
 - Generated app binaries are headless by default unless development behavior is explicitly enabled.
 - Command parsing, tests, usage text, and local contract were updated for the split.
 
@@ -755,7 +755,7 @@ Shipped:
 
 - `internal/agent`, a standard-library local daemon package with Unix control socket, JSON session registry, host-based HTTP router, session manifest writing, and Unix-socket aware reverse proxying.
 - `onlava agent`, `onlava status --json`, and `onlava down`.
-- `onlava dev` auto-starts/connects to the agent unless disabled, registers the worktree session, writes `.onlava/sessions/<session_id>/manifest.json`, updates status, and advertises routed API/dashboard/MCP URLs when no explicit local proxy is active.
+- `onlava dev` auto-starts/connects to the agent unless disabled, registers the worktree session, writes `.onlava/sessions/<session_id>/manifest.json`, updates status, and advertises routed API/dashboard/removed agent transport URLs when no explicit local proxy is active.
 - Runtime servers support `ONLAVA_LISTEN_NETWORK=unix` with TCP still available.
 
 ## Agent Private Dev Backends

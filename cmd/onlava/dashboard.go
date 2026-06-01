@@ -40,10 +40,9 @@ type dashboardServer struct {
 	addr       string
 	state      dashboardRunState
 
-	mu          sync.Mutex
-	clients     map[*dashboardClient]struct{}
-	mcpSessions map[string]*mcpSession
-	assets      fs.FS
+	mu      sync.Mutex
+	clients map[*dashboardClient]struct{}
+	assets  fs.FS
 }
 
 type dashboardVictoria interface {
@@ -132,21 +131,18 @@ func newDashboardServer(supervisor *devSupervisor, assetsDir string) *dashboardS
 func newDashboardServerWithController(controller dashboardController, root, addr, assetsDir string, supervisor *devSupervisor) *dashboardServer {
 	assets, _ := dashboardAssetFS(assetsDir)
 	s := &dashboardServer{
-		controller:  controller,
-		supervisor:  supervisor,
-		addr:        addr,
-		state:       newDashboardRunState(root, addr),
-		clients:     make(map[*dashboardClient]struct{}),
-		mcpSessions: make(map[string]*mcpSession),
-		assets:      assets,
+		controller: controller,
+		supervisor: supervisor,
+		addr:       addr,
+		state:      newDashboardRunState(root, addr),
+		clients:    make(map[*dashboardClient]struct{}),
+		assets:     assets,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRoot)
 	mux.HandleFunc("/__graphql", s.handleGraphQL)
 	mux.HandleFunc(devdash.WebSocketPath, s.handleWebSocket)
 	mux.HandleFunc(devdash.ReportPath, s.handleReport)
-	mux.HandleFunc("/sse", s.handleMCP)
-	mux.HandleFunc("/message", s.handleMCP)
 	s.http = &http.Server{
 		Addr:    addr,
 		Handler: mux,
@@ -519,17 +515,6 @@ func fillLogEventIdentity(event *devdash.LogEvent, report devdash.ReportEnvelope
 	}
 	if event.Worktree == "" {
 		event.Worktree = report.Worktree
-	}
-}
-
-func (s *dashboardServer) handleMCP(w http.ResponseWriter, req *http.Request) {
-	switch req.URL.Path {
-	case "/sse":
-		s.handleMCPSSE(w, req)
-	case "/message":
-		s.handleMCPMessage(w, req)
-	default:
-		http.NotFound(w, req)
 	}
 }
 

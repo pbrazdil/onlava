@@ -124,7 +124,7 @@ Validation completed:
 - `onlava inspect routes --json --app-root /Users/petrbrazdil/Repos/onlv`
 - `onlava harness --json --write --app-root /Users/petrbrazdil/Repos/onlv`
 - `bun run build` and `bun run build:electron` in `/Users/petrbrazdil/Repos/onlv/apps/app`
-- Runtime smoke test: ONLV `onlava run` served standard `users.DevBootstrap`; an authenticated request entered the console handler with `uid=dev-mcp`.
+- Runtime smoke test: ONLV `onlava run` served standard `users.DevBootstrap`; an authenticated request entered the console handler with `uid=dev-user`.
 
 Remaining rollout work: production deployments that need existing user/session preservation must execute and verify `docs/runbooks/standard-auth-migration.md` before removing legacy tables from any production database. The code path no longer depends on the legacy ONLV auth package.
 

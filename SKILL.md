@@ -1,6 +1,6 @@
 ---
 name: onlava
-description: Use when building, running, debugging, inspecting, validating, or generating clients for onlava applications. onlava is a Go-native service runtime and CLI using .onlava.json, //onlava directives, typed endpoints, local dev supervision, MCP, logs, traces, metrics, workers, and TypeScript client generation.
+description: Use when building, running, debugging, inspecting, validating, or generating clients for onlava applications. onlava is a Go-native service runtime and CLI using .onlava.json, //onlava directives, typed endpoints, local dev supervision, logs, traces, metrics, workers, and TypeScript client generation.
 ---
 
 # onlava
@@ -11,7 +11,7 @@ This skill is the portable agent entrypoint. It teaches shared onlava behavior, 
 
 Read next when needed:
 
-- `docs/agent-guide.md` for agent workflow, MCP, capabilities, generated artifacts, and client-app integration.
+- `docs/agent-guide.md` for agent workflow, capabilities, generated artifacts, and client-app integration.
 - `docs/local-contract.md` for exact CLI grammar, JSON schemas, artifact paths, and stability labels.
 - `docs/app-development-cookbook.md` for app recipes.
 - `docs/ui-agent-contract.md` before UI work.
@@ -38,8 +38,8 @@ Run `onlava doctor --json` before deep app debugging when local readiness is in 
 
 - `.onlava.json` marks the app root.
 - Go source is the app model.
-- `onlava dev` starts the supervised local platform: app process, rebuild/restart loop, dashboard, API Explorer, MCP endpoint, logs, traces, metrics, managed dev services when configured, and optional frontend/proxy routing.
-- `onlava serve` starts a headless API-role server and does not start dashboard, MCP, proxy, or watch mode.
+- `onlava dev` starts the supervised local platform: app process, rebuild/restart loop, dashboard, API Explorer, logs, traces, metrics, managed dev services when configured, and optional frontend/proxy routing.
+- `onlava serve` starts a headless API-role server and does not start dashboard, proxy, or watch mode.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and called through generated helpers.
 - Typed endpoints decode path, query, header, cookie, and JSON body inputs into Go values.
 - Generated internal calls preserve routing, private access, auth context, tracing, and error semantics.
@@ -141,10 +141,6 @@ bun run build
 cd ..
 onlava harness ui --json
 ```
-
-## MCP
-
-`onlava dev` exposes MCP as an app-session capability and prints the `MCP SSE URL`. Use MCP for interactive local inspection when a dev session is running. Use CLI JSON and schemas for stable automation.
 
 ## Debugging
 

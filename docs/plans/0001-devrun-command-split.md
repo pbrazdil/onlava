@@ -6,7 +6,7 @@ This plan follows the standard in [../../PLANS.md](../../PLANS.md). It is based 
 
 ## Purpose / Big Picture
 
-onlava currently treats `onlava run` as the local development command. It starts the app plus development-only systems such as the dashboard, local HTTPS proxy, frontend proxy, MCP server, file watching, rebuild/restart supervision, and relaxed local defaults. That is convenient for development, but it makes `onlava run` ambiguous and risky as the production-like command.
+onlava currently treats `onlava run` as the local development command. It starts the app plus development-only systems such as the dashboard, local HTTPS proxy, frontend proxy, removed agent transport server, file watching, rebuild/restart supervision, and relaxed local defaults. That is convenient for development, but it makes `onlava run` ambiguous and risky as the production-like command.
 
 After this change, developers get a clear command split. `onlava dev` starts the full local development platform. `onlava run` starts the application in a headless, production-like mode with one deterministic startup, no dashboard, no proxy, no file watching, no no local certificate mutation, strict signal handling, and predictable logs. `onlava build` remains the preferred deployment artifact path.
 
@@ -25,12 +25,12 @@ The result is observable from the command line. Running `onlava dev --app-root /
 ## Surprises & Discoveries
 
 - Existing generated mains imported `github.com/pbrazdil/onlava/runtimeapp` unconditionally, so built app binaries could start local proxy/ behavior outside the CLI. Headless behavior required changing codegen, not only command dispatch.
-- The integration suite had several development-platform expectations under `onlava run`, especially reloads, dashboard/MCP, and HTTPS proxy hostnames. Those tests now belong to `onlava dev`.
+- The integration suite had several development-platform expectations under `onlava run`, especially reloads, dashboard/removed agent transport, and HTTPS proxy hostnames. Those tests now belong to `onlava dev`.
 - Headless `onlava run` still needs a parent-death monitor for its app child, otherwise force-killing the CLI can leave an orphaned app process.
 
 ## Decision Log
 
-- Decision: `onlava dev` owns dashboard, file watching, local HTTPS proxy, frontend proxy, MCP, API explorer, traces UI, local Pub/Sub controls, cron controls, and pretty development logs.
+- Decision: `onlava dev` owns dashboard, file watching, local HTTPS proxy, frontend proxy, removed agent transport, API explorer, traces UI, local Pub/Sub controls, cron controls, and pretty development logs.
   Rationale: These are development-platform features. Keeping them out of `onlava run` makes the runtime command safe and predictable.
   Date/Author: 2026-04-27 / Codex
 
@@ -52,7 +52,7 @@ The result is observable from the command line. Running `onlava dev --app-root /
 
 ## Outcomes & Retrospective
 
-- `onlava dev` now owns the previous development supervisor path, including dashboard, MCP, proxy, watching, rebuilds, and JSONL development events.
+- `onlava dev` now owns the previous development supervisor path, including dashboard, removed agent transport, proxy, watching, rebuilds, and JSONL development events.
 - `onlava run` now builds once and starts the app binary headlessly with development-only flags rejected.
 - Generated app mains no longer import `github.com/pbrazdil/onlava/runtimeapp` by default, so `onlava build` outputs are headless unless  is explicitly enabled.
 - Validation passed: focused command/codegen/runtime tests, selected fixture integration tests, `go test ./...`, `go install ./cmd/onlava`, `onlava harness self --json --write`, and a read-only `onlava inspect app --json --app-root <external-app-root>` smoke.
@@ -63,7 +63,7 @@ The command dispatcher lives in `cmd/onlava/main.go`. Today it recognizes `run`,
 
 The current development loop lives in `cmd/onlava/watch.go`. `runWithWatch` discovers the app root from `.onlava.json`, installs signal handling, starts a parent monitor, scans watched files, creates a `devSupervisor`, starts it, performs the initial build/restart, then watches files and rebuilds on changes.
 
-The development supervisor lives in `cmd/onlava/dev_supervisor.go`. It owns the app child process, dashboard server, WebSocket/MCP/report endpoints, SQLite dev state, local proxy, rebuild notifications, process output capture, app metadata, API explorer calls, and dashboard status.
+The development supervisor lives in `cmd/onlava/dev_supervisor.go`. It owns the app child process, dashboard server, WebSocket/removed agent transport/report endpoints, SQLite dev state, local proxy, rebuild notifications, process output capture, app metadata, API explorer calls, and dashboard status.
 
 The dashboard server lives primarily in `cmd/onlava/dashboard.go`. It should remain a development feature behind `onlava dev`.
 
@@ -77,7 +77,7 @@ The generated runtime entry point is created by the build pipeline under `intern
 
 Terminology used in this plan:
 
-- Development platform means the convenience systems around the app: dashboard, proxy, API explorer, traces UI, MCP, live reload, and local controls.
+- Development platform means the convenience systems around the app: dashboard, proxy, API explorer, traces UI, removed agent transport, live reload, and local controls.
 - Headless runtime means only the app server and runtime primitives needed by the app itself, without browser UI, local machine certificate management, or file watching.
 - Dev supervisor means the parent process in `cmd/onlava/dev_supervisor.go` that manages development services and the app child process.
 
@@ -85,7 +85,7 @@ Terminology used in this plan:
 
 Milestone 1 preserves current behavior under `onlava dev`. At the end of this milestone, `onlava dev` should accept the same flags as today’s `onlava run` and call the existing `runWithWatch` path. `onlava run` can still temporarily behave as before until Milestone 2 lands. The acceptance proof is `onlava dev --app-root <fixture-or-external-app-root>` starting the dashboard/proxy/app exactly like current `onlava run`.
 
-Milestone 2 introduces a headless runtime path for `onlava run`. At the end of this milestone, `onlava run` should compile once and start the generated app binary without starting `devSupervisor`, dashboard, local proxy, MCP, file watching, or dashboard UI package installation. The acceptance proof is that `onlava run --app-root <fixture> --listen 127.0.0.1:4080` serves endpoints and exits cleanly on SIGINT/SIGTERM while dashboard port `9401` port `4002`, and local HTTPS proxy domains are not bound by onlava.
+Milestone 2 introduces a headless runtime path for `onlava run`. At the end of this milestone, `onlava run` should compile once and start the generated app binary without starting `devSupervisor`, dashboard, local proxy, removed agent transport, file watching, or dashboard UI package installation. The acceptance proof is that `onlava run --app-root <fixture> --listen 127.0.0.1:4080` serves endpoints and exits cleanly on SIGINT/SIGTERM while dashboard port `9401` port `4002`, and local HTTPS proxy domains are not bound by onlava.
 
 Milestone 3 hardens production-like behavior. At the end of this milestone, `onlava run` should support strict secret validation, stable exit codes, structured log options, `PORT`/listen behavior, and health/readiness behavior if those primitives exist. The acceptance proof is a test fixture and a documented command transcript showing missing required secrets fail fast in production mode while local development remains forgiving under `onlava dev`.
 
@@ -97,7 +97,7 @@ First, add command plumbing in `cmd/onlava/main.go`. Add a new `dev` case that c
 
 Second, preserve backward compatibility intentionally during the transition. If changing `onlava run` immediately would break tests or workflows, add clear transitional tests that document the old behavior only where needed, then remove or update them before completing this plan. Do not leave `onlava run` as a hidden alias for `onlava dev` at the end of the plan.
 
-Third, implement a headless app runner. This runner should discover the app root, load `.onlava.json`, call the existing build pipeline once, and start the compiled app binary directly. It should reuse the existing process lifecycle helpers where safe, but it must not instantiate `devSupervisor`, dashboard server, dashboard store, local proxy, file watcher, or MCP server. It should forward stdout/stderr to the terminal, propagate SIGINT/SIGTERM to the child process, enforce shutdown timeouts, and return the child exit code as a meaningful CLI error.
+Third, implement a headless app runner. This runner should discover the app root, load `.onlava.json`, call the existing build pipeline once, and start the compiled app binary directly. It should reuse the existing process lifecycle helpers where safe, but it must not instantiate `devSupervisor`, dashboard server, dashboard store, local proxy, file watcher, or removed agent transport server. It should forward stdout/stderr to the terminal, propagate SIGINT/SIGTERM to the child process, enforce shutdown timeouts, and return the child exit code as a meaningful CLI error.
 
 Fourth, audit generated app startup. Ensure generated binaries only start app runtime services. If development services are currently triggered by generated runtime flags or environment variables, gate them behind explicit development mode injected only by `onlava dev`.
 
@@ -153,7 +153,7 @@ Expected observation: the command serves the app on `127.0.0.1:4080`, does not p
 
 The command contract is accepted when these behaviors are true:
 
-- `onlava dev` starts the development platform: app server, dashboard, MCP endpoint, local proxy if configured when `DatabaseURL` is configured, file watching, rebuild/restart, and pretty development logs.
+- `onlava dev` starts the development platform: app server, dashboard, removed agent transport endpoint, local proxy if configured when `DatabaseURL` is configured, file watching, rebuild/restart, and pretty development logs.
 - `onlava run` starts only the app runtime and app primitives. It does not bind dashboard port `9401` port `4002`, local proxy ports, or frontend proxy domains.
 - `onlava run` does not install or trust certificates.
 - `onlava run` does not require Bun, `ui/dist`, or dashboard assets.
@@ -192,7 +192,7 @@ Current implementation fact:
 
     cmd/onlava/main.go runCommand currently calls runWithWatch.
     cmd/onlava/watch.go runWithWatch currently creates newDevSupervisor.
-    cmd/onlava/dev_supervisor.go currently owns dashboard, proxy, MCP, rebuilds, and app child lifecycle.
+    cmd/onlava/dev_supervisor.go currently owns dashboard, proxy, removed agent transport, rebuilds, and app child lifecycle.
 
 Validation artifacts should be written by:
 
@@ -220,4 +220,4 @@ Expected internal interfaces may include:
     func parseRunArgs(args []string) (runOptions, error)
     func runHeadless(addr string, opts runOptions) error
 
-Keep `devSupervisor` private to the development command. The headless runner should not import or instantiate dashboard, MCP, or local proxy types.
+Keep `devSupervisor` private to the development command. The headless runner should not import or instantiate dashboard, removed agent transport, or local proxy types.

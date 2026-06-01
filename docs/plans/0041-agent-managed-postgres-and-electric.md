@@ -117,7 +117,7 @@ internal/agent/*
 cmd/onlava/dev_supervisor.go
 cmd/onlava/psql.go
 cmd/onlava/dashboard.go
-cmd/onlava/mcp.go
+cmd/onlava/removed-agent-transport.go
 docs/schemas/onlava.config.v1.schema.json
 ```
 

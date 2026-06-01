@@ -136,7 +136,7 @@ func normalizeStandardConfig(config StandardConfig) StandardConfig {
 		config.GoogleOAuth.ClientSecretEnv = "GoogleOAuthClientSecret"
 	}
 	if strings.TrimSpace(config.DevBootstrap.DefaultUserID) == "" {
-		config.DevBootstrap.DefaultUserID = "dev-mcp"
+		config.DevBootstrap.DefaultUserID = "dev-user"
 	}
 	if strings.TrimSpace(config.DevBootstrap.DefaultTenantID) == "" {
 		config.DevBootstrap.DefaultTenantID = "00000000-0000-0000-0000-000000000001"

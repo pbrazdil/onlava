@@ -30,7 +30,6 @@ type Config struct {
 	Workspace         string
 	APIHost           string
 	ConsoleHost       string
-	MCPHost           string
 	TemporalHost      string
 	GrafanaHost       string
 	Frontends         []FrontendConfig
@@ -55,13 +54,11 @@ type FrontendConfig struct {
 type Routes struct {
 	APIHost      string
 	ConsoleHost  string
-	MCPHost      string
 	TemporalHost string
 	GrafanaHost  string
 	Frontends    map[string]FrontendRoute
 	APIURL       string
 	ConsoleURL   string
-	MCPBaseURL   string
 	TemporalURL  string
 	GrafanaURL   string
 }
@@ -215,8 +212,8 @@ func Start(cfg Config) (*Proxy, error) {
 	if routes.APIHost == "" {
 		return nil, fmt.Errorf("local proxy requires an API host or workspace label")
 	}
-	if cfg.DashboardUpstream != "" && (routes.ConsoleHost == "" || routes.MCPHost == "") {
-		return nil, fmt.Errorf("local proxy requires console and mcp hosts when dashboard routing is enabled")
+	if cfg.DashboardUpstream != "" && routes.ConsoleHost == "" {
+		return nil, fmt.Errorf("local proxy requires a console host when dashboard routing is enabled")
 	}
 	for _, frontend := range cfg.Frontends {
 		if frontend.Upstream != "" && frontend.Host == "" {
@@ -363,18 +360,10 @@ func ConsoleAppURL(routes Routes, appID string) string {
 	return routes.ConsoleURL + "/" + url.PathEscape(appID)
 }
 
-func MCPSSEURL(routes Routes, appID string) string {
-	if routes.MCPBaseURL == "" {
-		return ""
-	}
-	return routes.MCPBaseURL + "/sse?appID=" + url.QueryEscape(appID)
-}
-
 func normalizeConfig(cfg Config) Config {
 	cfg.Workspace = sanitizeLabel(cfg.Workspace)
 	cfg.APIHost = normalizeHost(cfg.APIHost)
 	cfg.ConsoleHost = normalizeHost(cfg.ConsoleHost)
-	cfg.MCPHost = normalizeHost(cfg.MCPHost)
 	cfg.TemporalHost = normalizeHost(cfg.TemporalHost)
 	cfg.GrafanaHost = normalizeHost(cfg.GrafanaHost)
 	if cfg.HTTPPort <= 0 {
@@ -399,13 +388,11 @@ func normalizeConfig(cfg Config) Config {
 func routesFor(cfg Config) Routes {
 	apiHost := resolvedHost(cfg.APIHost, cfg.Workspace, "api")
 	consoleHost := resolvedHost(cfg.ConsoleHost, cfg.Workspace, "console")
-	mcpHost := resolvedHost(cfg.MCPHost, cfg.Workspace, "mcp")
 	temporalHost := resolvedHost(cfg.TemporalHost, cfg.Workspace, "temporal")
 	grafanaHost := resolvedHost(cfg.GrafanaHost, cfg.Workspace, "grafana")
 	routes := Routes{
 		APIHost:      apiHost,
 		ConsoleHost:  consoleHost,
-		MCPHost:      mcpHost,
 		TemporalHost: temporalHost,
 		GrafanaHost:  grafanaHost,
 		Frontends:    map[string]FrontendRoute{},
@@ -416,9 +403,6 @@ func routesFor(cfg Config) Routes {
 	if cfg.DashboardUpstream != "" {
 		if consoleHost != "" {
 			routes.ConsoleURL = hostURL(consoleHost, cfg.HTTPSPort)
-		}
-		if mcpHost != "" {
-			routes.MCPBaseURL = hostURL(mcpHost, cfg.HTTPSPort)
 		}
 	}
 	if cfg.TemporalUpstream != "" && temporalHost != "" {

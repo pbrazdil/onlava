@@ -1,6 +1,6 @@
 # onlava Agent Guide
 
-This guide is for AI agents using onlava or changing onlava. It explains how to combine repo-local instructions, the installable skill, CLI JSON, MCP, onlava capabilities, and app-local instructions.
+This guide is for AI agents using onlava or changing onlava. It explains how to combine repo-local instructions, the installable skill, CLI JSON, onlava capabilities, and app-local instructions.
 
 For exact command grammar and schemas, use `docs/local-contract.md`. For app recipes, use `docs/app-development-cookbook.md`. For onlava repo edits, `AGENTS.md` is the first file to read.
 
@@ -77,7 +77,7 @@ Use `onlava inspect docs --json` when the binary is available. It reports indexe
 Keep these layers synchronized when behavior changes:
 
 - CLI grammar and JSON contracts: `docs/local-contract.md`, schemas, tests.
-- Agent workflows and MCP: `docs/agent-guide.md`, `AGENTS.md`, `SKILL.md`.
+- Agent workflows: `docs/agent-guide.md`, `AGENTS.md`, `SKILL.md`.
 - Human overview: `README.md`.
 - App recipes: `docs/app-development-cookbook.md`.
 - Environment variables: `docs/environment.md` for humans and `docs/environment.registry.json` for the self-harness contract.
@@ -131,7 +131,7 @@ No. The skill is necessary shared context, but it is intentionally generic.
 
 Use three layers in client apps such as `github.com/pbrazdil/onlv`:
 
-1. **Installable onlava skill** for the onlava app model, CLI, MCP, validation, and generated client workflow.
+1. **Installable onlava skill** for the onlava app model, CLI, validation, and generated client workflow.
 2. **App-local `AGENTS.md`** for app root, frontend roots, generated output paths, required environment names, test commands, UI conventions, product invariants, and deployment assumptions.
 3. **Machine-readable onlava commands** for the current app shape: `onlava inspect ... --json`.
 
@@ -170,43 +170,16 @@ Use non-JSON output only for human inspection.
 
 ## Runtime Command Choice
 
-- Use `onlava dev` to run the app session and expose capabilities for local development, debugging, agents, dashboard, MCP, logs, traces, metrics, managed dev services, and frontend routing.
+- Use `onlava dev` to run the app session and expose capabilities for local development, debugging, agents, dashboard, logs, traces, metrics, managed dev services, and frontend routing.
 - Use `onlava dev --detach` when the local agent should keep the dev session running.
 - Use `onlava attach` to follow a current detached or agent session.
 - Use `onlava down` to stop a session; add `--db`, `--state`, or `--all` only when destructive cleanup is intended.
-- Use `onlava serve` for headless API-role execution. Do not expect dashboard, MCP, proxy, watch mode, or dev/admin endpoints.
+- Use `onlava serve` for headless API-role execution. Do not expect dashboard, proxy, watch mode, or dev/admin endpoints.
 - Use `onlava worker` for worker-role execution of native Temporal workers and cron.
 - Use `onlava build` for a deployable binary artifact.
 - Use `onlava generate` for configured file-producing generators. It is separate from `onlava db sync`, which can mutate the configured development database before refreshing dependent SQLC artifacts.
 - Use `onlava run list`, `onlava run inspect <domain>:<script>`, and `onlava run <domain>:<script>` for app-local operational scripts. Script flags appear before the target.
 - Use `onlava task run <name>` only for repo-local workflows that are not core onlava lifecycle commands.
-
-## MCP For Agents
-
-`onlava dev` exposes MCP as an app-session capability. The startup banner prints the `MCP SSE URL`. With the local agent router active, session manifests also expose a session-scoped MCP route.
-
-Use MCP for interactive local app inspection through the dev runtime. It is useful when a dev session is already running and the agent host supports MCP.
-
-Current tool surface from `cmd/onlava/mcp.go`:
-
-| Tool | Use |
-| --- | --- |
-| `get_services` | List services and endpoints from dashboard metadata. |
-| `get_middleware` | List registered middleware. |
-| `get_auth_handlers` | List auth handler metadata. |
-| `get_cronjobs` | List cron jobs from metadata. |
-| `call_endpoint` | Invoke an onlava endpoint through the local dev runtime. |
-| `get_traces` | List recent trace summaries. |
-| `get_trace_spans` | Fetch spans/events for trace IDs. |
-| `get_databases` | Describe the discovered PostgreSQL database with redacted URL. |
-| `query_database` | Run SQL against the discovered development database. |
-| `get_metadata` | Return the dashboard metadata snapshot. |
-| `get_src_files` | Read selected source files from the active app root. |
-| `get_secrets` | List referenced environment names and availability. |
-
-Unsupported compatibility stubs may appear for storage, cache, metrics, and docs. Treat a `{ "supported": false }` tool result as a hard no-op, not as a failure of the app.
-
-Use CLI JSON rather than MCP for CI, release gates, code review evidence, and durable artifacts. MCP is a session convenience surface; CLI JSON and schemas are the stable contract.
 
 ## Generated And Cache Artifacts
 
@@ -256,7 +229,7 @@ onlava gen client --lang typescript --output <frontend-or-package-path>/onlava-c
 
 Client apps should commit generated clients only if that is their established workflow. If committed, app-local `AGENTS.md` must state the output path and require regeneration after endpoint or wire changes.
 
-MCP is not a replacement for generated clients. MCP is for agents and development tooling; generated clients are for application code.
+Generated clients are the application-code integration surface. Agents should use CLI JSON and dashboard APIs for inspection and debugging.
 
 ## Environment
 
@@ -324,7 +297,7 @@ When adding or changing an agent-facing behavior, include one of these updates i
 
 - Update `SKILL.md` when an app agent needs to know the behavior.
 - Update `AGENTS.md` when an onlava-repo agent needs to obey the behavior.
-- Update this guide when the behavior affects MCP, client-app integration, or cross-repo agent workflows.
+- Update this guide when the behavior affects client-app integration or cross-repo agent workflows.
 - Update `docs/local-contract.md` when the behavior affects CLI grammar, JSON schemas, artifact paths, or stability status.
 - Update `docs/knowledge.json` when adding or materially changing indexed docs.
 

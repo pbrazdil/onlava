@@ -58,7 +58,6 @@ func startStandaloneDev(ctx context.Context, cfg runtime.AppConfig) (runtime.Sta
 			routes := proxy.Routes()
 			info.APIURL = routes.APIURL
 			info.ConsoleURL = routes.ConsoleURL
-			info.MCPBaseURL = routes.MCPBaseURL
 			info.FrontendURLs = standaloneFrontendURLs(routes)
 		}
 	}
@@ -82,7 +81,6 @@ func startLocalHTTPSProxy(cfg runtime.AppConfig) (*localproxy.Proxy, error) {
 		Workspace:         workspace,
 		APIHost:           cfg.ProxyAPIHost,
 		ConsoleHost:       cfg.ProxyConsoleHost,
-		MCPHost:           cfg.ProxyMCPHost,
 		TemporalHost:      cfg.ProxyTemporalHost,
 		GrafanaHost:       cfg.ProxyGrafanaHost,
 		APIUpstream:       cfg.ListenAddr,

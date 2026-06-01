@@ -44,6 +44,21 @@ var forbiddenSourceImports = map[string]string{
 	"github.com/charmbracelet/lipgloss":   "onlava terminal styling uses internal/termstyle instead of a UI framework dependency.",
 }
 
+var removedAgentTransportTerms = []string{
+	"m" + "cp",
+	"r" + "m" + "cp",
+	"model context" + " protocol",
+	"m" + "cp_host",
+	"m" + "cpservers",
+	"m" + "cp_servers",
+	"experimental_use_r" + "m" + "cp_client",
+	"chrome-devtools-" + "m" + "cp",
+	"sse" + "?appid",
+}
+
+var removedAgentTransportToken = "m" + "cp"
+var removedAgentTransportTokenWithPrefix = "r" + removedAgentTransportToken
+
 type packageLayerRule struct {
 	Name             string
 	PathPrefixes     []string
@@ -196,7 +211,7 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 			return nil
 		}
 		ext := filepath.Ext(rel)
-		if !slices.Contains([]string{".go", ".ts", ".tsx", ".md"}, ext) {
+		if !slices.Contains([]string{".go", ".ts", ".tsx", ".md", ".json"}, ext) {
 			return nil
 		}
 		summary.CheckedFiles++
@@ -204,7 +219,7 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 		if err != nil {
 			return err
 		}
-		if lineCount >= architectureErrorLines && !architectureAllowsLongMarkdown(rel) {
+		if lineCount >= architectureErrorLines && !architectureAllowsLongFile(rel) {
 			summary.LargeFiles++
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
@@ -213,7 +228,7 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 				Message:         fmt.Sprintf("file has %d lines, over hard limit %d", lineCount, architectureErrorLines),
 				SuggestedAction: "Split the file before adding more behavior.",
 			})
-		} else if lineCount >= architectureWarnLines && !architectureAllowsLongMarkdown(rel) {
+		} else if lineCount >= architectureWarnLines && !architectureAllowsLongFile(rel) {
 			summary.LargeFiles++
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
@@ -231,14 +246,75 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 			}
 			diagnostics = append(diagnostics, importDiagnostics...)
 		}
+		diagnostics = append(diagnostics, checkRemovedAgentTransportTerms(path, rel)...)
 		return nil
 	})
 	return diagnostics, err
 }
 
-func architectureAllowsLongMarkdown(rel string) bool {
+func checkRemovedAgentTransportTerms(path, rel string) []checkDiagnostic {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(string(data), "\n")
+	var diagnostics []checkDiagnostic
+	for index, line := range lines {
+		lower := strings.ToLower(line)
+		for _, term := range removedAgentTransportTerms {
+			if containsRemovedAgentTransportTerm(lower, term) {
+				diagnostics = append(diagnostics, checkDiagnostic{
+					Stage:           "architecture checks",
+					Severity:        "error",
+					File:            filepath.ToSlash(path),
+					Line:            index + 1,
+					Message:         "text references removed agent transport",
+					SuggestedAction: "Delete the reference or rewrite the workflow to use onlava inspect/status/logs/db/run/check commands.",
+				})
+				break
+			}
+		}
+	}
+	return diagnostics
+}
+
+func containsRemovedAgentTransportTerm(line, term string) bool {
+	if term == removedAgentTransportToken || term == removedAgentTransportTokenWithPrefix {
+		offset := 0
+		for {
+			relative := strings.Index(line[offset:], term)
+			if relative < 0 {
+				return false
+			}
+			start := offset + relative
+			end := start + len(term)
+			if isTokenBoundary(line, start-1) && isTokenBoundary(line, end) {
+				return true
+			}
+			if end >= len(line) {
+				return false
+			}
+			offset = start + 1
+		}
+	}
+	return strings.Contains(line, term)
+}
+
+func isTokenBoundary(line string, index int) bool {
+	if index < 0 || index >= len(line) {
+		return true
+	}
+	ch := line[index]
+	return !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '_')
+}
+
+func architectureAllowsLongFile(rel string) bool {
 	rel = filepath.ToSlash(rel)
-	if filepath.Ext(rel) != ".md" {
+	switch filepath.Ext(rel) {
+	case ".json":
+		return true
+	case ".md":
+	default:
 		return false
 	}
 	if rel == "docs/plans/active.md" || rel == "docs/plans/completed.md" {
@@ -388,6 +464,11 @@ func architectureSkipDir(rel string) bool {
 	rel = filepath.ToSlash(rel)
 	if rel == "." {
 		return false
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if part == ".onlava" {
+			return true
+		}
 	}
 	for _, prefix := range []string{
 		".git",

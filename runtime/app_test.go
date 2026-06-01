@@ -16,7 +16,6 @@ func TestPrintRuntimeBanner(t *testing.T) {
 	printRuntimeBanner(&out, "127.0.0.1:4000", StandaloneDevInfo{
 		APIURL:     "https://api.test.localhost",
 		ConsoleURL: "https://console.test.localhost",
-		MCPBaseURL: "https://mcp.test.localhost",
 		FrontendURLs: map[string]string{
 			"web": "https://web.test.localhost",
 		},
@@ -29,8 +28,6 @@ func TestPrintRuntimeBanner(t *testing.T) {
 		"https://api.test.localhost",
 		"Development Dashboard URL:",
 		"https://console.test.localhost",
-		"MCP SSE URL:",
-		"https://mcp.test.localhost/sse?appID=testapp",
 		"Frontend web URL:",
 		"https://web.test.localhost",
 	} {

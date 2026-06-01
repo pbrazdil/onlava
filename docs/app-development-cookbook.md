@@ -401,7 +401,6 @@ Use `.onlava.json` proxy config:
     "workspace": "acme",
     "api_host": "api.acme.localhost",
     "console_host": "console.acme.localhost",
-    "mcp_host": "mcp.acme.localhost",
     "frontends": {
       "app": {
         "host": "app.acme.localhost",

@@ -249,14 +249,8 @@ func TestPrepareDevAgentSessionDefaultsToUnixBackend(t *testing.T) {
 	if _, ok := session.Backends[localagent.RouteDashboard]; ok {
 		t.Fatalf("session dashboard backend should not be visible when the agent dashboard is active: %+v", session.Backends)
 	}
-	if _, ok := session.Backends[localagent.RouteMCP]; ok {
-		t.Fatalf("session MCP backend should not be visible when the agent dashboard is active: %+v", session.Backends)
-	}
 	if route := session.Routes[localagent.RouteDashboard]; !strings.Contains(route, "console.onlava.localhost") || !strings.Contains(route, "/s/"+session.SessionID) {
 		t.Fatalf("session dashboard route = %q", route)
-	}
-	if route := session.Routes[localagent.RouteMCP]; !strings.Contains(route, "mcp."+session.SessionID+".onlava.localhost") {
-		t.Fatalf("session MCP route = %q", route)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")); err != nil {
 		t.Fatalf("session manifest missing: %v", err)

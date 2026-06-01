@@ -129,9 +129,6 @@ func TestRoutesFor(t *testing.T) {
 	if routes.ConsoleURL != "https://console.acme.localhost:9443" {
 		t.Fatalf("ConsoleURL = %q", routes.ConsoleURL)
 	}
-	if routes.MCPBaseURL != "https://mcp.acme.localhost:9443" {
-		t.Fatalf("MCPBaseURL = %q", routes.MCPBaseURL)
-	}
 	if routes.TemporalURL != "https://temporal.acme.localhost:9443" {
 		t.Fatalf("TemporalURL = %q", routes.TemporalURL)
 	}
@@ -144,9 +141,6 @@ func TestRoutesFor(t *testing.T) {
 	if got := ConsoleAppURL(routes, "demoapp-dev"); got != "https://console.acme.localhost:9443/demoapp-dev" {
 		t.Fatalf("ConsoleAppURL = %q", got)
 	}
-	if got := MCPSSEURL(routes, "demoapp-dev"); got != "https://mcp.acme.localhost:9443/sse?appID=demoapp-dev" {
-		t.Fatalf("MCPSSEURL = %q", got)
-	}
 }
 
 func TestRoutesForExplicitHosts(t *testing.T) {
@@ -155,7 +149,6 @@ func TestRoutesForExplicitHosts(t *testing.T) {
 	routes := routesFor(Config{
 		APIHost:           "api.custom.localhost",
 		ConsoleHost:       "console.custom.localhost",
-		MCPHost:           "mcp.custom.localhost",
 		TemporalHost:      "temporal.custom.localhost",
 		GrafanaHost:       "grafana.custom.localhost",
 		APIUpstream:       "127.0.0.1:4000",
@@ -172,9 +165,6 @@ func TestRoutesForExplicitHosts(t *testing.T) {
 	}
 	if routes.ConsoleURL != "https://console.custom.localhost:9443" {
 		t.Fatalf("ConsoleURL = %q", routes.ConsoleURL)
-	}
-	if routes.MCPBaseURL != "https://mcp.custom.localhost:9443" {
-		t.Fatalf("MCPBaseURL = %q", routes.MCPBaseURL)
 	}
 	if routes.TemporalURL != "https://temporal.custom.localhost:9443" {
 		t.Fatalf("TemporalURL = %q", routes.TemporalURL)
@@ -207,7 +197,6 @@ func TestRouteTableIncludesExpectedHosts(t *testing.T) {
 	want := []proxyRoute{
 		{host: "api.acme.localhost", upstream: "127.0.0.1:4000"},
 		{host: "console.acme.localhost", upstream: "127.0.0.1:9401"},
-		{host: "mcp.acme.localhost", upstream: "127.0.0.1:9401"},
 		{host: "temporal.acme.localhost", upstream: "127.0.0.1:8233"},
 		{host: "grafana.acme.localhost", upstream: "127.0.0.1:10429"},
 		{host: "blog.acme.localhost", path: "/__onlava/config", upstream: "127.0.0.1:4000"},
@@ -243,7 +232,6 @@ func TestCertificateSubjects(t *testing.T) {
 	want := []string{
 		"api.acme.localhost",
 		"console.acme.localhost",
-		"mcp.acme.localhost",
 		"temporal.acme.localhost",
 		"grafana.acme.localhost",
 		"blog.acme.localhost",
@@ -275,7 +263,7 @@ func TestStartRejectsInvalidConfig(t *testing.T) {
 		{
 			name: "missing dashboard hosts",
 			cfg:  Config{APIHost: "api.custom.localhost", APIUpstream: "127.0.0.1:4000", DashboardUpstream: "127.0.0.1:9401"},
-			want: "local proxy requires console and mcp hosts when dashboard routing is enabled",
+			want: "local proxy requires a console host when dashboard routing is enabled",
 		},
 		{
 			name: "missing frontend host",
@@ -432,10 +420,6 @@ func TestProxyRoutesAndRedirects(t *testing.T) {
 	consoleEcho := getEcho(t, client, fmt.Sprintf("https://console.acme.localhost:%d/dashboard", httpsPort))
 	if consoleEcho.Server != "dashboard" || consoleEcho.Host != fmt.Sprintf("console.acme.localhost:%d", httpsPort) {
 		t.Fatalf("console echo = %+v", consoleEcho)
-	}
-	mcpEcho := getEcho(t, client, fmt.Sprintf("https://mcp.acme.localhost:%d/sse", httpsPort))
-	if mcpEcho.Server != "dashboard" || mcpEcho.Host != fmt.Sprintf("mcp.acme.localhost:%d", httpsPort) {
-		t.Fatalf("mcp echo = %+v", mcpEcho)
 	}
 	temporalEcho := getEcho(t, client, fmt.Sprintf("https://temporal.acme.localhost:%d/namespaces/default/workflows", httpsPort))
 	if temporalEcho.Server != "temporal" || temporalEcho.Host != fmt.Sprintf("temporal.acme.localhost:%d", httpsPort) {

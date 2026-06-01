@@ -26,6 +26,6 @@ coverage.out
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
-.playwright-mcp/
+.playwright-*/
 .onlava/
 .codex-tmp/

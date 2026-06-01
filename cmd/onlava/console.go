@@ -28,7 +28,6 @@ type runConsole struct {
 type runURLs struct {
 	API       string
 	Dashboard string
-	MCP       string
 	Frontends map[string]string
 	Temporal  string
 	Victoria  map[string]string
@@ -161,7 +160,6 @@ func (c *runConsole) Banner(urls runURLs) {
 	}
 	c.printf(c.out, "  %-*s  %s\n", width, "Your API is running at:", urls.API)
 	c.printf(c.out, "  %-*s  %s\n", width, "Development Dashboard URL:", urls.Dashboard)
-	c.printf(c.out, "  %-*s  %s\n", width, "MCP SSE URL:", urls.MCP)
 	for _, name := range sortedKeys(urls.Frontends) {
 		c.printf(c.out, "  %-*s  %s\n", width, frontendLabel(name), urls.Frontends[name])
 	}
@@ -235,7 +233,6 @@ func runURLData(urls runURLs, verbose bool) map[string]any {
 	data := map[string]any{
 		"api_url":       urls.API,
 		"dashboard_url": urls.Dashboard,
-		"mcp_url":       urls.MCP,
 		"frontend_urls": urls.Frontends,
 	}
 	if urls.Temporal != "" {

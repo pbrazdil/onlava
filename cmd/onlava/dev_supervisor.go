@@ -1364,16 +1364,6 @@ func (s *devSupervisor) dashboardURL() string {
 	return "http://" + devdash.ListenAddr() + "/" + url.PathEscape(s.activeAppID())
 }
 
-func (s *devSupervisor) mcpURL() string {
-	if s.proxy != nil && s.proxy.Routes().MCPBaseURL != "" {
-		return localproxy.MCPSSEURL(s.proxy.Routes(), s.activeAppID())
-	}
-	if s.agentSession != nil && s.agentSession.Routes[localagent.RouteMCP] != "" {
-		return appendURLQuery(s.agentSession.Routes[localagent.RouteMCP], "appID", s.activeAppID())
-	}
-	return "http://" + devdash.ListenAddr() + "/sse?appID=" + url.QueryEscape(s.activeAppID())
-}
-
 func (s *devSupervisor) temporalURL() string {
 	if s.proxy != nil && s.proxy.Routes().TemporalURL != "" {
 		return s.proxy.Routes().TemporalURL
@@ -1655,7 +1645,6 @@ func (s *devSupervisor) plannedGrafanaPublicURL() string {
 		Workspace:         workspace,
 		APIHost:           s.cfg.Proxy.APIHost,
 		ConsoleHost:       s.cfg.Proxy.ConsoleHost,
-		MCPHost:           s.cfg.Proxy.MCPHost,
 		TemporalHost:      s.cfg.Proxy.TemporalHost,
 		GrafanaHost:       s.cfg.Proxy.GrafanaHost,
 		APIUpstream:       s.addr,
@@ -1732,7 +1721,6 @@ func (s *devSupervisor) startLocalProxy() error {
 		Workspace:         workspace,
 		APIHost:           s.cfg.Proxy.APIHost,
 		ConsoleHost:       s.cfg.Proxy.ConsoleHost,
-		MCPHost:           s.cfg.Proxy.MCPHost,
 		TemporalHost:      s.cfg.Proxy.TemporalHost,
 		GrafanaHost:       s.cfg.Proxy.GrafanaHost,
 		APIUpstream:       s.addr,
@@ -1813,7 +1801,7 @@ func frontendURLsFromAgentRoutes(routes map[string]string, frontends map[string]
 	} else {
 		for name, value := range routes {
 			switch name {
-			case localagent.RouteAPI, localagent.RouteDashboard, localagent.RouteGrafana, localagent.RouteMCP, localagent.RouteTemporal:
+			case localagent.RouteAPI, localagent.RouteDashboard, localagent.RouteGrafana, localagent.RouteTemporal:
 				continue
 			}
 			if strings.TrimSpace(value) == "" {
@@ -1837,7 +1825,6 @@ func (s *devSupervisor) runURLs() runURLs {
 	return runURLs{
 		API:       s.apiURL(),
 		Dashboard: s.dashboardURL(),
-		MCP:       s.mcpURL(),
 		Frontends: s.frontendURLs(),
 		Temporal:  s.temporalURL(),
 		Victoria:  s.victoria.URLs(),

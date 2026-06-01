@@ -72,6 +72,11 @@ reuse IDs; this list can still be ordered by current priority.
   - Owner: onlava runtime / Temporal
   - Created: 2026-05-27
   - Focus: domain-local TypeScript Temporal activities, generated worker runtime files, external Go activity declarations, and validation.
+- [0062 Remove Legacy Agent Transport](0062-remove-legacy-agent-transport.md)
+  - Status: active
+  - Owner: onlava runtime / agent DX
+  - Created: 2026-06-01
+  - Focus: remove the obsolete agent transport surface from config, routing, dashboard, tests, docs, and self-harness checks.
 
 ## Agent-Friendly Local Runtime
 

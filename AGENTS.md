@@ -17,7 +17,7 @@ Use the narrowest current source of truth that applies:
 
 1. `AGENTS.md` gives repo-local rules for changing onlava itself.
 2. `SKILL.md` is the installable skill for agents working inside any onlava app.
-3. `docs/agent-guide.md` explains agent workflows, MCP, generated artifacts, and client-app integration.
+3. `docs/agent-guide.md` explains agent workflows, generated artifacts, and client-app integration.
 4. `docs/local-contract.md` is the contract for CLI grammar, JSON schemas, artifact paths, and stability labels.
 5. `docs/app-development-cookbook.md` gives practical app-building recipes.
 6. `onlava inspect ... --json`, schemas under `docs/schemas/`, and harness command outputs are stronger than old prose when they disagree. Generated files under `.onlava/gen/` are cache, not an API.
@@ -33,7 +33,7 @@ onlava is a Go-native service runtime and local development platform. Think in a
 - `onlava serve` builds once and starts a headless API-role runtime.
 - `onlava run <domain>:<script>` runs an app-local operational script.
 - `onlava worker` builds once and starts a worker-role runtime for cron and native Temporal workers.
-- `onlava dev` starts the app session: supervised app process, file watching, dashboard, API explorer, MCP, logs, traces, metrics, managed dev services, and optional frontend routing.
+- `onlava dev` starts the app session: supervised app process, file watching, dashboard, API explorer, logs, traces, metrics, managed dev services, and optional frontend routing.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and must be called through generated helpers.
 - Typed endpoints decode path/query/header/cookie/body inputs into Go values and encode typed responses.
 - Generated internal calls preserve route, private access, auth context, tracing, and error semantics.
@@ -106,24 +106,14 @@ onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path
 onlava db psql|reset|drop|snapshot [--app-root <path>]
 ```
 
-`onlava dev` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, MCP, session routing, and managed dev services. `onlava serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, MCP, proxy, or watch behavior. `onlava run` is for operational scripts.
-
-## MCP Guidance
-
-MCP is a development-session capability exposed by `onlava dev`, not a production API.
-
-Agents should use MCP for interactive local app work when a dev session is already running, especially for service metadata, endpoint calls through the local runtime, recent traces, trace spans, and development database inspection.
-
-`onlava dev` prints the `MCP SSE URL`; with the agent router active, session manifests also expose a session-scoped MCP route. Treat transport, dashboard store, and routing details as substrate unless you are debugging MCP itself. For stable CI, release, and code-review automation, prefer `onlava inspect ... --json`, `onlava logs --jsonl`, schemas, and harness outputs.
-
-Keep MCP docs in sync with `cmd/onlava/mcp.go` and `docs/agent-guide.md`.
+`onlava dev` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, session routing, and managed dev services. `onlava serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `onlava run` is for operational scripts.
 
 ## Documentation Update Rules
 
 When changing behavior, update all affected layers in one change:
 
 - `docs/local-contract.md` for CLI grammar, JSON schemas, artifact paths, and stability semantics.
-- `docs/agent-guide.md` for agent workflows, MCP, and client-app integration.
+- `docs/agent-guide.md` for agent workflows and client-app integration.
 - `SKILL.md` for concise portable instructions used inside target apps.
 - `README.md` for human-facing overview and install/run examples.
 - `docs/app-development-cookbook.md` for practical app recipes.
@@ -193,7 +183,7 @@ Client apps should keep a small app-local `AGENTS.md` that records only app-spec
 - frontend roots and generated client output paths
 - required local environment names without values
 - standard validation commands for that app
-- whether agents should use `onlava dev --detach`, MCP, generated TypeScript client, or direct CLI JSON
+- whether agents should use `onlava dev --detach`, generated TypeScript client, or direct CLI JSON
 - product/domain invariants that onlava cannot know
 
 Do not copy the whole onlava skill into the client app. Keep the shared onlava behavior in `SKILL.md` and the app-specific policy in the client's `AGENTS.md`.

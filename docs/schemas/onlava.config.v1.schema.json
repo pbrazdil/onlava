@@ -16,7 +16,6 @@
         "workspace": { "type": "string" },
         "api_host": { "type": "string" },
         "console_host": { "type": "string" },
-        "mcp_host": { "type": "string" },
         "temporal_host": { "type": "string" },
         "grafana_host": { "type": "string" },
         "frontends": {

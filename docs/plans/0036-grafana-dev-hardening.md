@@ -366,7 +366,7 @@ Companion app note for `/Users/petrbrazdil/Repos/onlv`: if local proxy Grafana i
     "workspace": "onlv",
     "api_host": "api.onlv.localhost",
     "console_host": "console.onlv.localhost",
-    "mcp_host": "mcp.onlv.localhost",
+    "legacy_agent_transport_host": "removed-agent-transport.onlv.localhost",
     "grafana_host": "grafana.onlv.localhost"
   }
 }

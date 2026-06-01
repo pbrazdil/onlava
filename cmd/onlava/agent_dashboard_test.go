@@ -153,7 +153,7 @@ func TestAgentDashboardControllerMarksMissingRegistrySessionOffline(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Routes[localagent.RouteAPI] == "" || status.Routes[localagent.RouteDashboard] == "" || status.Routes[localagent.RouteMCP] == "" {
+	if status.Routes[localagent.RouteAPI] == "" || status.Routes[localagent.RouteDashboard] == "" {
 		t.Fatalf("live status routes missing user-facing entries: %+v", status.Routes)
 	}
 	if _, ok := status.Routes["victoria"]; ok {

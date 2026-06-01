@@ -6,7 +6,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 `docs/PRD-5-agent.md` calls for one machine-local daemon/router and one dashboard. The current PRD-5 implementation has an agent router and hidden session dashboard backends, but `onlava dev` still starts a dashboard server per attached worktree and the agent mainly routes browser traffic to those per-session servers.
 
-After this work, the local agent owns the dashboard HTTP surface and dashboard store, `console.onlava.localhost` is a true global dashboard, and `/s/<session_id>` selects session context inside that global UI. Per-session app processes continue to report status, logs, traces, metrics, and MCP data through the same JSON contracts, but the visible dashboard process no longer belongs to one worktree.
+After this work, the local agent owns the dashboard HTTP surface and dashboard store, `console.onlava.localhost` is a true global dashboard, and `/s/<session_id>` selects session context inside that global UI. Per-session app processes continue to report status, logs, traces, metrics, and removed agent transport data through the same JSON contracts, but the visible dashboard process no longer belongs to one worktree.
 
 ## Progress
 
@@ -29,7 +29,7 @@ Record implementation findings here with commands, test output, or file referenc
 
 * 2026-05-27: The dashboard HTTP handlers can be reused by the agent once they depend on a small controller interface instead of directly reaching through `devSupervisor`. The agent command now starts one private dashboard backend and the agent router sends `console.onlava.localhost` traffic to it.
 
-* 2026-05-27: `onlava dev` no longer starts or registers a per-session dashboard/MCP backend on the normal active-agent path. Runtime reports post to the agent dashboard route with a per-session report token carried over the Unix-socket control API and omitted from session manifests.
+* 2026-05-27: `onlava dev` no longer starts or registers a per-session dashboard/removed agent transport backend on the normal active-agent path. Runtime reports post to the agent dashboard route with a per-session report token carried over the Unix-socket control API and omitted from session manifests.
 
 ## Decision Log
 
@@ -44,7 +44,7 @@ Completed on 2026-05-27.
 Shipped outcome:
 
 * `onlava agent` now starts one private dashboard backend and the router sends `console.onlava.localhost/s/<session_id>` traffic to it.
-* `onlava dev` no longer starts or registers a per-session dashboard/MCP backend on the normal active-agent path. Runtime reports post to the agent dashboard route with a per-session report token carried over the Unix-socket control API and omitted from manifests.
+* `onlava dev` no longer starts or registers a per-session dashboard/removed agent transport backend on the normal active-agent path. Runtime reports post to the agent dashboard route with a per-session report token carried over the Unix-socket control API and omitted from manifests.
 * The dashboard store lives under the agent directory when the agent is active and stores session-addressable app records so multiple worktrees for one base app can be listed independently.
 * Direct/per-session dashboard behavior remains as fallback when the agent is disabled, unavailable, or an explicit local proxy needs the older upstream.
 
@@ -70,7 +70,7 @@ cmd/onlava/agent.go
 cmd/onlava/dashboard.go
 cmd/onlava/dashboard_rpc.go
 cmd/onlava/dev_supervisor.go
-cmd/onlava/mcp.go
+cmd/onlava/removed-agent-transport.go
 cmd/onlava/watch.go
 internal/agent/*
 internal/devdash/*
@@ -96,7 +96,7 @@ Milestone 3 starts one dashboard server from the agent command and registers it 
 
 Milestone 4 changes dev supervisors to report process and runtime events into the agent-owned dashboard store/server without owning a visible dashboard backend.
 
-Milestone 5 updates MCP/browser routing, docs, schemas, and harness coverage.
+Milestone 5 updates removed agent transport/browser routing, docs, schemas, and harness coverage.
 
 ## Plan of Work
 
@@ -153,4 +153,4 @@ docs/plans/0042-agent-global-dashboard.md
 
 No new external dependencies expected.
 
-The agent control socket remains protected by filesystem permissions. Browser and MCP routes are machine-local development surfaces and do not use an additional browser token.
+The agent control socket remains protected by filesystem permissions. Browser and removed agent transport routes are machine-local development surfaces and do not use an additional browser token.

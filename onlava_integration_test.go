@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	temporalclient "go.temporal.io/sdk/client"
 )
 
 var (
@@ -67,16 +69,13 @@ func shouldPrebuildOnlavaBinary() bool {
 		return true
 	}
 	for _, name := range []string{
-		"TestOnlavaServeBasicApp",
+		"TestOnlavaServeRuntimeMatrix",
 		"TestOnlavaServeStandardAuthDevBootstrap",
-		"TestOnlavaServeLoadsSecretsFromDotEnv",
 		"TestOnlavaServeProductionFailsForMissingSecrets",
 		"TestOnlavaServePopulatesSecretsBeforeTemporalPackageDeclarations",
-		"TestOnlavaServeInitializesServiceStructsAtStartup",
-		"TestOnlavaServeMiddlewareApp",
 		"TestOnlavaServeExecutesCronJobs",
 		"TestOnlavaBuiltBinaryIsHeadlessByDefault",
-		"TestOnlavaDevDashboardNotificationsAndMCP",
+		"TestOnlavaDevDashboardNotificationsAndRoutes",
 	} {
 		if re.MatchString(name) {
 			return true
@@ -85,11 +84,228 @@ func shouldPrebuildOnlavaBinary() bool {
 	return false
 }
 
-func TestOnlavaServeBasicApp(t *testing.T) {
+func TestOnlavaServeRuntimeMatrix(t *testing.T) {
 	t.Parallel()
 
 	repo := repoRoot(t)
-	appDir := cachedFixtureApp(t, repo, "basic")
+	appDir := cachedSyntheticApp(t, "serve-runtime-matrix", map[string]string{
+		"go.mod":       "module example.com/serveruntime\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repo + "\n",
+		".onlava.json": `{"name":"serveruntime"}`,
+		".env":         "ServiceSecret=service-secret\nHelperSecret=helper-secret\n",
+		"helper/helper.go": `package helper
+
+var secrets struct {
+	HelperSecret string
+}
+
+func Value() string {
+	return secrets.HelperSecret
+}
+`,
+		"globalmw/global.go": `package globalmw
+
+import "github.com/pbrazdil/onlava/middleware"
+
+//onlava:middleware global target=tag:global
+func AddHeader(req middleware.Request, next middleware.Next) middleware.Response {
+	resp := next(req)
+	resp.Header().Set("X-Global-Middleware", "true")
+	return resp
+}
+`,
+		"service/api.go": `package service
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"os"
+	"path/filepath"
+
+	"example.com/serveruntime/helper"
+
+	onlava "github.com/pbrazdil/onlava"
+	onlavaauth "github.com/pbrazdil/onlava/auth"
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/middleware"
+)
+
+var secrets struct {
+	ServiceSecret string
+}
+
+//onlava:service
+type Service struct {
+	Prefix string
+}
+
+func initService() (*Service, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".onlava-init.marker"), []byte("started"), 0o644); err != nil {
+		return nil, err
+	}
+	return &Service{Prefix: "hi"}, nil
+}
+
+type EchoRequest struct {
+	Title  string ` + "`query:\"title\"`" + `
+	Header string ` + "`header:\"X-Echo\"`" + `
+	Body   string ` + "`json:\"body\"`" + `
+}
+
+type EchoResponse struct {
+	Message string ` + "`json:\"message\"`" + `
+}
+
+//onlava:api public path=/echo/:name method=GET,POST
+func (s *Service) Echo(ctx context.Context, name string, req *EchoRequest) (*EchoResponse, error) {
+	return &EchoResponse{
+		Message: s.Prefix + " " + name + " " + req.Title + " " + req.Header + " " + req.Body,
+	}, nil
+}
+
+//onlava:api private
+func (s *Service) Secret(ctx context.Context) (*EchoResponse, error) {
+	return &EchoResponse{Message: "secret:" + s.Prefix}, nil
+}
+
+//onlava:api public
+func (s *Service) CallPrivate(ctx context.Context) (*EchoResponse, error) {
+	return s.Secret(ctx)
+}
+
+type AuthData struct {
+	Role string ` + "`json:\"role\"`" + `
+}
+
+//onlava:authhandler
+func (s *Service) AuthHandler(ctx context.Context, token string) (onlavaauth.UID, *AuthData, error) {
+	if token != "token123" {
+		return "", nil, errs.B().Code(errs.Unauthenticated).Msg("bad token").Err()
+	}
+	return "user-1", &AuthData{Role: "admin"}, nil
+}
+
+type AuthEchoResponse struct {
+	User string ` + "`json:\"user\"`" + `
+	Role string ` + "`json:\"role\"`" + `
+}
+
+//onlava:api auth
+func (s *Service) AuthEcho(ctx context.Context) (*AuthEchoResponse, error) {
+	userID, ok := onlavaauth.UserID()
+	if !ok {
+		return nil, errs.B().Code(errs.Unauthenticated).Msg("missing auth").Err()
+	}
+	data := onlavaauth.Data().(*AuthData)
+	return &AuthEchoResponse{User: string(userID), Role: data.Role}, nil
+}
+
+type StatusResponse struct {
+	Message string ` + "`json:\"message\"`" + `
+	Status  int    ` + "`onlava:\"httpstatus\"`" + `
+}
+
+//onlava:api public
+func (s *Service) CustomStatus(ctx context.Context) (*StatusResponse, error) {
+	return &StatusResponse{Message: "created", Status: 201}, nil
+}
+
+//onlava:api public raw path=/raw/*rest
+func (s *Service) Raw(w http.ResponseWriter, req *http.Request) {
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"path":   onlava.CurrentRequest().PathParams.Get("rest"),
+		"method": onlava.CurrentRequest().Method,
+	})
+}
+
+type SecretResponse struct {
+	Service string ` + "`json:\"service\"`" + `
+	Helper  string ` + "`json:\"helper\"`" + `
+}
+
+//onlava:api public path=/secrets method=GET
+func (s *Service) Secrets(ctx context.Context) (*SecretResponse, error) {
+	return &SecretResponse{
+		Service: secrets.ServiceSecret,
+		Helper:  helper.Value(),
+	}, nil
+}
+
+type ctxKey struct{}
+
+//onlava:middleware target=all
+func (s *Service) InjectContext(req middleware.Request, next middleware.Next) middleware.Response {
+	ctx := context.WithValue(req.Context(), ctxKey{}, "svc")
+	return next(req.WithContext(ctx))
+}
+
+//onlava:api public tag:ctx tag:global
+func (s *Service) Context(ctx context.Context) (*EchoResponse, error) {
+	value, _ := ctx.Value(ctxKey{}).(string)
+	return &EchoResponse{Message: value}, nil
+}
+
+//onlava:api private tag:rewrite
+func (s *Service) Private(ctx context.Context) (*EchoResponse, error) {
+	return &EchoResponse{Message: "handler"}, nil
+}
+
+//onlava:api public
+func (s *Service) MiddlewareCallPrivate(ctx context.Context) (*EchoResponse, error) {
+	return s.Private(ctx)
+}
+
+//onlava:api public tag:error
+func (s *Service) Error(ctx context.Context) error {
+	return nil
+}
+
+//onlava:api public raw path=/mw/raw/:id tag:raw
+func (s *Service) MiddlewareRaw(w http.ResponseWriter, req *http.Request) {
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"id": onlava.CurrentRequest().PathParams.Get("id"),
+	})
+}
+`,
+		"service/mw/mw.go": `package mw
+
+import (
+	service "example.com/serveruntime/service"
+
+	"github.com/pbrazdil/onlava/errs"
+	"github.com/pbrazdil/onlava/middleware"
+)
+
+//onlava:middleware target=tag:rewrite
+func Rewrite(req middleware.Request, next middleware.Next) middleware.Response {
+	resp := next(req)
+	payload := resp.Payload.(*service.EchoResponse)
+	payload.Message = "middleware:" + payload.Message
+	return resp
+}
+
+//onlava:middleware target=tag:error
+func Error(req middleware.Request, next middleware.Next) middleware.Response {
+	return middleware.Response{
+		Err: errs.B().Code(errs.Internal).Msg("middleware error").Err(),
+	}
+}
+
+//onlava:middleware target=tag:raw
+func RawHeader(req middleware.Request, next middleware.Next) middleware.Response {
+	resp := next(req)
+	resp.Header().Set("X-Raw-Middleware", "true")
+	return resp
+}
+`,
+	})
+	markerPath := filepath.Join(appDir, ".onlava-init.marker")
+	_ = os.Remove(markerPath)
+	t.Cleanup(func() { _ = os.Remove(markerPath) })
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
@@ -112,6 +328,7 @@ func TestOnlavaServeBasicApp(t *testing.T) {
 	defer killOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTP(t, "http://"+addr+"/service.CallPrivate")
+	waitForFile(t, markerPath)
 
 	postJSON(t, "http://"+addr+"/echo/Alice?title=Dr", map[string]string{"body": "body"}, map[string]string{"X-Echo": "hdr"}, http.StatusOK, map[string]any{"message": "hi Alice Dr hdr body"})
 	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
@@ -120,6 +337,18 @@ func TestOnlavaServeBasicApp(t *testing.T) {
 	getJSON(t, "http://"+addr+"/raw/alpha/beta", nil, http.StatusOK, map[string]any{"path": "alpha/beta", "method": "GET"})
 	assertCORSPreflight(t, "http://"+addr+"/service.AuthEcho")
 	assertCORSActual(t, "http://"+addr+"/service.AuthEcho")
+	getJSON(t, "http://"+addr+"/secrets", nil, http.StatusOK, map[string]any{
+		"service": "service-secret",
+		"helper":  "helper-secret",
+	})
+	assertJSONResponseWithHeaders(t, mustRequest(t, http.MethodGet, "http://"+addr+"/service.Context", nil), http.StatusOK, map[string]any{"message": "svc"}, map[string]string{
+		"X-Global-Middleware": "true",
+	})
+	getJSON(t, "http://"+addr+"/service.MiddlewareCallPrivate", nil, http.StatusOK, map[string]any{"message": "middleware:handler"})
+	getJSON(t, "http://"+addr+"/service.Error", nil, http.StatusInternalServerError, map[string]any{"code": "internal", "message": "middleware error"})
+	assertJSONResponseWithHeaders(t, mustRequest(t, http.MethodGet, "http://"+addr+"/mw/raw/alpha", nil), http.StatusOK, map[string]any{"id": "alpha"}, map[string]string{
+		"X-Raw-Middleware": "true",
+	})
 }
 
 func TestOnlavaServeStandardAuthDevBootstrap(t *testing.T) {
@@ -156,39 +385,6 @@ func TestOnlavaServeStandardAuthDevBootstrap(t *testing.T) {
 	getJSON(t, "http://"+addr+"/whoami", map[string]string{"Authorization": "Bearer " + token}, http.StatusOK, map[string]any{
 		"user_id":   "user-123",
 		"tenant_id": "00000000-0000-0000-0000-000000000123",
-	})
-}
-
-func TestOnlavaServeLoadsSecretsFromDotEnv(t *testing.T) {
-	t.Parallel()
-
-	repo := repoRoot(t)
-	appDir := cachedFixtureApp(t, repo, "secrets")
-	port := freePort(t)
-	addr := "127.0.0.1:" + port
-	dashAddr := "127.0.0.1:" + freePort(t)
-	cacheDir := sharedIntegrationCache(t)
-	binary := buildOnlavaBinary(t, repo)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	cmd.Stdin = nil
-	cmd.Dir = appDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start onlava serve: %v", err)
-	}
-	defer killOnlavaProcess(t, cancel, cmd)
-
-	waitForHTTP(t, "http://"+addr+"/secrets")
-	getJSON(t, "http://"+addr+"/secrets", nil, http.StatusOK, map[string]any{
-		"service": "service-secret",
-		"helper":  "helper-secret",
 	})
 }
 
@@ -315,105 +511,6 @@ func Concurrency(ctx context.Context) (*Response, error) {
 	})
 }
 
-func TestOnlavaServeInitializesServiceStructsAtStartup(t *testing.T) {
-	t.Parallel()
-
-	repo := repoRoot(t)
-	appDir := cachedSyntheticApp(t, "serviceinit", map[string]string{
-		"go.mod":       "module example.com/serviceinit\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repo + "\n",
-		".onlava.json": `{"name":"serviceinit"}`,
-		".env":         "# Fixture environment intentionally empty.\n",
-		"svc/api.go": `package svc
-
-import (
-	"context"
-	"os"
-	"path/filepath"
-)
-
-//onlava:service
-type Service struct{}
-
-func initService() (*Service, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(filepath.Join(cwd, ".onlava-init.marker"), []byte("started"), 0o644); err != nil {
-		return nil, err
-	}
-	return &Service{}, nil
-}
-
-//onlava:api public
-func (s *Service) Hello(ctx context.Context) error { return nil }
-`,
-	})
-	markerPath := filepath.Join(appDir, ".onlava-init.marker")
-	_ = os.Remove(markerPath)
-	t.Cleanup(func() { _ = os.Remove(markerPath) })
-
-	port := freePort(t)
-	addr := "127.0.0.1:" + port
-	dashAddr := "127.0.0.1:" + freePort(t)
-	cacheDir := sharedIntegrationCache(t)
-	binary := buildOnlavaBinary(t, repo)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	cmd.Stdin = nil
-	cmd.Dir = appDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start onlava serve: %v", err)
-	}
-	defer killOnlavaProcess(t, cancel, cmd)
-
-	waitForFile(t, markerPath)
-}
-
-func TestOnlavaServeMiddlewareApp(t *testing.T) {
-	t.Parallel()
-
-	repo := repoRoot(t)
-	appDir := cachedFixtureApp(t, repo, "middleware")
-	port := freePort(t)
-	addr := "127.0.0.1:" + port
-	dashAddr := "127.0.0.1:" + freePort(t)
-	cacheDir := sharedIntegrationCache(t)
-	binary := buildOnlavaBinary(t, repo)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	cmd.Stdin = nil
-	cmd.Dir = appDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start onlava serve: %v", err)
-	}
-	defer killOnlavaProcess(t, cancel, cmd)
-
-	waitForHTTP(t, "http://"+addr+"/service.Context")
-	assertJSONResponseWithHeaders(t, mustRequest(t, http.MethodGet, "http://"+addr+"/service.Context", nil), http.StatusOK, map[string]any{"message": "svc"}, map[string]string{
-		"X-Global-Middleware": "true",
-	})
-	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "middleware:handler"})
-	getJSON(t, "http://"+addr+"/service.Error", nil, http.StatusInternalServerError, map[string]any{"code": "internal", "message": "middleware error"})
-	assertJSONResponseWithHeaders(t, mustRequest(t, http.MethodGet, "http://"+addr+"/raw/alpha", nil), http.StatusOK, map[string]any{"id": "alpha"}, map[string]string{
-		"X-Raw-Middleware": "true",
-	})
-}
-
 func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	t.Parallel()
 
@@ -433,6 +530,8 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	commonEnv := []string{
 		"TEMPORAL_ADDRESS=" + temporalAddr,
 		"ONLAVA_BUILD_ID=test",
+		"ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX=onlava.cronapp",
+		"ONLAVA_TEMPORAL_DEPLOYMENT_NAME=onlava-cronapp",
 	}
 	apiEnv := append(onlavaServeEnv(repo, dashAddr, apiCacheDir), commonEnv...)
 	workerEnv := append(onlavaServeEnv(repo, dashAddr, workerCacheDir), commonEnv...)
@@ -469,7 +568,41 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	defer killOnlavaProcess(t, cancel, cmd)
 
 	waitForHTTPWithProcessOutput(t, "http://"+addr+"/cron/status", &apiOutput, &workerOutput)
+	startTemporalCronWorkflow(t, temporalAddr, "onlava-cronapp.cron.onlava-tick")
 	waitForCronStatus(t, "http://"+addr+"/cron/status")
+}
+
+type temporalCronInputForTest struct {
+	AppID                string
+	JobID                string
+	ActivityName         string
+	TaskQueue            string
+	ActivityStartToClose time.Duration
+	ActivityRetryPolicy  onlavaruntime.CronRetryPolicy
+}
+
+func startTemporalCronWorkflow(t *testing.T, temporalAddr, workflowID string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client, err := temporalclient.Dial(temporalclient.Options{HostPort: temporalAddr})
+	if err != nil {
+		t.Fatalf("dial temporal: %v", err)
+	}
+	defer client.Close()
+	_, err = client.ExecuteWorkflow(ctx, temporalclient.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: "onlava.cronapp.cron.go",
+	}, "onlava.cron.Invoke/v1", temporalCronInputForTest{
+		AppID:                "cronapp",
+		JobID:                "onlava-tick",
+		ActivityName:         "onlava.cron.onlava-tick/v1",
+		TaskQueue:            "onlava.cronapp.cron.go",
+		ActivityStartToClose: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("start temporal cron workflow %s: %v", workflowID, err)
+	}
 }
 
 func TestOnlavaBuiltBinaryIsHeadlessByDefault(t *testing.T) {
@@ -478,7 +611,7 @@ func TestOnlavaBuiltBinaryIsHeadlessByDefault(t *testing.T) {
 	repo := repoRoot(t)
 	appDir := cachedSyntheticApp(t, "headless", map[string]string{
 		"go.mod":       "module example.com/headless\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repo + "\n",
-		".onlava.json": `{"name":"headlessapp","proxy":{"api_host":"api.acme.localhost","console_host":"console.acme.localhost","mcp_host":"mcp.acme.localhost","frontends":{"web":{"host":"web.acme.localhost"}}}}`,
+		".onlava.json": `{"name":"headlessapp","proxy":{"api_host":"api.acme.localhost","console_host":"console.acme.localhost","frontends":{"web":{"host":"web.acme.localhost"}}}}`,
 		"svc/api.go": `package svc
 
 import "context"
@@ -541,7 +674,7 @@ func Ping(context.Context) (*Response, error) {
 	}
 }
 
-func TestOnlavaDevDashboardNotificationsAndMCP(t *testing.T) {
+func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	repo := repoRoot(t)
 	serviceSource := `package service
 
@@ -572,7 +705,7 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 `
 	appDir := cachedSyntheticApp(t, "devdashboard", map[string]string{
 		"go.mod":         "module example.com/devdashboard\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repo + "\n",
-		".onlava.json":   `{"name":"basicapp","proxy":{"workspace":"ignored","api_host":"api.acme.localhost","console_host":"console.acme.localhost","mcp_host":"mcp.acme.localhost","frontends":{"web":{"host":"web.acme.localhost"}}}}`,
+		".onlava.json":   `{"name":"basicapp","proxy":{"workspace":"ignored","api_host":"api.acme.localhost","console_host":"console.acme.localhost","frontends":{"web":{"host":"web.acme.localhost"}}}}`,
 		".env":           "# Fixture environment intentionally empty.\n",
 		"service/api.go": serviceSource,
 	})
@@ -639,17 +772,6 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 		t.Fatalf("unexpected console status %d", resp.StatusCode)
 	}
 
-	mcpURL := "https://mcp.acme.localhost:" + httpsPort + "/sse?app=basicapp"
-	waitForURL(t, client, mcpURL)
-	resp, err = client.Get(mcpURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected mcp status %d", resp.StatusCode)
-	}
-
 	frontendURL := "https://web.acme.localhost:" + httpsPort + "/"
 	waitForURL(t, client, frontendURL)
 	resp, err = client.Get(frontendURL)
@@ -675,42 +797,6 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 
 	getJSON(t, "http://"+addr+"/service.CallPrivate", nil, http.StatusOK, map[string]any{"message": "secret:hi"})
 	waitForWSMethods(t, wsConn, 10*time.Second, "trace/new")
-
-	mcp := openMCPClient(t, dashAddr, "basicapp")
-	defer mcp.Close()
-
-	initResp := mcp.Call(t, 1, "initialize", map[string]any{
-		"protocolVersion": "2024-11-05",
-		"clientInfo": map[string]any{
-			"name":    "onlava-test",
-			"version": "0.0.0",
-		},
-		"capabilities": map[string]any{},
-	})
-	if toString(toMap(initResp["serverInfo"])["name"]) != "onlava-mcp" {
-		t.Fatalf("unexpected mcp initialize response: %#v", initResp)
-	}
-
-	toolsResp := mcp.Call(t, 2, "tools/list", map[string]any{})
-	toolNames := mcpToolNames(toSlice(toolsResp["tools"]))
-	for _, want := range []string{"get_services", "get_traces", "call_endpoint"} {
-		if !toolNames[want] {
-			t.Fatalf("mcp tools missing %q: %#v", want, toolsResp)
-		}
-	}
-
-	servicesResp := mcp.CallTool(t, 3, "get_services", map[string]any{})
-	services := servicesResp["structuredContent"]
-	if !strings.Contains(fmt.Sprint(services), "service") {
-		t.Fatalf("unexpected get_services response: %#v", servicesResp)
-	}
-
-	tracesResp := waitForMCPToolResult(t, 10*time.Second, func() map[string]any {
-		return mcp.CallTool(t, 4, "get_traces", map[string]any{"limit": 10})
-	})
-	if !strings.Contains(fmt.Sprint(tracesResp["structuredContent"]), "trace_id") {
-		t.Fatalf("unexpected get_traces response: %#v", tracesResp)
-	}
 
 	data, err := os.ReadFile(apiPath)
 	if err != nil {

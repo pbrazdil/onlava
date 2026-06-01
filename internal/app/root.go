@@ -33,7 +33,6 @@ type ProxyConfig struct {
 	Workspace    string                    `json:"workspace"`
 	APIHost      string                    `json:"api_host"`
 	ConsoleHost  string                    `json:"console_host"`
-	MCPHost      string                    `json:"mcp_host"`
 	TemporalHost string                    `json:"temporal_host"`
 	GrafanaHost  string                    `json:"grafana_host"`
 	Frontends    map[string]FrontendConfig `json:"frontends"`

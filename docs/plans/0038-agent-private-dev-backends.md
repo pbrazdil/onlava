@@ -82,7 +82,7 @@ Milestone 1 updates CLI option handling so the dev path can distinguish explicit
 
 Milestone 2 computes the session backend path after app-root discovery and agent registration, then starts the app with `ONLAVA_LISTEN_NETWORK=unix`.
 
-Milestone 3 updates session manifests and console URLs so routed agent URLs are the default visible API/dashboard/MCP surfaces.
+Milestone 3 updates session manifests and console URLs so routed agent URLs are the default visible API/dashboard/removed agent transport surfaces.
 
 Milestone 4 updates tests and validation.
 

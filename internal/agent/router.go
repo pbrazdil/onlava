@@ -29,13 +29,6 @@ func (s *Server) routerMux() http.Handler {
 			return
 		}
 		backend, ok := session.Backends[kind]
-		if !ok && kind == RouteMCP {
-			backend, ok = session.Backends[RouteDashboard]
-		}
-		if !ok && kind == RouteMCP && s.dashboard.Addr != "" {
-			proxyBackend(w, req, s.dashboard, "")
-			return
-		}
 		if !ok {
 			http.NotFound(w, req)
 			return

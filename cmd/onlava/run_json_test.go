@@ -632,7 +632,6 @@ func TestRunConsoleJSONPhaseAndBanner(t *testing.T) {
 	console.Banner(runURLs{
 		API:       "https://api.jsonapp.localhost",
 		Dashboard: "https://console.jsonapp.localhost/jsonapp",
-		MCP:       "https://mcp.jsonapp.localhost/sse?appID=jsonapp",
 		Frontends: map[string]string{
 			"web": "https://web.jsonapp.localhost",
 		},
@@ -688,7 +687,6 @@ func TestRunConsoleHidesVictoriaUnlessVerbose(t *testing.T) {
 	urls := runURLs{
 		API:       "https://api.jsonapp.localhost",
 		Dashboard: "https://console.jsonapp.localhost/jsonapp",
-		MCP:       "https://mcp.jsonapp.localhost/sse?appID=jsonapp",
 		Victoria: map[string]string{
 			"metrics": "http://127.0.0.1:8428",
 			"logs":    "http://127.0.0.1:9428",
@@ -719,7 +717,6 @@ func TestRunConsoleInitialBuildFailedEmitsRunFailed(t *testing.T) {
 	console.InitialBuildFailed(fmt.Errorf("compile failed"), runURLs{
 		API:       "https://api.jsonapp.localhost",
 		Dashboard: "https://console.jsonapp.localhost/jsonapp",
-		MCP:       "https://mcp.jsonapp.localhost/sse?appID=jsonapp",
 	})
 
 	lines := bytes.Split(bytes.TrimSpace(out.Bytes()), []byte("\n"))
@@ -744,7 +741,6 @@ func TestRunConsoleJSONHidesVictoriaUnlessVerbose(t *testing.T) {
 	urls := runURLs{
 		API:       "https://api.jsonapp.localhost",
 		Dashboard: "https://console.jsonapp.localhost/jsonapp",
-		MCP:       "https://mcp.jsonapp.localhost/sse?appID=jsonapp",
 		Victoria: map[string]string{
 			"metrics": "http://127.0.0.1:8428",
 		},

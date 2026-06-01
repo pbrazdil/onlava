@@ -59,7 +59,7 @@ The ONLV UI must not visually change as part of this migration. Existing ONLV co
 - Official shadcn `components.json` supports multiple registries and namespaced installs such as `@private/button`; the `{name}` placeholder is substituted from the install target. This matches the proposed `@onlava/*` registry design.
 - Official shadcn registry item JSON supports item types including `registry:block`, and file `target` placeholders such as `@ui/`, `@components/`, `@lib/`, and `@hooks/`. This lets onlava publish both low-level primitives and larger slot layouts.
 - The shadcn CLI `add` command accepts component names, URLs, or local paths and supports `--dry-run`, `--diff`, and `--overwrite`. The wrapper must reject URLs and non-`@onlava/*` names before invoking the CLI.
-- The shadcn MCP server can browse, search, and install from configured registries, including namespaced and private registries. MCP may help discovery, but onlava's guardrails still need to enforce allowed namespaces and import boundaries.
+- The shadcn removed agent transport server can browse, search, and install from configured registries, including namespaced and private registries. removed agent transport may help discovery, but onlava's guardrails still need to enforce allowed namespaces and import boundaries.
 - Current `ui/package.json` has no Tailwind, shadcn, Radix, CVA, lucide, or Tailwind merge dependencies. This is a good point to add guardrails before those libraries appear.
 - The existing onlava dashboard still has route-level Tailwind-style class strings. The new static check hard-fails import/script/registry violations now and reports current className drift as warnings while the dashboard is migrated into primitives/layouts.
 - ONLV app already had a large shadcn/Radix component set. To avoid visual churn, the first ONLV update adds an onlava-facing `components/primitives` barrel and layout/primitives re-export paths, then switches app screens off `@/components/ui` and `@/components/app/*` without replacing rendered component implementations.
@@ -184,14 +184,14 @@ shadcn facts verified against official docs on 2026-05-09:
 - Namespaced install commands such as `npx shadcn@latest add @private/button` are supported when configured in `components.json`.
 - Registry item JSON supports typed resources and file targets, including `registry:block`, `registry:component`, `registry:ui`, `registry:lib`, and `registry:hook`.
 - The CLI `add` command accepts component names, URLs, and local paths, and supports `--dry-run` and `--overwrite`; onlava must wrap it to enforce namespace and overwrite policy.
-- The shadcn MCP server can use registries configured in `components.json`, so onlava prompts and docs must say to use only the `@onlava` registry.
+- The shadcn removed agent transport server can use registries configured in `components.json`, so onlava prompts and docs must say to use only the `@onlava` registry.
 
 Use these official docs for reference while implementing, but keep this ExecPlan self-contained for execution:
 
 - `https://ui.shadcn.com/docs/components-json`
 - `https://ui.shadcn.com/docs/registry/registry-item-json`
 - `https://ui.shadcn.com/docs/cli`
-- `https://ui.shadcn.com/docs/mcp`
+- `https://ui.shadcn.com/docs/removed-agent-transport`
 
 ## Milestones
 

@@ -506,7 +506,7 @@ func TestBuildHarnessDriftReport(t *testing.T) {
 	}
 }
 
-func TestBuildHarnessEnvVarReportFailsOnUnregisteredRuntimeEnv(t *testing.T) {
+func TestBuildHarnessEnvVarReportInvalidRuntimeEnvDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
@@ -529,7 +529,7 @@ func TestBuildHarnessEnvVarReportFailsOnUnregisteredRuntimeEnv(t *testing.T) {
     }
   ]
 }`)
-	writeTestAppFile(t, root, "cmd/onlava/env.go", "package main\n\nconst _ = \"ONLAVA_FAKE_NEW_ENV\"\n")
+	writeTestAppFile(t, root, "cmd/onlava/env.go", "package main\n\nconst _ = \"ONLAVA_FAKE_NEW_ENV\"\nconst _ = \"ONLAVA_TEST_ONLY_EXAMPLE\"\n")
 
 	report, diagnostics := buildHarnessEnvVarReport(root, nil)
 	if !hasErrorDiagnostics(diagnostics) {
@@ -537,37 +537,6 @@ func TestBuildHarnessEnvVarReportFailsOnUnregisteredRuntimeEnv(t *testing.T) {
 	}
 	if !diagnosticsContain(diagnostics, "ONLAVA_FAKE_NEW_ENV") {
 		t.Fatalf("diagnostics = %+v", diagnostics)
-	}
-}
-
-func TestBuildHarnessEnvVarReportFailsOnTestOnlyEnvInRuntimeCode(t *testing.T) {
-	t.Parallel()
-
-	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
-	writeTestAppFile(t, root, "docs/environment.registry.json", `{
-  "schema_version": "onlava.environment.registry.v1",
-  "variables": [
-    {
-      "name": "ONLAVA_TEST_",
-      "match": "prefix",
-      "scope": "test_only",
-      "direction": "test_input",
-      "category": "tests",
-      "stability": "test_only",
-      "secret": false,
-      "allowed_in": ["docs", "tests"],
-      "owner": "onlava runtime",
-      "rationale": "Test-only controls.",
-      "preferred_surface": "tests",
-      "docs": ["docs/environment.md"]
-    }
-  ]
-}`)
-	writeTestAppFile(t, root, "cmd/onlava/env.go", "package main\n\nconst _ = \"ONLAVA_TEST_ONLY_EXAMPLE\"\n")
-
-	report, diagnostics := buildHarnessEnvVarReport(root, nil)
-	if !hasErrorDiagnostics(diagnostics) {
-		t.Fatalf("expected env diagnostics, got report %+v", report)
 	}
 	if !diagnosticsContain(diagnostics, "test-only environment variable used by production code") {
 		t.Fatalf("diagnostics = %+v", diagnostics)
@@ -687,86 +656,133 @@ func TestBuildHarnessFixtureMatrixReport(t *testing.T) {
 	}
 }
 
-func TestRunHarnessKnowledgeStepSuccess(t *testing.T) {
+func TestRunHarnessKnowledgeStepValidAndInvalidFixtures(t *testing.T) {
 	t.Parallel()
 
-	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
-	writeTestAppFile(t, root, "docs/local-contract.md", "[self](harness-engineering.md)\n")
-	writeTestAppFile(t, root, "docs/harness-engineering.md", "[schema](schemas/onlava.harness.self.v1.schema.json)\n")
-	writeTestAppFile(t, root, "docs/grafana.md", "Grafana.\n")
+	t.Run("valid", func(t *testing.T) {
+		t.Parallel()
 
-	step := runHarnessKnowledgeStep(root)
-	if !step.OK {
-		t.Fatalf("step failed: %+v", step)
-	}
-	if got, _ := step.Summary["links_checked"].(int); got < 3 {
-		t.Fatalf("links_checked = %v, want at least 3", step.Summary["links_checked"])
-	}
-	if got, _ := step.Summary["indexed_documents"].(int); got == 0 {
-		t.Fatalf("indexed_documents = %v, want > 0", step.Summary["indexed_documents"])
-	}
-}
+		root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
+		writeTestAppFile(t, root, "docs/local-contract.md", "[self](harness-engineering.md)\n")
+		writeTestAppFile(t, root, "docs/harness-engineering.md", "[schema](schemas/onlava.harness.self.v1.schema.json)\n")
+		writeTestAppFile(t, root, "docs/grafana.md", "Grafana.\n")
 
-func TestRunHarnessKnowledgeStepReportsInvalidSchemaAndBrokenLink(t *testing.T) {
-	t.Parallel()
+		step := runHarnessKnowledgeStep(root)
+		if !step.OK {
+			t.Fatalf("step failed: %+v", step)
+		}
+		if got, _ := step.Summary["links_checked"].(int); got < 3 {
+			t.Fatalf("links_checked = %v, want at least 3", step.Summary["links_checked"])
+		}
+		if got, _ := step.Summary["indexed_documents"].(int); got == 0 {
+			t.Fatalf("indexed_documents = %v, want > 0", step.Summary["indexed_documents"])
+		}
+	})
 
-	root := writeHarnessSelfRepo(t, `{`)
-	writeTestAppFile(t, root, "docs/local-contract.md", "[missing](missing.md)\n")
-	writeTestAppFile(t, root, "docs/harness-engineering.md", "\n")
+	t.Run("invalid", func(t *testing.T) {
+		t.Parallel()
 
-	step := runHarnessKnowledgeStep(root)
-	if step.OK {
-		t.Fatalf("step ok = true, want false")
-	}
-	messages := make([]string, 0, len(step.Diagnostics))
-	for _, diag := range step.Diagnostics {
-		messages = append(messages, diag.Message)
-	}
-	joined := strings.Join(messages, "\n")
-	if !strings.Contains(joined, "schema file is not valid JSON") {
-		t.Fatalf("diagnostics did not include invalid schema: %+v", step.Diagnostics)
-	}
-	if !strings.Contains(joined, "local markdown link target does not exist") {
-		t.Fatalf("diagnostics did not include broken link: %+v", step.Diagnostics)
-	}
-}
+		root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
+		writeTestAppFile(t, root, "docs/schemas/onlava.harness.self.v1.schema.json", `{`)
+		writeTestAppFile(t, root, "docs/local-contract.md", "[missing](missing.md)\n")
+		writeTestAppFile(t, root, "docs/plans/feature.md", "# Feature\n\nThis ExecPlan is a living document.\n\n## Purpose / Big Picture\n\nImplement a feature.\n")
+		writeTestAppFile(t, root, "SKILL.md", "---\nname: onlava\n---\n\n# onlava\n\nOld skill.\n")
+		writeTestAppFile(t, root, "docs/knowledge.json", `{
+  "schema_version": "onlava.docs.index.v1",
+  "generated_at": "2026-04-27T00:00:00Z",
+  "owner_default": "onlava maintainers",
+  "freshness_policy": {
+    "default_review_days": 30,
+    "quality_grades": ["A", "B", "C", "D"],
+    "freshness_states": ["current", "review_due", "stale"]
+  },
+  "documents": [
+    {
+      "path": "SKILL.md",
+      "title": "Skill",
+      "owner": "onlava maintainers",
+      "status": "active",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "Skill.",
+      "tags": ["skill"]
+    },
+    {
+      "path": "docs/missing.md",
+      "title": "Missing",
+      "owner": "onlava maintainers",
+      "status": "active",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "Missing.",
+      "tags": ["docs"]
+    },
+    {
+      "path": "docs/app-development-cookbook.md",
+      "title": "Cookbook",
+      "owner": "onlava maintainers",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "Cookbook.",
+      "tags": ["cookbook"]
+    },
+    {
+      "path": "docs/ui-agent-contract.md",
+      "title": "UI contract",
+      "owner": "onlava maintainers",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "UI.",
+      "tags": ["ui"]
+    },
+    {
+      "path": "docs/local-contract.md",
+      "title": "Contract",
+      "owner": "onlava maintainers",
+      "status": "active",
+      "quality": "A",
+      "freshness": "current",
+      "last_reviewed": "2026-04-27",
+      "review_after": "2026-05-27",
+      "summary": "Contract.",
+      "tags": ["contract"],
+      "schema_refs": ["docs/schemas/onlava.docs.index.v1.schema.json"]
+    }
+  ],
+  "plans": {
+    "active": "docs/plans/active.md",
+    "completed": "docs/plans/completed.md"
+  },
+  "tech_debt": "docs/tech-debt.md"
+}`)
 
-func TestRunHarnessKnowledgeStepReportsInvalidExecPlan(t *testing.T) {
-	t.Parallel()
-
-	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
-	writeTestAppFile(t, root, "docs/plans/feature.md", "# Feature\n\nThis ExecPlan is a living document.\n\n## Purpose / Big Picture\n\nImplement a feature.\n")
-
-	step := runHarnessKnowledgeStep(root)
-	if step.OK {
-		t.Fatalf("step ok = true, want false")
-	}
-	messages := make([]string, 0, len(step.Diagnostics))
-	for _, diag := range step.Diagnostics {
-		messages = append(messages, diag.Message)
-	}
-	if !strings.Contains(strings.Join(messages, "\n"), "missing required ExecPlan section") {
-		t.Fatalf("diagnostics did not include invalid ExecPlan: %+v", step.Diagnostics)
-	}
-}
-
-func TestRunHarnessKnowledgeStepReportsStaleSkill(t *testing.T) {
-	t.Parallel()
-
-	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
-	writeTestAppFile(t, root, "SKILL.md", "---\nname: onlava\n---\n\n# onlava\n\nOld skill.\n")
-
-	step := runHarnessKnowledgeStep(root)
-	if step.OK {
-		t.Fatalf("step ok = true, want false")
-	}
-	messages := make([]string, 0, len(step.Diagnostics))
-	for _, diag := range step.Diagnostics {
-		messages = append(messages, diag.Message)
-	}
-	if !strings.Contains(strings.Join(messages, "\n"), "SKILL.md is missing required capability mention") {
-		t.Fatalf("diagnostics did not include stale SKILL.md: %+v", step.Diagnostics)
-	}
+		step := runHarnessKnowledgeStep(root)
+		if step.OK {
+			t.Fatalf("step ok = true, want false")
+		}
+		joined := diagnosticMessages(step.Diagnostics)
+		for _, want := range []string{
+			"schema file is not valid JSON",
+			"local markdown link target does not exist",
+			"missing required ExecPlan section",
+			"SKILL.md is missing required capability mention",
+			"indexed document does not exist",
+		} {
+			if !strings.Contains(joined, want) {
+				t.Fatalf("diagnostics did not include %q: %+v", want, step.Diagnostics)
+			}
+		}
+	})
 }
 
 func TestArchitectureChecksAllowLongExecPlans(t *testing.T) {
@@ -1075,4 +1091,12 @@ func stringSliceContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func diagnosticMessages(diagnostics []checkDiagnostic) string {
+	messages := make([]string, 0, len(diagnostics))
+	for _, diag := range diagnostics {
+		messages = append(messages, diag.Message)
+	}
+	return strings.Join(messages, "\n")
 }

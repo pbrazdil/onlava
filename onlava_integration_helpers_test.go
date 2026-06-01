@@ -1,7 +1,6 @@
 package onlava_test
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -14,7 +13,6 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -488,147 +486,9 @@ func killOnlavaProcess(t *testing.T, cancel context.CancelFunc, cmd *exec.Cmd) {
 	}
 }
 
-type mcpClient struct {
-	t        *testing.T
-	baseURL  string
-	endpoint string
-	reader   *bufio.Reader
-	body     io.Closer
-}
-
-func openMCPClient(t *testing.T, dashAddr, appID string) *mcpClient {
-	t.Helper()
-	resp, err := http.Get("http://" + dashAddr + "/sse?app=" + url.QueryEscape(appID))
-	if err != nil {
-		t.Fatalf("open mcp sse: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		t.Fatalf("unexpected mcp sse status %d: %s", resp.StatusCode, body)
-	}
-	reader := bufio.NewReader(resp.Body)
-	event := readSSEEvent(t, reader, 10*time.Second)
-	if event.event != "endpoint" {
-		resp.Body.Close()
-		t.Fatalf("unexpected first mcp event: %#v", event)
-	}
-	return &mcpClient{
-		t:        t,
-		baseURL:  "http://" + dashAddr,
-		endpoint: strings.TrimSpace(event.data),
-		reader:   reader,
-		body:     resp.Body,
-	}
-}
-
-func (c *mcpClient) Close() {
-	if c != nil && c.body != nil {
-		_ = c.body.Close()
-	}
-}
-
-func (c *mcpClient) Call(t *testing.T, id int, method string, params map[string]any) map[string]any {
-	t.Helper()
-	payload := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"method":  method,
-		"params":  params,
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := http.Post(c.baseURL+c.endpoint, "application/json", bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("mcp post %s: %v", method, err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("unexpected mcp post status %d for %s", resp.StatusCode, method)
-	}
-	for {
-		event := readSSEEvent(t, c.reader, 10*time.Second)
-		if event.event != "message" {
-			continue
-		}
-		var response map[string]any
-		if err := json.Unmarshal([]byte(event.data), &response); err != nil {
-			t.Fatalf("decode mcp response: %v", err)
-		}
-		if int(toFloat(response["id"])) != id {
-			continue
-		}
-		if errPayload, ok := response["error"]; ok && errPayload != nil {
-			t.Fatalf("mcp %s returned error: %#v", method, response)
-		}
-		return toMap(response["result"])
-	}
-}
-
-func (c *mcpClient) CallTool(t *testing.T, id int, name string, args map[string]any) map[string]any {
-	t.Helper()
-	return c.Call(t, id, "tools/call", map[string]any{
-		"name":      name,
-		"arguments": args,
-	})
-}
-
 type sseEvent struct {
 	event string
 	data  string
-}
-
-func readSSEEvent(t *testing.T, reader *bufio.Reader, timeout time.Duration) sseEvent {
-	t.Helper()
-	type result struct {
-		event sseEvent
-		err   error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		var event sseEvent
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				ch <- result{err: err}
-				return
-			}
-			line = strings.TrimRight(line, "\r\n")
-			if line == "" {
-				if event.event != "" || event.data != "" {
-					ch <- result{event: event}
-					return
-				}
-				continue
-			}
-			if strings.HasPrefix(line, ":") {
-				continue
-			}
-			if strings.HasPrefix(line, "event:") {
-				event.event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-				continue
-			}
-			if strings.HasPrefix(line, "data:") {
-				part := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-				if event.data != "" {
-					event.data += "\n"
-				}
-				event.data += part
-			}
-		}
-	}()
-	select {
-	case res := <-ch:
-		if res.err != nil {
-			t.Fatalf("read sse event: %v", res.err)
-		}
-		return res.event
-	case <-time.After(timeout):
-		t.Fatalf("timed out waiting for sse event")
-		return sseEvent{}
-	}
 }
 
 func wsCall(t *testing.T, conn *websocket.Conn, id int, method string, params map[string]any) map[string]any {
@@ -689,20 +549,6 @@ func waitForWSMethods(t *testing.T, conn *websocket.Conn, timeout time.Duration,
 	if len(remaining) > 0 {
 		t.Fatalf("timed out waiting for websocket notifications: %v", remaining)
 	}
-}
-
-func waitForMCPToolResult(t *testing.T, timeout time.Duration, fn func() map[string]any) map[string]any {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		result := fn()
-		if strings.Contains(fmt.Sprint(result["structuredContent"]), "trace_id") {
-			return result
-		}
-		time.Sleep(integrationPollInterval)
-	}
-	t.Fatalf("timed out waiting for mcp tool result")
-	return nil
 }
 
 func waitForHTTP(t *testing.T, url string) {
@@ -1061,17 +907,6 @@ func toFloat(value any) float64 {
 	default:
 		return 0
 	}
-}
-
-func mcpToolNames(items []any) map[string]bool {
-	names := make(map[string]bool, len(items))
-	for _, item := range items {
-		name := toString(toMap(item)["name"])
-		if name != "" {
-			names[name] = true
-		}
-	}
-	return names
 }
 
 func freePort(t *testing.T) string {

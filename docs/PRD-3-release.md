@@ -1,4 +1,4 @@
-My verdict: do not freeze the current feature set as-is. Freeze a smaller, boring, reliable v0. onlava is close to having a strong local-first developer runtime, but right now the app runtime, dev supervisor, dashboard, local HTTPS proxy, Temporal workers, cron, and MCP are interwoven. That is the main production-readiness risk.
+My verdict: do not freeze the current feature set as-is. Freeze a smaller, boring, reliable v0. onlava is close to having a strong local-first developer runtime, but right now the app runtime, dev supervisor, dashboard, local HTTPS proxy, Temporal workers, cron, and removed agent transport are interwoven. That is the main production-readiness risk.
 
 I could not run the full Go test suite here because go.mod requires Go 1.26.0 and this container has Go 1.23.2; Go attempted to auto-download 1.26.0, but network/DNS is blocked. So the findings below are from static source audit, not a green test run.
 
@@ -32,7 +32,7 @@ Beta / dev-only:
   trust-store installation
   Temporal worker tooling
   cron UI
-  MCP server
+  removed agent transport server
   psql helper
 The current docs/local-contract.md already tries to freeze a local contract, which is good. But the implementation is larger than the contract and some docs disagree with code. For example, docs/local-contract.md lists the current CLI grammar without onlava psql, while cmd/onlava/main.go exposes psql in the actual usage text.
 
@@ -63,7 +63,7 @@ onlava dev
   traces UI
   local HTTPS proxy
   frontend proxy
-  MCP
+  removed agent transport
 
 You can still keep onlava run --dashboard, but the default should be headless and predictable.
 
@@ -334,7 +334,7 @@ I would not freeze these yet:
 dashboard as stable API
 local HTTPS proxy
 trust-store installation
-MCP
+removed agent transport
 Temporal worker orchestration unless its lifecycle/backpressure/retry semantics are fully specified
 cron unless scheduling/missed-run semantics are fully specified
 source rewrite/direct-call behavior unless documented as public contract

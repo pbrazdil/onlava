@@ -6,7 +6,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 onlava currently uses embedded Caddy modules in `internal/localproxy` to serve local HTTPS reverse-proxy routes for `onlava dev` and standalone `onlava run`. The goal is to replace that embedded Caddy dependency with a small onlava-native Go implementation that preserves the current public `localproxy` API and user-visible behavior.
 
-When this plan is complete, `onlava dev` and standalone runtime development mode still expose HTTPS URLs such as `https://api.<workspace>.localhost`, `https://console.<workspace>.localhost`, `https://mcp.<workspace>.localhost`, and `https://onlava.<workspace>.localhost`, but the implementation uses only the Go standard library for routing, TLS certificates, trust installation, reverse proxying, and lifecycle management. Caddy imports and Caddy-only dependencies are removed from the repository.
+When this plan is complete, `onlava dev` and standalone runtime development mode still expose HTTPS URLs such as `https://api.<workspace>.localhost`, `https://console.<workspace>.localhost`, `https://removed-agent-transport.<workspace>.localhost`, and `https://onlava.<workspace>.localhost`, but the implementation uses only the Go standard library for routing, TLS certificates, trust installation, reverse proxying, and lifecycle management. Caddy imports and Caddy-only dependencies are removed from the repository.
 
 ## Progress
 
@@ -100,20 +100,20 @@ The public package surface to preserve is:
     (*Proxy).Close() error
     (*Proxy).Routes() Routes
     ConsoleAppURL(routes Routes, appID string) string
-    MCPSSEURL(routes Routes, appID string) string
+    removed agent transportSSEURL(routes Routes, appID string) string
 
-`Config` fields now use named `Frontends` instead of a single frontend host/upstream pair. `Routes` fields expose `Frontends` as a named map alongside `APIHost`, `ConsoleHost`, `MCPHost`, `APIURL`, `ConsoleURL`, and `MCPBaseURL`.
+`Config` fields now use named `Frontends` instead of a single frontend host/upstream pair. `Routes` fields expose `Frontends` as a named map alongside `APIHost`, `ConsoleHost`, `removed agent transportHost`, `APIURL`, `ConsoleURL`, and `removed agent transportBaseURL`.
 
 Main call sites are:
 
 - `cmd/onlava/dev_supervisor.go`: starts the proxy before launching the child app, sets `ONLAVA_LOCAL_PROXY=0` in the child, and sets `ONLAVA_PUBLIC_BASE_URL` when a proxy exists.
 - `runtimeapp/app.go`: starts the standalone local HTTPS proxy when the runtime was not launched by the supervisor.
 
-Existing helpers in `internal/localproxy/proxy.go` define important normalization behavior. Preserve `normalizeUpstream`, `normalizeHost`, `sanitizeLabel`, `DiscoverWorkspace`, `DiscoverFrontendUpstream`, `ResolveFrontends`, `BuildConfig`, `routesFor`, `routeSubjects`, `hostURL`, `ConsoleAppURL`, and `MCPSSEURL` behavior unless this plan records a deliberate decision to change an environment default.
+Existing helpers in `internal/localproxy/proxy.go` define important normalization behavior. Preserve `normalizeUpstream`, `normalizeHost`, `sanitizeLabel`, `DiscoverWorkspace`, `DiscoverFrontendUpstream`, `ResolveFrontends`, `BuildConfig`, `routesFor`, `routeSubjects`, `hostURL`, `ConsoleAppURL`, and `removed agent transportSSEURL` behavior unless this plan records a deliberate decision to change an environment default.
 
 ## Milestones
 
-Milestone 1 introduces a Caddy-independent route table. This is complete when tests can inspect resolved API, console, MCP, frontend, and `/__onlava/config` routes without building Caddy JSON.
+Milestone 1 introduces a Caddy-independent route table. This is complete when tests can inspect resolved API, console, removed agent transport, frontend, and `/__onlava/config` routes without building Caddy JSON.
 
 Milestone 2 implements local certificate storage. This is complete when the package can generate or reuse an onlava development CA, generate a leaf certificate with the expected SAN DNS names, store private keys with `0600`, store directories with `0700`, and regenerate leaf certificates when missing, expired, near expiry, not covered by SANs, or signed by a changed CA.
 
@@ -139,9 +139,9 @@ Add trust installers under:
 
 The shared file should define the injectable function used by `Start`. Darwin should use `security` with user-level trust where possible. Windows should use `certutil -user -addstore Root <cert>`. Linux should support common `trust anchor`, `update-ca-certificates`, and `update-ca-trust` mechanisms when available, and otherwise return a clear warning that HTTPS is still serving with an untrusted local CA.
 
-Then implement serving with `net/http` and `net/http/httputil.ReverseProxy`. Build upstream targets as `http://<normalized-upstream>`, preserve path and query, return `502` on upstream errors, return `404` for unknown host/path combinations, and keep default reverse proxy streaming behavior for SSE and WebSocket traffic. For API, console, MCP, and frontend `/__onlava/config`, preserve the incoming `Host` header. For the frontend catch-all route, set `req.Host` to the upstream host:port to match the old Caddy `Host: {http.reverse_proxy.upstream.hostport}` behavior. Set useful `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`; HTTPS requests should report `X-Forwarded-Proto: https`.
+Then implement serving with `net/http` and `net/http/httputil.ReverseProxy`. Build upstream targets as `http://<normalized-upstream>`, preserve path and query, return `502` on upstream errors, return `404` for unknown host/path combinations, and keep default reverse proxy streaming behavior for SSE and WebSocket traffic. For API, console, removed agent transport, and frontend `/__onlava/config`, preserve the incoming `Host` header. For the frontend catch-all route, set `req.Host` to the upstream host:port to match the old Caddy `Host: {http.reverse_proxy.upstream.hostport}` behavior. Set useful `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`; HTTPS requests should report `X-Forwarded-Proto: https`.
 
-Finally update the call sites only as needed. `cmd/onlava/dev_supervisor.go` should continue to start the proxy before the child app and pass `ONLAVA_LOCAL_PROXY=0` plus `ONLAVA_PUBLIC_BASE_URL=<routes.APIURL>`. `runtimeapp/app.go` should continue to avoid a second proxy when launched by the supervisor or when local proxy is disabled. The runtime banner should still use routes for API, dashboard, MCP SSE, frontend, URLs.
+Finally update the call sites only as needed. `cmd/onlava/dev_supervisor.go` should continue to start the proxy before the child app and pass `ONLAVA_LOCAL_PROXY=0` plus `ONLAVA_PUBLIC_BASE_URL=<routes.APIURL>`. `runtimeapp/app.go` should continue to avoid a second proxy when launched by the supervisor or when local proxy is disabled. The runtime banner should still use routes for API, dashboard, removed agent transport SSE, frontend, URLs.
 
 ## Concrete Steps
 
@@ -199,7 +199,7 @@ Manual smoke validation when practical:
 
     ONLAVA_LOCAL_PROXY=1 ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1 ONLAVA_LOCAL_PROXY_HTTPS_PORT=9443 onlava run
 
-Run this from a fixture app or a read-only app root. Confirm that the banner still prints HTTPS API, dashboard, MCP SSE, frontend, URLs as applicable. Also verify that `ONLAVA_LOCAL_PROXY=0 onlava run` avoids starting the proxy, that custom `ONLAVA_LOCAL_PROXY_HTTPS_PORT` appears in route URLs, and that explicit proxy hosts from `.onlava.json` override workspace-derived hosts.
+Run this from a fixture app or a read-only app root. Confirm that the banner still prints HTTPS API, dashboard, removed agent transport SSE, frontend, URLs as applicable. Also verify that `ONLAVA_LOCAL_PROXY=0 onlava run` avoids starting the proxy, that custom `ONLAVA_LOCAL_PROXY_HTTPS_PORT` appears in route URLs, and that explicit proxy hosts from `.onlava.json` override workspace-derived hosts.
 
 Acceptance criteria:
 
@@ -207,7 +207,7 @@ Acceptance criteria:
 - `internal/localproxy/caddyimports.go` is deleted.
 - `go.mod` no longer directly requires `github.com/caddyserver/caddy/v2`.
 - Existing normalization, route URL, workspace, and frontend discovery tests pass.
-- New integration tests prove HTTPS reverse proxy parity for API, console, MCP, frontend, `/__onlava/config`, frontend `Host` rewrite, unknown host `404`, HTTP redirect, and `Close` lifecycle.
+- New integration tests prove HTTPS reverse proxy parity for API, console, removed agent transport, frontend, `/__onlava/config`, frontend `Host` rewrite, unknown host `404`, HTTP redirect, and `Close` lifecycle.
 - TLS certificates contain the expected SAN DNS names and work with clients that trust the generated onlava local CA.
 - Trust installation is implemented and testable through mocks without modifying the real system trust store.
 - `go test ./...` and `go install ./cmd/onlava` pass.
@@ -228,14 +228,14 @@ Default host naming for workspace `acme`:
 
     api.acme.localhost
     console.acme.localhost
-    mcp.acme.localhost
+    removed-agent-transport.acme.localhost
     onlava.acme.localhost
 
 Route behavior to preserve:
 
 - API host routes to `APIUpstream`, preserves incoming `Host`, and exposes `Routes.APIURL`.
 - Console host routes to `DashboardUpstream`, preserves incoming `Host`, and exposes `Routes.ConsoleURL` only when dashboard routing is enabled.
-- MCP host routes to `DashboardUpstream`, preserves incoming `Host`, and exposes `Routes.MCPBaseURL` only when dashboard routing is enabled.
+- removed agent transport host routes to `DashboardUpstream`, preserves incoming `Host`, and exposes `Routes.removed agent transportBaseURL` only when dashboard routing is enabled.
 - Each configured frontend host routes exact path `/__onlava/config` to `APIUpstream` and preserves incoming `Host`.
 - Each configured frontend host routes all other paths to its named upstream, rewrites `Host` to the frontend upstream host:port, and exposes `Routes.Frontends[name].URL` only when that frontend routing is enabled.
 
@@ -243,7 +243,7 @@ Exact startup validation errors to preserve:
 
     local proxy requires an API upstream
     local proxy requires an API host or workspace label
-    local proxy requires console and mcp hosts when dashboard routing is enabled
+    local proxy requires console and removed-agent-transport hosts when dashboard routing is enabled
     local proxy requires a frontend host when frontend routing is enabled
 
 Important helper behavior to preserve:
@@ -286,4 +286,4 @@ Environment variables to preserve:
 URL helper contracts must not change:
 
     ConsoleAppURL(routes, appID) = routes.ConsoleURL + "/" + url.PathEscape(appID)
-    MCPSSEURL(routes, appID) = routes.MCPBaseURL + "/sse?appID=" + url.QueryEscape(appID)
+    removed agent transport route helper appends the app id as a query parameter
