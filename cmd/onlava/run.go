@@ -19,7 +19,7 @@ import (
 	"github.com/pbrazdil/onlava/internal/parse"
 )
 
-type runOptions struct {
+type serveOptions struct {
 	Listen    string
 	Port      int
 	AppRoot   string
@@ -27,120 +27,71 @@ type runOptions struct {
 	LogFormat string
 }
 
-func runCommand(args []string) error {
-	if opts, ok, err := parseRunScriptArgs(args); err != nil {
-		return err
-	} else if ok {
-		return runOnlavaScript(context.Background(), opts)
-	}
-	opts, err := parseRunArgs(args)
+func serveCommand(args []string) error {
+	opts, err := parseServeArgs(args)
 	if err != nil {
 		return err
 	}
 	addr := resolveListenAddr(opts.Listen, opts.Port)
-	return runHeadlessFunc(addr, opts)
-}
-
-func parseRunScriptArgs(args []string) (scriptOptions, bool, error) {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if runArgConsumesValue(arg) {
-			i++
-			if i >= len(args) {
-				return scriptOptions{}, false, nil
-			}
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		if !strings.Contains(arg, ":") {
-			return scriptOptions{}, false, nil
-		}
-		prefix := append([]string(nil), args[:i]...)
-		runOpts, err := parseRunArgs(prefix)
-		if err != nil {
-			return scriptOptions{}, true, err
-		}
-		scriptArgs := append([]string(nil), args[i+1:]...)
-		if len(scriptArgs) > 0 && scriptArgs[0] == "--" {
-			scriptArgs = scriptArgs[1:]
-		}
-		return scriptOptions{
-			AppRoot: runOpts.AppRoot,
-			Env:     runOpts.Env,
-			Target:  arg,
-			Args:    scriptArgs,
-		}, true, nil
-	}
-	return scriptOptions{}, false, nil
-}
-
-func runArgConsumesValue(arg string) bool {
-	switch arg {
-	case "--port", "-p", "--listen", "--app-root", "--env", "--log-format":
-		return true
-	default:
-		return false
-	}
+	return serveHeadlessFunc(addr, opts)
 }
 
 var (
 	runWithWatchFunc   = runWithWatch
 	runDetachedDevFunc = runDetachedDev
-	runHeadlessFunc    = runHeadless
+	serveHeadlessFunc  = serveHeadless
 )
 
-func parseRunArgs(args []string) (runOptions, error) {
-	opts := runOptions{Port: 4000, LogFormat: "text"}
+func parseServeArgs(args []string) (serveOptions, error) {
+	opts := serveOptions{Port: 4000, LogFormat: "text"}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--port", "-p":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --port")
+				return serveOptions{}, fmt.Errorf("missing value for --port")
 			}
 			value, err := parsePort(args[i])
 			if err != nil {
-				return runOptions{}, err
+				return serveOptions{}, err
 			}
 			opts.Port = value
 		case "--listen":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --listen")
+				return serveOptions{}, fmt.Errorf("missing value for --listen")
 			}
 			opts.Listen = args[i]
 		case "--app-root":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --app-root")
+				return serveOptions{}, fmt.Errorf("missing value for --app-root")
 			}
 			opts.AppRoot = args[i]
 		case "--env":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --env")
+				return serveOptions{}, fmt.Errorf("missing value for --env")
 			}
 			opts.Env = strings.TrimSpace(args[i])
 			if opts.Env == "" {
-				return runOptions{}, fmt.Errorf("--env must not be empty")
+				return serveOptions{}, fmt.Errorf("--env must not be empty")
 			}
 		case "--log-format":
 			i++
 			if i >= len(args) {
-				return runOptions{}, fmt.Errorf("missing value for --log-format")
+				return serveOptions{}, fmt.Errorf("missing value for --log-format")
 			}
 			switch args[i] {
 			case "text", "json":
 				opts.LogFormat = args[i]
 			default:
-				return runOptions{}, fmt.Errorf("invalid --log-format %q", args[i])
+				return serveOptions{}, fmt.Errorf("invalid --log-format %q", args[i])
 			}
 		case "--verbose", "-v", "--json", "--dashboard", "--watch", "--proxy":
-			return runOptions{}, fmt.Errorf("%s is a development flag; use `onlava dev`", args[i])
+			return serveOptions{}, fmt.Errorf("%s is a development flag; use `onlava dev`", args[i])
 		default:
-			return runOptions{}, fmt.Errorf("unknown flag %q", args[i])
+			return serveOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	return opts, nil
@@ -154,7 +105,7 @@ func parsePort(value string) (int, error) {
 	return port, nil
 }
 
-func runHeadless(addr string, opts runOptions) error {
+func serveHeadless(addr string, opts serveOptions) error {
 	start, err := resolveAppRoot(opts.AppRoot)
 	if err != nil {
 		return err
@@ -195,7 +146,7 @@ func runHeadless(addr string, opts runOptions) error {
 	return startHeadlessApp(root, cfg, result.Binary, addr, opts)
 }
 
-func startHeadlessApp(root string, cfg app.Config, binary, addr string, opts runOptions) error {
+func startHeadlessApp(root string, cfg app.Config, binary, addr string, opts serveOptions) error {
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
@@ -228,7 +179,7 @@ func headlessRuntimeRole(cfg app.Config) string {
 	return "api"
 }
 
-func validateHeadlessProductionSecrets(root string, appModel *model.App, opts runOptions) error {
+func validateHeadlessProductionSecrets(root string, appModel *model.App, opts serveOptions) error {
 	if !strings.EqualFold(strings.TrimSpace(opts.Env), "production") {
 		return nil
 	}

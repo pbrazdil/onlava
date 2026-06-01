@@ -187,7 +187,7 @@ func runOnlavaLogs(ctx context.Context, stdout io.Writer, args []string) error {
 
 	record, sessionRecord, err := devdashAppRecordForSession(ctx, store, appID, sessionID)
 	if err != nil {
-		return fmt.Errorf("no local logs found for %q; run `onlava run` first", appID)
+		return fmt.Errorf("no local logs found for %q; run `onlava dev` or `onlava serve` first", appID)
 	}
 	if !sessionRecord && sessionID == "" && record.Root != "" && record.Root != appRoot {
 		return fmt.Errorf("local logs for %q belong to %s, not %s", appID, record.Root, appRoot)

@@ -11,7 +11,7 @@ onlava is used in production. The stable v0 surface is intentionally small and G
 ## Why onlava?
 
 - **Go source is the app model.** Services, APIs, auth handlers, middleware, Temporal workflows and activities, and cron jobs are discovered from Go code.
-- **One local app server.** `onlava run` builds once and starts a headless, production-like HTTP server.
+- **One local app server.** `onlava serve` builds once and starts a headless, production-like HTTP server.
 - **Full local dev loop.** `onlava dev` adds file watching, rebuild/restart supervision, dashboard, API explorer, MCP, logs, traces, metrics, Grafana, and optional HTTPS local domains.
 - **Typed HTTP by default.** onlava decodes path params, query params, headers, cookies, and JSON bodies into Go structs, then encodes typed responses.
 - **Generated internal calls.** Endpoint-to-endpoint calls are rewritten to generated helpers so private access, auth context, and routing semantics are preserved.
@@ -23,7 +23,7 @@ onlava is used in production. The stable v0 surface is intentionally small and G
 Available now:
 
 - `.onlava.json` root discovery
-- `onlava dev`, `onlava run`, `onlava build`, `onlava check`
+- `onlava dev`, `onlava serve`, `onlava run`, `onlava build`, `onlava check`
 - typed and raw HTTP endpoints
 - public, auth, and private endpoints
 - auth handlers and request auth helpers
@@ -123,7 +123,7 @@ Run it:
 
 ```sh
 onlava check --json
-onlava run
+onlava serve
 ```
 
 Call it:
@@ -201,8 +201,8 @@ onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava prune --older-than <duration> [--app-root <path>] [--json]
-onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-onlava run [--app-root <path>] [--env <name>] <domain>:<script> [script args...]
+onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
 onlava worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]

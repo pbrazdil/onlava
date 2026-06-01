@@ -294,7 +294,7 @@ func (s *dashboardServer) mcpToolDefinitions() []mcpToolDefinition {
 		},
 		{
 			Name:        "get_traces",
-			Description: "List recent traces captured by onlava run.",
+			Description: "List recent traces captured by the local onlava runtime.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

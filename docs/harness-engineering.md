@@ -5,7 +5,7 @@ onlava treats agent support as a runtime feature, not as prompt folklore.
 The harness contract gives Codex and other agents a short feedback loop:
 
 1. discover the app and its stable generated metadata
-2. compile the generated runtime exactly like `onlava run` would
+2. compile the generated runtime exactly like `onlava serve` would
 3. report diagnostics as structured JSON
 4. expose inspect outputs and artifact paths without scraping terminal text
 5. persist the latest harness result when requested

@@ -42,7 +42,7 @@ Historical PRDs may describe shipped design intent rather than the current contr
 
 - [Proto/Wire PRD](PRD-2-proto.md): binary wire and generated transport plan.
 - [Release Readiness PRD](PRD-3-release.md): audit and recommendations for freezing a smaller production-ready v0.
-- [Dev/Run Command Split PRD](PRD-4-devrun.md): product direction for `onlava dev`, headless `onlava run`, and `onlava build`.
+- [Dev/Run Command Split PRD](PRD-4-devrun.md): historical product direction for `onlava dev`, the headless runtime command now spelled `onlava serve`, and `onlava build`.
 
 ## Schemas
 

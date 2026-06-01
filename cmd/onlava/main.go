@@ -45,7 +45,9 @@ func run(args []string) error {
 	case "console":
 		return consoleCommand(args[1:])
 	case "run":
-		return runCommand(args[1:])
+		return runScriptCommand(args[1:])
+	case "serve":
+		return serveCommand(args[1:])
 	case "script":
 		return scriptCommand(args[1:])
 	case "status":
@@ -114,8 +116,8 @@ func usageError() error {
     onlava script list [--app-root <path>] [--json]
     onlava script inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
     onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
-    onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-    onlava run [--app-root <path>] [--env <name>] <domain>:<script> [script args...]
+    onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
+    onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
     onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
     onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
     onlava worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]

@@ -1,6 +1,6 @@
 # Grafana Dev Integration
 
-`onlava dev` can supervise a local Grafana process alongside the local Victoria observability sidecars. When the local agent is active, the first dev session registers Grafana as a shared agent substrate and later sessions reuse it after verifying the expected datasource and dashboard UIDs. Grafana is dev-only: `onlava run` does not start it.
+`onlava dev` can supervise a local Grafana process alongside the local Victoria observability sidecars. When the local agent is active, the first dev session registers Grafana as a shared agent substrate and later sessions reuse it after verifying the expected datasource and dashboard UIDs. Grafana is dev-only: `onlava serve` does not start it.
 
 Generated files live under `.onlava/grafana/` by default when the agent is disabled. Shared agent Grafana state lives under the agent directory:
 

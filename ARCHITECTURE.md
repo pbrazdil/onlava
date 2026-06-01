@@ -59,7 +59,7 @@ command-specific functions parse flags and connect internal packages into user
 commands such as `dev`, `run`, `build`, `check`, `inspect`, `harness`, `logs`,
 `admin`, `test`, and `gen`.
 
-`onlava run` is the headless app execution path. `onlava dev` wraps the same app
+`onlava serve` is the headless app execution path. `onlava dev` wraps the same app
 build/run loop with the local development platform: dashboard, proxy, live
 rebuild behavior, logs, traces, metrics, and process supervision.
 
@@ -203,7 +203,7 @@ Grafana configuration and provisioning rooted under `.onlava/grafana/`. The
 dashboard server and UI embedding are orchestrated from `cmd/onlava`.
 
 Architecture invariant: development services should be optional around the app
-runtime. They can improve local ergonomics, but `onlava run` must remain a
+runtime. They can improve local ergonomics, but `onlava serve` must remain a
 headless execution path.
 
 ### `ui`

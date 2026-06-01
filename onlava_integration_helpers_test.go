@@ -219,7 +219,7 @@ func latestPathModTime(root string) (time.Time, bool, error) {
 	return latest, found, nil
 }
 
-func onlavaRunEnv(repo, dashboardAddr, cacheDir string) []string {
+func onlavaServeEnv(repo, dashboardAddr, cacheDir string) []string {
 	return append(
 		os.Environ(),
 		"GOMAXPROCS="+integrationChildGOMAXPROCS,

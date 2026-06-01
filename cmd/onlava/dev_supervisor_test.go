@@ -657,8 +657,8 @@ func TestLooksLikeOnlavaDashboardProcess(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "onlava run is headless",
-			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/onlava run"},
+			name: "onlava serve is headless",
+			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/onlava serve"},
 			want: false,
 		},
 		{

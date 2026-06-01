@@ -210,7 +210,7 @@
       "freshness": "current",
       "last_reviewed": "2026-04-27",
       "review_after": "2026-05-27",
-      "summary": "Product recommendation to split local development behavior into onlava dev and make onlava run headless.",
+      "summary": "Historical recommendation to split local development behavior from headless runtime execution; the current headless command is onlava serve.",
       "tags": ["cli", "runtime", "dev", "production"]
     },
     {
@@ -222,7 +222,7 @@
       "freshness": "current",
       "last_reviewed": "2026-04-27",
       "review_after": "2026-05-27",
-      "summary": "Completed ExecPlan for moving the development supervisor behavior to onlava dev and making onlava run headless.",
+      "summary": "Completed ExecPlan for moving the development supervisor behavior to onlava dev; current headless runtime execution is spelled onlava serve.",
       "tags": ["plans", "execplans", "cli", "runtime"]
     },
     {

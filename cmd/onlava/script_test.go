@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,7 +21,19 @@ func TestParseScriptTarget(t *testing.T) {
 	if target.Domain != "billing" || target.Name != "reconcile" {
 		t.Fatalf("target = %+v", target)
 	}
-	for _, value := range []string{"billing", "billing:", ":reconcile", "billing:../x", "../billing:reconcile", "billing:reconcile:again", "-billing:run"} {
+	for _, value := range []string{
+		"billing",
+		"billing:",
+		":reconcile",
+		"billing:../x",
+		"../billing:reconcile",
+		"billing:reconcile:again",
+		"-billing:run",
+		"billing.reports:run",
+		"billing:reconcile.v2",
+		"billing:reconcile extra",
+		"billing:reconcile$",
+	} {
 		if _, err := parseScriptTarget(value); err == nil {
 			t.Fatalf("parseScriptTarget(%q) succeeded, want error", value)
 		}
@@ -92,20 +105,55 @@ func TestRunScriptArgsSplitAfterTarget(t *testing.T) {
 		t.Fatalf("opts = %+v", opts)
 	}
 
-	opts, ok, err := parseRunScriptArgs([]string{"--app-root", "/tmp/app", "--env", "production", "billing:reconcile", "--", "--dry-run"})
-	if err != nil || !ok {
-		t.Fatalf("parseRunScriptArgs ok=%v err=%v", ok, err)
+	opts, err = parseScriptRunArgs([]string{"--app-root", "/tmp/app", "--env", "production", "billing:reconcile", "--", "--dry-run"})
+	if err != nil {
+		t.Fatalf("parseScriptRunArgs: %v", err)
 	}
 	if opts.AppRoot != "/tmp/app" || opts.Env != "production" || opts.Target != "billing:reconcile" || strings.Join(opts.Args, " ") != "--dry-run" {
-		t.Fatalf("run sugar opts = %+v", opts)
+		t.Fatalf("top-level run opts = %+v", opts)
 	}
 
-	opts, ok, err = parseRunScriptArgs([]string{"billing:reconcile", "--env", "production"})
-	if err != nil || !ok {
-		t.Fatalf("parseRunScriptArgs script args ok=%v err=%v", ok, err)
+	opts, err = parseScriptRunArgs([]string{"billing:reconcile", "--env", "production"})
+	if err != nil {
+		t.Fatalf("parseScriptRunArgs script args: %v", err)
 	}
 	if strings.Join(opts.Args, " ") != "--env production" {
 		t.Fatalf("script args = %+v", opts.Args)
+	}
+
+	for _, args := range [][]string{
+		{"billing:"},
+		{":reconcile"},
+		{"billing:reconcile:extra"},
+		{"../billing:reconcile"},
+		{"billing:reconcile.v2"},
+	} {
+		if _, err := parseScriptRunArgs(args); err == nil {
+			t.Fatalf("parseScriptRunArgs(%v) succeeded, want script target error", args)
+		}
+	}
+}
+
+func TestTopLevelRunDispatchesToScriptRunner(t *testing.T) {
+	root := scriptFixtureRoot(t)
+	writeTestAppFile(t, root, "billing/scripts/reconcile.script.go", "//go:build ignore\n\npackage main\nfunc main() {}\n")
+
+	prev := scriptCommandContext
+	defer func() { scriptCommandContext = prev }()
+
+	var gotProgram string
+	var gotArgs []string
+	scriptCommandContext = func(ctx context.Context, program string, args ...string) *exec.Cmd {
+		gotProgram = program
+		gotArgs = append([]string(nil), args...)
+		return exec.CommandContext(ctx, "true")
+	}
+
+	if err := run([]string{"run", "--app-root", root, "--env", "production", "--lang", "go", "billing:reconcile", "--dry-run"}); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if gotProgram != "go" || strings.Join(gotArgs, " ") != "run ./billing/scripts/reconcile.script.go --dry-run" {
+		t.Fatalf("script command = %q %+v", gotProgram, gotArgs)
 	}
 }
 

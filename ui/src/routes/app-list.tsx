@@ -91,7 +91,7 @@ export function AppListPage() {
             <p>
               Create your first app by running <code>onlava app create</code> in your terminal, or by
               <br />
-              starting an existing app using <code>onlava run</code>.
+              starting an existing app using <code>onlava dev</code>.
             </p>
           ) : (
             apps.map((app) => (

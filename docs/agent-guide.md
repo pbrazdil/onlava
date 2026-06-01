@@ -166,11 +166,11 @@ Use non-JSON output only for human inspection.
 - Use `onlava dev --detach` when the local agent should keep the dev session running.
 - Use `onlava attach` to follow a current detached or agent session.
 - Use `onlava down` to stop a session; add `--db`, `--state`, or `--all` only when destructive cleanup is intended.
-- Use `onlava run` for headless API-role execution. Do not expect dashboard, MCP, proxy, watch mode, or dev/admin endpoints.
+- Use `onlava serve` for headless API-role execution. Do not expect dashboard, MCP, proxy, watch mode, or dev/admin endpoints.
 - Use `onlava worker` for worker-role execution of native Temporal workers and cron.
 - Use `onlava build` for a deployable binary artifact.
 - Use `onlava generate` for configured file-producing generators. It is separate from `onlava db sync`, which can mutate the configured development database before refreshing dependent SQLC artifacts.
-- Use `onlava script run <domain>:<script>` for app-local operational scripts. `onlava run <domain>:<script>` is equivalent sugar when onlava flags appear before the target.
+- Use `onlava script run <domain>:<script>` or `onlava run <domain>:<script>` for app-local operational scripts. Script flags appear before the target.
 - Use `onlava task run <name>` only for repo-local workflows that are not core onlava lifecycle commands.
 
 ## MCP For Agents
@@ -241,9 +241,9 @@ MCP is not a replacement for generated clients. MCP is for agents and developmen
 
 - List required environment names in docs; never include values.
 - Process environment wins over local files.
-- Local startup expects app-root `.env` for `onlava dev`, local `onlava run`, and local `onlava worker`.
+- Local startup expects app-root `.env` for `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker`.
 - `.env.local` is optional and overrides `.env` only when the parent process did not already define a key.
-- `onlava run --env production` can use process environment without a `.env` file.
+- `onlava serve --env production` can use process environment without a `.env` file.
 - Secret-bearing files are not copied into build workspaces.
 
 ## Debugging Playbooks

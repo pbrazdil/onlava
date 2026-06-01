@@ -19,6 +19,7 @@ import (
 const (
 	scriptLangGo         = "go"
 	scriptLangTypeScript = "typescript"
+	scriptRunUsage       = "usage: onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...] (or onlava script run ...)"
 )
 
 type scriptTarget struct {
@@ -72,14 +73,18 @@ func scriptCommand(args []string) error {
 		}
 		return runOnlavaScriptInspect(context.Background(), os.Stdout, opts)
 	case "run":
-		opts, err := parseScriptRunArgs(args[1:])
-		if err != nil {
-			return err
-		}
-		return runOnlavaScript(context.Background(), opts)
+		return runScriptCommand(args[1:])
 	default:
 		return fmt.Errorf("unknown script command %q", args[0])
 	}
+}
+
+func runScriptCommand(args []string) error {
+	opts, err := parseScriptRunArgs(args)
+	if err != nil {
+		return err
+	}
+	return runOnlavaScript(context.Background(), opts)
 }
 
 func parseScriptListArgs(args []string) (scriptOptions, error) {
@@ -186,7 +191,7 @@ func parseScriptRunArgs(args []string) (scriptOptions, error) {
 			return opts, nil
 		}
 	}
-	return scriptOptions{}, fmt.Errorf("usage: onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]")
+	return scriptOptions{}, fmt.Errorf(scriptRunUsage)
 }
 
 func normalizeScriptLang(value string) (string, error) {
@@ -210,16 +215,27 @@ func parseScriptTarget(value string) (scriptTarget, error) {
 	}
 	target := scriptTarget{Domain: strings.TrimSpace(domain), Name: strings.TrimSpace(name)}
 	if !validScriptSegment(target.Domain) || !validScriptSegment(target.Name) {
-		return scriptTarget{}, fmt.Errorf("invalid script target %q; domain and script must be single path segments", value)
+		return scriptTarget{}, fmt.Errorf("invalid script target %q; domain and script must match [A-Za-z0-9_][A-Za-z0-9_-]*", value)
 	}
 	return target, nil
 }
 
 func validScriptSegment(value string) bool {
-	if value == "" || value == "." || value == ".." || strings.HasPrefix(value, ".") || strings.HasPrefix(value, "-") {
+	if value == "" {
 		return false
 	}
-	return !strings.ContainsAny(value, `/\`)
+	for i, r := range value {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '_':
+		case r == '-' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func runOnlavaScriptList(ctx context.Context, stdout io.Writer, opts scriptOptions) error {

@@ -28,14 +28,14 @@ onlava logs --jsonl --limit 200
 onlava harness --json --write
 ```
 
-Prefer JSON output for agent decisions. Prefer `onlava dev` for local development. Use `onlava run` for headless API execution. Use `onlava worker` for worker-only cron/Temporal execution.
+Prefer JSON output for agent decisions. Prefer `onlava dev` for local development. Use `onlava serve` for headless API execution. Use `onlava run` for app-local operational scripts. Use `onlava worker` for worker-only cron/Temporal execution.
 
 ## Mental Model
 
 - `.onlava.json` marks the app root.
 - Go source is the app model.
 - `onlava dev` starts the supervised local platform: app process, rebuild/restart loop, dashboard, API Explorer, MCP endpoint, logs, traces, metrics, managed dev services when configured, and optional frontend/proxy routing.
-- `onlava run` starts a headless API-role server and does not start dashboard, MCP, proxy, or watch mode.
+- `onlava serve` starts a headless API-role server and does not start dashboard, MCP, proxy, or watch mode.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and called through generated helpers.
 - Typed endpoints decode path, query, header, cookie, and JSON body inputs into Go values.
 - Generated internal calls preserve routing, private access, auth context, tracing, and error semantics.
@@ -71,7 +71,7 @@ func Hello(ctx context.Context, name string) (*HelloResponse, error) {
 
 ```sh
 onlava check --json
-onlava run
+onlava serve
 curl http://127.0.0.1:4000/hello/world
 ```
 
@@ -204,7 +204,7 @@ onlava attach [--app-root <path>] [--session current|<id>] [--jsonl|--json] [--t
 onlava console [--app-root <path>] [--session current|<id>]
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>]
-onlava run [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava serve [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
 onlava version --json
 onlava build [--app-root <path>] [-o <path>]
@@ -216,7 +216,7 @@ onlava task graph --json [--app-root <path>]
 onlava script list [--app-root <path>] [--json]
 onlava script inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
 onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
-onlava run [--app-root <path>] [--env <name>] <domain>:<script> [script args...]
+onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 onlava harness [--app-root <path>] --json --write
 onlava harness self [--repo-root <path>] --json --write
 onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|traces|metrics --json [--app-root <path>]

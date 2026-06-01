@@ -21,24 +21,24 @@ func silenceCLIStderr(t *testing.T) {
 	t.Cleanup(func() { cliStderr = old })
 }
 
-func TestParseRunArgs(t *testing.T) {
+func TestParseServeArgs(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseRunArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--app-root", "/tmp/app", "--env", "production", "--log-format", "json"})
+	opts, err := parseServeArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--app-root", "/tmp/app", "--env", "production", "--log-format", "json"})
 	if err != nil {
-		t.Fatalf("parseRunArgs returned error: %v", err)
+		t.Fatalf("parseServeArgs returned error: %v", err)
 	}
 	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || opts.AppRoot != "/tmp/app" || opts.Env != "production" || opts.LogFormat != "json" {
 		t.Fatalf("opts = %+v", opts)
 	}
 }
 
-func TestParseRunArgsRejectsDevFlags(t *testing.T) {
+func TestParseServeArgsRejectsDevFlags(t *testing.T) {
 	t.Parallel()
 
 	for _, flag := range []string{"--verbose", "--json", "--watch", "--dashboard", "--proxy"} {
-		if _, err := parseRunArgs([]string{flag}); err == nil {
-			t.Fatalf("parseRunArgs(%q) returned nil error", flag)
+		if _, err := parseServeArgs([]string{flag}); err == nil {
+			t.Fatalf("parseServeArgs(%q) returned nil error", flag)
 		}
 	}
 }
@@ -317,12 +317,12 @@ func getenvForTest(key string) string {
 	return os.Getenv(key)
 }
 
-func TestRunCommandUsesHeadlessPath(t *testing.T) {
-	prev := runHeadlessFunc
-	defer func() { runHeadlessFunc = prev }()
+func TestServeCommandUsesHeadlessPath(t *testing.T) {
+	prev := serveHeadlessFunc
+	defer func() { serveHeadlessFunc = prev }()
 
 	called := false
-	runHeadlessFunc = func(addr string, opts runOptions) error {
+	serveHeadlessFunc = func(addr string, opts serveOptions) error {
 		called = true
 		if addr != "127.0.0.1:4444" || opts.AppRoot != "/tmp/app" || opts.Env != "production" || opts.LogFormat != "json" {
 			t.Fatalf("headless args = %q %+v", addr, opts)
@@ -330,8 +330,8 @@ func TestRunCommandUsesHeadlessPath(t *testing.T) {
 		return nil
 	}
 
-	if err := runCommand([]string{"--port", "4444", "--app-root", "/tmp/app", "--env", "production", "--log-format", "json"}); err != nil {
-		t.Fatalf("runCommand returned error: %v", err)
+	if err := serveCommand([]string{"--port", "4444", "--app-root", "/tmp/app", "--env", "production", "--log-format", "json"}); err != nil {
+		t.Fatalf("serveCommand returned error: %v", err)
 	}
 	if !called {
 		t.Fatal("expected headless path to be called")

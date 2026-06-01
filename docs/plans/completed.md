@@ -17,7 +17,7 @@ truth for stable, beta, dev-only, and compatibility-mode classification.
 Shipped:
 
 - `onlava script list`, `onlava script inspect`, and `onlava script run` for app-local operational scripts.
-- `onlava run <domain>:<script> [script args...]` as sugar for `onlava script run`.
+- `onlava run <domain>:<script> [script args...]` as the top-level script runner, equivalent to `onlava script run`.
 - Filesystem-first discovery for `<domain>/scripts/<name>.script.go`, `<domain>/scripts/<name>.script.ts`, `<domain>/scripts/<name>/main.go`, and `<domain>/scripts/<name>/index.ts`.
 - Strict target parsing, clear missing-script errors, and ambiguity errors unless `--lang go|typescript` disambiguates.
 - Go execution via `go run`, requiring `//go:build ignore` for single-file Go scripts, plus TypeScript execution through Bun or Node with `tsx`.
@@ -29,7 +29,7 @@ Validation:
 - `go test ./...` passed.
 - `git diff --check` passed.
 - `go install ./cmd/onlava` passed.
-- Focused `onlava script` and `onlava run` fixture scenarios passed.
+- Focused `onlava script` and script-form `onlava run` fixture scenarios passed.
 - `onlava harness self --json --write` was run after fixes; all feature-relevant checks and fixture matrix passed, but the overall harness remained red on the pre-existing full-suite timing budget tracked by `docs/plans/0050-test-suite-speed-hardening.md`.
 
 ## Typed Lifecycle Graph Phase 1
@@ -196,7 +196,7 @@ Shipped:
 - Onlava dashboard Observability route with Grafana status, paths, datasource status, and deep links.
 - `onlava dev --json` Grafana events and `run.ready` metadata.
 - Env controls for opt-in, disable, required mode, binary resolution, download, port, root directory, version, and plugin preinstall.
-- Browser validation against a live `onlava dev` stack plus supervised shutdown and `onlava run` dev-only smoke coverage.
+- Browser validation against a live `onlava dev` stack plus supervised shutdown and headless runtime smoke coverage.
 
 ## UI Guardrail Hardening
 
@@ -361,7 +361,7 @@ Shipped:
 
 Shipped:
 
-- `onlava run`, `onlava build`, `onlava test`, `onlava check`, `onlava logs`, and beta `onlava psql`
+- `onlava serve`, `onlava run`, `onlava build`, `onlava test`, `onlava check`, `onlava logs`, and beta `onlava psql`
 - onlava API parser/codegen/runtime for common Go service behavior
 - Secrets from `.env`
 - local HTTPS proxy support
@@ -383,7 +383,7 @@ Shipped:
 - `onlava harness --json --write`
 - `onlava harness self --json --write`
 
-## Split `onlava dev` From Headless `onlava run`
+## Split `onlava dev` From Headless Runtime
 
 - Status: completed
 - Owner: onlava runtime
@@ -394,7 +394,7 @@ Shipped:
 Shipped:
 
 - `onlava dev` owns the development supervisor, dashboard, MCP, local proxy, watch/rebuild loop, and development logs.
-- `onlava run` builds once and starts the app headlessly without dashboard, local proxy, MCP, or file watching.
+- The headless runtime command builds once and starts the app without dashboard, local proxy, MCP, or file watching. It is now spelled `onlava serve`; the historical plan used `onlava run`.
 - Generated app binaries are headless by default unless development behavior is explicitly enabled.
 - Command parsing, tests, usage text, and local contract were updated for the split.
 

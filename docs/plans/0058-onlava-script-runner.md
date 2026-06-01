@@ -20,7 +20,8 @@ The final behavior should support simple single-file scripts and robust director
 - [x] 2026-06-01: Created this ExecPlan and linked it from `docs/plans/active.md`.
 - [x] 2026-06-01: Implemented filesystem-first script discovery under app roots.
 - [x] 2026-06-01: Added `onlava script list`, `onlava script inspect`, and `onlava script run`.
-- [x] 2026-06-01: Added `onlava run <domain>:<script>` as sugar for `onlava script run <domain>:<script>`.
+- [x] 2026-06-01: Added `onlava run <domain>:<script>` as the top-level script runner, equivalent to `onlava script run <domain>:<script>`.
+- [x] 2026-06-01: Moved headless API execution to `onlava serve`, leaving `onlava run` dedicated to scripts.
 - [x] 2026-06-01: Implemented safe Go and TypeScript execution conventions.
 - [x] 2026-06-01: Added tests, docs, usage text, fixture coverage, and validation.
 
@@ -35,8 +36,8 @@ Record implementation findings here with commands, test output, or file referenc
 
 ## Decision Log
 
-- Decision: Make `onlava script ...` the canonical command namespace and `onlava run <domain>:<script>` a convenience alias.
-  Rationale: `onlava run` already means headless app execution. A dedicated namespace leaves room for `list`, `inspect`, and future script-specific behavior without bloating the app runner.
+- Decision: Keep `onlava script ...` for discovery and explicit subcommands, and dedicate top-level `onlava run` to script execution.
+  Rationale: `onlava serve` now owns headless API execution, so `run` can be the ergonomic operational-script verb while `script list` and `script inspect` keep the discoverability namespace.
   Date/Author: 2026-06-01 / Codex
 
 - Decision: Discover scripts from the filesystem, not from `parse.App` or service discovery.
@@ -55,7 +56,7 @@ Record implementation findings here with commands, test output, or file referenc
 
 Completed on 2026-06-01.
 
-Implemented a narrow script runner in `cmd/onlava` with filesystem-first discovery, strict `<domain>:<script>` target parsing, ambiguity errors, Go and TypeScript layout support, and process execution from the app root. The canonical command surface is `onlava script list|inspect|run`, and `onlava run <domain>:<script>` delegates to the same runner when a script target appears before script args.
+Implemented a narrow script runner in `cmd/onlava` with filesystem-first discovery, strict `<domain>:<script>` target parsing, ambiguity errors, Go and TypeScript layout support, and process execution from the app root. The command surface is `onlava script list|inspect|run`, plus top-level `onlava run <domain>:<script>` for executing a script target.
 
 Single-file Go scripts must start with `//go:build ignore`; directory Go scripts use `go run ./<domain>/scripts/<script>`. TypeScript scripts prefer Bun and fall back to Node with `--import tsx`. Script processes receive app-root/app-id metadata and optional runtime env variables.
 
@@ -86,7 +87,7 @@ internal/parse/parser.go
 
 Current shape:
 
-- `onlava run` is the headless app runner.
+- `onlava serve` is the headless app runner; `onlava run` executes operational scripts.
 - `internal/app/root.go` discovers the app root by walking to `.onlava.json`.
 - The parser/build path uses Go package loading for app analysis.
 - TypeScript worker code already has runtime selection conventions: prefer Bun, otherwise use Node with `tsx` where applicable.
@@ -146,13 +147,13 @@ onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <dom
 Add sugar:
 
 ```sh
-onlava run [run flags...] <domain>:<script> [script args...]
+onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 ```
 
 Acceptance:
 
 - `onlava run billing:reconcile --dry-run` is equivalent to `onlava script run billing:reconcile --dry-run`.
-- Onlava flags for sugar must appear before the target. Arguments after `<domain>:<script>` are passed verbatim to the script.
+- Script flags must appear before the target. Arguments after `<domain>:<script>` are passed verbatim to the script.
 - `--` remains accepted but is not required.
 
 Milestone 3: Go execution.
@@ -215,7 +216,7 @@ Acceptance:
 
 Start with a small internal script model in `cmd/onlava` or an internal package if reuse becomes useful. Keep the first implementation local to the CLI unless another package needs the resolver.
 
-Implement target parsing and filesystem discovery before adding execution. Once the resolver is covered by tests, add `onlava script list` and `inspect`, then wire `script run`. Finally, add the `onlava run <domain>:<script>` sugar by detecting the target before the existing app-run path consumes arguments.
+Implement target parsing and filesystem discovery before adding execution. Once the resolver is covered by tests, add `onlava script list` and `inspect`, then wire `script run`. Finally, add top-level `onlava run <domain>:<script>` execution.
 
 Keep the runner intentionally narrow. Do not add scheduling, remote execution, dashboard UI, database helpers, or script metadata files in this pass.
 
@@ -227,7 +228,7 @@ Keep the runner intentionally narrow. Do not add scheduling, remote execution, d
 4. Add `onlava script list` and `onlava script inspect`.
 5. Add Go execution with build-tag validation for `*.script.go`.
 6. Add TypeScript execution with Bun/Node runtime selection.
-7. Add `onlava run <domain>:<script>` sugar and argument-splitting tests.
+7. Add top-level `onlava run <domain>:<script>` and argument-splitting tests.
 8. Update usage text and docs.
 9. Run validation and update this ExecPlan.
 
@@ -317,7 +318,7 @@ Public CLI:
 onlava script list [--app-root <path>] [--json]
 onlava script inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
 onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
-onlava run [--app-root <path>] [--env <name>] <domain>:<script> [script args...]
+onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 ```
 
 Internal interfaces can evolve, but the resolver should expose enough information for `list`, `inspect`, and `run` without invoking the app parser:

@@ -23,7 +23,8 @@ onlava is a Go-native service runtime and local development platform.
 
 - App roots are marked by `.onlava.json`.
 - Go source is the app model: services, endpoints, auth handlers, middleware, Temporal declarations, cron jobs, and generated clients are discovered from code.
-- `onlava run` builds once and starts a headless API-role runtime.
+- `onlava serve` builds once and starts a headless API-role runtime.
+- `onlava run <domain>:<script>` runs an app-local operational script.
 - `onlava worker` builds once and starts a worker-role runtime for cron and native Temporal workers.
 - `onlava dev` starts the local development platform: supervised app process, file watching, dashboard, API explorer, MCP endpoint, logs, traces, metrics, Grafana/Victoria sidecars when available, managed dev services, and optional frontend/proxy routing.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and must be called through generated helpers.
@@ -84,7 +85,8 @@ Use runtime commands according to intent:
 onlava dev [--app-root <path>] [--session <id>|--new-session] [--json] [--detach]
 onlava attach [--app-root <path>] [--session current|<id>] [--jsonl]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
-onlava run [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava serve [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
 onlava build [--app-root <path>] [-o <path>]
 onlava test [--app-root <path>] [go test flags/packages...]
@@ -92,7 +94,7 @@ onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path
 onlava db psql|reset|drop|snapshot [--app-root <path>]
 ```
 
-`onlava dev` is the preferred local loop for agents because it exposes dashboard, logs, traces, metrics, MCP, session routing, and managed dev services. `onlava run` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, MCP, proxy, or watch behavior.
+`onlava dev` is the preferred local loop for agents because it exposes dashboard, logs, traces, metrics, MCP, session routing, and managed dev services. `onlava serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, MCP, proxy, or watch behavior. `onlava run` is for operational scripts.
 
 ## MCP Guidance
 

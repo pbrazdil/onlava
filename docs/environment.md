@@ -2,7 +2,7 @@
 
 This page is the human reference for onlava-owned environment variables. Prefer `.onlava.json` for stable app configuration. Use environment variables for local overrides, secrets, process identity, or explicit escape hatches.
 
-Process environment wins over values loaded from `.env` and `.env.local`. `onlava dev`, local `onlava run`, and local `onlava worker` require an app-root `.env`; `.env.local` is optional.
+Process environment wins over values loaded from `.env` and `.env.local`. `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker` require an app-root `.env`; `.env.local` is optional.
 
 ## Agent And Dev Routing
 

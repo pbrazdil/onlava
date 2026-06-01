@@ -41,7 +41,7 @@ Validate:
 
 ```sh
 onlava check --json
-onlava run
+onlava serve
 curl http://127.0.0.1:4000/hello/world
 ```
 
@@ -116,7 +116,7 @@ Validate:
 
 ```sh
 onlava check --json
-onlava run
+onlava serve
 curl -X POST http://127.0.0.1:4000/users/dev-bootstrap
 ```
 
@@ -334,6 +334,8 @@ Common failure: committing generated clients without regenerating after endpoint
 ## Operational Scripts
 
 Use `onlava script` for app-local operational scripts that should run from the app root without requiring the app model to parse cleanly.
+
+Script targets use `<domain>:<script>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
 
 Single-file Go scripts live under a domain's `scripts` directory and must start with `//go:build ignore`:
 

@@ -17,7 +17,7 @@ same as the stable v0 support surface.
 
 - `.onlava.json`
 - `onlava dev --json`
-- `onlava run`
+- `onlava serve`
 - `onlava worker`
 - `onlava version --json`
 - `onlava check --json`
@@ -66,7 +66,7 @@ Reserved by contract, implementation pending:
 
 Stable v0 surface:
 - `.onlava.json`
-- `onlava run`
+- `onlava serve`
 - `onlava build`
 - `onlava version --json`
 - `onlava check --json`
@@ -243,7 +243,7 @@ Rules:
 - `generators.sqlc` is a beta lifecycle config for SQLC generation. `provider` may be empty or `sqlc`; `config` defaults to `sqlc.yaml`; `dev_url` defaults to `docker://postgres/18/dev`. When a SQLC schema path follows `<pkg>/db/gen/schema.sql` and `<pkg>/db/schema.hcl` exists, `onlava generate sqlc` refreshes the generated schema SQL with `atlas schema inspect` before running `sqlc generate`.
 - `database.apply` is a beta DB lifecycle escape hatch. Phase 1 supports only `provider: "exec"` with an explicit shell `command`, optional `cwd`, and string `env` overlay. `onlava db sync` runs this provider and then refreshes configured SQLC artifacts. It does not infer or apply migrations by convention.
 - `tasks` is a beta thin repo-task layer. Each task can define either `run` or `steps`, plus optional `cwd` and string `env`. `run` uses the platform shell from the app root or task cwd. `steps` currently accepts `task:<name>`, `check`, `test:go`, `generate`, `generate:client`, `generate:sqlc`, and `db:sync`.
-- Operational scripts are beta app-local script targets under `<domain>/scripts/`. `onlava script list`, `onlava script inspect`, and `onlava script run` discover and execute them without requiring the app model to parse cleanly. `onlava run <domain>:<script> [script args...]` is the runtime alias for executing a script target from the app root.
+- Operational scripts are beta app-local script targets under `<domain>/scripts/`. Targets use `<domain>:<script>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`. `onlava script list`, `onlava script inspect`, and `onlava script run` discover and execute them without requiring the app model to parse cleanly. `onlava run <domain>:<script> [script args...]` is the top-level alias for executing a script target from the app root.
 - `dev.services.postgres` currently defaults to version `18` and `isolation: "database"`. Other isolation modes are rejected until implemented. With an active agent session, onlava creates or reuses a deterministic per-session database, registers Postgres substrate metadata, and injects session-scoped `DatabaseURL`/`DATABASE_URL` even when local env files already contain those keys. The admin cluster comes from `ONLAVA_DEV_POSTGRES_ADMIN_URL`, a reusable agent Postgres substrate, Docker when available for the requested version, or local `initdb`/`postgres` binaries under the agent state directory. Managed local Postgres starts with logical replication settings so `dev.services.electric` can attach. `ONLAVA_DEV_POSTGRES_INITDB` and `ONLAVA_DEV_POSTGRES_BIN` can point at explicit local binaries. Set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` to keep an explicit external `DatabaseURL`/`DATABASE_URL` instead of using the managed session database. Once registered, later sessions and `onlava db ...` commands can reuse the agent-recorded Postgres substrate URL.
 - `dev.services.electric` supports explicit upstream routing with `ONLAVA_DEV_ELECTRIC_UPSTREAM`; when set, onlava registers the upstream as a hidden session backend and injects `ELECTRIC_URL`/`ONLAVA_ELECTRIC_URL` using the agent route. Without an explicit upstream, onlava starts a hidden per-session Electric process from `ONLAVA_DEV_ELECTRIC_BIN` or, when `dev.services.electric.image` is set and Docker is available, from that image. Electric receives the managed Postgres session database URL when `dev.services.postgres` is declared, unless `ONLAVA_DEV_POSTGRES_EXTERNAL=1` is set; otherwise it receives explicit `DATABASE_URL`/`DatabaseURL`. onlava also sets a deterministic session-scoped `ELECTRIC_REPLICATION_STREAM_ID` by default so multiple sessions can share one Postgres cluster without colliding on Electric publication or replication-slot names. Configured `dev.services.electric.env` values stay on the Electric process/container and are not injected into the app process; an explicit `ELECTRIC_REPLICATION_STREAM_ID` there overrides the onlava default.
 - Standard auth uses the `github.com/pbrazdil/onlava/auth` top surface and stores DB-backed auth state in PostgreSQL schema `onlava_auth`.
@@ -265,7 +265,7 @@ Rules:
 - TypeScript Temporal activity support is activity-only. onlava discovers `*.worker.ts` files, plus ordinary `.ts` files with `//onlava:worker`, and generates `.onlava/generated/temporal/typescript/{onlava.ts,registry.ts,worker.ts,manifest.json,tsconfig.json,package.json}`. Source files import `activity` from `onlava/worker` or `@onlava/temporal`; the generated `tsconfig.json` maps both names to the generated local API. Before launching the generated worker, `onlava dev` and `onlava worker typescript` install the generated worker package dependencies with `bun install`, falling back to `npm install` when Bun is unavailable.
 - Go workflows declare TypeScript activities with `temporal.NewExternalActivity` using matching input/output type parameters and call them through `temporal.ExecuteActivity`. `onlava check --json` validates matching TypeScript activity names, task queues, and type names before build/runtime.
 - `temporal.typescript.enabled`, `runtime`, and `auto_start` configure the TypeScript worker path. `onlava worker typescript` generates and runs the hidden worker directly. When `temporal.typescript.enabled` and `auto_start` are both true, `onlava dev` validates Go-to-TypeScript contracts, regenerates the hidden worker runtime, and supervises the TypeScript worker alongside the Go app. The worker receives the supervised Temporal address/namespace, session-scoped task queue prefix, deployment name, build ID, and agent session identity environment. `runtime` accepts `bun` or `node`; when empty, onlava prefers `bun` and falls back to `node --import tsx`.
-- Generated binaries accept `ONLAVA_ROLE=all|api|worker`. `onlava dev` uses the default combined role. `onlava run` uses `api`. `onlava worker` uses `worker`.
+- Generated binaries accept `ONLAVA_ROLE=all|api|worker`. `onlava dev` uses the default combined role. `onlava serve` uses `api`. `onlava worker` uses `worker`.
 - Packages that declare `github.com/pbrazdil/onlava/temporal` workflows or activities with `temporal.NewWorkflow`, `temporal.NewActivity`, or `temporal.NewExternalActivity` are imported into the generated main so their declarations register at startup.
 - `temporal.ActivityConfig.MaxConcurrency` maps to the Temporal worker's per-task-queue maximum concurrent activity executions. Use a dedicated task queue when different activities need different limits.
 - Cron jobs can set `cron.JobConfig.OverlapPolicy`, `CatchupWindow`, `PauseOnFailure`, `ActivityStartToClose`, and `ActivityRetryPolicy`. When Temporal is enabled these map to Temporal Schedule overlap/catchup/pause policy and to the generated cron activity options. Defaults are overlap `skip`, catchup window `1m`, pause-on-failure `false`, and activity start-to-close `1h`.
@@ -284,7 +284,7 @@ onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava prune --older-than <duration> [--app-root <path>] [--json]
-onlava run [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
 onlava worker typescript [--task-queue <name>[,<name>...]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
@@ -308,6 +308,7 @@ onlava task graph --json [--app-root <path>]
 onlava script list [--app-root <path>] [--json]
 onlava script inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
 onlava script run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
+onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 onlava harness [--app-root <path>] [--json] [--write]
 onlava harness self [--repo-root <path>] [--json] [--write]
 onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
@@ -366,13 +367,13 @@ Command split:
 - `onlava dev --proxy` enables the legacy local HTTPS/frontend proxy. This is a manual debugging escape hatch that binds machine-global proxy ports and is not the recommended path for parallel worktrees.
 - `onlava dev --proxy --trust` allows local trust-store installation. Without `--trust`, the proxy skips trust installation.
 - `onlava dev --port <n>` and `onlava dev --listen <addr>` force a manual TCP app backend. The default agent path uses a session-private Unix socket and should be preferred for worktree-safe development.
-- `onlava run` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, frontend proxy, or file watcher.
-- `onlava run` starts the generated binary with `ONLAVA_ROLE=api`, so it serves HTTP APIs without registering worker-only workflow or activity handlers.
-- `onlava script list|inspect|run` is the canonical local operational script surface. Script discovery is filesystem-first and does not parse or type-check the onlava app model. Targets use `<domain>:<script>` and map to `<app-root>/<domain>/scripts/<script>...`; the domain is a top-level path segment, not an onlava service name.
-- `onlava run <domain>:<script> [script args...]` is sugar for `onlava script run <domain>:<script> [script args...]`. Onlava flags for the sugar form must appear before the target, such as `onlava run --env production billing:reconcile --dry-run`. Arguments after the target belong to the script; `--` is accepted but not required.
+- `onlava serve` builds once and starts the app runtime headlessly. It does not start the dashboard, MCP server, local proxy, frontend proxy, or file watcher.
+- `onlava serve` starts the generated binary with `ONLAVA_ROLE=api`, so it serves HTTP APIs without registering worker-only workflow or activity handlers.
+- `onlava script list|inspect|run` is the canonical local operational script surface. Script discovery is filesystem-first and does not parse or type-check the onlava app model. Targets use `<domain>:<script>` and map to `<app-root>/<domain>/scripts/<script>...`; the domain is a top-level path segment, not an onlava service name. Both target segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
+- `onlava run <domain>:<script> [script args...]` is sugar for `onlava script run <domain>:<script> [script args...]`. Onlava script flags must appear before the target, such as `onlava run --env production billing:reconcile --dry-run`. Arguments after the target belong to the script; `--` is accepted but not required. `onlava run` no longer starts the API server; use `onlava serve` for headless API execution.
 - Supported script layouts are `<domain>/scripts/<name>.script.go`, `<domain>/scripts/<name>.script.ts`, `<domain>/scripts/<name>/main.go`, and `<domain>/scripts/<name>/index.ts`. Single-file Go scripts must start with `//go:build ignore` so normal app package loading cannot accidentally include them. If multiple candidates match a target, onlava fails unless `--lang go|typescript` selects a single language.
 - Scripts execute with cwd set to the app root. Go scripts use `go run`; TypeScript scripts prefer `bun` and fall back to `node --import tsx`. Script processes receive `ONLAVA_APP_ID`, `ONLAVA_APP_ROOT`, and `ONLAVA_ENV`/`ONLAVA_RUNTIME_ENV` when `--env` is set, with `.env` and `.env.local` loaded when present.
-- Cron declarations use Temporal Schedules when Temporal is enabled. `onlava run` reconciles schedules from the API role, while `onlava worker` runs the cron workflow/activity worker on `onlava.<app>.cron.go`. Temporal cron executions derive their onlava request start/idempotency metadata from the workflow scheduled start time.
+- Cron declarations use Temporal Schedules when Temporal is enabled. `onlava serve` reconciles schedules from the API role, while `onlava worker` runs the cron workflow/activity worker on `onlava.<app>.cron.go`. Temporal cron executions derive their onlava request start/idempotency metadata from the workflow scheduled start time.
 - `onlava worker` builds once and starts the app runtime in worker-only mode with no public HTTP server. In this beta implementation it runs cron and native Temporal workers; generated binaries use `ONLAVA_ROLE=worker`.
 - `onlava worker bindings` validates `.onlava/workers/*.json` manifests and writes language-specific activity starter files. Python manifests produce `onlava_worker.py`; TypeScript/JavaScript manifests produce `onlava_worker.ts`; unknown languages receive a normalized JSON binding file.
 - `onlava temporal deployment set-current`, `ramp`, and `drain` are the explicit operator commands for Temporal Worker Deployment routing changes in non-local environments. They use the app's Temporal connection settings, including TLS/API-key env vars.
@@ -381,7 +382,7 @@ Command split:
 
 Runtime safety:
 
-- `onlava run` and generated binaries do not expose dev/admin endpoints by default.
+- `onlava serve` and generated binaries do not expose dev/admin endpoints by default.
 - Dev/admin endpoints such as `/__onlava/config`, `/platform.Stats`, and `/debug/pprof/*` are enabled only for the development child process launched by `onlava dev` or when `ONLAVA_DEV_ENDPOINTS=1` is set explicitly.
 - Runtime CORS reflection is enabled in dev endpoint mode. Outside dev mode, CORS origins must be explicitly allowlisted with `ONLAVA_CORS_ALLOW_ORIGINS`.
 - Build workspaces skip local secret and machine artifacts such as `.env`, `.env.*`, `.git`, `.onlava`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage`.
@@ -412,11 +413,11 @@ Secrets and environment:
 - The human env-var reference is [Environment Reference](environment.md). Add new onlava-owned env vars there when adding or changing runtime/dev behavior.
 - Process environment always wins over values loaded from local files.
 - The stable runtime path reads `.env` from the app root for local secret population when a value is not already present in the process environment.
-- Local startup requires `.env` to exist in the app root. If `.env` is missing, `onlava dev`, local `onlava run`, and local `onlava worker` fail before serving with a clear error. `.env.local` is optional.
+- Local startup requires `.env` to exist in the app root. If `.env` is missing, `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker` fail before serving or running with a clear error. `.env.local` is optional.
 - `onlava dev` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
 - `onlava dev` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
 - Missing declared secrets warn in local development mode.
-- `onlava run --env production` can use process environment without a `.env` file, and fails before serving if any declared secret is missing.
+- `onlava serve --env production` can use process environment without a `.env` file, and fails before serving if any declared secret is missing.
 - `.env`, `.env.*`, and secret-bearing local files are not copied into build workspaces.
 
 Standard auth:
