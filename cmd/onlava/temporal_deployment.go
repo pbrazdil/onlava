@@ -179,7 +179,11 @@ func runTemporalDeployment(ctx context.Context, action string, opts temporalDepl
 	if opts.Deployment != "" {
 		info.DeploymentName = opts.Deployment
 	}
-	if err := runTemporalDeploymentCLI(ctx, action, opts, info); err != nil {
+	temporalCLI, err := resolveTemporalCLI(ctx, temporalToolchainStoreDir(root), true)
+	if err != nil {
+		return err
+	}
+	if err := runTemporalDeploymentCLI(ctx, action, opts, info, temporalCLI); err != nil {
 		return err
 	}
 	result := temporalDeploymentResult{
@@ -202,11 +206,7 @@ func runTemporalDeployment(ctx context.Context, action string, opts temporalDepl
 	return nil
 }
 
-func runTemporalDeploymentCLI(ctx context.Context, action string, opts temporalDeploymentOptions, info onlavaruntime.TemporalRuntimeInfo) error {
-	path, err := exec.LookPath("temporal")
-	if err != nil {
-		return fmt.Errorf("temporal deployment commands require the temporal CLI in PATH: %w", err)
-	}
+func runTemporalDeploymentCLI(ctx context.Context, action string, opts temporalDeploymentOptions, info onlavaruntime.TemporalRuntimeInfo, path string) error {
 	args := temporalDeploymentCLIArgs(action, opts, info)
 	cmd := exec.CommandContext(ctx, path, args...)
 	output, err := cmd.CombinedOutput()

@@ -36,6 +36,8 @@ func TestVictoriaEnabledCanBeDisabled(t *testing.T) {
 }
 
 func TestVictoriaArchiveName(t *testing.T) {
+	t.Parallel()
+
 	name, err := victoriaArchiveName(victoriaComponentSpec{
 		ArchiveSlug: "victoria-traces",
 		Version:     "v0.8.1",
@@ -49,6 +51,8 @@ func TestVictoriaArchiveName(t *testing.T) {
 }
 
 func TestChecksumForArchive(t *testing.T) {
+	t.Parallel()
+
 	body := "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  victoria-traces-linux-amd64-v0.8.1.tar.gz\n"
 	got := checksumForArchive(body, "victoria-traces-linux-amd64-v0.8.1.tar.gz")
 	if got != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
@@ -78,7 +82,28 @@ func TestResolveVictoriaBinaryPrefersExplicitEnv(t *testing.T) {
 	}
 }
 
+func TestResolveVictoriaBinaryIgnoresPathBinary(t *testing.T) {
+	dir := t.TempDir()
+	pathBinary := filepath.Join(dir, "victoria-traces-prod")
+	if err := os.WriteFile(pathBinary, []byte("#!/bin/sh\nexit 99\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	spec := victoriaComponentSpec{
+		DisplayName: "VictoriaTraces",
+		ArchiveSlug: "victoria-traces",
+		BinaryName:  "victoria-traces-prod",
+		EnvPrefix:   "ONLAVA_VICTORIA_TRACES",
+	}
+	_, err := resolveVictoriaBinary(context.Background(), spec, filepath.Join(t.TempDir(), "bin"), false)
+	if err == nil || !strings.Contains(err.Error(), "system PATH binaries are not used") {
+		t.Fatalf("resolveVictoriaBinary err = %v", err)
+	}
+}
+
 func TestVictoriaStackEnv(t *testing.T) {
+	t.Parallel()
+
 	stack := &victoriaStack{components: []*victoriaComponent{
 		{
 			spec: victoriaComponentSpec{
@@ -101,6 +126,8 @@ func TestVictoriaStackEnv(t *testing.T) {
 }
 
 func TestVictoriaStackSubstrateRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	stack := &victoriaStack{}
 	for _, spec := range victoriaComponentSpecs() {
 		baseURL := fmt.Sprintf("http://127.0.0.1:%d", spec.DefaultPort)

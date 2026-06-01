@@ -210,6 +210,10 @@ onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--
 onlava temporal deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
 onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
 onlava version [--json]
+onlava toolchain list [--json] [--include-source-locks] [--images]
+onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
+onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
+onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava generate [--app-root <path>] [--dry-run] [--json]
@@ -262,6 +266,18 @@ onlava gen client --lang typescript --output ./src/onlava-client.ts
 The generated client understands the app's route model and local wire capabilities. The benchmark fixture in [benchmarks/json-wire](benchmarks/json-wire) compares JSON, wire JSON, binary wire, and automatic wire modes.
 
 Apps can also configure `generators.clients` and use `onlava generate client` or `onlava generate --dry-run --json` to inspect and run configured generators. `onlava generate sqlc` is for file generation; database mutation belongs under `onlava db sync`.
+
+## Managed Toolchain
+
+The root `onlava.toolchain.json` freezes Onlava-owned local tools, images, plugins, and source lock references for this source version. Managed binaries install under `.onlava/toolchain/` by default; set `ONLAVA_TOOLCHAIN_DIR` to use a controlled cache elsewhere.
+
+```sh
+onlava toolchain list --json
+onlava toolchain sync --json
+onlava toolchain verify --json
+```
+
+Grafana, Victoria sidecars, and the local Temporal CLI use explicit env overrides or the managed store. They do not silently fall back to system `PATH` binaries.
 
 ## Observability And Inspection
 

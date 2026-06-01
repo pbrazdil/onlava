@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -161,7 +162,7 @@ func TestDownloadedGrafanaBinaryRequiresConfiguredVersion(t *testing.T) {
 		t.Fatalf("unexpected wrong-version binary %q/%q", path, home)
 	}
 
-	wantPath := filepath.Join(cfg.RootDir, "home", "grafana-"+cfg.Version, "bin", "grafana")
+	wantPath := managedGrafanaTestPath(cfg)
 	if err := os.MkdirAll(filepath.Dir(wantPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +170,7 @@ func TestDownloadedGrafanaBinaryRequiresConfiguredVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	gotPath, gotHome := downloadedGrafanaBinary(cfg)
-	if gotPath != wantPath || gotHome != filepath.Join(cfg.RootDir, "home", "grafana-"+cfg.Version) {
+	if gotPath != wantPath || gotHome != filepath.Dir(filepath.Dir(wantPath)) {
 		t.Fatalf("downloadedGrafanaBinary = %q/%q, want %q", gotPath, gotHome, wantPath)
 	}
 }
@@ -182,7 +183,7 @@ func TestResolveGrafanaBinaryPrefersManagedVersionOverPath(t *testing.T) {
 	if err := os.WriteFile(pathBinary, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	managedBinary := filepath.Join(cfg.RootDir, "home", "grafana-"+cfg.Version, "bin", "grafana")
+	managedBinary := managedGrafanaTestPath(cfg)
 	if err := os.MkdirAll(filepath.Dir(managedBinary), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestResolveGrafanaBinaryPrefersManagedVersionOverPath(t *testing.T) {
 	}
 }
 
-func TestResolveGrafanaBinaryRejectsWrongPathVersion(t *testing.T) {
+func TestResolveGrafanaBinaryIgnoresPathBinary(t *testing.T) {
 	cfg := newGrafanaConfig(t.TempDir(), fakeVictoriaStack(), "")
 	cfg.Download = false
 	pathDir := t.TempDir()
@@ -207,20 +208,20 @@ func TestResolveGrafanaBinaryRejectsWrongPathVersion(t *testing.T) {
 	if err := os.WriteFile(pathBinary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	oldProbe := grafanaVersionProbe
-	grafanaVersionProbe = func(ctx context.Context, path string) ([]byte, error) {
-		if path != pathBinary {
-			t.Fatalf("grafanaVersionProbe path = %q, want %q", path, pathBinary)
-		}
-		return []byte("Version 0.0.0\n"), nil
-	}
-	t.Cleanup(func() { grafanaVersionProbe = oldProbe })
 
 	t.Setenv("PATH", pathDir)
 	_, _, err := resolveGrafanaBinary(context.Background(), cfg)
-	if err == nil || !strings.Contains(err.Error(), "does not match pinned version") {
+	if err == nil || !strings.Contains(err.Error(), "system PATH binaries are not used") {
 		t.Fatalf("resolveGrafanaBinary err = %v", err)
 	}
+}
+
+func managedGrafanaTestPath(cfg grafanaConfig) string {
+	return filepath.Join(toolchainStoreDirForStateRoot(cfg.RootDir), "artifacts", "grafana", cfg.Version, currentPlatformDirForTest(), "home", "bin", "grafana")
+}
+
+func currentPlatformDirForTest() string {
+	return runtime.GOOS + "-" + runtime.GOARCH
 }
 
 func TestGrafanaChildEnvFiltersGFOverrides(t *testing.T) {

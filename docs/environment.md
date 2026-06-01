@@ -78,16 +78,25 @@ These are injected by onlava into generated app processes. App code may read the
 
 App-defined auth env names such as `JWTSecret`, `GoogleOAuthClientID`, `GoogleOAuthClientSecret`, `AuthCookieDomain`, `PublicAppURL`, `APIBaseURL`, and `AuthEmailFrom` come from `.onlava.json` and are target-app inputs, not fixed onlava global names.
 
+## Toolchain Store
+
+| Variable | Direction | Description |
+| --- | --- | --- |
+| `ONLAVA_TOOLCHAIN_DIR` | user input | Overrides the managed toolchain store root. Default is `.onlava/toolchain/` under the app or repo root. |
+| `ONLAVA_TOOLCHAIN_DOWNLOAD` | user input | `0` disables automatic downloads for managed toolchain binaries. |
+
+Managed toolchain artifacts come from `onlava.toolchain.json`, explicit per-tool env overrides, or manifest-driven downloads into the managed store. They do not fall back to ambient system `PATH` binaries.
+
 ## Managed Postgres And Electric
 
 | Variable | Direction | Description |
 | --- | --- | --- |
 | `ONLAVA_DEV_POSTGRES_ADMIN_URL` | user input | Explicit admin Postgres URL for the managed dev database planner. |
-| `ONLAVA_DEV_POSTGRES_BIN` | user input | Explicit local `postgres` binary path. |
-| `ONLAVA_DEV_POSTGRES_INITDB` | user input | Explicit local `initdb` binary path. |
+| `ONLAVA_DEV_POSTGRES_BIN` | user input | Explicit local `postgres` binary path; onlava does not search `PATH` for it. |
+| `ONLAVA_DEV_POSTGRES_INITDB` | user input | Explicit local `initdb` binary path; onlava does not search `PATH` for it. |
 | `ONLAVA_DEV_POSTGRES_EXTERNAL` | user input | `1` keeps an explicit external `DATABASE_URL`/`DatabaseURL` instead of creating a managed session database. |
 | `ONLAVA_DEV_ELECTRIC_UPSTREAM` | user input | Explicit Electric upstream; onlava registers it as the session Electric backend. |
-| `ONLAVA_DEV_ELECTRIC_BIN` | user input | Explicit local Electric binary path. |
+| `ONLAVA_DEV_ELECTRIC_BIN` | user input | Explicit local Electric binary path; onlava does not search `PATH` for it. |
 | `ELECTRIC_REPLICATION_STREAM_ID` | user input/injected | Electric replication stream ID. onlava sets a deterministic session-scoped default. |
 
 ## Temporal
@@ -107,6 +116,7 @@ App-defined auth env names such as `JWTSecret`, `GoogleOAuthClientID`, `GoogleOA
 | `ONLAVA_TEMPORAL_VERSIONING_BEHAVIOR` | user input | `pinned` or `auto_upgrade`; default is `pinned`. |
 | `ONLAVA_TEMPORAL_HOST_RESOURCE_REPORTING` | user input | `0` disables Temporal Go SDK host resource reporting. Enabled by default. |
 | `ONLAVA_BUILD_ID` | injected/user input | Worker build ID. Agent dev uses the session ID. |
+| `ONLAVA_TEMPORAL_BIN` | user input | Explicit Temporal CLI binary path for local dev server and deployment admin commands. Without this, onlava uses the managed toolchain artifact. |
 
 ## Observability, Victoria, And Grafana
 
@@ -114,8 +124,8 @@ App-defined auth env names such as `JWTSecret`, `GoogleOAuthClientID`, `GoogleOA
 | --- | --- | --- |
 | `ONLAVA_DEV_OBSERVABILITY_BACKEND` | injected | Current dev observability backend, for example `victoria`. |
 | `ONLAVA_DEV_VICTORIA` | user input | `0` disables Victoria sidecars. |
-| `ONLAVA_DEV_VICTORIA_DOWNLOAD` | user input | `0` disables automatic Victoria binary downloads. |
-| `ONLAVA_DEV_VICTORIA_DIR` | user input | Overrides Victoria state/download root. |
+| `ONLAVA_DEV_VICTORIA_DOWNLOAD` | user input | `0` disables automatic Victoria managed-toolchain downloads. |
+| `ONLAVA_DEV_VICTORIA_DIR` | user input | Overrides Victoria runtime state root. Managed binaries still live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. |
 | `ONLAVA_VICTORIA_METRICS_BIN` | user input | Explicit VictoriaMetrics binary path. |
 | `ONLAVA_VICTORIA_LOGS_BIN` | user input | Explicit VictoriaLogs binary path. |
 | `ONLAVA_VICTORIA_TRACES_BIN` | user input | Explicit VictoriaTraces binary path. |
@@ -135,12 +145,12 @@ App-defined auth env names such as `JWTSecret`, `GoogleOAuthClientID`, `GoogleOA
 | `ONLAVA_VICTORIA_LOGS_ENDPOINT` | injected | VictoriaLogs OTLP endpoint. |
 | `ONLAVA_VICTORIA_TRACES_ENDPOINT` | injected | VictoriaTraces OTLP endpoint. |
 | `ONLAVA_DEV_GRAFANA` | user input | `auto`, `1`, or `0`. Default `auto` starts Grafana when possible. |
-| `ONLAVA_DEV_GRAFANA_DOWNLOAD` | user input | `0` disables automatic Grafana downloads. |
+| `ONLAVA_DEV_GRAFANA_DOWNLOAD` | user input | `0` disables automatic Grafana managed-toolchain downloads. |
 | `ONLAVA_GRAFANA_BIN` | user input | Explicit Grafana binary path. |
 | `ONLAVA_GRAFANA_VERSION` | user input | Overrides the pinned Grafana version. |
 | `ONLAVA_GRAFANA_PORT` | user input | Preferred Grafana loopback port. |
-| `ONLAVA_GRAFANA_DIR` | user input | Overrides Grafana state/download root. |
-| `ONLAVA_GRAFANA_HOME` | user input | Overrides the Grafana installation home searched before downloads and `PATH`. |
+| `ONLAVA_GRAFANA_DIR` | user input | Overrides Grafana runtime state root. Managed binaries still live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. |
+| `ONLAVA_GRAFANA_HOME` | user input | Overrides Grafana home for an explicit binary or custom download path. |
 | `ONLAVA_GRAFANA_PUBLIC_URL` | user input | Overrides advertised Grafana browser URL. |
 | `ONLAVA_GRAFANA_REUSE_EXTERNAL` | user input | `1` allows reusing an externally managed Grafana. |
 | `ONLAVA_GRAFANA_PRESERVE_GF_ENV` | user input | `1` allows ambient `GF_*` variables through to Grafana. |

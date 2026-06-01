@@ -17,13 +17,15 @@ import (
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
+var runHarnessParallelDevCheckFunc = runHarnessParallelDevCheck
+
 func runHarnessParallelDevStep(ctx context.Context, repoRoot string) harnessStep {
 	started := time.Now()
 	step := harnessStep{
 		Name:    "parallel dev sessions",
 		Command: []string{"onlava", "harness", "self", "internal:parallel-dev", repoRoot},
 	}
-	summary, diagnostics, err := runHarnessParallelDevCheck(ctx)
+	summary, diagnostics, err := runHarnessParallelDevCheckFunc(ctx)
 	step.DurationMS = time.Since(started).Milliseconds()
 	step.Summary = summary
 	step.Diagnostics = diagnostics

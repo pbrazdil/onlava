@@ -57,6 +57,11 @@ reuse IDs; this list can still be ordered by current priority.
   - Owner: onlava runtime / agent DX
   - Created: 2026-05-31
   - Focus: unify SQLite and VictoriaLogs dev-event read/follow behavior behind one backend abstraction, then prove parity before making VictoriaLogs preferred.
+- [0059 Frozen Toolchain Manifest and Managed Tool Store](0059-frozen-toolchain-manifest.md)
+  - Status: active
+  - Owner: onlava runtime / release tooling / agent DX
+  - Created: 2026-06-01
+  - Focus: add a root frozen toolchain manifest, managed local tool store, `onlava toolchain` CLI, and remove implicit system `PATH` resolution for Onlava-managed tools.
 - [0047 TypeScript Temporal Workers](0047-typescript-temporal-workers.md)
   - Status: active
   - Owner: onlava runtime / Temporal

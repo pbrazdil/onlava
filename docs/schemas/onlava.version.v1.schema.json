@@ -25,6 +25,28 @@
     },
     "module_version": {
       "type": "string"
+    },
+    "toolchain_manifest": {
+      "type": "object",
+      "required": ["schema_version", "sha256", "artifact_count", "source_lock_count"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "onlava.toolchain.v1"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "artifact_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_lock_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   }
 }

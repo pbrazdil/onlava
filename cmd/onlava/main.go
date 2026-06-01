@@ -66,6 +66,8 @@ func run(args []string) error {
 		return temporalCommand(args[1:])
 	case "version":
 		return versionCommand(args[1:])
+	case "toolchain":
+		return toolchainCommand(args[1:])
 	case "build":
 		return buildCommand(args[1:])
 	case "psql":
@@ -121,6 +123,10 @@ func usageError() error {
     onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
     onlava temporal deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
     onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
+    onlava toolchain list [--json] [--include-source-locks] [--images]
+    onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
+    onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
+    onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
     onlava version [--json]
     onlava build [--app-root <path>] [-o <path>]
     onlava check [--app-root <path>] [--json]

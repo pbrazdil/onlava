@@ -56,9 +56,9 @@ func startTemporalDevServer(ctx context.Context, root string, cfg app.Config, co
 	if err != nil {
 		return nil, err
 	}
-	path, err := execLookPath("temporal")
+	path, err := resolveTemporalCLI(ctx, temporalToolchainStoreDir(root), true)
 	if err != nil {
-		return nil, fmt.Errorf("temporal: temporal CLI not found in PATH; install it or disable temporal.local.auto_start: %w", err)
+		return nil, fmt.Errorf("temporal: %w", err)
 	}
 	dbPath := temporalLocalDBPath(root, info.LocalDBFilename)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
@@ -124,6 +124,39 @@ func startTemporalDevServer(ctx context.Context, root string, cfg app.Config, co
 		})
 	}
 	return server, nil
+}
+
+func resolveTemporalCLI(ctx context.Context, storeDir string, download bool) (string, error) {
+	if path := strings.TrimSpace(os.Getenv("ONLAVA_TEMPORAL_BIN")); path != "" {
+		if isExecutableFile(path) {
+			return path, nil
+		}
+		return "", fmt.Errorf("ONLAVA_TEMPORAL_BIN points to a non-executable file: %s", path)
+	}
+	if status, err := managedToolchainArtifactStatusInDir(storeDir, "temporal-cli"); err == nil && status.ManagedPath != "" && isExecutableFile(status.ManagedPath) {
+		return status.ManagedPath, nil
+	}
+	if !download {
+		return "", fmt.Errorf("managed Temporal CLI is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava toolchain sync --tool temporal-cli` or set ONLAVA_TEMPORAL_BIN explicitly")
+	}
+	status, err := syncManagedToolchainArtifactInDir(ctx, storeDir, "temporal-cli")
+	if err != nil {
+		return "", fmt.Errorf("managed Temporal CLI is not installed and could not be synced: %w", err)
+	}
+	if status.ManagedPath == "" || !isExecutableFile(status.ManagedPath) {
+		return "", fmt.Errorf("managed Temporal CLI is not installed; run `onlava toolchain sync --tool temporal-cli` or set ONLAVA_TEMPORAL_BIN explicitly")
+	}
+	return status.ManagedPath, nil
+}
+
+func temporalToolchainStoreDir(root string) string {
+	if strings.TrimSpace(os.Getenv("ONLAVA_TOOLCHAIN_DIR")) != "" {
+		return toolchainStoreDirForStateRoot("")
+	}
+	if filepath.Base(filepath.Clean(root)) == "temporal" {
+		return filepath.Join(filepath.Dir(filepath.Clean(root)), "toolchain")
+	}
+	return filepath.Join(root, ".onlava", "toolchain")
 }
 
 func temporalRuntimeConfigFromApp(cfg app.TemporalConfig) onlavaruntime.TemporalConfig {

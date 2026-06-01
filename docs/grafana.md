@@ -54,11 +54,11 @@ onlava starts a managed Grafana by default. If another Grafana process is alread
 
 The Grafana child process does not inherit ambient `GF_*` variables by default because they can override generated config. Set `ONLAVA_GRAFANA_PRESERVE_GF_ENV=1` only for local debugging.
 
-When automatic downloads are enabled, the Grafana archive is extracted under `.onlava/grafana/home/grafana-<version>/`. onlava prefers `ONLAVA_GRAFANA_BIN`, then the managed pinned version, then a fresh download, and only then a `PATH` fallback. Default downloads verify Grafana's `.sha256` checksum file; custom download URLs can set `ONLAVA_GRAFANA_DOWNLOAD_SHA256`.
+When automatic downloads are enabled, the manifest-pinned Grafana archive is extracted under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. onlava prefers `ONLAVA_GRAFANA_BIN`, then the managed toolchain store, then a manifest-driven download. It does not use ambient `PATH` Grafana binaries. Custom download URLs are explicit local-testing escape hatches and can set `ONLAVA_GRAFANA_DOWNLOAD_SHA256`.
 
 `onlava dev` also writes local ignore markers so downloaded binaries and local state stay out of git.
 
-Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `internal/devtools/versions.json`. Environment variables override those pins for local testing.
+Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `onlava.toolchain.json`. Use `onlava toolchain list --json`, `onlava toolchain sync --tool grafana --json`, and `onlava toolchain verify --json` to inspect or repair the managed store.
 
 The starter dashboards query onlava's emitted OTLP request-duration metric, `onlava_request_duration_seconds`, with labels such as `onlava_app`, `onlava_session_id`, `onlava_service`, `onlava_endpoint`, `onlava_trace_type`, and `onlava_is_error`. Generated dashboards include a `Session` variable populated from `onlava_session_id`.
 

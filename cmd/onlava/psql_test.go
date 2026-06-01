@@ -8,6 +8,8 @@ import (
 )
 
 func TestParsePSQLArgs(t *testing.T) {
+	t.Parallel()
+
 	opts, err := parsePSQLArgs([]string{"--app-root", "/tmp/app", "-c", "select 1"})
 	if err != nil {
 		t.Fatalf("parsePSQLArgs returned error: %v", err)
@@ -21,6 +23,8 @@ func TestParsePSQLArgs(t *testing.T) {
 }
 
 func TestParsePSQLArgsRequiresAppRootValue(t *testing.T) {
+	t.Parallel()
+
 	_, err := parsePSQLArgs([]string{"--app-root"})
 	if err == nil || err.Error() != "missing value for --app-root" {
 		t.Fatalf("parsePSQLArgs() error = %v", err)
@@ -28,6 +32,8 @@ func TestParsePSQLArgsRequiresAppRootValue(t *testing.T) {
 }
 
 func TestDBCommandRejectsMissingOrUnknownSubcommand(t *testing.T) {
+	t.Parallel()
+
 	if err := dbCommand(nil); err == nil || err.Error() != "usage: onlava db psql|sync|reset|drop|snapshot [--app-root <path>]" {
 		t.Fatalf("dbCommand(nil) error = %v", err)
 	}
@@ -37,6 +43,8 @@ func TestDBCommandRejectsMissingOrUnknownSubcommand(t *testing.T) {
 }
 
 func TestParseDBResetArgs(t *testing.T) {
+	t.Parallel()
+
 	opts, err := parseDBResetArgs([]string{"--app-root", "/tmp/app"})
 	if err != nil {
 		t.Fatalf("parseDBResetArgs returned error: %v", err)
@@ -50,6 +58,8 @@ func TestParseDBResetArgs(t *testing.T) {
 }
 
 func TestParseDBSnapshotArgs(t *testing.T) {
+	t.Parallel()
+
 	opts, err := parseDBSnapshotArgs([]string{"create", "before-refactor", "--app-root", "/tmp/app"})
 	if err != nil {
 		t.Fatalf("parseDBSnapshotArgs returned error: %v", err)
@@ -66,6 +76,8 @@ func TestParseDBSnapshotArgs(t *testing.T) {
 }
 
 func TestManagedPostgresSnapshotPathSanitizesName(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	path, err := managedPostgresSnapshotPath(root, "session-a", "../Before Refactor!")
 	if err != nil {
@@ -78,6 +90,8 @@ func TestManagedPostgresSnapshotPathSanitizesName(t *testing.T) {
 }
 
 func TestBuildPSQLInvocationUsesDatabaseURLFromDotEnv(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".env", "DatabaseURL=postgres://localhost/from-file\nOTHER=two\n")
 	invocation, err := buildPSQLInvocation(root, []string{"PATH=" + os.Getenv("PATH")}, psqlOptions{Args: []string{"-c", "select 1"}})

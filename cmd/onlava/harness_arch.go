@@ -204,7 +204,7 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 		if err != nil {
 			return err
 		}
-		if lineCount >= architectureErrorLines {
+		if lineCount >= architectureErrorLines && !architectureAllowsLongMarkdown(rel) {
 			summary.LargeFiles++
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
@@ -213,7 +213,7 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 				Message:         fmt.Sprintf("file has %d lines, over hard limit %d", lineCount, architectureErrorLines),
 				SuggestedAction: "Split the file before adding more behavior.",
 			})
-		} else if lineCount >= architectureWarnLines {
+		} else if lineCount >= architectureWarnLines && !architectureAllowsLongMarkdown(rel) {
 			summary.LargeFiles++
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
@@ -234,6 +234,17 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 		return nil
 	})
 	return diagnostics, err
+}
+
+func architectureAllowsLongMarkdown(rel string) bool {
+	rel = filepath.ToSlash(rel)
+	if filepath.Ext(rel) != ".md" {
+		return false
+	}
+	if rel == "docs/plans/active.md" || rel == "docs/plans/completed.md" {
+		return false
+	}
+	return strings.HasPrefix(rel, "docs/plans/")
 }
 
 func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {

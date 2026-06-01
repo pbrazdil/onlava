@@ -395,18 +395,24 @@ func resolveVictoriaBinary(ctx context.Context, spec victoriaComponentSpec, binD
 		}
 		return "", fmt.Errorf("%s_BIN points to a non-executable file: %s", spec.EnvPrefix, path)
 	}
-	for _, name := range append([]string{spec.BinaryName}, spec.ExtraBinaries...) {
-		if path := filepath.Join(binDir, name); isExecutableFile(path) {
-			return path, nil
-		}
-		if path, err := exec.LookPath(name); err == nil {
-			return path, nil
-		}
+	artifactName := spec.ArchiveSlug
+	if status, err := managedToolchainArtifactStatus(filepath.Dir(binDir), artifactName); err == nil && status.ManagedPath != "" && isExecutableFile(status.ManagedPath) && status.Version == spec.Version {
+		return status.ManagedPath, nil
 	}
 	if !download {
-		return "", fmt.Errorf("binary not found in PATH or %s; set %s_BIN or enable download", binDir, spec.EnvPrefix)
+		return "", fmt.Errorf("managed %s is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava toolchain sync --tool %s` or set %s_BIN explicitly", spec.DisplayName, artifactName, spec.EnvPrefix)
 	}
-	return downloadVictoriaBinary(ctx, spec, binDir)
+	status, err := syncManagedToolchainArtifact(ctx, filepath.Dir(binDir), artifactName)
+	if err != nil {
+		return "", fmt.Errorf("managed %s is not installed and could not be synced: %w", spec.DisplayName, err)
+	}
+	if status.Version != spec.Version {
+		return "", fmt.Errorf("managed %s version is %s, expected %s from %s_VERSION", spec.DisplayName, status.Version, spec.Version, spec.EnvPrefix)
+	}
+	if status.ManagedPath == "" || !isExecutableFile(status.ManagedPath) {
+		return "", fmt.Errorf("managed %s is not installed; run `onlava toolchain sync --tool %s` or set %s_BIN explicitly", spec.DisplayName, artifactName, spec.EnvPrefix)
+	}
+	return status.ManagedPath, nil
 }
 
 func isExecutableFile(path string) bool {

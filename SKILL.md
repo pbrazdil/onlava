@@ -24,6 +24,7 @@ onlava inspect app --json
 onlava inspect routes --json
 onlava inspect endpoints --json
 onlava inspect wire --json
+onlava toolchain verify --json
 onlava logs --jsonl --limit 200
 onlava harness --json --write
 ```
@@ -127,7 +128,7 @@ onlava down
 
 ## UI Work
 
-Read `docs/ui-agent-contract.md` before dashboard or app UI work. Use onlava-owned primitives and the `@onlava` registry; add registry components with commands such as `bun run shadcn:add @onlava/button`.
+Read `docs/ui-agent-contract.md` before dashboard or app UI work. Use onlava-owned primitives and the @onlava registry; add registry components with commands such as `bun run shadcn:add @onlava/button`.
 
 ```sh
 cd ui
@@ -154,7 +155,11 @@ onlava logs --session current --jsonl --limit 200
 onlava logs --session current --source api --level error --jsonl --limit 200
 onlava inspect traces --json --session current --since 15m --slowest
 onlava inspect metrics --json --session current --since 1h
+onlava toolchain list --json
+onlava toolchain verify --json
 ```
+
+Onlava-managed tools live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. Agents should not rely on system `PATH` binaries for managed Grafana, Victoria, or Temporal CLI issues; use `onlava toolchain sync --json` or an explicit per-tool env override.
 
 ## Generated TypeScript Client
 
@@ -206,6 +211,10 @@ onlava down [--app-root <path>] [--session <id>]
 onlava serve [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
 onlava version --json
+onlava toolchain list [--json] [--include-source-locks] [--images]
+onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
+onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
+onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] --json
 onlava generate [--app-root <path>] [--dry-run] [--json]

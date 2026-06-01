@@ -28,6 +28,7 @@ onlava inspect app --json
 onlava inspect routes --json
 onlava inspect endpoints --json
 onlava inspect wire --json
+onlava toolchain verify --json
 ```
 
 During local debugging:
@@ -52,6 +53,7 @@ Before finishing onlava repo work:
 ```sh
 go test ./...
 go install ./cmd/onlava
+onlava toolchain verify --json
 onlava harness self --json --write
 ```
 
@@ -147,6 +149,8 @@ Prefer JSON when output will feed another tool or decision.
 | Inspect build/cache paths | `onlava inspect build --json`, `onlava inspect paths --json` |
 | Inspect generator graph | `onlava inspect generators --json` |
 | Inspect docs knowledge base | `onlava inspect docs --json` |
+| Inspect managed local tools | `onlava toolchain list --json`, `onlava toolchain verify --json` |
+| Install managed local tools | `onlava toolchain sync --json` or `onlava toolchain sync --tool <name> --json` |
 | Run app validation snapshot | `onlava harness --json --write` |
 | Run repo validation snapshot | `onlava harness self --json --write` |
 | Follow logs | `onlava logs --jsonl --session current --limit 200` |
@@ -156,6 +160,8 @@ Prefer JSON when output will feed another tool or decision.
 | Sync configured dev DB | `onlava db sync` |
 | Run repo-local task | `onlava task list`, `onlava task run <name>` |
 | Run app-local operational script | `onlava run list --json`, `onlava run <domain>:<script>` |
+
+When local dev fails because Grafana, Victoria, Temporal CLI, Postgres, or Electric tooling is missing, inspect the managed toolchain first. Do not install global binaries as a hidden fix; use `onlava toolchain sync --json`, set an explicit per-tool env override, or document the configured external service.
 | Connect to managed Postgres | `onlava db psql` |
 
 Use non-JSON output only for human inspection.

@@ -20,6 +20,7 @@ same as the stable v0 support surface.
 - `onlava serve`
 - `onlava worker`
 - `onlava version --json`
+- `onlava toolchain list|sync|verify|path`
 - `onlava check --json`
 - `onlava generate`
 - `onlava generate client`
@@ -96,6 +97,7 @@ Dev-only or beta surface:
 - `onlava inspect traces|metrics --json`
 - `onlava inspect generators --json`
 - `onlava inspect temporal --json`
+- `onlava toolchain list|sync|verify|path`
 - `onlava worker`
 - `onlava admin traces clear --json`
 - `onlava harness ui --json`
@@ -292,6 +294,10 @@ onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--
 onlava temporal deployment ramp --build-id <id> --percentage <0-100> [--deployment <name>] [--ignore-missing-task-queues] [--allow-no-pollers] [--app-root <path>] [--json]
 onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
 onlava version [--json]
+onlava toolchain list [--json] [--include-source-locks] [--images]
+onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
+onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
+onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava db psql [--app-root <path>] [psql args...]
@@ -343,6 +349,16 @@ Inspect rules:
 - `metrics` defaults to `--since 24h` and `--limit 10000` so agents get useful local summaries without scanning unbounded history.
 - `docs` inspects the onlava repo knowledge base, not a target onlava app. It accepts `--repo-root` and otherwise walks upward to the `module github.com/pbrazdil/onlava` repo root.
 
+Toolchain rules:
+- `onlava.toolchain.json` is the root checked-in manifest for Onlava-owned development executables, Docker images, plugins, and source lock references.
+- The manifest uses `onlava.toolchain.v1`; `onlava toolchain ... --json` emits `onlava.toolchain.status.v1`.
+- `onlava version --json` includes `toolchain_manifest.schema_version`, `sha256`, `artifact_count`, and `source_lock_count` for the bundled manifest.
+- The default local store is `.onlava/toolchain/` under the app/repo root. `ONLAVA_TOOLCHAIN_DIR` overrides the store root.
+- `ONLAVA_TOOLCHAIN_DOWNLOAD=0` disables automatic managed binary downloads. Per-tool download disable variables such as `ONLAVA_DEV_GRAFANA_DOWNLOAD=0` and `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` still apply to their startup paths.
+- Managed Grafana, Victoria, and Temporal CLI binaries resolve from explicit env overrides, the managed store, or manifest-driven download. They do not use implicit system `PATH` binaries.
+- `onlava toolchain verify --strict --images` fails for tag-only image refs. Tag-only image refs marked `stability: "unstable"` are accepted only outside strict verification during the migration to digest-pinned images.
+- Go modules and UI package-manager files are source locks. Commands such as `go`, `bun`, `npm`, `node`, and `tsx` used to run source/package-manager workflows are not hidden Onlava-managed toolchain downloads.
+
 Command split:
 
 - `onlava dev` starts the local development platform: app process, file watching, and rebuild/restart supervision.
@@ -360,7 +376,7 @@ Command split:
 - When the local agent is active, the agent starts the visible dashboard backend and routes `console.onlava.localhost/s/<session_id>` to it. The Unix-socket control API remains protected by filesystem permissions.
 - The agent router serves HTTPS by default, and newly registered sessions receive `https://...onlava.localhost` routes. `onlava agent --router-http` or `ONLAVA_AGENT_ROUTER_TLS=0` explicitly keeps the router on HTTP for local debugging. `onlava agent --router-tls` and `ONLAVA_AGENT_ROUTER_TLS=1` force HTTPS when an explicit setting is needed. `onlava agent --trust` and `ONLAVA_AGENT_TRUST=1` also enable router TLS and attempt to trust the existing onlava local CA. Trust installation failures are logged; the router still starts.
 - Agent session manifests always include `dashboard` and `mcp` routes for the global agent-owned dashboard. With the agent dashboard active, the manifest does not need matching per-session `dashboard` or `mcp` backends; direct/per-session dashboard endpoints are kept for agent-disabled, unavailable-agent, or explicit local-proxy fallback paths.
-- `onlava dev` also starts local VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana by default when their binaries can be found or downloaded. When the local agent is active, Victoria and Grafana are registered as shared agent substrates and later dev sessions reuse their endpoints. Grafana is also registered as the session `grafana` backend, so manifests expose `https://grafana.<session_id>.onlava.localhost:<agent-router-port>/` by default, or HTTP when the agent router is explicitly started with `--router-http` or `ONLAVA_AGENT_ROUTER_TLS=0`. SQLite dashboard storage is stored under the agent directory when the agent is active and `ONLAVA_DEV_CACHE_DIR` is unset; the store keeps session-addressable app records so multiple worktrees for the same base app can appear in the global dashboard. Agent-disabled fallback keeps the previous user-cache behavior. This is a dev-only beta implementation detail, not a stable production API.
+- `onlava dev` also starts local VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana by default when their managed toolchain binaries are installed or can be downloaded. When the local agent is active, Victoria and Grafana are registered as shared agent substrates and later dev sessions reuse their endpoints. Grafana is also registered as the session `grafana` backend, so manifests expose `https://grafana.<session_id>.onlava.localhost:<agent-router-port>/` by default, or HTTP when the agent router is explicitly started with `--router-http` or `ONLAVA_AGENT_ROUTER_TLS=0`. SQLite dashboard storage is stored under the agent directory when the agent is active and `ONLAVA_DEV_CACHE_DIR` is unset; the store keeps session-addressable app records so multiple worktrees for the same base app can appear in the global dashboard. Agent-disabled fallback keeps the previous user-cache behavior. This is a dev-only beta implementation detail, not a stable production API.
 - The local agent home defaults to `~/.onlava` unless `ONLAVA_AGENT_HOME` is set. `ONLAVA_DEV_CACHE_DIR` controls build and dashboard cache locations, not machine-wide agent identity.
 - Managed frontend services start on session-private hidden loopback ports. A manual `ONLAVA_FRONTEND_<NAME>_ADDR` override is accepted, but configured frontend upstreams are ignored unless that frontend sets `"allow_shared_upstream": true`.
 - `onlava dev --proxy` enables the legacy local HTTPS/frontend proxy. This is a manual debugging escape hatch that binds machine-global proxy ports and is not the recommended path for parallel worktrees.
@@ -395,11 +411,11 @@ Local observability:
   - VictoriaTraces: `/insert/opentelemetry/v1/traces`
 - Dashboard trace reads and `onlava inspect traces|metrics --json` prefer Victoria data and fall back to SQLite data.
 - Victoria sidecars store data under `.onlava/victoria/` by default when running without the agent. With an active agent, shared Victoria state is stored under the agent directory and registered in the agent substrate registry; the dev supervisor reuses registered endpoints instead of owning per-worktree Victoria processes.
-- `ONLAVA_DEV_VICTORIA=0` disables Victoria sidecars. `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` disables automatic binary downloads. When enabled, missing Victoria binaries are downloaded into `.onlava/victoria/bin/`.
+- `ONLAVA_DEV_VICTORIA=0` disables Victoria sidecars. `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` disables automatic Victoria binary downloads. When enabled, missing Victoria binaries are downloaded into `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`.
 - Victoria binary names, versions, ports, storage layout, download behavior, and Victoria query semantics are beta. They are documented so local development is debuggable, but they are not part of the stable v0 runtime contract.
-- Grafana binds to loopback and stores generated config, provisioning, downloaded binaries, and plugin state under `.onlava/grafana/` when running without the agent. With an active agent, shared Grafana state is stored under the agent directory and registered in the agent substrate registry; later dev sessions reuse the verified shared Grafana and expose a per-session `grafana.<session>.onlava.localhost` route that points at the shared upstream.
+- Grafana binds to loopback and stores generated config, provisioning, and plugin state under `.onlava/grafana/` when running without the agent; downloaded Grafana binaries live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. With an active agent, shared Grafana state is stored under the agent directory and registered in the agent substrate registry; later dev sessions reuse the verified shared Grafana and expose a per-session `grafana.<session>.onlava.localhost` route that points at the shared upstream.
 - Grafana controls are `ONLAVA_DEV_GRAFANA=auto|1|0`, `ONLAVA_DEV_GRAFANA_DOWNLOAD=1|0`, `ONLAVA_GRAFANA_BIN`, `ONLAVA_GRAFANA_VERSION`, `ONLAVA_GRAFANA_PORT`, `ONLAVA_GRAFANA_DIR`, `ONLAVA_GRAFANA_PUBLIC_URL`, `ONLAVA_GRAFANA_REUSE_EXTERNAL`, `ONLAVA_GRAFANA_PRESERVE_GF_ENV`, `ONLAVA_GRAFANA_DOWNLOAD_URL`, `ONLAVA_GRAFANA_DOWNLOAD_SHA256`, and `ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC`.
-- Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `internal/devtools/versions.json`; environment variables override those pins for local testing.
+- Default Grafana, Grafana plugin, Victoria sidecar, Temporal CLI, and managed image versions are pinned in `onlava.toolchain.json`; environment variables override explicit startup controls for local testing.
 - Grafana provisioning uses datasource UIDs `onlava-victoriametrics`, `onlava-victorialogs`, and `onlava-victoriatraces-jaeger`, plus dashboard UIDs `onlava-dev-overview`, `onlava-dev-logs`, and `onlava-dev-endpoint`.
 - Missing Grafana does not stop app startup in `auto` mode. `ONLAVA_DEV_GRAFANA=1` makes Grafana startup required. Grafana is marked usable only after the server, expected datasources, and expected dashboards are verified. External Grafana reuse requires `ONLAVA_GRAFANA_REUSE_EXTERNAL=1`.
 - Agent sessions inject `ONLAVA_SESSION_ID`, `ONLAVA_BASE_APP_ID`, `ONLAVA_RUNTIME_APP_ID`, `ONLAVA_APP_ROOT_HASH`, `ONLAVA_BRANCH`, and `ONLAVA_WORKTREE` into the app process. Local development reports carry that identity into stored trace summaries/events and log events.
@@ -477,7 +493,7 @@ onlava harness self --json --write
 - output conforms to `onlava.harness.self.v1`
 - it validates the onlava repo itself instead of a target app
 - it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, UI static architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, UI freshness checks, `go install ./cmd/onlava`, and installed binary freshness checks
-- architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source files over 2500 lines
+- architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source files over 2500 lines; ExecPlans under `docs/plans/` are exempt from line-count thresholds
 - architecture checks warn on non-generated source files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
 - UI static architecture checks fail on raw shadcn install scripts, non-`@onlava` registries, unsafe registry item source/target declarations, legacy `components/ui` imports, direct vendor shadcn imports from screens, and direct Radix/styling utility imports outside onlava primitives/layouts/vendor
 - UI static architecture checks scan multiline imports, re-exports, dynamic imports, and CommonJS requires for forbidden UI boundary bypasses
@@ -608,6 +624,8 @@ Implemented now:
 - [onlava.logs.event.v1.schema.json](schemas/onlava.logs.event.v1.schema.json)
 - [onlava.admin.result.v1.schema.json](schemas/onlava.admin.result.v1.schema.json)
 - [onlava.version.v1.schema.json](schemas/onlava.version.v1.schema.json)
+- [onlava.toolchain.v1.schema.json](schemas/onlava.toolchain.v1.schema.json)
+- [onlava.toolchain.status.v1.schema.json](schemas/onlava.toolchain.status.v1.schema.json)
 
 Reserved now:
 - future command-specific admin schemas if `onlava.admin.result.v1` becomes too generic

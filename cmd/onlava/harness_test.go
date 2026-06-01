@@ -595,6 +595,40 @@ func TestRunHarnessKnowledgeStepReportsStaleSkill(t *testing.T) {
 	}
 }
 
+func TestArchitectureChecksAllowLongExecPlans(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	longMarkdown := strings.Repeat("line\n", architectureWarnLines+1)
+	writeTestAppFile(t, root, "docs/plans/0060-long-plan.md", longMarkdown)
+	writeTestAppFile(t, root, "docs/reference.md", longMarkdown)
+
+	summary := architectureSummary{}
+	diagnostics, err := checkArchitectureSource(root, &summary)
+	if err != nil {
+		t.Fatalf("checkArchitectureSource() error = %v", err)
+	}
+
+	var execPlanWarned bool
+	var referenceWarned bool
+	for _, diag := range diagnostics {
+		switch filepath.ToSlash(diag.File) {
+		case filepath.ToSlash(filepath.Join(root, "docs/plans/0060-long-plan.md")):
+			execPlanWarned = true
+		case filepath.ToSlash(filepath.Join(root, "docs/reference.md")):
+			if strings.Contains(diag.Message, "over warning threshold") {
+				referenceWarned = true
+			}
+		}
+	}
+	if execPlanWarned {
+		t.Fatalf("long ExecPlan produced architecture diagnostic: %+v", diagnostics)
+	}
+	if !referenceWarned {
+		t.Fatalf("ordinary long markdown did not produce warning: %+v", diagnostics)
+	}
+}
+
 func TestRunOnlavaHarnessJSONSuccessWritesLatest(t *testing.T) {
 	useFakeBuildGoRunner(t)
 
@@ -673,6 +707,15 @@ func TestRunOnlavaHarnessJSONFailureIncludesNextAction(t *testing.T) {
 }
 
 func TestRunHarnessParallelDevStep(t *testing.T) {
+	prev := runHarnessParallelDevCheckFunc
+	t.Cleanup(func() { runHarnessParallelDevCheckFunc = prev })
+	runHarnessParallelDevCheckFunc = func(context.Context) (map[string]any, []checkDiagnostic, error) {
+		return map[string]any{
+			"sessions":  2,
+			"databases": 2,
+		}, nil, nil
+	}
+
 	step := runHarnessParallelDevStep(context.Background(), t.TempDir())
 	if !step.OK {
 		t.Fatalf("parallel dev step failed: error=%s diagnostics=%+v summary=%+v", step.Error, step.Diagnostics, step.Summary)

@@ -7,6 +7,8 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+
+	"github.com/pbrazdil/onlava/internal/toolchain"
 )
 
 var (
@@ -16,12 +18,20 @@ var (
 )
 
 type versionResponse struct {
-	SchemaVersion string `json:"schema_version"`
-	Version       string `json:"version"`
-	Commit        string `json:"commit,omitempty"`
-	BuiltAt       string `json:"built_at,omitempty"`
-	GoVersion     string `json:"go_version"`
-	ModuleVersion string `json:"module_version,omitempty"`
+	SchemaVersion string                    `json:"schema_version"`
+	Version       string                    `json:"version"`
+	Commit        string                    `json:"commit,omitempty"`
+	BuiltAt       string                    `json:"built_at,omitempty"`
+	GoVersion     string                    `json:"go_version"`
+	ModuleVersion string                    `json:"module_version,omitempty"`
+	Toolchain     *toolchainManifestVersion `json:"toolchain_manifest,omitempty"`
+}
+
+type toolchainManifestVersion struct {
+	SchemaVersion   string `json:"schema_version"`
+	SHA256          string `json:"sha256"`
+	ArtifactCount   int    `json:"artifact_count"`
+	SourceLockCount int    `json:"source_lock_count"`
 }
 
 func versionCommand(args []string) error {
@@ -78,6 +88,14 @@ func buildVersionResponse() versionResponse {
 	}
 	if resp.Version == "" {
 		resp.Version = "dev"
+	}
+	if manifest, err := toolchain.LoadBundledManifest(); err == nil {
+		resp.Toolchain = &toolchainManifestVersion{
+			SchemaVersion:   manifest.SchemaVersion,
+			SHA256:          toolchain.BundledManifestSHA256(),
+			ArtifactCount:   len(manifest.Artifacts),
+			SourceLockCount: len(manifest.SourceLocks),
+		}
 	}
 	return resp
 }

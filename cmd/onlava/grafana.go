@@ -24,6 +24,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/devtools"
+	"github.com/pbrazdil/onlava/internal/toolchain"
 )
 
 const (
@@ -39,13 +40,6 @@ const (
 	grafanaEndpointUID      = "onlava-dev-endpoint"
 	grafanaTemporalUID      = "onlava-dev-temporal"
 )
-
-var grafanaVersionProbeTimeout = 2 * time.Second
-
-var grafanaVersionProbe = func(ctx context.Context, path string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, path, "-v")
-	return cmd.CombinedOutput()
-}
 
 type grafanaMode string
 
@@ -522,41 +516,30 @@ func resolveGrafanaBinary(ctx context.Context, cfg grafanaConfig) (binaryPath, h
 		return path, home, nil
 	}
 	if cfg.Download {
-		path, home, err := downloadGrafanaBinary(ctx, cfg)
-		if err == nil {
-			return path, home, nil
+		status, syncErr := syncManagedToolchainArtifact(ctx, cfg.RootDir, "grafana")
+		if syncErr == nil && status.ManagedPath != "" && status.Version == cfg.Version {
+			return status.ManagedPath, status.HomePath, nil
 		}
-	}
-	if path, err := exec.LookPath("grafana"); err == nil {
-		if err := verifyGrafanaPathBinaryVersion(ctx, path, cfg.Version); err != nil {
-			return "", "", err
+		if syncErr == nil && status.ManagedPath != "" && status.Version != cfg.Version {
+			syncErr = fmt.Errorf("managed Grafana version is %s, expected %s from ONLAVA_GRAFANA_VERSION", status.Version, cfg.Version)
 		}
-		return path, grafanaHomeForBinary(path, cfg.RootDir), nil
-	}
-	if path, err := exec.LookPath("grafana-server"); err == nil {
-		if err := verifyGrafanaPathBinaryVersion(ctx, path, cfg.Version); err != nil {
-			return "", "", err
+		if strings.TrimSpace(os.Getenv("ONLAVA_GRAFANA_DOWNLOAD_URL")) != "" {
+			path, home, downloadErr := downloadGrafanaBinary(ctx, cfg)
+			if downloadErr == nil {
+				return path, home, nil
+			}
 		}
-		return path, grafanaHomeForBinary(path, cfg.RootDir), nil
+		if syncErr != nil {
+			err = syncErr
+		}
 	}
 	if !cfg.Download {
-		return "", "", fmt.Errorf("Grafana binary not found; set ONLAVA_GRAFANA_BIN or enable ONLAVA_DEV_GRAFANA_DOWNLOAD")
+		return "", "", fmt.Errorf("managed Grafana is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava toolchain sync --tool grafana` or set ONLAVA_GRAFANA_BIN explicitly")
 	}
-	return "", "", err
-}
-
-func verifyGrafanaPathBinaryVersion(ctx context.Context, path, want string) error {
-	checkCtx, cancel := context.WithTimeout(ctx, grafanaVersionProbeTimeout)
-	defer cancel()
-	output, err := grafanaVersionProbe(checkCtx, path)
 	if err != nil {
-		return fmt.Errorf("PATH Grafana binary %s failed version probe: %w", path, err)
+		return "", "", fmt.Errorf("managed Grafana is not installed and could not be synced: %w", err)
 	}
-	got := strings.TrimSpace(string(output))
-	if !strings.Contains(got, want) {
-		return fmt.Errorf("PATH Grafana binary %s version %q does not match pinned version %s; set ONLAVA_GRAFANA_BIN to use it explicitly", path, got, want)
-	}
-	return nil
+	return "", "", fmt.Errorf("managed Grafana is not installed; run `onlava toolchain sync --tool grafana` or set ONLAVA_GRAFANA_BIN explicitly")
 }
 
 func grafanaHomeForBinary(path, root string) string {
@@ -574,14 +557,67 @@ func grafanaHomeForBinary(path, root string) string {
 }
 
 func downloadedGrafanaBinary(cfg grafanaConfig) (string, string) {
-	home := filepath.Join(cfg.RootDir, "home", "grafana-"+cfg.Version)
-	for _, binary := range []string{"grafana", "grafana-server"} {
-		path := filepath.Join(home, "bin", binary)
-		if isExecutableFile(path) {
-			return path, home
-		}
+	status, err := managedToolchainArtifactStatus(cfg.RootDir, "grafana")
+	if err != nil || status.ManagedPath == "" || status.Version != cfg.Version {
+		return "", ""
+	}
+	if isExecutableFile(status.ManagedPath) {
+		return status.ManagedPath, status.HomePath
 	}
 	return "", ""
+}
+
+func managedToolchainArtifactStatus(stateRoot, name string) (toolchain.ArtifactStatus, error) {
+	return managedToolchainArtifactStatusInDir(toolchainStoreDirForStateRoot(stateRoot), name)
+}
+
+func managedToolchainArtifactStatusInDir(storeDir, name string) (toolchain.ArtifactStatus, error) {
+	manifest, err := toolchain.LoadBundledManifest()
+	if err != nil {
+		return toolchain.ArtifactStatus{}, err
+	}
+	store, err := toolchain.NewStore(storeDir, manifest)
+	if err != nil {
+		return toolchain.ArtifactStatus{}, err
+	}
+	store.ManifestSHA256 = toolchain.BundledManifestSHA256()
+	return store.Path(context.Background(), name, toolchain.CurrentPlatform())
+}
+
+func syncManagedToolchainArtifact(ctx context.Context, stateRoot, name string) (toolchain.ArtifactStatus, error) {
+	return syncManagedToolchainArtifactInDir(ctx, toolchainStoreDirForStateRoot(stateRoot), name)
+}
+
+func syncManagedToolchainArtifactInDir(ctx context.Context, storeDir, name string) (toolchain.ArtifactStatus, error) {
+	manifest, err := toolchain.LoadBundledManifest()
+	if err != nil {
+		return toolchain.ArtifactStatus{}, err
+	}
+	store, err := toolchain.NewStore(storeDir, manifest)
+	if err != nil {
+		return toolchain.ArtifactStatus{}, err
+	}
+	store.ManifestSHA256 = toolchain.BundledManifestSHA256()
+	status, err := store.Sync(ctx, toolchain.Options{Tool: name})
+	if err != nil {
+		return toolchain.ArtifactStatus{}, err
+	}
+	for _, artifact := range status.Artifacts {
+		if artifact.Name == name {
+			return artifact, nil
+		}
+	}
+	return toolchain.ArtifactStatus{}, fmt.Errorf("toolchain artifact %s was not reported after sync", name)
+}
+
+func toolchainStoreDirForStateRoot(stateRoot string) string {
+	if strings.TrimSpace(os.Getenv("ONLAVA_TOOLCHAIN_DIR")) != "" {
+		return toolchain.DefaultStoreDir("")
+	}
+	if stateRoot == "" {
+		return toolchain.DefaultStoreDir(".")
+	}
+	return filepath.Join(filepath.Dir(filepath.Clean(stateRoot)), "toolchain")
 }
 
 func isGrafanaHome(path string) bool {

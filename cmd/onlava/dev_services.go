@@ -22,6 +22,7 @@ import (
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/devdash"
+	"github.com/pbrazdil/onlava/internal/toolchain"
 )
 
 const (
@@ -329,9 +330,6 @@ func startManagedElectricService(ctx context.Context, root string, cfg app.Confi
 	}
 	streamID := managedElectricReplicationStreamID(session)
 	if bin, _ := lookupEnvValue(baseEnv, devElectricBinEnv); bin != "" {
-		return startManagedElectricBinary(ctx, root, plan, baseEnv, dbURL, port, addr, logPath, bin, streamID)
-	}
-	if bin, err := execLookPath("electric"); err == nil {
 		return startManagedElectricBinary(ctx, root, plan, baseEnv, dbURL, port, addr, logPath, bin, streamID)
 	}
 	if plan.Image != "" {
@@ -700,9 +698,6 @@ func startLocalManagedPostgres(ctx context.Context, root, version string) (*mana
 			return startLocalManagedPostgresContainer(ctx, root, version, docker)
 		}
 	}
-	if err == nil && localVersion != "" {
-		return startLocalManagedPostgresBinary(ctx, root, localVersion, binaries)
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -810,6 +805,10 @@ func startLocalManagedPostgresContainer(ctx context.Context, root, version, dock
 		return nil, err
 	}
 	containerName := managedPostgresContainerName(root, version, port)
+	imageRef, err := managedToolchainImageRef("postgres", version)
+	if err != nil {
+		return nil, err
+	}
 	args := []string{
 		"run", "--rm", "--pull", "missing",
 		"--name", containerName,
@@ -818,7 +817,7 @@ func startLocalManagedPostgresContainer(ctx context.Context, root, version, dock
 		"-e", "POSTGRES_DB=postgres",
 		"-p", fmt.Sprintf("127.0.0.1:%d:5432", port),
 		"-v", dataDir + ":/var/lib/postgresql",
-		"postgres:" + version,
+		imageRef,
 	}
 	args = append(args, managedPostgresServerArgs()...)
 	cmd := commandTreeContext(context.Background(), docker, args...)
@@ -930,6 +929,29 @@ func verifyManagedPostgresPortOwner(root string) (localagent.Owner, error) {
 	return owner, nil
 }
 
+func managedToolchainImageRef(name, version string) (string, error) {
+	manifest, err := toolchain.LoadBundledManifest()
+	if err != nil {
+		return "", err
+	}
+	artifact, ok := manifest.Artifact(name)
+	if !ok {
+		return "", fmt.Errorf("toolchain image artifact %s is not declared", name)
+	}
+	if artifact.Version != version {
+		return "", fmt.Errorf("toolchain image artifact %s has version %s, want %s", name, artifact.Version, version)
+	}
+	for _, image := range artifact.Images {
+		if image.Digest != "" {
+			return image.Ref + "@" + image.Digest, nil
+		}
+		if strings.TrimSpace(image.Ref) != "" {
+			return image.Ref, nil
+		}
+	}
+	return "", fmt.Errorf("toolchain image artifact %s has no image ref", name)
+}
+
 func managedPostgresServerArgs() []string {
 	return []string{
 		"-c", "wal_level=logical",
@@ -941,16 +963,6 @@ func managedPostgresServerArgs() []string {
 func resolveLocalPostgresBinaries(env []string) (localPostgresBinaries, error) {
 	initdb, _ := lookupEnvValue(env, devPostgresInitDBEnv)
 	postgres, _ := lookupEnvValue(env, devPostgresBinEnv)
-	if initdb == "" {
-		if path, err := execLookPath("initdb"); err == nil {
-			initdb = path
-		}
-	}
-	if postgres == "" {
-		if path, err := execLookPath("postgres"); err == nil {
-			postgres = path
-		}
-	}
 	if initdb != "" && postgres == "" {
 		if sibling := filepath.Join(filepath.Dir(initdb), "postgres"); isExecutableFile(sibling) {
 			postgres = sibling
@@ -962,7 +974,7 @@ func resolveLocalPostgresBinaries(env []string) (localPostgresBinaries, error) {
 		}
 	}
 	if initdb == "" || postgres == "" {
-		return localPostgresBinaries{}, fmt.Errorf("managed Postgres needs %s/%s or initdb/postgres in PATH", devPostgresInitDBEnv, devPostgresBinEnv)
+		return localPostgresBinaries{}, fmt.Errorf("managed Postgres needs explicit %s/%s or Docker; system PATH initdb/postgres are not used for managed toolchain artifacts", devPostgresInitDBEnv, devPostgresBinEnv)
 	}
 	if !isExecutableFile(initdb) {
 		return localPostgresBinaries{}, fmt.Errorf("%s points to a non-executable file: %s", devPostgresInitDBEnv, initdb)

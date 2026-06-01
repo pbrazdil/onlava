@@ -241,7 +241,7 @@ func TestManagedPostgresServerArgsEnableLogicalReplication(t *testing.T) {
 	}
 }
 
-func TestResolveLocalPostgresBinariesFindsSibling(t *testing.T) {
+func TestResolveLocalPostgresBinariesFindsExplicitSibling(t *testing.T) {
 	dir := t.TempDir()
 	initdb := filepath.Join(dir, "initdb")
 	postgres := filepath.Join(dir, "postgres")
@@ -254,12 +254,10 @@ func TestResolveLocalPostgresBinariesFindsSibling(t *testing.T) {
 	prevLookPath := execLookPath
 	defer func() { execLookPath = prevLookPath }()
 	execLookPath = func(file string) (string, error) {
-		if file == "initdb" {
-			return initdb, nil
-		}
+		t.Fatalf("resolveLocalPostgresBinaries should not search PATH for %s", file)
 		return "", os.ErrNotExist
 	}
-	binaries, err := resolveLocalPostgresBinaries(nil)
+	binaries, err := resolveLocalPostgresBinaries([]string{devPostgresInitDBEnv + "=" + initdb})
 	if err != nil {
 		t.Fatalf("resolveLocalPostgresBinaries returned error: %v", err)
 	}

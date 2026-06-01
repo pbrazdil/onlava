@@ -52,10 +52,10 @@
       "status": "active",
       "quality": "A",
       "freshness": "current",
-      "last_reviewed": "2026-05-31",
+      "last_reviewed": "2026-06-01",
       "review_after": "2026-06-30",
-      "summary": "Concise installed-skill entrypoint for using current onlava apps, including CLI JSON, MCP, debugging, databases, generated clients, and validation loops.",
-      "tags": ["skill", "agents", "onboarding", "mcp"]
+      "summary": "Concise installed-skill entrypoint for using current onlava apps, including CLI JSON, MCP, managed toolchain diagnostics, debugging, databases, generated clients, and validation loops.",
+      "tags": ["skill", "agents", "onboarding", "mcp", "toolchain"]
     },
     {
       "path": "docs/agent-guide.md",
@@ -64,10 +64,10 @@
       "status": "active",
       "quality": "A",
       "freshness": "current",
-      "last_reviewed": "2026-05-31",
+      "last_reviewed": "2026-06-01",
       "review_after": "2026-06-30",
-      "summary": "Agent workflow guide for using CLI JSON, MCP, generated artifacts, TypeScript clients, and app-local instruction layering.",
-      "tags": ["agents", "mcp", "cli", "apps", "client-integration"]
+      "summary": "Agent workflow guide for using CLI JSON, MCP, managed toolchain commands, generated artifacts, TypeScript clients, and app-local instruction layering.",
+      "tags": ["agents", "mcp", "cli", "apps", "client-integration", "toolchain"]
     },
     {
       "path": "PLAN.md",
@@ -114,8 +114,9 @@
       "freshness": "current",
       "last_reviewed": "2026-06-01",
       "review_after": "2026-07-01",
-      "summary": "Frozen local developer and agent-facing contract for onlava CLI, JSON schemas, generated artifacts, generators, tasks, scripts, and local runtime surfaces.",
-      "tags": ["contract", "cli", "agents", "schemas"]
+      "summary": "Frozen local developer and agent-facing contract for onlava CLI, JSON schemas, generated artifacts, toolchain store, generators, tasks, scripts, and local runtime surfaces.",
+      "tags": ["contract", "cli", "agents", "schemas", "toolchain"],
+      "schema_refs": ["docs/schemas/onlava.toolchain.v1.schema.json", "docs/schemas/onlava.toolchain.status.v1.schema.json"]
     },
     {
       "path": "docs/environment.md",
@@ -124,10 +125,10 @@
       "status": "active",
       "quality": "B",
       "freshness": "current",
-      "last_reviewed": "2026-05-27",
+      "last_reviewed": "2026-06-01",
       "review_after": "2026-06-26",
-      "summary": "Human reference for onlava-owned environment variables, app-injected process identity, local dev overrides, and tooling escape hatches.",
-      "tags": ["environment", "env", "contract", "dev", "runtime"]
+      "summary": "Human reference for onlava-owned environment variables, app-injected process identity, managed toolchain controls, local dev overrides, and tooling escape hatches.",
+      "tags": ["environment", "env", "contract", "dev", "runtime", "toolchain"]
     },
     {
       "path": "docs/grafana.md",
@@ -136,10 +137,10 @@
       "status": "active",
       "quality": "B",
       "freshness": "current",
-      "last_reviewed": "2026-05-25",
+      "last_reviewed": "2026-06-01",
       "review_after": "2026-06-24",
-      "summary": "Dev-only Grafana supervision, provisioning paths, stable datasource/dashboard UIDs, and environment controls.",
-      "tags": ["grafana", "observability", "dev", "victoria"]
+      "summary": "Dev-only Grafana supervision, managed toolchain binary resolution, provisioning paths, stable datasource/dashboard UIDs, and environment controls.",
+      "tags": ["grafana", "observability", "dev", "victoria", "toolchain"]
     },
     {
       "path": "docs/harness-engineering.md",
