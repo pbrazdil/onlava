@@ -59,9 +59,14 @@ type dashboardController interface {
 	dashboardListApps(context.Context) ([]map[string]any, error)
 	dashboardStatusFor(context.Context, string) (devdash.AppStatus, error)
 	dashboardStore() *devdash.Store
-	dashboardAuthorizeReport(*http.Request, devdash.ReportEnvelope) bool
+	dashboardAuthorizeReport(*http.Request, devdash.ReportEnvelope) dashboardReportAuth
 	dashboardRootForApp(context.Context, string) (string, error)
 	dashboardVictoria() dashboardVictoria
+}
+
+type dashboardReportAuth struct {
+	Authorized bool
+	Reason     string
 }
 
 func (s *dashboardServer) dashboardActiveAppID() string {
@@ -99,9 +104,9 @@ func (s *dashboardServer) dashboardStore() *devdash.Store {
 	return s.controller.dashboardStore()
 }
 
-func (s *dashboardServer) dashboardAuthorizeReport(req *http.Request, report devdash.ReportEnvelope) bool {
+func (s *dashboardServer) dashboardAuthorizeReport(req *http.Request, report devdash.ReportEnvelope) dashboardReportAuth {
 	if s == nil || s.controller == nil {
-		return false
+		return dashboardReportAuth{Reason: "controller-unavailable"}
 	}
 	return s.controller.dashboardAuthorizeReport(req, report)
 }
@@ -423,7 +428,9 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if !s.dashboardAuthorizeReport(req, report) {
+	auth := s.dashboardAuthorizeReport(req, report)
+	if !auth.Authorized {
+		s.recordRejectedReport(req.Context(), report, auth.Reason)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -473,6 +480,33 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *dashboardServer) recordRejectedReport(ctx context.Context, report devdash.ReportEnvelope, reason string) {
+	store := s.dashboardStore()
+	if store == nil {
+		return
+	}
+	appID := firstNonEmpty(report.AppID, s.dashboardActiveAppID())
+	sessionID := firstNonEmpty(report.SessionID, s.dashboardCurrentSessionID())
+	event := &devdash.LogEvent{
+		AppID:       appID,
+		SessionID:   sessionID,
+		AppRootHash: report.AppRootHash,
+		Branch:      report.Branch,
+		Worktree:    report.Worktree,
+		Level:       "warn",
+		Message:     "stale or unauthorized dev report rejected",
+		Attrs: map[string]any{
+			"kind":         "dev-report-rejected",
+			"reason":       firstNonEmpty(reason, "unauthorized"),
+			"report_type":  report.Type,
+			"reporter_pid": report.ReporterPID,
+		},
+		Timestamp: time.Now().UTC(),
+	}
+	_ = store.WriteLogEventDeferred(ctx, event)
+	go s.exportVictoriaLogEvent(event)
 }
 
 func fillTraceSummaryIdentity(summary *devdash.TraceSummary, report devdash.ReportEnvelope) {

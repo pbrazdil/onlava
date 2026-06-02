@@ -42,6 +42,7 @@ type Session struct {
 	StateRoot     string             `json:"state_root"`
 	Branch        string             `json:"branch,omitempty"`
 	Status        string             `json:"status"`
+	StatusReason  string             `json:"status_reason,omitempty"`
 	OwnerPID      int                `json:"owner_pid,omitempty"`
 	Owner         Owner              `json:"owner,omitempty"`
 	AppPID        string             `json:"app_pid,omitempty"`

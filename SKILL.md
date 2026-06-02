@@ -87,6 +87,8 @@ curl http://127.0.0.1:4000/hello/world
 //onlava:authhandler
 ```
 
+Standard auth can be enabled from `.onlava.json` without app-local wrapper endpoints. Its tenant tables are framework-owned in PostgreSQL schema `onlava_auth` including `onlava_auth.tenants`; app-local `tenants` services or tables are product-domain concerns only.
+
 Typed endpoint shape:
 
 ```go
@@ -128,6 +130,10 @@ onlava down
 ```
 
 `onlava dev --json` emits JSONL. `onlava dev --detach` starts an agent-backed app session. `onlava attach` follows session logs. `onlava attach --tui` and `onlava console` open the source-aware terminal console.
+
+For managed Postgres, app processes, setup commands, DB setup, and workers receive `DatabaseURL` as the app database authority. Onlava does not inject `DATABASE_URL` into those app-facing environments; treat `ONLAVA_MANAGED_DATABASE_URL` as tooling/debug metadata. To use an explicit external DB with declared managed Postgres, set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` and provide `DatabaseURL`; `DATABASE_URL` is ignored.
+
+For Electric-backed frontend writes, generated TypeScript `WithMeta` methods include parsed `txid` metadata. Use `observeAPIResponseTxid` around the app's Electric/TanStack observer so a post-commit sync timeout is reported as `SyncObservationError` instead of an API mutation failure.
 
 ## UI Work
 

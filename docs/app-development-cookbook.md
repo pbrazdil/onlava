@@ -122,6 +122,8 @@ curl -X POST http://127.0.0.1:4000/users/dev-bootstrap
 
 Common failure: `DatabaseURL` is missing. Put it in process env or an app-root `.env.local` for local development.
 
+Standard auth owns its tenant state in `onlava_auth.tenants`. You do not need an app-local `tenants` service or table to use standard auth; create one only for product-domain tenant APIs or schema.
+
 ## Private Endpoint Call
 
 Private endpoints are internal-only and should be called through generated helpers from other onlava endpoints. Do not expose private APIs over external HTTP.
@@ -400,11 +402,15 @@ onlava db setup
 
 `onlava db apply` mutates schema or app-owned database setup only. It does not run SQLC generation or seed files. `onlava db seed` applies initial data such as `SERVICE/db/seed.sql` only, records successful runs in a small internal ledger, skips unchanged seeds, and fails closed if a previously-applied seed changes or if seed SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, or broad `DELETE`. `onlava db setup` runs apply, then seed.
 
-During `onlava dev`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL`/`DATABASE_URL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
+During `onlava dev`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
 
 `SERVICE/db/seed.sql` is data, not Atlas schema input and not SQLC input. The first seed implementation fails closed when a previously-applied seed changes or destructive seed SQL is detected, rather than offering force or reseed escape hatches.
 
 `onlava db sync` is the existing deprecated beta mixed command. It runs only when `.onlava.json` explicitly configures `database.apply`, and it currently mutates the selected development database before regenerating dependent SQLC artifacts. New lifecycle work should use the split commands instead.
+
+## Electric Txid Observation
+
+For Electric-backed writes, call generated TypeScript `WithMeta` methods so the response headers and parsed `txid` are available. Treat the API mutation and Electric observation as separate phases: once the HTTP response is successful and contains `X-Txid`, the mutation committed; a later `awaitTxId` timeout or Electric/Postgres error is a sync observation failure. Wrap the app's observer with generated `observeAPIResponseTxid(response, observer, context)` to get `SyncObservationError` diagnostics that include txid, app/session, API URL, Electric URL or stream context, and the observer error.
 
 ## Local Proxy And Frontends
 
@@ -486,6 +492,7 @@ onlava harness ui --json
 - Missing `.onlava.json`: create it at the app root or pass `--app-root`.
 - Stale generated client: rerun `onlava gen client` or configured `onlava generate client`.
 - Auth endpoint returns unauthorized: inspect standard auth bootstrap and bearer token.
+- `tenants` migration or runtime error: if the relation is `onlava_auth.tenants`, it is framework-owned standard auth state; an unqualified app `tenants` relation is app-domain schema drift.
 - Private endpoint exposed over HTTP: change to public/auth only when it should be externally reachable.
 - No traces: confirm the app is running under onlava and uses onlava-aware wrappers for DB/client work.
 - Proxy upstream unavailable: confirm the child app process is listening on the API URL printed by `onlava dev`.

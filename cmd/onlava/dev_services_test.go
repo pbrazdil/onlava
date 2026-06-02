@@ -59,7 +59,7 @@ func TestManagedPostgresPlanRejectsUnsupportedIsolation(t *testing.T) {
 	}
 }
 
-func TestManagedPostgresEnvOverridesExplicitDatabaseURL(t *testing.T) {
+func TestManagedPostgresEnvExposesOnlyDatabaseURL(t *testing.T) {
 	cfg := app.Config{
 		Name: "demo",
 		Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
@@ -80,18 +80,22 @@ func TestManagedPostgresEnvOverridesExplicitDatabaseURL(t *testing.T) {
 	}, []string{
 		devPostgresAdminURLEnv + "=postgres://localhost/postgres",
 		"DatabaseURL=postgres://localhost/user",
+		"DATABASE_URL=postgres://localhost/poison",
 	}, nil)
 	if err != nil {
 		t.Fatalf("managedPostgresEnv returned error: %v", err)
 	}
 	for _, want := range []string{
-		"DatabaseURL=postgres://localhost/demo_session",
-		"DATABASE_URL=postgres://localhost/demo_session",
+		appDatabaseURLEnv + "=postgres://localhost/demo_session",
+		"ONLAVA_MANAGED_DATABASE_URL=postgres://localhost/demo_session",
 		"ONLAVA_MANAGED_DATABASE_NAME=demo_session",
 	} {
 		if !containsString(env, want) {
 			t.Fatalf("managed env missing %q: %+v", want, env)
 		}
+	}
+	if countEnvKey(env, legacyDatabaseURLEnv) != 0 {
+		t.Fatalf("managed env must not expose %s: %+v", legacyDatabaseURLEnv, env)
 	}
 }
 
@@ -113,6 +117,33 @@ func TestManagedPostgresEnvAllowsExplicitExternalDatabaseOptOut(t *testing.T) {
 	}
 	if env != nil {
 		t.Fatalf("managed env = %+v, want nil", env)
+	}
+}
+
+func TestManagedPostgresEnvRequiresDatabaseURLForExternalOptOut(t *testing.T) {
+	t.Parallel()
+
+	cfg := app.Config{
+		Name: "demo",
+		Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+			"postgres": {Kind: "postgres"},
+		}},
+	}
+	_, err := managedPostgresEnv(t.Context(), cfg, nil, []string{
+		devPostgresExternalEnv + "=1",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "requires DatabaseURL") || !strings.Contains(err.Error(), "DATABASE_URL is ignored") {
+		t.Fatalf("managedPostgresEnv external error = %v", err)
+	}
+}
+
+func TestExternalPostgresDatabaseURLRequiresDatabaseURL(t *testing.T) {
+	t.Parallel()
+
+	_, err := externalPostgresDatabaseURL([]string{devPostgresExternalEnv + "=1"})
+	if err == nil || !strings.Contains(err.Error(), "requires DatabaseURL") {
+		t.Fatalf("externalPostgresDatabaseURL missing error = %v", err)
 	}
 }
 
@@ -356,12 +387,16 @@ func TestManagedElectricProcessEnvIncludesSessionIdentity(t *testing.T) {
 	env := managedElectricProcessEnv(plan, []string{"PATH=/bin"}, "postgres://session/db", 3456, "onlava_session",
 		"ONLAVA_APP_ROOT=/repo/app",
 		"ONLAVA_SESSION_ID=main-dbe32e",
+		"ONLAVA_BASE_APP_ID=demo",
+		"ONLAVA_RUNTIME_APP_ID=demo--main-dbe32e",
 		"ONLAVA_DEV_SUPERVISOR=1",
 		"ONLAVA_ROLE=electric",
 	)
 	for _, want := range []string{
 		"ONLAVA_APP_ROOT=/repo/app",
 		"ONLAVA_SESSION_ID=main-dbe32e",
+		"ONLAVA_BASE_APP_ID=demo",
+		"ONLAVA_RUNTIME_APP_ID=demo--main-dbe32e",
 		"ONLAVA_DEV_SUPERVISOR=1",
 		"ONLAVA_ROLE=electric",
 	} {
@@ -406,11 +441,35 @@ func TestManagedElectricSlotDiagnostics(t *testing.T) {
 		WaitEventType: "Lock",
 		WaitEvent:     "advisory",
 		Query:         "SELECT pg_advisory_lock(hashtext('electric_slot_onlava_main_dbe32e'))",
+		Application:   "onlava-electric:root:session:runtime:stream",
+		ClientAddr:    "127.0.0.1",
+		SlotName:      slot,
 	}})
-	for _, want := range []string{"pid=123", "kind=advisory-lock", "wait=Lock/advisory", "electric_slot_onlava_main_dbe32e"} {
+	for _, want := range []string{"pid=123", "kind=advisory-lock", "wait=Lock/advisory", "electric_slot_onlava_main_dbe32e", "application=", "client=127.0.0.1", "slot="} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("diagnostic %q missing %q", got, want)
 		}
+	}
+}
+
+func TestManagedElectricPostgresApplicationNameIsScopedAndURLSafe(t *testing.T) {
+	t.Parallel()
+
+	root := "/repo/app"
+	session := &localagent.Session{SessionID: "main-dbe32e", BaseAppID: "demo", RuntimeAppID: "demo--main-dbe32e"}
+	first := managedElectricPostgresApplicationName(root, session, "onlava_main_dbe32e")
+	second := managedElectricPostgresApplicationName(root, session, "onlava_main_dbe32e")
+	otherRoot := managedElectricPostgresApplicationName("/repo/other", session, "onlava_main_dbe32e")
+	otherRuntime := managedElectricPostgresApplicationName(root, &localagent.Session{SessionID: "main-dbe32e", BaseAppID: "demo", RuntimeAppID: "demo--other"}, "onlava_main_dbe32e")
+	if first == "" || first != second {
+		t.Fatalf("application name unstable: %q then %q", first, second)
+	}
+	if first == otherRoot || first == otherRuntime {
+		t.Fatalf("application name not scoped: first=%q otherRoot=%q otherRuntime=%q", first, otherRoot, otherRuntime)
+	}
+	got := postgresURLWithApplicationName("postgres://localhost/session?sslmode=disable", first)
+	if !strings.Contains(got, "application_name=onlava-electric%3A") || !strings.Contains(got, "sslmode=disable") {
+		t.Fatalf("postgres URL with application_name = %q", got)
 	}
 }
 
@@ -428,12 +487,14 @@ func TestCleanupManagedElectricStreamProcessesStopsSameSessionProcess(t *testing
 		}
 		return []managedElectricStreamProcess{{
 			PID:     stale.Process.Pid,
-			Command: "docker run -e ELECTRIC_REPLICATION_STREAM_ID=onlava_main_dbe32e -e ONLAVA_APP_ROOT=" + root + " -e ONLAVA_SESSION_ID=main-dbe32e -e ONLAVA_DEV_SUPERVISOR=1 -e ONLAVA_ROLE=electric electricsql/electric:canary",
+			State:   "S",
+			Stream:  streamID,
+			Command: "docker run -e ELECTRIC_REPLICATION_STREAM_ID=onlava_main_dbe32e -e ONLAVA_APP_ROOT=" + root + " -e ONLAVA_SESSION_ID=main-dbe32e -e ONLAVA_RUNTIME_APP_ID=demo--main-dbe32e -e ONLAVA_DEV_SUPERVISOR=1 -e ONLAVA_ROLE=electric electricsql/electric:canary",
 		}}, nil
 	}
 	defer func() { listManagedElectricStreamProcesses = restore }()
 
-	err := cleanupManagedElectricStreamProcesses(context.Background(), root, &localagent.Session{SessionID: "main-dbe32e"}, "onlava_main_dbe32e")
+	err := cleanupManagedElectricStreamProcesses(context.Background(), root, &localagent.Session{SessionID: "main-dbe32e", BaseAppID: "demo", RuntimeAppID: "demo--main-dbe32e"}, "onlava_main_dbe32e")
 	if err != nil {
 		t.Fatalf("cleanupManagedElectricStreamProcesses: %v", err)
 	}
@@ -446,6 +507,8 @@ func TestCleanupManagedElectricStreamProcessesFailsForLiveUnownedStream(t *testi
 	listManagedElectricStreamProcesses = func(streamID string) ([]managedElectricStreamProcess, error) {
 		return []managedElectricStreamProcess{{
 			PID:     424242,
+			State:   "S",
+			Stream:  streamID,
 			Command: "docker run -e ELECTRIC_REPLICATION_STREAM_ID=" + streamID + " electricsql/electric:canary",
 		}}, nil
 	}
@@ -454,6 +517,87 @@ func TestCleanupManagedElectricStreamProcessesFailsForLiveUnownedStream(t *testi
 	err := cleanupManagedElectricStreamProcesses(context.Background(), t.TempDir(), &localagent.Session{SessionID: "main-dbe32e"}, "onlava_main_dbe32e")
 	if err == nil || !strings.Contains(err.Error(), "pid=424242") || !strings.Contains(err.Error(), "onlava_main_dbe32e") {
 		t.Fatalf("cleanupManagedElectricStreamProcesses error = %v", err)
+	}
+}
+
+func TestCleanupManagedElectricStreamProcessesFailsForDifferentRuntimeSameStream(t *testing.T) {
+	root := t.TempDir()
+	restore := listManagedElectricStreamProcesses
+	listManagedElectricStreamProcesses = func(streamID string) ([]managedElectricStreamProcess, error) {
+		return []managedElectricStreamProcess{{
+			PID:     424242,
+			State:   "S",
+			Stream:  streamID,
+			Command: "docker run -e ELECTRIC_REPLICATION_STREAM_ID=" + streamID + " -e ONLAVA_APP_ROOT=" + root + " -e ONLAVA_SESSION_ID=main-dbe32e -e ONLAVA_RUNTIME_APP_ID=demo--other -e ONLAVA_DEV_SUPERVISOR=1 -e ONLAVA_ROLE=electric electricsql/electric:canary",
+		}}, nil
+	}
+	defer func() { listManagedElectricStreamProcesses = restore }()
+
+	err := cleanupManagedElectricStreamProcesses(context.Background(), root, &localagent.Session{SessionID: "main-dbe32e", BaseAppID: "demo", RuntimeAppID: "demo--main-dbe32e"}, "onlava_main_dbe32e")
+	if err == nil || !strings.Contains(err.Error(), "demo--other") || !strings.Contains(err.Error(), "state=S") || !strings.Contains(err.Error(), `stream="onlava_main_dbe32e"`) {
+		t.Fatalf("cleanupManagedElectricStreamProcesses error = %v", err)
+	}
+}
+
+func TestCommandContainsEnvValueRequiresExactValue(t *testing.T) {
+	t.Parallel()
+
+	command := "docker run -e ELECTRIC_REPLICATION_STREAM_ID=onlava_main_dbe32e_other electricsql/electric:canary"
+	if commandContainsEnvValue(command, "ELECTRIC_REPLICATION_STREAM_ID", "onlava_main_dbe32e") {
+		t.Fatalf("command matched a stream id prefix: %q", command)
+	}
+}
+
+func TestClassifyElectricPostgresLocksForCleanupUsesExactApplication(t *testing.T) {
+	t.Parallel()
+
+	ownedApp := "onlava-electric:root:session:runtime:stream"
+	locks := []electricPostgresLock{
+		{PID: 101, Application: ownedApp, SlotName: "electric_slot_onlava_main_dbe32e"},
+		{PID: 202, Application: ownedApp + "-other", SlotName: "electric_slot_onlava_main_dbe32e"},
+		{PID: 303, Application: "", SlotName: "electric_slot_onlava_main_dbe32e"},
+	}
+	owned, blocked := classifyElectricPostgresLocksForCleanup(locks, ownedApp)
+	if len(owned) != 1 || owned[0].PID != 101 {
+		t.Fatalf("owned locks = %+v", owned)
+	}
+	if len(blocked) != 2 || blocked[0].PID != 202 || blocked[1].PID != 303 {
+		t.Fatalf("blocked locks = %+v", blocked)
+	}
+}
+
+func TestTextMentionsExactIdentifier(t *testing.T) {
+	t.Parallel()
+
+	if !textMentionsExactIdentifier("SELECT pg_advisory_lock(hashtext('electric_slot_onlava_main_dbe32e'))", "electric_slot_onlava_main_dbe32e") {
+		t.Fatal("expected exact slot mention")
+	}
+	if textMentionsExactIdentifier("SELECT 'electric_slot_onlava_main_dbe32e_other'", "electric_slot_onlava_main_dbe32e") {
+		t.Fatal("slot prefix matched as exact identifier")
+	}
+}
+
+func TestElectricPostgresLocksQueryCastsSlotParameterToText(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []string{
+		"$1::text AS slot_name",
+		"a.query ILIKE '%' || $1::text || '%'",
+		"s.slot_name::text",
+		"s.slot_name::text = $1::text",
+	} {
+		if !strings.Contains(electricPostgresLocksQuery, want) {
+			t.Fatalf("electricPostgresLocksQuery missing %q:\n%s", want, electricPostgresLocksQuery)
+		}
+	}
+	for _, disallowed := range []string{
+		"$1 AS slot_name",
+		"|| $1 ||",
+		"s.slot_name = $1",
+	} {
+		if strings.Contains(electricPostgresLocksQuery, disallowed) {
+			t.Fatalf("electricPostgresLocksQuery contains uncast slot parameter %q:\n%s", disallowed, electricPostgresLocksQuery)
+		}
 	}
 }
 
@@ -473,18 +617,56 @@ func TestManagedElectricDatabaseURLPrefersManagedPostgres(t *testing.T) {
 		}
 		return nil
 	}
+	baseEnv := []string{
+		devPostgresAdminURLEnv + "=postgres://localhost/postgres",
+		appDatabaseURLEnv + "=postgres://localhost/explicit",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+	}
 	got, err := managedElectricDatabaseURL(t.Context(), t.TempDir(), cfg, &localagent.Session{
 		SessionID: "session",
 		BaseAppID: "demo",
-	}, &managedElectricPlan{ServiceName: "electric"}, []string{
-		devPostgresAdminURLEnv + "=postgres://localhost/postgres",
-		"DatabaseURL=postgres://localhost/explicit",
-	}, nil)
+	}, &managedElectricPlan{ServiceName: "electric"}, baseEnv, nil)
 	if err != nil {
 		t.Fatalf("managedElectricDatabaseURL returned error: %v", err)
 	}
 	if got != "postgres://localhost/demo_session" {
 		t.Fatalf("database URL = %q", got)
+	}
+	env := managedElectricProcessEnv(&managedElectricPlan{
+		Env: map[string]string{
+			legacyDatabaseURLEnv: "$" + appDatabaseURLEnv,
+		},
+	}, baseEnv, got, 3456, "onlava_session")
+	if !containsString(env, legacyDatabaseURLEnv+"=postgres://localhost/demo_session") {
+		t.Fatalf("managed electric env missing private %s adapter: %+v", legacyDatabaseURLEnv, env)
+	}
+	if !containsString(env, appDatabaseURLEnv+"=postgres://localhost/demo_session") {
+		t.Fatalf("managed electric env missing %s: %+v", appDatabaseURLEnv, env)
+	}
+	if containsString(env, legacyDatabaseURLEnv+"=postgres://localhost/poison") || countEnvKey(env, legacyDatabaseURLEnv) != 1 {
+		t.Fatalf("managed electric env used stale %s: %+v", legacyDatabaseURLEnv, env)
+	}
+}
+
+func TestManagedElectricDatabaseURLRequiresManagedResolutionWhenPostgresManaged(t *testing.T) {
+	t.Parallel()
+
+	cfg := app.Config{
+		Name: "demo",
+		Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+			"postgres": {Kind: "postgres"},
+			"electric": {Kind: "electric"},
+		}},
+	}
+	_, err := managedElectricDatabaseURL(t.Context(), t.TempDir(), cfg, &localagent.Session{
+		SessionID: "session",
+		BaseAppID: "demo",
+	}, &managedElectricPlan{ServiceName: "electric"}, []string{
+		appDatabaseURLEnv + "=postgres://localhost/explicit",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "managed dev.services.postgres") || !strings.Contains(err.Error(), devPostgresAdminURLEnv) {
+		t.Fatalf("managedElectricDatabaseURL managed resolution error = %v", err)
 	}
 }
 
@@ -504,6 +686,7 @@ func TestManagedElectricDatabaseURLAllowsExternalPostgresOptOut(t *testing.T) {
 	}, &managedElectricPlan{ServiceName: "electric"}, []string{
 		devPostgresExternalEnv + "=1",
 		devPostgresAdminURLEnv + "=postgres://localhost/postgres",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
 		"DatabaseURL=postgres://localhost/explicit",
 	}, nil)
 	if err != nil {
@@ -511,6 +694,28 @@ func TestManagedElectricDatabaseURLAllowsExternalPostgresOptOut(t *testing.T) {
 	}
 	if got != "postgres://localhost/explicit" {
 		t.Fatalf("database URL = %q", got)
+	}
+}
+
+func TestManagedElectricDatabaseURLRejectsLegacyOnlyExternalPostgresOptOut(t *testing.T) {
+	t.Parallel()
+
+	cfg := app.Config{
+		Name: "demo",
+		Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+			"postgres": {Kind: "postgres"},
+			"electric": {Kind: "electric"},
+		}},
+	}
+	_, err := managedElectricDatabaseURL(t.Context(), t.TempDir(), cfg, &localagent.Session{
+		SessionID: "session",
+		BaseAppID: "demo",
+	}, &managedElectricPlan{ServiceName: "electric"}, []string{
+		devPostgresExternalEnv + "=1",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "requires DatabaseURL") || !strings.Contains(err.Error(), "DATABASE_URL is ignored") {
+		t.Fatalf("managedElectricDatabaseURL external error = %v", err)
 	}
 }
 

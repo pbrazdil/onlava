@@ -52,7 +52,7 @@ Record implementation findings here with commands, test output, or file referenc
   Rationale: PRD-5 needs port isolation and repeatable local sessions, but onlava should not make Docker, Homebrew Postgres, or a specific system package manager mandatory for the whole CLI.
   Date/Author: 2026-05-26 / Codex
 
-* Decision: When `dev.services.postgres` is declared, managed Postgres wins over local `DatabaseURL`/`DATABASE_URL` by default.
+* Decision: When `dev.services.postgres` is declared, managed Postgres wins over local app DB URLs by default and exposes the session database through `DatabaseURL`.
   Rationale: The PRD-5 end state makes onlava own local dev services. Preserving stale `.env` DB URLs silently leaves apps on old or remote databases even though the repo has opted into managed session DBs. Developers who intentionally want an external DB can set `ONLAVA_DEV_POSTGRES_EXTERNAL=1`.
   Date/Author: 2026-05-27 / Codex
 
@@ -77,7 +77,7 @@ Completed on 2026-05-27.
 Shipped outcome:
 
 * `dev.services.postgres` now creates or reuses a deterministic per-session database through an explicit admin URL, a reusable agent substrate, or local `initdb`/`postgres` binaries under the agent state directory.
-* Managed Postgres uses database isolation, registers substrate metadata, overrides app `DatabaseURL`/`DATABASE_URL` by default, and exposes session DB URLs to app processes and `onlava db ...` commands. Explicit external DBs are still possible with `ONLAVA_DEV_POSTGRES_EXTERNAL=1`.
+* Managed Postgres uses database isolation, registers substrate metadata, overrides stale app DB URLs by default, and exposes session DB URLs through `DatabaseURL` to app processes and `onlava db ...` commands. Explicit external DBs are still possible with `ONLAVA_DEV_POSTGRES_EXTERNAL=1`.
 * `onlava db reset` and `onlava db snapshot create|restore` target only the current managed session database.
 * `dev.services.electric` now routes through the agent from an explicit upstream, a local binary, or an explicitly configured Docker image, while keeping service env separate from app env.
 * Docker-backed managed Postgres uses the requested major version when the local binary does not match, starts with logical replication settings for Electric, and mounts Postgres 18 data at the parent Docker image data root.
@@ -143,7 +143,7 @@ Start with explicit contracts and fake-backed unit tests. Prefer existing local 
 2. Extend the agent substrate registry with Postgres cluster metadata and per-session database records.
 3. Add a Postgres manager that can reuse an explicit/admin URL, reuse an existing local substrate, or start a local substrate when the required binary/runtime is available.
 4. Create deterministic per-session database names from base app ID and session ID.
-5. Inject `DatabaseURL`/`DATABASE_URL` into app child env for managed-session databases unless `ONLAVA_DEV_POSTGRES_EXTERNAL=1` is set.
+5. Inject `DatabaseURL` into app child env for managed-session databases unless `ONLAVA_DEV_POSTGRES_EXTERNAL=1` is set.
 6. Implement `onlava db reset` and snapshot/export/import commands against the resolved session database.
 7. Register Electric as a session backend with agent routes and effective env injection.
 8. Add focused tests for config resolution, session DB naming, command dispatch, substrate persistence, and env precedence.
@@ -222,6 +222,6 @@ ONLAVA_DEV_ELECTRIC_UPSTREAM=http://127.0.0.1:3000
 ONLAVA_DEV_ELECTRIC_BIN=/usr/local/bin/electric
 ```
 
-When `dev.services.postgres` is declared, `onlava dev` creates/reuses a session database named from the base app ID plus session ID and injects `DatabaseURL`/`DATABASE_URL` for the app child even if local env files contain older DB URLs. The admin cluster comes from `ONLAVA_DEV_POSTGRES_ADMIN_URL`, an already registered agent substrate, Docker for the requested version when available, or local `initdb`/`postgres` binaries under the agent state directory. Set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` to keep an explicit external DB URL.
+When `dev.services.postgres` is declared, `onlava dev` creates/reuses a session database named from the base app ID plus session ID and injects `DatabaseURL` for the app child even if local env files contain older DB URLs. The admin cluster comes from `ONLAVA_DEV_POSTGRES_ADMIN_URL`, an already registered agent substrate, Docker for the requested version when available, or local `initdb`/`postgres` binaries under the agent state directory. Set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` with `DatabaseURL` to keep an explicit external DB URL.
 
 When `dev.services.electric` is declared, `onlava dev` registers `ONLAVA_DEV_ELECTRIC_UPSTREAM` directly or starts a hidden Electric process from `ONLAVA_DEV_ELECTRIC_BIN` or a configured `dev.services.electric.image` through Docker. The app receives `ELECTRIC_URL` with the agent-routed session URL; Electric service env values stay on the Electric process/container.

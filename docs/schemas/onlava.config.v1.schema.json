@@ -12,6 +12,7 @@
     },
     "proxy": {
       "type": "object",
+      "description": "Local proxy and dev route configuration. The removed legacy proxy host key is intentionally unsupported; use dev session routes, api_host, console_host, and frontends instead.",
       "properties": {
         "workspace": { "type": "string" },
         "api_host": { "type": "string" },

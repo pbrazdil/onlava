@@ -37,6 +37,8 @@ const (
 	devElectricUpstreamEnv      = "ONLAVA_DEV_ELECTRIC_UPSTREAM"
 	devElectricBinEnv           = "ONLAVA_DEV_ELECTRIC_BIN"
 	devElectricContainerPort    = 3000
+	appDatabaseURLEnv           = "DatabaseURL"
+	legacyDatabaseURLEnv        = "DATABASE_URL"
 )
 
 type managedPostgresPlan struct {
@@ -92,11 +94,19 @@ type electricPostgresLock struct {
 	WaitEventType string
 	WaitEvent     string
 	Query         string
+	Application   string
+	ClientAddr    string
+	SlotName      string
 }
 
 type managedElectricStreamProcess struct {
-	PID     int
-	Command string
+	PID          int
+	State        string
+	Command      string
+	Stream       string
+	AppRoot      string
+	SessionID    string
+	RuntimeAppID string
 }
 
 var listManagedElectricStreamProcesses = scanManagedElectricStreamProcesses
@@ -164,6 +174,9 @@ func managedPostgresEnv(ctx context.Context, cfg app.Config, session *localagent
 		return nil, nil
 	}
 	if managedPostgresUsesExternalDatabase(baseEnv) {
+		if _, err := externalPostgresDatabaseURL(baseEnv); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 	baseEnv, err := envWithManagedPostgresAdminURL(ctx, cfg, baseEnv, agent)
@@ -203,8 +216,7 @@ func managedPostgresEnv(ctx context.Context, cfg app.Config, session *localagent
 		_, _ = agent.UpsertSubstrate(ctx, req)
 	}
 	return []string{
-		"DatabaseURL=" + plan.DatabaseURL,
-		"DATABASE_URL=" + plan.DatabaseURL,
+		appDatabaseURLEnv + "=" + plan.DatabaseURL,
 		"ONLAVA_MANAGED_DATABASE_URL=" + plan.DatabaseURL,
 		"ONLAVA_MANAGED_DATABASE_NAME=" + plan.DatabaseName,
 	}, nil
@@ -341,8 +353,12 @@ func startManagedElectricService(ctx context.Context, root string, cfg app.Confi
 	if err := cleanupManagedElectricStreamProcesses(ctx, root, session, streamID); err != nil {
 		return nil, localagent.Backend{}, err
 	}
+	postgresApplication := managedElectricPostgresApplicationName(root, session, streamID)
+	if postgresApplication != "" {
+		dbURL = postgresURLWithApplicationName(dbURL, postgresApplication)
+	}
 	if managedElectricUsesManagedPostgres(cfg, baseEnv) {
-		if err := cleanupManagedElectricPostgresSlot(ctx, dbURL, streamID); err != nil {
+		if err := cleanupManagedElectricPostgresSlot(ctx, dbURL, root, session, streamID); err != nil {
 			return nil, localagent.Backend{}, err
 		}
 	}
@@ -373,29 +389,32 @@ func managedElectricUsesManagedPostgres(cfg app.Config, baseEnv []string) bool {
 
 func managedElectricDatabaseURL(ctx context.Context, root string, cfg app.Config, session *localagent.Session, plan *managedElectricPlan, baseEnv []string, agent *localagent.Client) (string, error) {
 	if plan.Database == "" || plan.Database == "postgres" {
-		if _, _, ok := managedPostgresDeclared(cfg); ok && !managedPostgresUsesExternalDatabase(baseEnv) {
+		if _, _, ok := managedPostgresDeclared(cfg); ok && managedPostgresUsesExternalDatabase(baseEnv) {
+			return externalPostgresDatabaseURL(baseEnv)
+		}
+		if _, _, ok := managedPostgresDeclared(cfg); ok {
 			env, err := envWithManagedPostgresAdminURL(ctx, cfg, baseEnv, agent)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("dev.services.%s could not resolve database URL from managed dev.services.postgres: %w", plan.ServiceName, err)
 			}
 			pg, err := resolveManagedPostgresPlan(cfg, session, env)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("dev.services.%s could not resolve database URL from managed dev.services.postgres: %w", plan.ServiceName, err)
 			}
 			if pg != nil {
 				if err := ensureManagedPostgresDatabaseFn(ctx, pg.AdminURL, pg.DatabaseName); err != nil {
-					return "", err
+					return "", fmt.Errorf("dev.services.%s could not prepare managed dev.services.postgres database: %w", plan.ServiceName, err)
 				}
 				return pg.DatabaseURL, nil
 			}
 		}
 	}
-	for _, key := range []string{"DATABASE_URL", "DatabaseURL"} {
+	for _, key := range []string{appDatabaseURLEnv, legacyDatabaseURLEnv} {
 		if value, _ := lookupEnvValue(baseEnv, key); value != "" {
 			return value, nil
 		}
 	}
-	return "", fmt.Errorf("dev.services.%s needs DATABASE_URL/DatabaseURL or dev.services.postgres", plan.ServiceName)
+	return "", fmt.Errorf("dev.services.%s needs managed dev.services.postgres or explicit external %s through %s=1", plan.ServiceName, appDatabaseURLEnv, devPostgresExternalEnv)
 }
 
 func startManagedElectricBinary(ctx context.Context, root string, session *localagent.Session, plan *managedElectricPlan, baseEnv []string, dbURL string, port int, addr, logPath, bin, streamID string) (*managedElectricService, localagent.Backend, error) {
@@ -540,9 +559,16 @@ func managedElectricSessionEnv(root string, session *localagent.Session) []strin
 	if session == nil {
 		return nil
 	}
+	baseAppID := strings.TrimSpace(session.BaseAppID)
+	runtimeAppID := strings.TrimSpace(session.RuntimeAppID)
+	if runtimeAppID == "" && baseAppID != "" && strings.TrimSpace(session.SessionID) != "" {
+		runtimeAppID = baseAppID + "--" + strings.TrimSpace(session.SessionID)
+	}
 	return []string{
 		"ONLAVA_APP_ROOT=" + root,
 		"ONLAVA_SESSION_ID=" + strings.TrimSpace(session.SessionID),
+		"ONLAVA_BASE_APP_ID=" + baseAppID,
+		"ONLAVA_RUNTIME_APP_ID=" + runtimeAppID,
 		"ONLAVA_DEV_SUPERVISOR=1",
 		fmt.Sprintf("ONLAVA_DEV_SUPERVISOR_PID=%d", os.Getpid()),
 		"ONLAVA_ROLE=electric",
@@ -564,6 +590,53 @@ func managedElectricSlotName(streamID string) string {
 	return "electric_slot_" + streamID
 }
 
+func managedElectricPostgresApplicationName(root string, session *localagent.Session, streamID string) string {
+	if session == nil {
+		return ""
+	}
+	sessionID := strings.TrimSpace(session.SessionID)
+	if sessionID == "" {
+		return ""
+	}
+	baseAppID := strings.TrimSpace(session.BaseAppID)
+	runtimeAppID := strings.TrimSpace(session.RuntimeAppID)
+	if runtimeAppID == "" && baseAppID != "" {
+		runtimeAppID = baseAppID + "--" + sessionID
+	}
+	if runtimeAppID == "" {
+		runtimeAppID = sessionID
+	}
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		return ""
+	}
+	return fmt.Sprintf("onlava-electric:%s:%s:%s:%s", appRootHash(root), shortIdentityHash(sessionID), shortIdentityHash(runtimeAppID), shortIdentityHash(streamID))
+}
+
+func shortIdentityHash(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func postgresURLWithApplicationName(raw, applicationName string) string {
+	applicationName = strings.TrimSpace(applicationName)
+	if applicationName == "" {
+		return raw
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" {
+		return raw
+	}
+	query := parsed.Query()
+	query.Set("application_name", applicationName)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
 func cleanupManagedElectricStreamProcesses(ctx context.Context, root string, session *localagent.Session, streamID string) error {
 	streamID = strings.TrimSpace(streamID)
 	if streamID == "" {
@@ -581,7 +654,7 @@ func cleanupManagedElectricStreamProcesses(ctx context.Context, root string, ses
 		if process.PID <= 0 || process.PID == os.Getpid() {
 			continue
 		}
-		if managedElectricProcessMatchesSession(process.Command, root, session) {
+		if managedElectricProcessMatchesSession(process.Command, root, session, streamID) {
 			if err := stopStaleSessionChildPID(ctx, process.PID); err != nil {
 				remaining = append(remaining, process)
 			}
@@ -608,7 +681,7 @@ func scanManagedElectricStreamProcesses(streamID string) ([]managedElectricStrea
 	var matches []managedElectricStreamProcess
 	for _, line := range strings.Split(string(output), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || !strings.Contains(line, needle) {
+		if line == "" || !strings.Contains(line, needle) || !commandContainsEnvValue(line, "ELECTRIC_REPLICATION_STREAM_ID", streamID) {
 			continue
 		}
 		fields := strings.Fields(line)
@@ -620,21 +693,32 @@ func scanManagedElectricStreamProcesses(streamID string) ([]managedElectricStrea
 			continue
 		}
 		matches = append(matches, managedElectricStreamProcess{
-			PID:     pid,
-			Command: strings.Join(fields[2:], " "),
+			PID:          pid,
+			State:        fields[1],
+			Command:      strings.Join(fields[2:], " "),
+			Stream:       streamID,
+			AppRoot:      commandEnvValue(line, "ONLAVA_APP_ROOT"),
+			SessionID:    commandEnvValue(line, "ONLAVA_SESSION_ID"),
+			RuntimeAppID: commandEnvValue(line, "ONLAVA_RUNTIME_APP_ID"),
 		})
 	}
 	return matches, nil
 }
 
-func managedElectricProcessMatchesSession(command, root string, session *localagent.Session) bool {
+func managedElectricProcessMatchesSession(command, root string, session *localagent.Session, streamID string) bool {
 	if session == nil {
 		return false
 	}
+	runtimeAppID := strings.TrimSpace(session.RuntimeAppID)
+	if runtimeAppID == "" && strings.TrimSpace(session.BaseAppID) != "" {
+		runtimeAppID = strings.TrimSpace(session.BaseAppID) + "--" + strings.TrimSpace(session.SessionID)
+	}
 	return commandContainsEnvValue(command, "ONLAVA_APP_ROOT", root) &&
 		commandContainsEnvValue(command, "ONLAVA_SESSION_ID", strings.TrimSpace(session.SessionID)) &&
+		commandContainsEnvValue(command, "ONLAVA_RUNTIME_APP_ID", runtimeAppID) &&
 		commandContainsEnvValue(command, "ONLAVA_DEV_SUPERVISOR", "1") &&
-		commandContainsEnvValue(command, "ONLAVA_ROLE", "electric")
+		commandContainsEnvValue(command, "ONLAVA_ROLE", "electric") &&
+		commandContainsEnvValue(command, "ELECTRIC_REPLICATION_STREAM_ID", strings.TrimSpace(streamID))
 }
 
 func commandContainsEnvValue(command, name, value string) bool {
@@ -643,17 +727,29 @@ func commandContainsEnvValue(command, name, value string) bool {
 	if name == "" || value == "" {
 		return false
 	}
+	got := commandEnvValue(command, name)
+	if got == "" {
+		return false
+	}
+	if name == "ONLAVA_APP_ROOT" {
+		return cleanAbsPath(got) == cleanAbsPath(value)
+	}
+	return strings.TrimSpace(got) == value
+}
+
+func commandEnvValue(command, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
 	for _, part := range strings.Fields(command) {
 		key, got, ok := strings.Cut(part, "=")
 		if !ok || key != name {
 			continue
 		}
-		if name == "ONLAVA_APP_ROOT" {
-			return cleanAbsPath(got) == cleanAbsPath(value)
-		}
-		return strings.TrimSpace(got) == value
+		return strings.TrimSpace(got)
 	}
-	return false
+	return ""
 }
 
 func describeManagedElectricStreamProcesses(processes []managedElectricStreamProcess) string {
@@ -662,20 +758,46 @@ func describeManagedElectricStreamProcesses(processes []managedElectricStreamPro
 	}
 	parts := make([]string, 0, len(processes))
 	for _, process := range processes {
-		command := strings.TrimSpace(process.Command)
+		fullCommand := strings.TrimSpace(process.Command)
+		command := fullCommand
 		if len(command) > 220 {
 			command = command[:220] + "..."
 		}
-		parts = append(parts, fmt.Sprintf("pid=%d cmd=%q", process.PID, command))
+		detail := fmt.Sprintf("pid=%d", process.PID)
+		if strings.TrimSpace(process.State) != "" {
+			detail += " state=" + strings.TrimSpace(process.State)
+		}
+		if strings.TrimSpace(process.Stream) != "" {
+			detail += " stream=" + strconv.Quote(strings.TrimSpace(process.Stream))
+		} else if stream := commandEnvValue(fullCommand, "ELECTRIC_REPLICATION_STREAM_ID"); stream != "" {
+			detail += " stream=" + strconv.Quote(stream)
+		}
+		appRoot := firstNonEmpty(process.AppRoot, commandEnvValue(fullCommand, "ONLAVA_APP_ROOT"))
+		if appRoot != "" {
+			detail += " app_root=" + strconv.Quote(appRoot)
+		}
+		sessionID := firstNonEmpty(process.SessionID, commandEnvValue(fullCommand, "ONLAVA_SESSION_ID"))
+		if sessionID != "" {
+			detail += " session=" + strconv.Quote(sessionID)
+		}
+		runtimeAppID := firstNonEmpty(process.RuntimeAppID, commandEnvValue(fullCommand, "ONLAVA_RUNTIME_APP_ID"))
+		if runtimeAppID != "" {
+			detail += " runtime_app=" + strconv.Quote(runtimeAppID)
+		}
+		if command != "" {
+			detail += " cmd=" + strconv.Quote(command)
+		}
+		parts = append(parts, detail)
 	}
 	return strings.Join(parts, "; ")
 }
 
-func cleanupManagedElectricPostgresSlot(ctx context.Context, dbURL, streamID string) error {
+func cleanupManagedElectricPostgresSlot(ctx context.Context, dbURL, root string, session *localagent.Session, streamID string) error {
 	slotName := managedElectricSlotName(streamID)
 	if strings.TrimSpace(dbURL) == "" || slotName == "" {
 		return nil
 	}
+	applicationName := managedElectricPostgresApplicationName(root, session, streamID)
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		return err
@@ -691,8 +813,9 @@ func cleanupManagedElectricPostgresSlot(ctx context.Context, dbURL, streamID str
 	if len(locks) == 0 {
 		return nil
 	}
+	owned, blocked := classifyElectricPostgresLocksForCleanup(locks, applicationName)
 	var failed []electricPostgresLock
-	for _, lock := range locks {
+	for _, lock := range owned {
 		if lock.PID <= 0 {
 			continue
 		}
@@ -700,6 +823,9 @@ func cleanupManagedElectricPostgresSlot(ctx context.Context, dbURL, streamID str
 		if err != nil || !terminated {
 			failed = append(failed, lock)
 		}
+	}
+	if len(blocked) > 0 {
+		return fmt.Errorf("managed Electric slot %s has live non-owned contender(s) for stream %q: %s", slotName, strings.TrimSpace(streamID), describeElectricPostgresLocks(blocked))
 	}
 
 	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
@@ -723,40 +849,24 @@ func cleanupManagedElectricPostgresSlot(ctx context.Context, dbURL, streamID str
 	}
 }
 
+func classifyElectricPostgresLocksForCleanup(locks []electricPostgresLock, applicationName string) (owned, blocked []electricPostgresLock) {
+	applicationName = strings.TrimSpace(applicationName)
+	for _, lock := range locks {
+		if applicationName != "" && strings.TrimSpace(lock.Application) == applicationName {
+			owned = append(owned, lock)
+			continue
+		}
+		blocked = append(blocked, lock)
+	}
+	return owned, blocked
+}
+
 func inspectElectricPostgresLocks(ctx context.Context, db *sql.DB, slotName string) ([]electricPostgresLock, error) {
 	slotName = strings.TrimSpace(slotName)
 	if slotName == "" {
 		return nil, nil
 	}
-	rows, err := db.QueryContext(ctx, `
-WITH candidates AS (
-	SELECT
-		a.pid,
-		'advisory-lock' AS kind,
-		COALESCE(a.state, '') AS state,
-		COALESCE(a.wait_event_type, '') AS wait_event_type,
-		COALESCE(a.wait_event, '') AS wait_event,
-		COALESCE(a.query, '') AS query
-	FROM pg_stat_activity a
-	WHERE a.pid <> pg_backend_pid()
-		AND a.query ILIKE '%' || $1 || '%'
-	UNION
-	SELECT
-		s.active_pid AS pid,
-		'replication-slot' AS kind,
-		'' AS state,
-		'' AS wait_event_type,
-		'' AS wait_event,
-		'active replication slot ' || s.slot_name AS query
-	FROM pg_replication_slots s
-	WHERE s.active_pid IS NOT NULL
-		AND s.slot_name = $1
-)
-SELECT DISTINCT pid, kind, state, wait_event_type, wait_event, query
-FROM candidates
-WHERE pid IS NOT NULL
-ORDER BY pid, kind
-`, slotName)
+	rows, err := db.QueryContext(ctx, electricPostgresLocksQuery, slotName)
 	if err != nil {
 		return nil, err
 	}
@@ -764,8 +874,11 @@ ORDER BY pid, kind
 	var locks []electricPostgresLock
 	for rows.Next() {
 		var lock electricPostgresLock
-		if err := rows.Scan(&lock.PID, &lock.Kind, &lock.State, &lock.WaitEventType, &lock.WaitEvent, &lock.Query); err != nil {
+		if err := rows.Scan(&lock.PID, &lock.Kind, &lock.State, &lock.WaitEventType, &lock.WaitEvent, &lock.Query, &lock.Application, &lock.ClientAddr, &lock.SlotName); err != nil {
 			return nil, err
+		}
+		if lock.Kind == "advisory-lock" && !textMentionsExactIdentifier(lock.Query, slotName) {
+			continue
 		}
 		locks = append(locks, lock)
 	}
@@ -773,6 +886,70 @@ ORDER BY pid, kind
 		return nil, err
 	}
 	return locks, nil
+}
+
+const electricPostgresLocksQuery = `
+WITH candidates AS (
+	SELECT
+		a.pid,
+		'advisory-lock' AS kind,
+		COALESCE(a.state, '') AS state,
+		COALESCE(a.wait_event_type, '') AS wait_event_type,
+		COALESCE(a.wait_event, '') AS wait_event,
+		COALESCE(a.query, '') AS query,
+		COALESCE(a.application_name, '') AS application_name,
+		COALESCE(a.client_addr::text, '') AS client_addr,
+		$1::text AS slot_name
+	FROM pg_stat_activity a
+	WHERE a.pid <> pg_backend_pid()
+		AND a.query ILIKE '%' || $1::text || '%'
+	UNION
+	SELECT
+		s.active_pid AS pid,
+		'replication-slot' AS kind,
+		COALESCE(a.state, '') AS state,
+		COALESCE(a.wait_event_type, '') AS wait_event_type,
+		COALESCE(a.wait_event, '') AS wait_event,
+		COALESCE(NULLIF(a.query, ''), 'active replication slot ' || s.slot_name) AS query,
+		COALESCE(a.application_name, '') AS application_name,
+		COALESCE(a.client_addr::text, '') AS client_addr,
+		s.slot_name::text
+	FROM pg_replication_slots s
+	LEFT JOIN pg_stat_activity a ON a.pid = s.active_pid
+	WHERE s.active_pid IS NOT NULL
+		AND s.slot_name::text = $1::text
+)
+SELECT DISTINCT pid, kind, state, wait_event_type, wait_event, query, application_name, client_addr, slot_name
+FROM candidates
+WHERE pid IS NOT NULL
+ORDER BY pid, kind
+`
+
+func textMentionsExactIdentifier(text, identifier string) bool {
+	text = strings.TrimSpace(text)
+	identifier = strings.TrimSpace(identifier)
+	if text == "" || identifier == "" {
+		return false
+	}
+	offset := 0
+	for {
+		index := strings.Index(text[offset:], identifier)
+		if index < 0 {
+			return false
+		}
+		start := offset + index
+		end := start + len(identifier)
+		beforeOK := start == 0 || !isIdentifierByte(text[start-1])
+		afterOK := end == len(text) || !isIdentifierByte(text[end])
+		if beforeOK && afterOK {
+			return true
+		}
+		offset = end
+	}
+}
+
+func isIdentifierByte(value byte) bool {
+	return value == '_' || value >= '0' && value <= '9' || value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
 }
 
 func terminatePostgresBackend(ctx context.Context, db *sql.DB, pid int) (bool, error) {
@@ -801,6 +978,15 @@ func describeElectricPostgresLocks(locks []electricPostgresLock) string {
 		}
 		if query != "" {
 			detail += " query=" + strconv.Quote(query)
+		}
+		if strings.TrimSpace(lock.Application) != "" {
+			detail += " application=" + strconv.Quote(strings.TrimSpace(lock.Application))
+		}
+		if strings.TrimSpace(lock.ClientAddr) != "" {
+			detail += " client=" + strings.TrimSpace(lock.ClientAddr)
+		}
+		if strings.TrimSpace(lock.SlotName) != "" {
+			detail += " slot=" + strconv.Quote(strings.TrimSpace(lock.SlotName))
 		}
 		parts = append(parts, detail)
 	}
@@ -1728,6 +1914,16 @@ func hasEnvValue(env []string, key string) bool {
 func managedPostgresUsesExternalDatabase(env []string) bool {
 	value, _ := lookupEnvValue(env, devPostgresExternalEnv)
 	return value != "" && !isFalseEnv(value)
+}
+
+func externalPostgresDatabaseURL(env []string) (string, error) {
+	if value, _ := lookupEnvValue(env, appDatabaseURLEnv); value != "" {
+		return value, nil
+	}
+	if hasEnvValue(env, legacyDatabaseURLEnv) {
+		return "", fmt.Errorf("%s=1 requires %s; %s is ignored as the Onlava app database authority", devPostgresExternalEnv, appDatabaseURLEnv, legacyDatabaseURLEnv)
+	}
+	return "", fmt.Errorf("%s=1 requires %s", devPostgresExternalEnv, appDatabaseURLEnv)
 }
 
 var ensureManagedPostgresDatabaseFn = ensureManagedPostgresDatabase

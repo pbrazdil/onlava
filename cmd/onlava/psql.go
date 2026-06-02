@@ -388,6 +388,9 @@ func buildPSQLInvocationForConfig(ctx context.Context, appRoot string, cfg appcf
 
 func resolveDatabaseURLForConfig(ctx context.Context, appRoot string, cfg appcfg.Config, baseEnv []string, useManaged bool) (string, error) {
 	if useManaged {
+		if _, _, ok := managedPostgresDeclared(cfg); ok && managedPostgresUsesExternalDatabase(baseEnv) {
+			return externalPostgresDatabaseURL(baseEnv)
+		}
 		plan, err := managedPostgresPlanForCurrentSession(ctx, appRoot, cfg, baseEnv)
 		if err != nil {
 			return "", err

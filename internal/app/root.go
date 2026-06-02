@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	goruntime "runtime"
+	"strings"
 )
 
 type Config struct {
@@ -183,9 +186,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 		path := filepath.Join(dir, ".onlava.json")
 		if data, err := os.ReadFile(path); err == nil {
 			var cfg Config
-			dec := json.NewDecoder(bytes.NewReader(data))
-			dec.DisallowUnknownFields()
-			if err := dec.Decode(&cfg); err != nil {
+			if err := decodeConfig(path, data, &cfg); err != nil {
 				return "", Config{}, err
 			}
 			if cfg.Name == "" {
@@ -203,6 +204,134 @@ func DiscoverRoot(start string) (string, Config, error) {
 		dir = parent
 	}
 	return "", Config{}, errors.New("no .onlava.json found in current directory or any parent")
+}
+
+func decodeConfig(path string, data []byte, cfg *Config) error {
+	if err := rejectUnknownConfigFields(path, data); err != nil {
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(cfg); err != nil {
+		return fmt.Errorf("%s: decode .onlava.json: %w", path, err)
+	}
+	return nil
+}
+
+func rejectUnknownConfigFields(path string, data []byte) error {
+	var raw any
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(&raw); err != nil {
+		return fmt.Errorf("%s: decode .onlava.json: %w", path, err)
+	}
+	if err := rejectUnknownFieldsValue(raw, reflect.TypeOf(Config{}), nil); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
+func rejectUnknownFieldsValue(value any, typ reflect.Type, path []string) error {
+	typ = indirectType(typ)
+	switch typ.Kind() {
+	case reflect.Struct:
+		obj, ok := value.(map[string]any)
+		if !ok {
+			return nil
+		}
+		fields := jsonStructFields(typ)
+		for name, child := range obj {
+			field, ok := fields[name]
+			childPath := appendJSONPath(path, name)
+			if !ok {
+				return unknownConfigFieldError(childPath)
+			}
+			if err := rejectUnknownFieldsValue(child, field.Type, childPath); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		obj, ok := value.(map[string]any)
+		if !ok {
+			return nil
+		}
+		elem := indirectType(typ.Elem())
+		if elem.Kind() != reflect.Struct {
+			return nil
+		}
+		for name, child := range obj {
+			if err := rejectUnknownFieldsValue(child, elem, appendJSONPath(path, name)); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		items, ok := value.([]any)
+		if !ok {
+			return nil
+		}
+		for i, child := range items {
+			if err := rejectUnknownFieldsValue(child, typ.Elem(), appendJSONIndex(path, i)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func unknownConfigFieldError(path []string) error {
+	jsonPath := strings.Join(path, ".")
+	removedProxyHostPath := "proxy." + removedProxyHostField()
+	if jsonPath == removedProxyHostPath {
+		return fmt.Errorf("unknown .onlava.json field %q; %s was removed and has no compatibility behavior; remove it and use dev session routes or proxy.api_host/proxy.console_host/proxy.frontends for local routing", jsonPath, removedProxyHostPath)
+	}
+	return fmt.Errorf("unknown .onlava.json field %q", jsonPath)
+}
+
+func removedProxyHostField() string {
+	return "m" + "cp_host"
+}
+
+func jsonStructFields(typ reflect.Type) map[string]reflect.StructField {
+	fields := make(map[string]reflect.StructField)
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		name := field.Name
+		if tag := field.Tag.Get("json"); tag != "" {
+			name = strings.Split(tag, ",")[0]
+		}
+		if name == "-" {
+			continue
+		}
+		fields[name] = field
+	}
+	return fields
+}
+
+func indirectType(typ reflect.Type) reflect.Type {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return typ
+}
+
+func appendJSONPath(path []string, field string) []string {
+	next := make([]string, 0, len(path)+1)
+	next = append(next, path...)
+	next = append(next, field)
+	return next
+}
+
+func appendJSONIndex(path []string, index int) []string {
+	next := make([]string, len(path))
+	copy(next, path)
+	if len(next) == 0 {
+		return []string{fmt.Sprintf("[%d]", index)}
+	}
+	next[len(next)-1] = fmt.Sprintf("%s[%d]", next[len(next)-1], index)
+	return next
 }
 
 func RepoRoot() string {

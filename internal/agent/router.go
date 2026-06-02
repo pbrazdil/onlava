@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -33,7 +34,30 @@ func (s *Server) routerMux() http.Handler {
 			http.NotFound(w, req)
 			return
 		}
+		if isFrontendSessionBackend(kind) {
+			s.handleFrontendRoute(w, req, session, backend)
+			return
+		}
 		proxyBackend(w, req, backend, "")
+	})
+}
+
+func (s *Server) handleFrontendRoute(w http.ResponseWriter, req *http.Request, session Session, backend Backend) {
+	if req.URL.Path == "/__onlava/config" {
+		api, ok := session.Backends[RouteAPI]
+		if !ok {
+			http.NotFound(w, req)
+			return
+		}
+		proxyBackend(w, req, api, "")
+		return
+	}
+	if isProtectedFrontendPath(req.URL.Path) {
+		http.NotFound(w, req)
+		return
+	}
+	proxyBackendWithOptions(w, req, backend, proxyBackendOptions{
+		spaFallback: shouldUseSPAFallback(req),
 	})
 }
 
@@ -112,7 +136,16 @@ func routeHostParts(host string) (kind, sessionID string, ok bool) {
 	return kind, sessionID, true
 }
 
+type proxyBackendOptions struct {
+	stripPrefix string
+	spaFallback bool
+}
+
 func proxyBackend(w http.ResponseWriter, req *http.Request, backend Backend, stripPrefix string) {
+	proxyBackendWithOptions(w, req, backend, proxyBackendOptions{stripPrefix: stripPrefix})
+}
+
+func proxyBackendWithOptions(w http.ResponseWriter, req *http.Request, backend Backend, opts proxyBackendOptions) {
 	target := &url.URL{Scheme: "http", Host: backend.Addr}
 	transport := http.DefaultTransport
 	if backend.Network == "unix" {
@@ -134,17 +167,98 @@ func proxyBackend(w http.ResponseWriter, req *http.Request, backend Backend, str
 		out.Header.Set("X-Forwarded-Host", req.Host)
 		out.Header.Set("X-Forwarded-Proto", forwardedProto(req))
 		out.Header.Set("X-Forwarded-Port", forwardedPort(req))
-		if stripPrefix != "" {
-			out.URL.Path = strings.TrimPrefix(req.URL.Path, stripPrefix)
+		if opts.stripPrefix != "" {
+			out.URL.Path = strings.TrimPrefix(req.URL.Path, opts.stripPrefix)
 			if out.URL.Path == "" {
 				out.URL.Path = "/"
 			}
+		}
+	}
+	if opts.spaFallback {
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			if resp.StatusCode != http.StatusNotFound || resp.Request == nil || resp.Request.URL == nil {
+				return nil
+			}
+			fallbackReq := resp.Request.Clone(req.Context())
+			fallbackReq.URL.Path = "/"
+			fallbackReq.URL.RawPath = ""
+			fallbackReq.URL.RawQuery = ""
+			fallbackResp, err := transport.RoundTrip(fallbackReq)
+			if err != nil {
+				return nil
+			}
+			_ = resp.Body.Close()
+			resp.StatusCode = fallbackResp.StatusCode
+			resp.Status = fallbackResp.Status
+			resp.Header = fallbackResp.Header
+			resp.Body = fallbackResp.Body
+			resp.ContentLength = fallbackResp.ContentLength
+			resp.TransferEncoding = fallbackResp.TransferEncoding
+			resp.Trailer = fallbackResp.Trailer
+			return nil
 		}
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, req)
+}
+
+func isFrontendSessionBackend(kind string) bool {
+	switch kind {
+	case "", RouteAPI, RouteDashboard, RouteGrafana, RouteTemporal, "electric", "removed-agent-transport", "sync":
+		return false
+	default:
+		return true
+	}
+}
+
+func isProtectedFrontendPath(value string) bool {
+	value = cleanRequestPath(value)
+	for _, prefix := range []string{"/__onlava", "/api", "/sync"} {
+		if value == prefix || strings.HasPrefix(value, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldUseSPAFallback(req *http.Request) bool {
+	if req == nil || req.URL == nil {
+		return false
+	}
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		return false
+	}
+	if isConcreteAssetPath(req.URL.Path) {
+		return false
+	}
+	accept := strings.ToLower(req.Header.Get("Accept"))
+	return strings.Contains(accept, "text/html")
+}
+
+func isConcreteAssetPath(value string) bool {
+	value = cleanRequestPath(value)
+	if value == "/" {
+		return false
+	}
+	for _, prefix := range []string{"/assets/", "/static/", "/public/"} {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	base := path.Base(value)
+	return strings.Contains(base, ".")
+}
+
+func cleanRequestPath(value string) string {
+	if value == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	return path.Clean(value)
 }
 
 func forwardedProto(req *http.Request) string {

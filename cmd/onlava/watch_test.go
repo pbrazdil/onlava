@@ -447,6 +447,40 @@ func TestRejectLiveDuplicateDevSessionUsesEffectiveOwnerPID(t *testing.T) {
 	}
 }
 
+func TestFindLiveDevOwnerConflictDetectsDuplicateSameSessionOwner(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "review-a"
+	binDir := t.TempDir()
+	fakeOnlava := filepath.Join(binDir, "onlava")
+	if err := os.WriteFile(fakeOnlava, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	owner := exec.Command(fakeOnlava, "dev", "--app-root", root, "--session", sessionID)
+	if err := owner.Start(); err != nil {
+		t.Fatalf("start fake onlava dev owner: %v", err)
+	}
+	defer func() {
+		_ = owner.Process.Kill()
+		_ = owner.Wait()
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if pid, ok := findLiveDevOwnerConflict(root, sessionID, 0); ok {
+			if pid != owner.Process.Pid {
+				t.Fatalf("conflict pid = %d, want %d", pid, owner.Process.Pid)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for duplicate dev owner conflict")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if pid, ok := findLiveDevOwnerConflict(root, sessionID, owner.Process.Pid); ok {
+		t.Fatalf("owner pid %d should be ignored, got conflict %d", owner.Process.Pid, pid)
+	}
+}
+
 func TestDevCommandMatchesSession(t *testing.T) {
 	if !devCommandMatchesSession("onlava dev --app-root /tmp/app", "main-abc123") {
 		t.Fatal("default dev command should match default session")

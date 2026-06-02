@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -303,5 +304,93 @@ func TestAgentDashboardReportUsesSessionReportToken(t *testing.T) {
 	}
 	if len(counts) != 1 || counts[0].Level != "INFO" || counts[0].Count != 1 {
 		t.Fatalf("log counts = %+v", counts)
+	}
+}
+
+func TestAgentDashboardRejectsStaleReportWithStructuredLog(t *testing.T) {
+	ctx := context.Background()
+	runDir, err := os.MkdirTemp("/tmp", "onlava-agent-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(runDir)
+	})
+	agentServer, err := localagent.NewServer(localagent.RunOptions{
+		SocketPath: filepath.Join(runDir, "agent.sock"),
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(ctx)
+	go func() { done <- agentServer.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("agent shutdown: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for agent shutdown")
+		}
+	})
+
+	client := localagent.NewClient(agentServer.Paths().SocketPath)
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, localagent.RegisterRequest{
+		BaseAppID:   "demo",
+		AppRoot:     t.TempDir(),
+		ReportToken: "report-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := devdash.OpenStore(filepath.Join(t.TempDir(), "dashboard"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	server := newDashboardServerWithController(&agentDashboardController{
+		store: store,
+		agent: agentServer,
+	}, t.TempDir(), "127.0.0.1:0", "", nil)
+
+	body, err := json.Marshal(devdash.ReportEnvelope{
+		Type:        "trace-event",
+		AppID:       "demo",
+		SessionID:   "missing-session",
+		ReporterPID: 12345,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, devdash.ReportPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer report-secret")
+	rec := httptest.NewRecorder()
+	server.handleReport(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("report status = %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	counts, err := store.CountLogsByLevelForSession(context.Background(), "demo", "missing-session", time.Now().Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(counts) != 1 || counts[0].Level != "warn" || counts[0].Count != 1 {
+		t.Fatalf("stale log counts = %+v", counts)
+	}
+	currentCounts, err := store.CountLogsByLevelForSession(context.Background(), "demo", session.SessionID, time.Now().Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(currentCounts) != 0 {
+		t.Fatalf("current session should not receive stale report log: %+v", currentCounts)
 	}
 }

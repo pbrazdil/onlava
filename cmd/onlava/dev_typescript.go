@@ -101,7 +101,11 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 	if err != nil {
 		return nil, err
 	}
-	cmd.Env = s.typeScriptWorkerEnv(baseEnv)
+	managedEnv, err := s.managedAppEnv(ctx, baseEnv)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Env = s.typeScriptWorkerEnv(baseEnv, managedEnv)
 	cmd.Stdin = nil
 
 	stdout, err := cmd.StdoutPipe()
@@ -158,7 +162,8 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 	return worker, nil
 }
 
-func (s *devSupervisor) typeScriptWorkerEnv(baseEnv []string) []string {
+func (s *devSupervisor) typeScriptWorkerEnv(baseEnv, managedEnv []string) []string {
+	baseEnv = s.appDatabaseAuthorityEnv(baseEnv)
 	info := s.typeScriptWorkerTemporalInfo()
 	extra := []string{
 		"ONLAVA_APP_ID=" + s.activeAppID(),
@@ -178,7 +183,8 @@ func (s *devSupervisor) typeScriptWorkerEnv(baseEnv []string) []string {
 	extra = append(extra, s.temporal.Env()...)
 	extra = append(extra, s.sessionTemporalEnv()...)
 	extra = append(extra, s.sessionIdentityEnv()...)
-	return appChildEnv(envWithOverrides(baseEnv, compactEnvOverrides(extra)...), s.console != nil && s.console.palette.Enabled())
+	env := appChildEnv(envWithOverrides(baseEnv, compactEnvOverrides(extra)...), s.console != nil && s.console.palette.Enabled())
+	return append(env, managedEnv...)
 }
 
 func (s *devSupervisor) typeScriptWorkerTemporalInfo() onlavaruntime.TemporalRuntimeInfo {

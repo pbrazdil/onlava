@@ -65,6 +65,7 @@ type ReportEnvelope struct {
 	AppRootHash  string        `json:"app_root_hash,omitempty"`
 	Branch       string        `json:"branch,omitempty"`
 	Worktree     string        `json:"worktree,omitempty"`
+	ReporterPID  int           `json:"reporter_pid,omitempty"`
 	TraceSummary *TraceSummary `json:"trace_summary,omitempty"`
 	TraceEvent   *TraceEvent   `json:"trace_event,omitempty"`
 	LogEvent     *LogEvent     `json:"log_event,omitempty"`

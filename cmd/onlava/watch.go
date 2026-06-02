@@ -336,6 +336,18 @@ func discoverDevGitBranch(root string) string {
 }
 
 func findLiveDevOwnerProcess(root, sessionID string) (int, bool) {
+	return findLiveDevOwnerProcessExcept(root, sessionID, map[int]bool{os.Getpid(): true})
+}
+
+func findLiveDevOwnerConflict(root, sessionID string, ownerPID int) (int, bool) {
+	excluded := map[int]bool{os.Getpid(): true}
+	if ownerPID > 0 {
+		excluded[ownerPID] = true
+	}
+	return findLiveDevOwnerProcessExcept(root, sessionID, excluded)
+}
+
+func findLiveDevOwnerProcessExcept(root, sessionID string, excluded map[int]bool) (int, bool) {
 	output, err := exec.Command("ps", "-axo", "pid=,stat=,command=").Output()
 	if err != nil {
 		return 0, false
@@ -351,7 +363,7 @@ func findLiveDevOwnerProcess(root, sessionID string) (int, bool) {
 			continue
 		}
 		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid <= 0 || pid == os.Getpid() || strings.Contains(fields[1], "Z") {
+		if err != nil || pid <= 0 || excluded[pid] || strings.Contains(fields[1], "Z") {
 			continue
 		}
 		command := strings.Join(fields[2:], " ")
@@ -368,7 +380,10 @@ func looksLikeOnlavaDevOwnerCommand(command string) bool {
 	if len(args) < 2 {
 		return false
 	}
-	return strings.Contains(strings.ToLower(filepath.Base(args[0])), "onlava") && args[1] == "dev"
+	if strings.Contains(strings.ToLower(filepath.Base(args[0])), "onlava") && args[1] == "dev" {
+		return true
+	}
+	return len(args) >= 3 && strings.Contains(strings.ToLower(filepath.Base(args[1])), "onlava") && args[2] == "dev"
 }
 
 func devCommandMatchesAppRoot(command, root string) bool {

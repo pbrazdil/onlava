@@ -84,7 +84,11 @@ func TestAppDiscoverRootRejectsRemovedProxyKey(t *testing.T) {
 	}
 
 	_, _, err := appcfg.DiscoverRoot(dir)
-	if err == nil || !strings.Contains(err.Error(), "unknown field") || !strings.Contains(err.Error(), removedKey) {
+	if err == nil ||
+		!strings.Contains(err.Error(), filepath.Join(dir, ".onlava.json")) ||
+		!strings.Contains(err.Error(), `unknown .onlava.json field "proxy.`+removedKey+`"`) ||
+		!strings.Contains(err.Error(), "proxy."+removedKey+" was removed") ||
+		!strings.Contains(err.Error(), "proxy.api_host/proxy.console_host/proxy.frontends") {
 		t.Fatalf("DiscoverRoot error = %v, want unknown field for %s", err, removedKey)
 	}
 }
@@ -225,7 +229,8 @@ func TestAppDiscoverRootRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"name":"app","proxy":{"extra":"value"}}`), 0o644); err != nil {
+	configPath := filepath.Join(dir, ".onlava.json")
+	if err := os.WriteFile(configPath, []byte(`{"name":"app","proxy":{"extra":"value"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -233,7 +238,7 @@ func TestAppDiscoverRootRejectsUnknownFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("DiscoverRoot returned nil error")
 	}
-	if got, want := err.Error(), `json: unknown field "extra"`; got != want {
+	if got, want := err.Error(), configPath+`: unknown .onlava.json field "proxy.extra"`; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
@@ -242,7 +247,8 @@ func TestAppDiscoverRootRejectsUnknownTemporalFields(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"name":"app","temporal":{"enabled":true,"extra":"value"}}`), 0o644); err != nil {
+	configPath := filepath.Join(dir, ".onlava.json")
+	if err := os.WriteFile(configPath, []byte(`{"name":"app","temporal":{"enabled":true,"extra":"value"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -250,8 +256,88 @@ func TestAppDiscoverRootRejectsUnknownTemporalFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("DiscoverRoot returned nil error")
 	}
-	if got, want := err.Error(), `json: unknown field "extra"`; got != want {
+	if got, want := err.Error(), configPath+`: unknown .onlava.json field "temporal.extra"`; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestAppDiscoverRootRejectsUnknownFieldsInConfigCollections(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		json string
+		path string
+	}{
+		{
+			name: "frontend map value",
+			json: `{"name":"app","proxy":{"frontends":{"web":{"host":"web.localhost","extra":"value"}}}}`,
+			path: "proxy.frontends.web.extra",
+		},
+		{
+			name: "client generator array value",
+			json: `{"name":"app","generators":{"clients":[{"output":"apps/web/src/client.ts","extra":"value"}]}}`,
+			path: "generators.clients[0].extra",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, ".onlava.json")
+			if err := os.WriteFile(configPath, []byte(tt.json), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, _, err := appcfg.DiscoverRoot(dir)
+			if err == nil {
+				t.Fatal("DiscoverRoot returned nil error")
+			}
+			if got, want := err.Error(), configPath+`: unknown .onlava.json field "`+tt.path+`"`; got != want {
+				t.Fatalf("error = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestAppDiscoverRootKeepsStringMapsOpen(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	data := `{"name":"app","tasks":{"harness":{"env":{"EXTRA":"value"}}},"dev":{"services":{"electric":{"kind":"electric","env":{"ELECTRIC_INSECURE":"true"}}}}}`
+	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, cfg, err := appcfg.DiscoverRoot(dir)
+	if err != nil {
+		t.Fatalf("DiscoverRoot returned error: %v", err)
+	}
+	if cfg.Tasks["harness"].Env["EXTRA"] != "value" {
+		t.Fatalf("task env = %+v", cfg.Tasks["harness"].Env)
+	}
+	if cfg.Dev.Services["electric"].Env["ELECTRIC_INSECURE"] != "true" {
+		t.Fatalf("service env = %+v", cfg.Dev.Services["electric"].Env)
+	}
+}
+
+func TestAppDiscoverRootReportsConfigPathForInvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".onlava.json")
+	if err := os.WriteFile(configPath, []byte(`{"name":`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := appcfg.DiscoverRoot(dir)
+	if err == nil {
+		t.Fatal("DiscoverRoot returned nil error")
+	}
+	if !strings.Contains(err.Error(), configPath+": decode .onlava.json:") {
+		t.Fatalf("error = %q, want config path and decode prefix", err.Error())
 	}
 }
 

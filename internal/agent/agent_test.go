@@ -443,6 +443,42 @@ func TestRegistryOwnedDeleteDoesNotRemoveReplacedOwnerSession(t *testing.T) {
 	}
 }
 
+func TestRegistryStrictOwnedDeleteRequiresOwnerFingerprintMatch(t *testing.T) {
+	root := t.TempDir()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := registry.Upsert(RegisterRequest{
+		BaseAppID:  "demo",
+		AppRoot:    root,
+		SessionID:  "review-a",
+		Status:     "running",
+		OwnerPID:   os.Getpid(),
+		ClaimOwner: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleOwner := session.Owner
+	staleOwner.CmdlineHash = "sha256:older-owner"
+	if deleted, ok, err := registry.DeleteOwnedIdentity(session.SessionID, os.Getpid(), staleOwner, true); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatalf("strict stale fingerprint delete removed session: %+v", deleted)
+	}
+	current, ok := registry.Get(session.SessionID)
+	if !ok {
+		t.Fatal("session was removed by stale owner fingerprint")
+	}
+	if current.Owner.CmdlineHash != session.Owner.CmdlineHash {
+		t.Fatalf("current owner fingerprint changed: %+v", current.Owner)
+	}
+	if _, ok, err := registry.DeleteOwnedIdentity(session.SessionID, os.Getpid(), session.Owner, true); err != nil || !ok {
+		t.Fatalf("strict current owner delete ok=%v err=%v", ok, err)
+	}
+}
+
 func TestRegistryRequiresClaimForDeadSessionOwner(t *testing.T) {
 	root := t.TempDir()
 	stale := exec.Command("sleep", "30")
@@ -869,6 +905,126 @@ func TestServerRoutesFrontendBackend(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || string(body) != "frontend ok" {
 		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerRoutesFrontendSPAFallback(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+
+	var frontendHits []string
+	frontend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		frontendHits = append(frontendHits, req.URL.Path)
+		switch req.URL.Path {
+		case "/":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(w, "frontend shell")
+		case "/assets/app.js":
+			w.Header().Set("Content-Type", "text/javascript")
+			_, _ = io.WriteString(w, "asset ok")
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	defer frontend.Close()
+	frontendAddr := strings.TrimPrefix(frontend.URL, "http://")
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/__onlava/config" {
+			t.Fatalf("api path = %q, want /__onlava/config", req.URL.Path)
+		}
+		_, _ = io.WriteString(w, "config ok")
+	}))
+	defer api.Close()
+	apiAddr := strings.TrimPrefix(api.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/frontend-fallback",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: apiAddr},
+			"web":    {Network: "tcp", Addr: frontendAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicHost := "web." + session.SessionID + ".onlava.localhost"
+
+	request := func(targetPath, accept string) (int, string) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+targetPath, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Host = publicHost
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode, string(body)
+	}
+
+	status, body := request("/settings/profile", "text/html")
+	if status != http.StatusOK || body != "frontend shell" {
+		t.Fatalf("deep link response status=%d body=%q", status, body)
+	}
+	if strings.Join(frontendHits, ",") != "/settings/profile,/" {
+		t.Fatalf("frontend hits after fallback = %q", strings.Join(frontendHits, ","))
+	}
+
+	status, body = request("/assets/app.js", "text/html")
+	if status != http.StatusOK || body != "asset ok" {
+		t.Fatalf("asset response status=%d body=%q", status, body)
+	}
+	status, body = request("/assets/missing.js", "text/html")
+	if status != http.StatusNotFound || strings.Contains(body, "frontend shell") {
+		t.Fatalf("missing asset response status=%d body=%q", status, body)
+	}
+	status, body = request("/api/users", "text/html")
+	if status != http.StatusNotFound || strings.Contains(body, "frontend shell") {
+		t.Fatalf("api path response status=%d body=%q", status, body)
+	}
+	status, body = request("/sync/shapes", "text/html")
+	if status != http.StatusNotFound || strings.Contains(body, "frontend shell") {
+		t.Fatalf("sync path response status=%d body=%q", status, body)
+	}
+	status, body = request("/__onlava/config", "text/html")
+	if status != http.StatusOK || body != "config ok" {
+		t.Fatalf("config response status=%d body=%q", status, body)
+	}
+	status, body = request("/__onlava/unknown", "text/html")
+	if status != http.StatusNotFound || strings.Contains(body, "frontend shell") {
+		t.Fatalf("control path response status=%d body=%q", status, body)
+	}
+	status, body = request("/settings/profile", "application/json")
+	if status != http.StatusNotFound || strings.Contains(body, "frontend shell") {
+		t.Fatalf("json request response status=%d body=%q", status, body)
 	}
 }
 

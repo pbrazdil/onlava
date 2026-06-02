@@ -125,19 +125,22 @@ func (c *agentDashboardController) dashboardStore() *devdash.Store {
 	return c.store
 }
 
-func (c *agentDashboardController) dashboardAuthorizeReport(req *http.Request, report devdash.ReportEnvelope) bool {
+func (c *agentDashboardController) dashboardAuthorizeReport(req *http.Request, report devdash.ReportEnvelope) dashboardReportAuth {
 	sessionID := strings.TrimSpace(report.SessionID)
 	if sessionID == "" {
-		return false
+		return dashboardReportAuth{Reason: "missing-session"}
 	}
 	if c.agent == nil {
-		return false
+		return dashboardReportAuth{Reason: "agent-unavailable"}
 	}
 	session, ok := c.agent.GetSession(sessionID)
 	if !ok || strings.TrimSpace(session.ReportToken) == "" {
-		return false
+		return dashboardReportAuth{Reason: "stale-session"}
 	}
-	return req.Header.Get("Authorization") == "Bearer "+session.ReportToken
+	if req.Header.Get("Authorization") != "Bearer "+session.ReportToken {
+		return dashboardReportAuth{Reason: "invalid-report-token"}
+	}
+	return dashboardReportAuth{Authorized: true}
 }
 
 func (c *agentDashboardController) dashboardRootForApp(ctx context.Context, appID string) (string, error) {

@@ -55,6 +55,7 @@ type devReporter struct {
 
 	eventSeq atomic.Uint64
 	disabled atomic.Bool
+	failures atomic.Uint64
 
 	prevLogger           *slog.Logger
 	prevDefaultTransport http.RoundTripper
@@ -152,15 +153,45 @@ func (r *devReporter) loop() {
 			if r.disabled.Load() {
 				continue
 			}
+			r.backoffBeforePost()
 			if err := r.post(env); err != nil {
+				r.failures.Add(1)
 				if shouldDisableDevReporting(err) {
 					r.disabled.Store(true)
 					return
 				}
 				fmt.Fprintf(osStderr(), "onlava: dev report failed: %v\n", err)
+				continue
 			}
+			r.failures.Store(0)
 		}
 	}
+}
+
+func (r *devReporter) backoffBeforePost() {
+	failures := r.failures.Load()
+	if failures == 0 {
+		return
+	}
+	delay := devReportBackoffDelay(failures)
+	if delay <= 0 {
+		return
+	}
+	select {
+	case <-r.stop:
+	case <-time.After(delay):
+	}
+}
+
+func devReportBackoffDelay(failures uint64) time.Duration {
+	if failures == 0 {
+		return 0
+	}
+	delay := time.Duration(1<<(minUint64(failures, 6)-1)) * 100 * time.Millisecond
+	if delay > 2*time.Second {
+		return 2 * time.Second
+	}
+	return delay
 }
 
 func (r *devReporter) post(env devreport.ReportEnvelope) error {
@@ -203,6 +234,9 @@ func (r *devReporter) enqueue(env devreport.ReportEnvelope) {
 	}
 	if env.Worktree == "" {
 		env.Worktree = r.worktree
+	}
+	if env.ReporterPID == 0 {
+		env.ReporterPID = os.Getpid()
 	}
 	if env.TraceSummary != nil {
 		if env.TraceSummary.AppID == "" {
@@ -262,6 +296,13 @@ func (r *devReporter) enqueue(env devreport.ReportEnvelope) {
 	default:
 		// Keep the app responsive if the dashboard falls behind.
 	}
+}
+
+func minUint64(a, b uint64) uint64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (r *devReporter) stopLoop() {

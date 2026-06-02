@@ -350,8 +350,13 @@ func writeStatus(ctx context.Context, client *localagent.Client, appRoot string,
 func markInconsistentStatusSessions(sessions []localagent.Session) []localagent.Session {
 	out := append([]localagent.Session(nil), sessions...)
 	for i := range out {
-		if sessionStatusHealthy(out[i].Status) && !sessionOwnerConsistent(out[i]) {
-			out[i].Status = "stale"
+		if !sessionStatusHealthy(out[i].Status) {
+			continue
+		}
+		status, reason := classifySessionStatus(out[i])
+		if status != "" {
+			out[i].Status = status
+			out[i].StatusReason = reason
 		}
 	}
 	return out
@@ -366,20 +371,51 @@ func sessionStatusHealthy(status string) bool {
 	}
 }
 
-func sessionOwnerConsistent(session localagent.Session) bool {
-	if !sessionOwnerLive(session) {
-		return false
+func classifySessionStatus(session localagent.Session) (string, string) {
+	if status, reason := classifySessionOwnerStatus(session); status != "" {
+		return status, reason
 	}
 	if session.AppPID != "" {
 		pid := atoiPID(session.AppPID)
 		if pid <= 0 {
-			return false
+			return "degraded", "app pid is invalid"
 		}
 		if _, ok := inspectProcess(pid); !ok {
-			return false
+			return "degraded", fmt.Sprintf("app process %d is not running", pid)
 		}
 	}
-	return true
+	ownerPID := firstPositiveInt(session.OwnerPID, session.Owner.PID)
+	if pid, ok := findLiveDevOwnerConflict(session.AppRoot, session.SessionID, ownerPID); ok {
+		return "degraded", fmt.Sprintf("another onlava dev owner process %d matches this app root and session", pid)
+	}
+	return "", ""
+}
+
+func classifySessionOwnerStatus(session localagent.Session) (string, string) {
+	ownerPID := firstPositiveInt(session.OwnerPID, session.Owner.PID)
+	if ownerPID <= 0 {
+		return "stale", "owner pid is missing"
+	}
+	owner := session.Owner
+	if owner.PID != ownerPID {
+		owner = localagent.CaptureOwner(ownerPID, "onlava dev")
+	}
+	if owner.PID <= 0 {
+		owner.PID = ownerPID
+	}
+	err := localagent.VerifyOwner(owner)
+	if err == nil {
+		return "", ""
+	}
+	if _, ok := inspectProcess(ownerPID); ok {
+		return "degraded", "owner fingerprint mismatch: " + err.Error()
+	}
+	return "stale", "owner process is not running: " + err.Error()
+}
+
+func sessionOwnerConsistent(session localagent.Session) bool {
+	status, _ := classifySessionStatus(session)
+	return status == ""
 }
 
 func sessionOwnerLive(session localagent.Session) bool {
@@ -463,7 +499,7 @@ func deleteStoppedSessionRecord(ctx context.Context, client *localagent.Client, 
 		}
 		return localagent.Session{}, false, err
 	}
-	deletedSession, deleted, err := client.DeleteOwned(ctx, session.SessionID, ownerPID, false)
+	deletedSession, deleted, err := client.DeleteOwnedSession(ctx, session, false)
 	if err == nil {
 		if !deleted {
 			return session, false, nil

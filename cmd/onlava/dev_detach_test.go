@@ -134,7 +134,7 @@ func TestRejectDetachedDuplicateDevSessionRejectsLiveOwner(t *testing.T) {
 		t.Fatalf("register live owner session: %v", err)
 	}
 
-	err = rejectDetachedDuplicateDevSession(ctx, client, root, devOptions{})
+	err = rejectDetachedDuplicateDevSession(ctx, client, root, devOptions{Trust: true})
 	if err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("rejectDetachedDuplicateDevSession error = %v, want already running", err)
 	}

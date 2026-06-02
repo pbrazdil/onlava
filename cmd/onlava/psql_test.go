@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pbrazdil/onlava/internal/app"
 )
 
 func TestParsePSQLArgs(t *testing.T) {
@@ -128,6 +131,36 @@ func TestBuildPSQLInvocationPrefersProcessEnv(t *testing.T) {
 	}
 	if invocation.Args[0] != "postgres://localhost/from-env" {
 		t.Fatalf("dsn arg = %q", invocation.Args[0])
+	}
+}
+
+func TestResolveDatabaseURLForConfigExternalModeRequiresDatabaseURL(t *testing.T) {
+	t.Parallel()
+
+	cfg := app.Config{
+		Name: "demo",
+		Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+			"postgres": {Kind: "postgres"},
+		}},
+	}
+	got, err := resolveDatabaseURLForConfig(context.Background(), t.TempDir(), cfg, []string{
+		devPostgresExternalEnv + "=1",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+		appDatabaseURLEnv + "=postgres://localhost/explicit",
+	}, true)
+	if err != nil {
+		t.Fatalf("resolveDatabaseURLForConfig returned error: %v", err)
+	}
+	if got != "postgres://localhost/explicit" {
+		t.Fatalf("database URL = %q", got)
+	}
+
+	_, err = resolveDatabaseURLForConfig(context.Background(), t.TempDir(), cfg, []string{
+		devPostgresExternalEnv + "=1",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+	}, true)
+	if err == nil || !strings.Contains(err.Error(), "requires DatabaseURL") || !strings.Contains(err.Error(), "DATABASE_URL is ignored") {
+		t.Fatalf("resolveDatabaseURLForConfig external error = %v", err)
 	}
 }
 

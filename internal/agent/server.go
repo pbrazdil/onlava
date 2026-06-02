@@ -489,6 +489,8 @@ func (s *Server) handleSession(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, RegisterResponse{Session: session})
 	case http.MethodDelete:
 		ownerPID := 0
+		ownerStrict := false
+		owner := Owner{}
 		if raw := strings.TrimSpace(req.URL.Query().Get("owner_pid")); raw != "" {
 			if raw == "none" {
 				ownerPID = -1
@@ -501,7 +503,18 @@ func (s *Server) handleSession(w http.ResponseWriter, req *http.Request) {
 				ownerPID = parsed
 			}
 		}
-		session, ok, err := s.registry.DeleteOwned(id, ownerPID)
+		if req.URL.Query().Get("owner_strict") == "1" {
+			ownerStrict = true
+		}
+		if ownerPID > 0 {
+			owner = Owner{
+				PID:         ownerPID,
+				StartedAt:   strings.TrimSpace(req.URL.Query().Get("owner_started_at")),
+				CmdlineHash: strings.TrimSpace(req.URL.Query().Get("owner_cmdline_hash")),
+				Exe:         strings.TrimSpace(req.URL.Query().Get("owner_exe")),
+			}
+		}
+		session, ok, err := s.registry.DeleteOwnedIdentity(id, ownerPID, owner, ownerStrict)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

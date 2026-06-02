@@ -160,7 +160,7 @@ Shipped:
 - Managed `dev.services.postgres` defaults for version `18` and database isolation.
 - Explicit admin URL reuse plus agent substrate reuse for Postgres.
 - Local Postgres startup from `initdb`/`postgres` without a mandatory Docker dependency, using an agent-private Unix socket.
-- Deterministic per-session database creation and app env injection for `DatabaseURL`/`DATABASE_URL` when not explicitly provided.
+- Deterministic per-session database creation and app env injection for `DatabaseURL` when not explicitly provided.
 - `onlava db psql`, `onlava db reset`, and `onlava db snapshot create|restore` against the current managed session database.
 - Electric as an agent-routed hidden session backend through explicit upstreams, local binary startup, or an explicitly configured Docker image.
 - Contract/schema docs, focused unit coverage, full `go test ./...`, binary install, and self-harness snapshot refresh.

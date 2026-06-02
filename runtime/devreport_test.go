@@ -2,8 +2,10 @@ package runtime
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -65,8 +67,69 @@ func TestDevReporterAddsSessionIdentity(t *testing.T) {
 	if report.AppID != "app" || report.SessionID != "session-a" || report.AppRootHash != "root123" || report.Branch != "feature/a" || report.Worktree != "onlv-a" {
 		t.Fatalf("envelope identity = %+v", report)
 	}
+	if report.ReporterPID <= 0 {
+		t.Fatalf("reporter pid = %d, want current process pid", report.ReporterPID)
+	}
 	if report.TraceSummary.AppID != "app" || report.TraceSummary.SessionID != "session-a" || report.TraceSummary.AppRootHash != "root123" || report.TraceSummary.Branch != "feature/a" || report.TraceSummary.Worktree != "onlv-a" {
 		t.Fatalf("summary identity = %+v", report.TraceSummary)
+	}
+}
+
+func TestDevReportBackoffDelay(t *testing.T) {
+	tests := []struct {
+		failures uint64
+		want     time.Duration
+	}{
+		{failures: 0, want: 0},
+		{failures: 1, want: 100 * time.Millisecond},
+		{failures: 2, want: 200 * time.Millisecond},
+		{failures: 5, want: 1600 * time.Millisecond},
+		{failures: 10, want: 2 * time.Second},
+	}
+	for _, tt := range tests {
+		if got := devReportBackoffDelay(tt.failures); got != tt.want {
+			t.Fatalf("devReportBackoffDelay(%d) = %v, want %v", tt.failures, got, tt.want)
+		}
+	}
+}
+
+func TestDevReporterBacksOffAfterFailedPost(t *testing.T) {
+	var calls int
+	reporter := &devReporter{
+		appID: "app",
+		url:   "http://dashboard.test/__onlava/report",
+		token: "token",
+		client: &http.Client{
+			Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{
+					StatusCode: http.StatusUnauthorized,
+					Status:     "401 Unauthorized",
+					Body:       io.NopCloser(strings.NewReader("unauthorized")),
+				}, nil
+			}),
+		},
+		queue: make(chan devreport.ReportEnvelope, 4),
+		done:  make(chan struct{}),
+		stop:  make(chan struct{}),
+	}
+
+	go reporter.loop()
+	reporter.enqueue(devreport.ReportEnvelope{Type: "trace-event"})
+	reporter.enqueue(devreport.ReportEnvelope{Type: "trace-event"})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && calls < 2 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	close(reporter.stop)
+	<-reporter.done
+
+	if calls != 2 {
+		t.Fatalf("post calls = %d, want 2", calls)
+	}
+	if reporter.failures.Load() != 2 {
+		t.Fatalf("failures = %d, want 2", reporter.failures.Load())
 	}
 }
 

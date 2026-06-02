@@ -62,8 +62,8 @@ These are injected by onlava into generated app processes. App code may read the
 
 | Variable | Direction | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | user input/injected | Conventional database URL. Managed dev Postgres overwrites this with the session database unless `ONLAVA_DEV_POSTGRES_EXTERNAL=1`. |
-| `DatabaseURL` | user input/injected | onlava app-style database URL env. Used when `auth.database_url_env` is `DatabaseURL`. |
+| `DATABASE_URL` | user input | Conventional database URL. Managed dev Postgres does not inject this into app, setup, DB setup, or worker environments; prefer `DatabaseURL` for Onlava apps. |
+| `DatabaseURL` | user input/injected | onlava app-style database URL env and managed app database authority. Used when `auth.database_url_env` is `DatabaseURL`. |
 | `ONLAVA_AUTH_DATABASE_URL` | user input | Fallback DB URL for standard auth when app-specific envs are unset. |
 | `ONLAVA_AUTH_JWT_SECRET` | user input | Fallback JWT signing secret for standard auth when `auth.jwt_secret_env` and `JWT_SECRET` are unset. |
 | `ONLAVA_AUTH_EMAIL_FROM` | user input | Fallback sender address for standard auth email flows when `auth.email_from_env` and `AUTH_EMAIL_FROM` are unset. |
@@ -96,7 +96,7 @@ Managed toolchain artifacts come from `onlava.toolchain.json`, explicit per-tool
 | `ONLAVA_DEV_POSTGRES_ADMIN_URL` | user input | Explicit admin Postgres URL for the managed dev database planner. |
 | `ONLAVA_DEV_POSTGRES_BIN` | user input | Explicit local `postgres` binary path; onlava does not search `PATH` for it. |
 | `ONLAVA_DEV_POSTGRES_INITDB` | user input | Explicit local `initdb` binary path; onlava does not search `PATH` for it. |
-| `ONLAVA_DEV_POSTGRES_EXTERNAL` | user input | `1` keeps an explicit external `DATABASE_URL`/`DatabaseURL` instead of creating a managed session database. |
+| `ONLAVA_DEV_POSTGRES_EXTERNAL` | user input | `1` keeps an explicit external `DatabaseURL` instead of creating a managed session database. External mode requires `DatabaseURL`; `DATABASE_URL` is ignored as the app database authority. |
 | `ONLAVA_DEV_ELECTRIC_UPSTREAM` | user input | Explicit Electric upstream; onlava registers it as the session Electric backend. |
 | `ONLAVA_DEV_ELECTRIC_BIN` | user input | Explicit local Electric binary path; onlava does not search `PATH` for it. |
 | `ELECTRIC_REPLICATION_STREAM_ID` | user input/injected | Electric replication stream ID. onlava sets a deterministic session-scoped default. |

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -192,7 +193,7 @@ func standardAuthService(ctx context.Context) (*Service, error) {
 		if cfg.AutoBootstrapDatabase {
 			if err := bootstrapStandardAuthSchema(ctx, pool); err != nil {
 				pool.Close()
-				standardAuthState.err = err
+				standardAuthState.err = clarifyStandardAuthTenantError(err)
 				return
 			}
 		}
@@ -278,9 +279,13 @@ func registerStandardTyped(service string, name string, access runtime.Access, p
 		Invoke: func(ctx context.Context, pathArgs []any, payload any) (any, error) {
 			svc, err := standardAuthService(ctx)
 			if err != nil {
-				return nil, err
+				return nil, clarifyStandardAuthTenantError(err)
 			}
-			return invoke(ctx, svc, pathArgs, payload)
+			out, err := invoke(ctx, svc, pathArgs, payload)
+			if err != nil {
+				return nil, clarifyStandardAuthTenantError(err)
+			}
+			return out, nil
 		},
 	})
 }
@@ -347,10 +352,61 @@ func bootstrapStandardAuthSchema(ctx context.Context, pool interface {
 			continue
 		}
 		if _, err := pool.Exec(ctx, statement); err != nil {
-			return fmt.Errorf("bootstrap standard auth schema: %w", err)
+			return clarifyStandardAuthTenantError(fmt.Errorf("bootstrap standard auth schema: %w", err))
 		}
 	}
 	return nil
+}
+
+func clarifyStandardAuthTenantError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		if isStandardAuthTenantReference(pgErr) {
+			return fmt.Errorf("%w (standard auth owns framework tenant state in PostgreSQL schema onlava_auth, including onlava_auth.tenants; this is standard auth state, not an app-local tenants service)", err)
+		}
+		if isAppDomainTenantReference(pgErr) {
+			return fmt.Errorf("%w (this references an app-domain tenants relation; standard auth tenant state lives in onlava_auth.tenants and does not require an app-local tenants service)", err)
+		}
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "onlava_auth.tenants") || strings.Contains(message, `"onlava_auth"."tenants"`) {
+		return fmt.Errorf("%w (standard auth owns framework tenant state in PostgreSQL schema onlava_auth, including onlava_auth.tenants; this is standard auth state, not an app-local tenants service)", err)
+	}
+	return err
+}
+
+func isStandardAuthTenantReference(pgErr *pgconn.PgError) bool {
+	if pgErr == nil {
+		return false
+	}
+	schema := strings.TrimSpace(pgErr.SchemaName)
+	table := strings.TrimSpace(pgErr.TableName)
+	message := strings.ToLower(pgErr.Message)
+	if !strings.EqualFold(table, "tenants") && !strings.Contains(message, "tenants") {
+		return false
+	}
+	return strings.EqualFold(schema, "onlava_auth") ||
+		strings.Contains(message, "onlava_auth.tenants") ||
+		strings.Contains(message, `"onlava_auth"."tenants"`) ||
+		(strings.EqualFold(table, "tenants") && strings.Contains(message, "onlava_auth"))
+}
+
+func isAppDomainTenantReference(pgErr *pgconn.PgError) bool {
+	if pgErr == nil {
+		return false
+	}
+	schema := strings.TrimSpace(pgErr.SchemaName)
+	table := strings.TrimSpace(pgErr.TableName)
+	message := strings.ToLower(pgErr.Message)
+	if strings.EqualFold(schema, "onlava_auth") || strings.Contains(message, "onlava_auth") {
+		return false
+	}
+	return strings.EqualFold(table, "tenants") ||
+		strings.Contains(message, `relation "tenants"`) ||
+		strings.Contains(message, "relation tenants")
 }
 
 func splitSQLStatements(sql string) []string {

@@ -233,14 +233,18 @@ func (r *Registry) FindByAppRoot(root string) []Session {
 }
 
 func (r *Registry) Delete(id string) (Session, bool, error) {
-	return r.delete(id, 0)
+	return r.delete(id, 0, Owner{}, false)
 }
 
 func (r *Registry) DeleteOwned(id string, ownerPID int) (Session, bool, error) {
-	return r.delete(id, ownerPID)
+	return r.delete(id, ownerPID, Owner{}, false)
 }
 
-func (r *Registry) delete(id string, ownerPID int) (Session, bool, error) {
+func (r *Registry) DeleteOwnedIdentity(id string, ownerPID int, owner Owner, strict bool) (Session, bool, error) {
+	return r.delete(id, ownerPID, owner, strict)
+}
+
+func (r *Registry) delete(id string, ownerPID int, requestedOwner Owner, strict bool) (Session, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	session, ok := r.sessions[strings.TrimSpace(id)]
@@ -250,7 +254,7 @@ func (r *Registry) delete(id string, ownerPID int) (Session, bool, error) {
 	if ownerPID < 0 && firstPositive(session.OwnerPID, session.Owner.PID) > 0 {
 		return session, false, nil
 	}
-	if ownerPID > 0 && firstPositive(session.OwnerPID, session.Owner.PID) != ownerPID {
+	if ownerPID > 0 && !sessionOwnerIdentityMatches(session, ownerPID, requestedOwner, strict) {
 		return session, false, nil
 	}
 	delete(r.sessions, id)
@@ -268,6 +272,37 @@ func (r *Registry) delete(id string, ownerPID int) (Session, bool, error) {
 		return Session{}, false, err
 	}
 	return session, true, nil
+}
+
+func sessionOwnerIdentityMatches(session Session, ownerPID int, requested Owner, strict bool) bool {
+	effectivePID := firstPositive(session.OwnerPID, session.Owner.PID)
+	if effectivePID != ownerPID {
+		return false
+	}
+	if !strict {
+		return true
+	}
+	if requested.PID != ownerPID || !ownerHasFingerprint(requested) {
+		return false
+	}
+	current := session.Owner
+	if current.PID != ownerPID || !ownerHasFingerprint(current) {
+		return false
+	}
+	if requested.StartedAt != "" && current.StartedAt != requested.StartedAt {
+		return false
+	}
+	if requested.CmdlineHash != "" && current.CmdlineHash != requested.CmdlineHash {
+		return false
+	}
+	if requested.Exe != "" && current.Exe != requested.Exe {
+		return false
+	}
+	return true
+}
+
+func ownerHasFingerprint(owner Owner) bool {
+	return strings.TrimSpace(owner.StartedAt) != "" || strings.TrimSpace(owner.CmdlineHash) != "" || strings.TrimSpace(owner.Exe) != ""
 }
 
 func (r *Registry) load() error {

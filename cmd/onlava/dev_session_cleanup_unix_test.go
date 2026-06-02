@@ -147,6 +147,16 @@ func TestMarkInconsistentStatusSessionsMarksDeadOwnerStale(t *testing.T) {
 				Exe:         "/stale/owner",
 			},
 		},
+		{
+			SessionID: "fingerprint-mismatch",
+			Status:    "running",
+			OwnerPID:  os.Getpid(),
+			Owner: func() localagent.Owner {
+				owner := localagent.CurrentOwner("test")
+				owner.CmdlineHash = "sha256:not-current"
+				return owner
+			}(),
+		},
 	})
 	if sessions[0].Status != "running" {
 		t.Fatalf("live status = %q, want running", sessions[0].Status)
@@ -154,8 +164,17 @@ func TestMarkInconsistentStatusSessionsMarksDeadOwnerStale(t *testing.T) {
 	if sessions[1].Status != "stale" {
 		t.Fatalf("dead status = %q, want stale", sessions[1].Status)
 	}
+	if sessions[1].StatusReason == "" {
+		t.Fatal("dead owner status reason is empty")
+	}
 	if sessions[2].Status != "running" {
 		t.Fatalf("moved owner status = %q, want running", sessions[2].Status)
+	}
+	if sessions[3].Status != "degraded" {
+		t.Fatalf("fingerprint mismatch status = %q, want degraded", sessions[3].Status)
+	}
+	if !strings.Contains(sessions[3].StatusReason, "fingerprint mismatch") {
+		t.Fatalf("fingerprint mismatch reason = %q", sessions[3].StatusReason)
 	}
 }
 

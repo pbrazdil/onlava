@@ -246,7 +246,7 @@ func (s *devSupervisor) Close() error {
 			}
 		}
 		if s.agent != nil && s.agentSession != nil {
-			if _, _, err := s.agent.DeleteOwned(context.Background(), s.agentSession.SessionID, os.Getpid(), false); err != nil {
+			if _, _, err := s.agent.DeleteOwnedSession(context.Background(), *s.agentSession, false); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -657,8 +657,9 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	if err != nil {
 		return nil, err
 	}
+	appBaseEnv := s.appDatabaseAuthorityEnv(baseEnv)
 	cmd.Env = appChildEnv(
-		baseEnv,
+		appBaseEnv,
 		s.console != nil && s.console.palette.Enabled(),
 		"ONLAVA_LISTEN_NETWORK="+s.backend.Network,
 		"ONLAVA_LISTEN_ADDR="+s.addr,
@@ -792,12 +793,13 @@ func (s *devSupervisor) runDevSetup(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	appBaseEnv := s.appDatabaseAuthorityEnv(baseEnv)
 	managedEnv, err := s.managedAppEnv(ctx, baseEnv)
 	if err != nil {
 		return err
 	}
 	env := appChildEnv(
-		baseEnv,
+		appBaseEnv,
 		s.console != nil && s.console.palette.Enabled(),
 		"ONLAVA_APP_ID="+s.activeAppID(),
 		"ONLAVA_APP_ROOT="+s.root,
@@ -881,12 +883,13 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 	if err != nil {
 		return err
 	}
+	appBaseEnv := s.appDatabaseAuthorityEnv(baseEnv)
 	managedEnv, err := s.managedAppEnv(ctx, baseEnv)
 	if err != nil {
 		return err
 	}
 	env := appChildEnv(
-		baseEnv,
+		appBaseEnv,
 		s.console != nil && s.console.palette.Enabled(),
 		"ONLAVA_APP_ID="+s.activeAppID(),
 		"ONLAVA_APP_ROOT="+s.root,
@@ -931,6 +934,19 @@ func (s *devSupervisor) managedAppEnv(ctx context.Context, baseEnv []string) ([]
 		})
 	}
 	return env, nil
+}
+
+func (s *devSupervisor) appDatabaseAuthorityEnv(baseEnv []string) []string {
+	if s == nil {
+		return baseEnv
+	}
+	if _, _, ok := managedPostgresDeclared(s.cfg); !ok {
+		return baseEnv
+	}
+	if managedPostgresUsesExternalDatabase(baseEnv) {
+		return envWithoutKeys(baseEnv, legacyDatabaseURLEnv)
+	}
+	return envWithoutKeys(baseEnv, appDatabaseURLEnv, legacyDatabaseURLEnv)
 }
 
 func (s *devSupervisor) sessionIdentityEnv() []string {
@@ -1269,6 +1285,27 @@ func appChildEnv(base []string, forceColor bool, vars ...string) []string {
 	env := append(append([]string(nil), base...), vars...)
 	if forceColor {
 		env = append(env, "CLICOLOR_FORCE=1")
+	}
+	return env
+}
+
+func envWithoutKeys(base []string, keys ...string) []string {
+	if len(keys) == 0 {
+		return append([]string(nil), base...)
+	}
+	omit := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		omit[key] = struct{}{}
+	}
+	env := make([]string, 0, len(base))
+	for _, item := range base {
+		key, _, ok := strings.Cut(item, "=")
+		if ok {
+			if _, drop := omit[key]; drop {
+				continue
+			}
+		}
+		env = append(env, item)
 	}
 	return env
 }
@@ -1857,8 +1894,14 @@ func (s *devSupervisor) dashboardStore() *devdash.Store {
 	return s.store
 }
 
-func (s *devSupervisor) dashboardAuthorizeReport(req *http.Request, _ devdash.ReportEnvelope) bool {
-	return req.Header.Get("Authorization") == "Bearer "+s.reportToken
+func (s *devSupervisor) dashboardAuthorizeReport(req *http.Request, report devdash.ReportEnvelope) dashboardReportAuth {
+	if report.SessionID != "" && report.SessionID != s.currentSessionID() {
+		return dashboardReportAuth{Reason: "stale-session"}
+	}
+	if req.Header.Get("Authorization") != "Bearer "+s.reportToken {
+		return dashboardReportAuth{Reason: "invalid-report-token"}
+	}
+	return dashboardReportAuth{Authorized: true}
 }
 
 func (s *devSupervisor) dashboardRootForApp(ctx context.Context, appID string) (string, error) {

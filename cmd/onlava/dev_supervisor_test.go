@@ -38,6 +38,57 @@ func TestAppChildEnvLeavesColorUnsetWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestAppDatabaseAuthorityEnvRemovesLegacyDatabaseURLForManagedPostgres(t *testing.T) {
+	t.Parallel()
+
+	s := &devSupervisor{
+		cfg: app.Config{
+			Name: "demo",
+			Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+				"postgres": {Kind: "postgres"},
+			}},
+		},
+	}
+	env := s.appDatabaseAuthorityEnv([]string{
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+		appDatabaseURLEnv + "=postgres://localhost/user",
+		"OTHER=1",
+	})
+	if containsString(env, legacyDatabaseURLEnv+"=postgres://localhost/poison") {
+		t.Fatalf("app database env leaked %s: %v", legacyDatabaseURLEnv, env)
+	}
+	if containsString(env, appDatabaseURLEnv+"=postgres://localhost/user") {
+		t.Fatalf("app database env leaked stale %s: %v", appDatabaseURLEnv, env)
+	}
+	if !containsString(env, "OTHER=1") {
+		t.Fatalf("app database env removed unrelated values: %v", env)
+	}
+}
+
+func TestAppDatabaseAuthorityEnvKeepsOnlyDatabaseURLForExternalPostgres(t *testing.T) {
+	t.Parallel()
+
+	s := &devSupervisor{
+		cfg: app.Config{
+			Name: "demo",
+			Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+				"postgres": {Kind: "postgres"},
+			}},
+		},
+	}
+	env := s.appDatabaseAuthorityEnv([]string{
+		devPostgresExternalEnv + "=1",
+		legacyDatabaseURLEnv + "=postgres://localhost/external",
+		appDatabaseURLEnv + "=postgres://localhost/external",
+	})
+	if containsString(env, legacyDatabaseURLEnv+"=postgres://localhost/external") {
+		t.Fatalf("external app database env leaked %s: %v", legacyDatabaseURLEnv, env)
+	}
+	if !containsString(env, appDatabaseURLEnv+"=postgres://localhost/external") {
+		t.Fatalf("external app database env removed %s: %v", appDatabaseURLEnv, env)
+	}
+}
+
 func TestSessionIdentityEnvUsesAgentSession(t *testing.T) {
 	t.Parallel()
 
@@ -476,6 +527,45 @@ func TestDevDatabaseSetupRetriesAfterApplyFailure(t *testing.T) {
 	}
 }
 
+func TestDevSetupUsesManagedDatabaseURLWithoutLegacyDatabaseURL(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(legacyDatabaseURLEnv, "postgres://localhost/poison")
+	t.Setenv(appDatabaseURLEnv, "postgres://localhost/stale")
+	t.Setenv(devPostgresAdminURLEnv, "postgres://localhost/postgres")
+
+	prevEnsure := ensureManagedPostgresDatabaseFn
+	defer func() { ensureManagedPostgresDatabaseFn = prevEnsure }()
+	ensureManagedPostgresDatabaseFn = func(_ context.Context, adminURL, dbName string) error {
+		if adminURL != "postgres://localhost/postgres" || dbName != "demo_session" {
+			t.Fatalf("ensure managed postgres got adminURL=%q dbName=%q", adminURL, dbName)
+		}
+		return nil
+	}
+
+	s := &devSupervisor{
+		root: root,
+		cfg: app.Config{
+			Name: "demo",
+			Dev: app.DevConfig{
+				Services: map[string]app.DevServiceConfig{
+					"postgres": {Kind: "postgres"},
+				},
+				Setup: []string{
+					`test "$DatabaseURL" = "postgres://localhost/demo_session" && test -z "$DATABASE_URL" && test "$ONLAVA_MANAGED_DATABASE_NAME" = "demo_session"`,
+				},
+			},
+		},
+		status: devdash.AppRecord{ID: "demo"},
+		agentSession: &localagent.Session{
+			SessionID: "session",
+			BaseAppID: "demo",
+		},
+	}
+	if err := s.runDevSetup(context.Background()); err != nil {
+		t.Fatalf("runDevSetup: %v", err)
+	}
+}
+
 func TestTypeScriptWorkerAutoStartRequiresTemporalEnabled(t *testing.T) {
 	cfg := app.Config{
 		Name: "demo",
@@ -540,6 +630,9 @@ func TestTypeScriptWorkerEnvUsesTemporalAndSessionOverrides(t *testing.T) {
 		root: "/tmp/onlv-demo",
 		cfg: app.Config{
 			Name: "demo",
+			Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+				"postgres": {Kind: "postgres"},
+			}},
 			Temporal: app.TemporalConfig{
 				Enabled: true,
 			},
@@ -555,10 +648,18 @@ func TestTypeScriptWorkerEnvUsesTemporalAndSessionOverrides(t *testing.T) {
 		},
 	}
 
-	env := s.typeScriptWorkerEnv([]string{
-		"TEMPORAL_ADDRESS=old:7233",
-		"ONLAVA_BUILD_ID=old-build",
-	})
+	env := s.typeScriptWorkerEnv(
+		[]string{
+			"TEMPORAL_ADDRESS=old:7233",
+			"ONLAVA_BUILD_ID=old-build",
+			legacyDatabaseURLEnv + "=postgres://localhost/poison",
+			appDatabaseURLEnv + "=postgres://localhost/stale",
+		},
+		[]string{
+			appDatabaseURLEnv + "=postgres://localhost/managed",
+			"ONLAVA_MANAGED_DATABASE_NAME=demo_session",
+		},
+	)
 	for _, want := range []string{
 		"TEMPORAL_ADDRESS=127.0.0.1:7233",
 		"TEMPORAL_NAMESPACE=orders",
@@ -570,13 +671,18 @@ func TestTypeScriptWorkerEnvUsesTemporalAndSessionOverrides(t *testing.T) {
 		"ONLAVA_TEMPORAL_DEPLOYMENT_NAME=onlava-demo-feature-a-123abc",
 		"ONLAVA_BUILD_ID=feature-a-123abc",
 		"ONLAVA_SESSION_ID=feature-a-123abc",
+		appDatabaseURLEnv + "=postgres://localhost/managed",
+		"ONLAVA_MANAGED_DATABASE_NAME=demo_session",
 	} {
 		if !containsString(env, want) {
 			t.Fatalf("typeScriptWorkerEnv() = %v, missing %q", env, want)
 		}
 	}
-	if countEnvKey(env, "ONLAVA_BUILD_ID") != 1 || countEnvKey(env, "TEMPORAL_ADDRESS") != 1 {
+	if countEnvKey(env, "ONLAVA_BUILD_ID") != 1 || countEnvKey(env, "TEMPORAL_ADDRESS") != 1 || countEnvKey(env, appDatabaseURLEnv) != 1 {
 		t.Fatalf("typeScriptWorkerEnv() has duplicate overrides: %v", env)
+	}
+	if countEnvKey(env, legacyDatabaseURLEnv) != 0 {
+		t.Fatalf("typeScriptWorkerEnv() leaked %s: %v", legacyDatabaseURLEnv, env)
 	}
 }
 

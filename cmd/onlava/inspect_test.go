@@ -487,6 +487,126 @@ var _ = temporal.NewWorkflow[In, Out]("jobs.Run/v1", cfg, func(ctx temporal.Work
 	})
 }
 
+func TestRunOnlavaInspectStandardAuthSurfacesWithoutTenantService(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTestAppFile(t, root, ".onlava.json", `{
+  "name": "authinspect",
+  "auth": {
+    "enabled": true,
+    "dev_bootstrap": { "enabled": true }
+  }
+}`)
+	writeTestAppFile(t, root, "go.mod", "module example.com/authinspect\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => "+repoRootForTest(t)+"\n")
+	writeTestAppFile(t, root, "service/api.go", `package service
+
+import (
+	"context"
+
+	"github.com/pbrazdil/onlava/auth"
+)
+
+type MeResponse struct {
+	UserID string `+"`json:\"user_id\"`"+`
+}
+
+//onlava:api auth path=/me method=GET
+func Me(ctx context.Context) (*MeResponse, error) {
+	uid, _ := auth.UserID()
+	return &MeResponse{UserID: string(uid)}, nil
+}
+`)
+
+	inspectArgs := func(subject string) []string {
+		return []string{subject, "--json", "--app-root", root}
+	}
+
+	t.Run("services", func(t *testing.T) {
+		t.Parallel()
+
+		var out bytes.Buffer
+		if err := runOnlavaInspect(inspectArgs("services"), &out); err != nil {
+			t.Fatalf("runOnlavaInspect(services) error = %v", err)
+		}
+		var payload struct {
+			Services []struct {
+				Name        string   `json:"name"`
+				Endpoints   []string `json:"endpoints"`
+				AuthHandler *struct {
+					Name    string `json:"name"`
+					Package string `json:"package"`
+				} `json:"auth_handler"`
+			} `json:"services"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal(services): %v\n%s", err, out.String())
+		}
+
+		services := map[string]struct {
+			Endpoints   []string
+			AuthHandler *struct {
+				Name    string `json:"name"`
+				Package string `json:"package"`
+			}
+		}{}
+		for _, svc := range payload.Services {
+			services[svc.Name] = struct {
+				Endpoints   []string
+				AuthHandler *struct {
+					Name    string `json:"name"`
+					Package string `json:"package"`
+				}
+			}{Endpoints: svc.Endpoints, AuthHandler: svc.AuthHandler}
+		}
+		if _, ok := services["tenants"]; ok {
+			t.Fatalf("standard auth inspect should not require app-local tenants service: %+v", payload.Services)
+		}
+		if authSvc, ok := services["auth"]; !ok {
+			t.Fatalf("auth service missing from inspect services: %+v", payload.Services)
+		} else if authSvc.AuthHandler == nil || authSvc.AuthHandler.Name != "AuthHandler" || !stringSliceContains(authSvc.Endpoints, "Me") {
+			t.Fatalf("auth service = %+v", authSvc)
+		}
+		if usersSvc, ok := services["users"]; !ok {
+			t.Fatalf("users service missing from inspect services: %+v", payload.Services)
+		} else if !stringSliceContains(usersSvc.Endpoints, "DevBootstrap") {
+			t.Fatalf("users service = %+v", usersSvc)
+		}
+	})
+
+	t.Run("routes", func(t *testing.T) {
+		t.Parallel()
+
+		var out bytes.Buffer
+		if err := runOnlavaInspect(inspectArgs("routes"), &out); err != nil {
+			t.Fatalf("runOnlavaInspect(routes) error = %v", err)
+		}
+		var payload struct {
+			Routes []struct {
+				ID      string `json:"id"`
+				Service string `json:"service"`
+				Path    string `json:"path"`
+			} `json:"routes"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal(routes): %v\n%s", err, out.String())
+		}
+		routes := map[string]string{}
+		for _, route := range payload.Routes {
+			if route.Service == "tenants" {
+				t.Fatalf("standard auth inspect should not expose a tenants wrapper route: %+v", route)
+			}
+			routes[route.ID] = route.Path
+		}
+		if routes["auth.Me"] != "/auth/me" {
+			t.Fatalf("auth.Me route = %q", routes["auth.Me"])
+		}
+		if routes["users.DevBootstrap"] != "/users/dev-bootstrap" {
+			t.Fatalf("users.DevBootstrap route = %q", routes["users.DevBootstrap"])
+		}
+	})
+}
+
 func TestRunOnlavaInspectBuildUsesLatestManifest(t *testing.T) {
 	t.Parallel()
 

@@ -233,6 +233,28 @@ onlava gen client --lang typescript --output <frontend-or-package-path>/onlava-c
 
 Client apps should commit generated clients only if that is their established workflow. If committed, app-local `AGENTS.md` must state the output path and require regeneration after endpoint or wire changes.
 
+Generated TypeScript `WithMeta` methods expose response headers, status, the raw `Response`, and parsed `txid` metadata from `X-Txid`/`X-TXID`. For Electric-backed mutations, keep the phases separate: first handle the successful API response as the committed mutation, then call `observeAPIResponseTxid(response, collection.utils.awaitTxId, context)` or an equivalent app-local observer. If the observer fails or times out, the generated client throws `SyncObservationError` with `kind: "sync_observation_failure"` and `mutation_committed: true`, so UI and agents do not report the committed mutation itself as rolled back.
+
+### ONLV Electric Txid Validation
+
+Use these notes when validating the ONLV task-creation txid case against a local onlava checkout:
+
+```sh
+cd /Users/petrbrazdil/Repos/onlv
+onlava inspect app --json
+onlava inspect routes --json
+onlava inspect services --json
+onlava dev --detach --trust
+onlava logs --session current --jsonl --limit 200
+```
+
+Expected evidence:
+- `onlava inspect routes --json` includes the task mutation route and `/sync/:table_name` routes.
+- `onlava inspect services --json` includes the task service and standard auth services needed by Pulse.
+- Creating a task through Pulse returns HTTP 2xx and `X-Txid`/`X-TXID` in the API response headers.
+- If Electric/TanStack `awaitTxId` observes the txid, the UI clears the pending task state normally.
+- If Electric observation times out or returns a substrate error such as Postgres lock acquisition timeout, the app reports a sync observation failure with txid, app/session, API URL, Electric URL or stream context, and observer error details; it must not say the API mutation failed or was rolled back.
+
 Generated clients are the application-code integration surface. Agents should use CLI JSON and dashboard APIs for inspection and debugging.
 
 ## Environment

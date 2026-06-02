@@ -187,6 +187,22 @@ func (c *Client) Delete(ctx context.Context, sessionID string, signal bool) (Ses
 }
 
 func (c *Client) DeleteOwned(ctx context.Context, sessionID string, ownerPID int, signal bool) (Session, bool, error) {
+	return c.deleteOwned(ctx, sessionID, ownerPID, Owner{}, false, signal)
+}
+
+func (c *Client) DeleteOwnedSession(ctx context.Context, session Session, signal bool) (Session, bool, error) {
+	ownerPID := firstPositive(session.OwnerPID, session.Owner.PID)
+	if ownerPID <= 0 {
+		return c.DeleteUnowned(ctx, session.SessionID)
+	}
+	owner := session.Owner
+	if owner.PID != ownerPID {
+		owner = Owner{}
+	}
+	return c.deleteOwned(ctx, session.SessionID, ownerPID, owner, true, signal)
+}
+
+func (c *Client) deleteOwned(ctx context.Context, sessionID string, ownerPID int, owner Owner, strict bool, signal bool) (Session, bool, error) {
 	path := "/v1/sessions/" + url.PathEscape(sessionID)
 	values := url.Values{}
 	if signal {
@@ -194,6 +210,20 @@ func (c *Client) DeleteOwned(ctx context.Context, sessionID string, ownerPID int
 	}
 	if ownerPID > 0 {
 		values.Set("owner_pid", fmt.Sprint(ownerPID))
+	}
+	if strict {
+		values.Set("owner_strict", "1")
+	}
+	if owner.PID == ownerPID && owner.PID > 0 {
+		if owner.StartedAt != "" {
+			values.Set("owner_started_at", owner.StartedAt)
+		}
+		if owner.CmdlineHash != "" {
+			values.Set("owner_cmdline_hash", owner.CmdlineHash)
+		}
+		if owner.Exe != "" {
+			values.Set("owner_exe", owner.Exe)
+		}
 	}
 	if encoded := values.Encode(); encoded != "" {
 		path += "?" + encoded
