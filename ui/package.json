@@ -13,20 +13,20 @@
     "shadcn:add": "node scripts/onlava-shadcn.mjs"
   },
   "dependencies": {
-    "@tanstack/react-form": "1.29.0",
-    "@tanstack/react-router": "1.168.21",
-    "react": "19.2.5",
-    "react-dom": "19.2.5"
+    "@tanstack/react-form": "1.33.0",
+    "@tanstack/react-router": "1.170.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@testing-library/react": "16.3.2",
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2",
-    "@vitejs/plugin-react": "6.0.1",
-    "jsdom": "29.0.2",
-    "tailwindcss": "4.2.2",
-    "typescript": "6.0.2",
-    "vite": "8.0.8",
-    "vitest": "4.1.4"
+    "@types/react": "19.2.16",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "jsdom": "29.1.1",
+    "tailwindcss": "4.3.0",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.8"
   }
 }
