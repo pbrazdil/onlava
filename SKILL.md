@@ -180,7 +180,9 @@ onlava generate --dry-run --json
 onlava generate
 ```
 
-Use `onlava db sync` for configured database mutation plus dependent SQLC regeneration; keep `onlava generate` for file generation only.
+Keep `onlava generate` for file generation only. `onlava generate sqlc` may refresh generated schema SQL and run `sqlc generate`, but it must not apply database schema or seed data.
+
+Use `onlava db apply` for schema/app database mutation only. Use `onlava db seed` for initial data such as `SERVICE/db/seed.sql`; changed previously-applied seeds and destructive seed SQL fail closed with path/line diagnostics. Use `onlava db setup` for apply then seed. `onlava dev` runs this setup lifecycle before app startup when DB setup inputs exist, then skips it on ordinary rebuilds until `database.apply` config or seed file hashes change. Treat `onlava db sync` as the existing deprecated beta mixed command while target apps migrate.
 
 ## Operational Scripts
 
@@ -233,6 +235,9 @@ onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--jsonl|
 onlava test [--app-root <path>] [go test flags/packages...]
 onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 onlava db psql [--app-root <path>] [psql args...]
+onlava db apply [--app-root <path>] [--json]
+onlava db seed [--app-root <path>] [--dry-run] [--json]
+onlava db setup [--app-root <path>] [--json]
 onlava db sync [--app-root <path>]
 ```
 

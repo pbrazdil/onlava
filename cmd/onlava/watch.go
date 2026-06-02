@@ -139,6 +139,8 @@ func runWithWatch(listen devListenRequest, verbose, jsonMode bool, appRoot strin
 }
 
 func applyWatchTimingOverridesFromEnv() {
+	watchPollInterval = watchDurationFromEnv("ONLAVA_TEST_WATCH_POLL_MS", watchPollInterval)
+	watchBackupPollInterval = watchDurationFromEnv("ONLAVA_TEST_WATCH_BACKUP_POLL_MS", watchBackupPollInterval)
 	watchSettleDelay = watchDurationFromEnv("ONLAVA_TEST_WATCH_SETTLE_DELAY_MS", watchSettleDelay)
 }
 

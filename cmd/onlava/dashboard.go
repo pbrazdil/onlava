@@ -748,17 +748,21 @@ func openPostgres(ctx context.Context, root string) (*sql.DB, error) {
 }
 
 func discoverDatabaseURL(root string) (string, string, error) {
+	return discoverDatabaseURLFromEnvList(root, envpolicy.Environ())
+}
+
+func discoverDatabaseURLFromEnvList(root string, env []string) (string, string, error) {
 	for _, key := range []string{"DATABASE_URL", "DatabaseURL"} {
-		if value := strings.TrimSpace(envpolicy.Get(key)); value != "" {
+		if value, _ := lookupEnvValue(env, key); strings.TrimSpace(value) != "" {
 			return value, key, nil
 		}
 	}
-	env, err := parseDotEnvFile(filepath.Join(root, ".env"))
+	fileEnv, err := parseDotEnvFile(filepath.Join(root, ".env"))
 	if err != nil {
 		return "", "", err
 	}
 	for _, key := range []string{"DATABASE_URL", "DatabaseURL"} {
-		if value := strings.TrimSpace(env[key]); value != "" {
+		if value := strings.TrimSpace(fileEnv[key]); value != "" {
 			return value, ".env:" + key, nil
 		}
 	}

@@ -229,6 +229,9 @@ onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream
 onlava test [--app-root <path>] [go test flags/packages...]
 onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 onlava db psql [--app-root <path>] [psql args...]
+onlava db apply [--app-root <path>] [--json]
+onlava db seed [--app-root <path>] [--dry-run] [--json]
+onlava db setup [--app-root <path>] [--json]
 onlava db sync [--app-root <path>]
 onlava db reset [--app-root <path>]
 onlava db drop [--app-root <path>]
@@ -259,7 +262,11 @@ onlava gen client --lang typescript --output ./src/onlava-client.ts
 
 The generated client understands the app's route model and local wire capabilities. The benchmark fixture in [benchmarks/json-wire](benchmarks/json-wire) compares JSON, wire JSON, binary wire, and automatic wire modes.
 
-Apps can also configure `generators.clients` and use `onlava generate client` or `onlava generate --dry-run --json` to inspect and run configured generators. `onlava generate sqlc` is for file generation; database mutation belongs under `onlava db sync`.
+Apps can also configure `generators.clients` and use `onlava generate client` or `onlava generate --dry-run --json` to inspect and run configured generators. `onlava generate sqlc` is for generated source artifacts; it must not apply database schema or seed data.
+
+The DB lifecycle split uses `onlava db apply` for schema/app database mutation, `onlava db seed` for initial data such as `SERVICE/db/seed.sql`, and `onlava db setup` for apply then seed. Seed files fail closed when previously-applied content changes or destructive SQL is detected. `onlava db sync` is the existing deprecated beta mixed command.
+
+`onlava dev` runs the setup lifecycle before app startup when DB setup inputs exist, using the same managed `DatabaseURL`/`DATABASE_URL` that the app receives. Rebuilds skip setup until the apply config or seed file hashes change.
 
 ## Managed Toolchain
 

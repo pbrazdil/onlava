@@ -305,7 +305,7 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 		SourceMetadataFingerprint: sourceMetadataFingerprint,
 		GeneratorFingerprint:      generatorFingerprint,
 		BuildFingerprint:          buildFingerprint,
-		ReuseCompiled:             !needsTidy && buildFingerprint != "" && state.BuildFingerprint == buildFingerprint && pathExists(binary),
+		ReuseCompiled:             buildFingerprint != "" && pathExists(binary),
 		SourceFiles:               sourceFiles,
 		GeneratedFiles:            generatedFiles,
 	}
@@ -459,13 +459,17 @@ func CompileContext(ctx context.Context, result *Result) error {
 		return err
 	}
 	defer unlock()
+	if result.ReuseCompiled {
+		result.NeedsTidy = false
+		if err := savePrimedWorkspace(result); err != nil {
+			return err
+		}
+		return WriteLatestBuildManifest(result, "compiled")
+	}
 	if !result.NeedsTidy {
 		if err := savePrimedWorkspace(result); err != nil {
 			return err
 		}
-	}
-	if result.ReuseCompiled {
-		return WriteLatestBuildManifest(result, "compiled")
 	}
 	err = runGoContext(ctx, result.Dir, goBuildArgs(result.Binary)...)
 	if err != nil && (result.NeedsTidy || goBuildNeedsWorkspaceTidy(err)) {
@@ -481,6 +485,11 @@ func CompileContext(ctx context.Context, result *Result) error {
 		return err
 	}
 	if result.NeedsTidy {
+		fingerprint, fingerprintErr := dependencyFingerprintFromWorkspace(result.Dir)
+		if fingerprintErr != nil {
+			return fingerprintErr
+		}
+		result.DependencyFingerprint = fingerprint
 		result.NeedsTidy = false
 		if err := savePrimedWorkspace(result); err != nil {
 			return err

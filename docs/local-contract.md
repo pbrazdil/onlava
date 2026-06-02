@@ -28,6 +28,9 @@ same as the stable v0 support surface.
 - `onlava generate client`
 - `onlava generate sqlc`
 - `onlava db psql`
+- `onlava db apply`
+- `onlava db seed`
+- `onlava db setup`
 - `onlava db sync`
 - `onlava db reset`
 - `onlava db drop`
@@ -78,6 +81,9 @@ Stable v0 surface:
 Dev-only or beta surface:
 - `onlava dev`
 - `onlava db psql`
+- `onlava db apply`
+- `onlava db seed`
+- `onlava db setup`
 - `onlava db sync`
 - `onlava db reset`
 - `onlava db drop`
@@ -232,10 +238,12 @@ Rules:
 - Unknown fields are rejected.
 - `proxy.frontends` is a map keyed by frontend name. Each frontend requires `host`; `root` defaults to `apps/<name>`; `upstream` is optional but ignored by agent dev unless that frontend also sets `allow_shared_upstream: true`. With an active agent, `onlava dev` prefers to start supported Vite/Astro frontends on hidden loopback ports, inject routed API/Electric URLs into their process environment, register those hidden ports as session backends, and expose `https://<frontend>.<session>.onlava.localhost:<agent-router-port>/` by default. `ONLAVA_FRONTEND_<NAME>_ADDR` still overrides onlava-owned frontend startup for manual debugging.
 - `dev.services` is a beta local-development config surface for onlava-owned substrates. Phase 5 accepts `postgres` and `electric` service declarations with `kind`, `version`, `isolation`, `image`, `database`, `route`, and string `env` values. The agent currently owns managed Postgres and Electric for this surface, while unsupported service kinds or isolation modes are rejected instead of silently falling back to target-app port orchestration.
-- `dev.setup` is an optional beta list of shell commands that `onlava dev` runs from the app root after managed dev services are prepared and before the app process starts. Setup commands receive the same managed Postgres `DatabaseURL`/`DATABASE_URL` env values as the app child, so target apps can apply local schema to the per-session database.
+- `onlava dev` prepares declared local DB setup before the app process starts. When `.onlava.json` declares `database.apply` or service-local seed files are discovered, the supervisor runs the same split lifecycle as `onlava db setup`: apply first, then seed. It passes the same managed Postgres `DatabaseURL`/`DATABASE_URL` env values that the app child receives, so setup targets the session database. Successful setup is fingerprinted from `database.apply` config and seed file hashes; ordinary rebuilds skip setup until those inputs change.
+- `dev.setup` is an optional beta list of shell commands that `onlava dev` runs from the app root after managed dev services and the DB setup lifecycle are prepared, but before the app process starts. Setup commands receive the same managed Postgres `DatabaseURL`/`DATABASE_URL` env values as the app child, so target apps can keep existing app-local setup during migration.
 - `generators.clients` is a beta lifecycle config for generated TypeScript clients. `kind` defaults to `typescript-client`, `lang` defaults to TypeScript, and `output` is required. `onlava generate client` uses these entries when no explicit `--output` is passed.
-- `generators.sqlc` is a beta lifecycle config for SQLC generation. `provider` may be empty or `sqlc`; `config` defaults to `sqlc.yaml`; `dev_url` defaults to `docker://postgres/18/dev`. When a SQLC schema path follows `<pkg>/db/gen/schema.sql` and `<pkg>/db/schema.hcl` exists, `onlava generate sqlc` refreshes the generated schema SQL with `atlas schema inspect` before running `sqlc generate`.
-- `database.apply` is a beta DB lifecycle escape hatch. Phase 1 supports only `provider: "exec"` with an explicit shell `command`, optional `cwd`, and string `env` overlay. `onlava db sync` runs this provider and then refreshes configured SQLC artifacts. It does not infer or apply migrations by convention.
+- `generators.sqlc` is a beta lifecycle config for SQLC generation. `provider` may be empty or `sqlc`; `config` defaults to `sqlc.yaml`; `dev_url` defaults to `docker://postgres/18/dev`. When a SQLC schema path follows `<pkg>/db/gen/schema.sql` and `<pkg>/db/schema.hcl` exists, `onlava generate sqlc` refreshes the generated schema SQL with `atlas schema inspect` before running `sqlc generate`. SQLC generation is a generated-source lifecycle and must not apply database schema or seed data.
+- `database.apply` is a beta DB lifecycle escape hatch. Phase 1 supports only `provider: "exec"` with an explicit shell `command`, optional `cwd`, and string `env` overlay. `onlava db sync` currently runs this provider and then refreshes configured SQLC artifacts. The accepted split lifecycle moves database mutation to `onlava db apply` and treats `onlava db sync` as a deprecated beta mixed command. New work should not add behavior to `db sync`.
+- Service-local `SERVICE/db/seed.sql` is initial data. It is not Atlas schema input, not SQLC input, and not a generated-source input. The accepted lifecycle applies seed data through `onlava db seed`; the first implementation fails closed on changed previously-applied seed files and obviously destructive seed SQL rather than adding force or reseed escape hatches.
 - `tasks` is a beta thin repo-task layer. Each task can define either `run` or `steps`, plus optional `cwd` and string `env`. `run` uses the platform shell from the app root or task cwd. `steps` currently accepts `task:<name>`, `check`, `test:go`, `generate`, `generate:client`, `generate:sqlc`, and `db:sync`.
 - Operational scripts are beta app-local script targets under `<domain>/scripts/`. Targets use `<domain>:<script>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`. `onlava run list`, `onlava run inspect`, and `onlava run <domain>:<script> [script args...]` discover and execute them without requiring the app model to parse cleanly.
 - `dev.services.postgres` currently defaults to version `18` and `isolation: "database"`. Other isolation modes are rejected until implemented. With an active agent session, onlava creates or reuses a deterministic per-session database, registers Postgres substrate metadata, and injects session-scoped `DatabaseURL`/`DATABASE_URL` even when local env files already contain those keys. The admin cluster comes from `ONLAVA_DEV_POSTGRES_ADMIN_URL`, a reusable agent Postgres substrate, Docker when available for the requested version, or local `initdb`/`postgres` binaries under the agent state directory. Managed local Postgres starts with logical replication settings so `dev.services.electric` can attach. `ONLAVA_DEV_POSTGRES_INITDB` and `ONLAVA_DEV_POSTGRES_BIN` can point at explicit local binaries. Set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` to keep an explicit external `DatabaseURL`/`DATABASE_URL` instead of using the managed session database. Once registered, later sessions and `onlava db ...` commands can reuse the agent-recorded Postgres substrate URL.
@@ -294,6 +302,9 @@ onlava doctor [--app-root <path>] [--json]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
 onlava db psql [--app-root <path>] [psql args...]
+onlava db apply [--app-root <path>] [--json]
+onlava db seed [--app-root <path>] [--dry-run] [--json]
+onlava db setup [--app-root <path>] [--json]
 onlava db sync [--app-root <path>]
 onlava db reset [--app-root <path>]
 onlava db drop [--app-root <path>]
@@ -326,7 +337,14 @@ Implemented beta/dev helper grammar:
 onlava psql [--app-root <path>] [psql args...]
 ```
 
-`onlava db psql` is the PRD-facing spelling. When `dev.services.postgres` is configured and an agent session is active, it connects to the managed session database; otherwise it falls back to the older beta `onlava psql` behavior. `onlava db reset`, `onlava db drop`, and `onlava db snapshot create|restore` are only available for managed session databases. `onlava db sync` is beta and runs only an explicit `database.apply` provider before dependent SQLC generation.
+`onlava db psql` is the PRD-facing spelling. When `dev.services.postgres` is configured and an agent session is active, it connects to the managed session database; otherwise it falls back to the older beta `onlava psql` behavior. `onlava db reset`, `onlava db drop`, and `onlava db snapshot create|restore` are only available for managed session databases. `onlava db apply` runs only an explicit `database.apply` provider and does not run seed files or SQLC generation. `onlava db sync` is beta and currently runs only an explicit `database.apply` provider before dependent SQLC generation; it is deprecated by the accepted `db apply` / `db seed` / `db setup` split.
+
+DB lifecycle split:
+- `onlava db apply` mutates schema or app-owned database setup only. It does not run seed files or SQLC generation.
+- `onlava db seed` applies service-local initial data such as `SERVICE/db/seed.sql` only. It runs after schema exists and does not participate in Atlas or SQLC generation. It records successful runs in `onlava_internal.seed_runs` keyed by app ID and seed path. Unchanged seeds are skipped; changed previously-applied seeds fail closed with status `changed`. Seed validation also fails closed before opening the database when SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, `DELETE FROM ...` without `WHERE`, `WHERE true`, or `WHERE 1 = 1`; diagnostics include the seed path, line, message, and statement context.
+- `onlava db setup` runs `db apply`, then `db seed`. It reports both phases in JSON mode and stops before seed if apply fails.
+- `onlava generate sqlc` remains the SQLC generated-source command. It may refresh generated schema SQL from schema definitions and run `sqlc generate`; it must not mutate a database or consume seed files.
+- `onlava dev` runs the setup lifecycle before starting the app when DB setup inputs exist, and reruns it on rebuild only when the `database.apply` config or discovered seed file hashes change. Setup failures are reported through the existing compile/setup failure path and dev event stream, and the previous successful fingerprint is not advanced so the next rebuild can retry.
 
 Doctor rules:
 - `onlava doctor` is a fast, read-only local environment diagnostic. It does not install tools, download managed artifacts, start services, run builds, connect to databases, or mutate `.onlava/`.
@@ -614,6 +632,9 @@ Implemented now:
 - [onlava.inspect.paths.v1.schema.json](schemas/onlava.inspect.paths.v1.schema.json)
 - [onlava.inspect.generators.v1.schema.json](schemas/onlava.inspect.generators.v1.schema.json)
 - [onlava.inspect.temporal.v1.schema.json](schemas/onlava.inspect.temporal.v1.schema.json)
+- [onlava.db.apply.result.v1.schema.json](schemas/onlava.db.apply.result.v1.schema.json)
+- [onlava.db.seed.result.v1.schema.json](schemas/onlava.db.seed.result.v1.schema.json)
+- [onlava.db.setup.result.v1.schema.json](schemas/onlava.db.setup.result.v1.schema.json)
 - [onlava.task.graph.v1.schema.json](schemas/onlava.task.graph.v1.schema.json)
 - [onlava.worker.manifest.v1.schema.json](schemas/onlava.worker.manifest.v1.schema.json)
 - [onlava.worker.manifest.v2.schema.json](schemas/onlava.worker.manifest.v2.schema.json)

@@ -183,6 +183,8 @@ onlava also injects standard OpenTelemetry endpoint variables when Victoria side
 | `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` | user input | Optional external app root for release-gate smoke validation. |
 | `ONLAVA_RELEASE_GATE_LOG_DIR` | user input | Release-gate log directory override. |
 | `ONLAVA_TEST_DATABASE_URL` | test input | PostgreSQL admin URL for integration tests that need a real database; tests create package-scoped databases from it. |
+| `ONLAVA_TEST_WATCH_BACKUP_POLL_MS` | test escape hatch | Overrides `onlava dev` file-watch backup poll interval in integration tests so missed fsnotify events do not wait on the production fallback delay. |
+| `ONLAVA_TEST_WATCH_POLL_MS` | test escape hatch | Overrides `onlava dev` file-watch polling interval in integration tests that intentionally exercise polling paths. |
 | `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS` | test escape hatch | Overrides `onlava dev` file-watch settle delay in integration tests so reload assertions do not wait on production debounce timing. This is intentionally registry-approved because the process under test is production dev code. |
 | `ONLAVA_SHADCN_REGISTRY_ROOT` | user input | UI registry root override for the dashboard shadcn wrapper. |
 | `ONLAVA_SHADCN_VERSION` | user input | shadcn CLI version override for the dashboard wrapper. |

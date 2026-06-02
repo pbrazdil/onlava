@@ -151,6 +151,35 @@ func TestWatchDurationFromEnv(t *testing.T) {
 	}
 }
 
+func TestApplyWatchTimingOverridesFromEnv(t *testing.T) {
+	oldPollInterval := watchPollInterval
+	oldBackupPollInterval := watchBackupPollInterval
+	oldSettleDelay := watchSettleDelay
+	t.Cleanup(func() {
+		watchPollInterval = oldPollInterval
+		watchBackupPollInterval = oldBackupPollInterval
+		watchSettleDelay = oldSettleDelay
+	})
+	watchPollInterval = time.Second
+	watchBackupPollInterval = 2 * time.Second
+	watchSettleDelay = 3 * time.Second
+	t.Setenv("ONLAVA_TEST_WATCH_POLL_MS", "11")
+	t.Setenv("ONLAVA_TEST_WATCH_BACKUP_POLL_MS", "12")
+	t.Setenv("ONLAVA_TEST_WATCH_SETTLE_DELAY_MS", "13")
+
+	applyWatchTimingOverridesFromEnv()
+
+	if watchPollInterval != 11*time.Millisecond {
+		t.Fatalf("watchPollInterval = %s, want 11ms", watchPollInterval)
+	}
+	if watchBackupPollInterval != 12*time.Millisecond {
+		t.Fatalf("watchBackupPollInterval = %s, want 12ms", watchBackupPollInterval)
+	}
+	if watchSettleDelay != 13*time.Millisecond {
+		t.Fatalf("watchSettleDelay = %s, want 13ms", watchSettleDelay)
+	}
+}
+
 func TestSnapshotsEqual(t *testing.T) {
 	a := fileSnapshot{
 		"a.go": {size: 1},

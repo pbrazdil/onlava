@@ -77,6 +77,11 @@ reuse IDs; this list can still be ordered by current priority.
   - Owner: onlava runtime / agent DX
   - Created: 2026-06-01
   - Focus: remove the obsolete agent transport surface from config, routing, dashboard, tests, docs, and self-harness checks.
+- [0063 Database Lifecycle Split](0063-db-lifecycle-split.md)
+  - Status: active
+  - Owner: onlava runtime / ONLV integration
+  - Created: 2026-06-02
+  - Focus: split DB apply, seed, and setup from generated SQLC artifacts and migrate ONLV to the new lifecycle.
 
 ## Agent-Friendly Local Runtime
 

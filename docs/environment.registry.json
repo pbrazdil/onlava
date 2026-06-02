@@ -2443,6 +2443,50 @@
       ]
     },
     {
+      "name": "ONLAVA_TEST_WATCH_BACKUP_POLL_MS",
+      "match": "exact",
+      "scope": "runtime",
+      "direction": "test_input",
+      "category": "tooling.tests",
+      "stability": "test_escape_hatch",
+      "secret": false,
+      "allowed_in": [
+        "code",
+        "docs",
+        "tests"
+      ],
+      "owner": "onlava runtime",
+      "rationale": "Integration-test escape hatch read by the dev watcher to shorten the backup polling path when fsnotify events are missed during process-level reload tests.",
+      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "replacement": "",
+      "sunset": "",
+      "docs": [
+        "docs/environment.md"
+      ]
+    },
+    {
+      "name": "ONLAVA_TEST_WATCH_POLL_MS",
+      "match": "exact",
+      "scope": "runtime",
+      "direction": "test_input",
+      "category": "tooling.tests",
+      "stability": "test_escape_hatch",
+      "secret": false,
+      "allowed_in": [
+        "code",
+        "docs",
+        "tests"
+      ],
+      "owner": "onlava runtime",
+      "rationale": "Integration-test escape hatch read by the dev watcher to shorten file snapshot polling during process-level reload tests.",
+      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "replacement": "",
+      "sunset": "",
+      "docs": [
+        "docs/environment.md"
+      ]
+    },
+    {
       "name": "ONLAVA_TEST_WATCH_SETTLE_DELAY_MS",
       "match": "exact",
       "scope": "runtime",

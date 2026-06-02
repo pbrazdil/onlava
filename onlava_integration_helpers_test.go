@@ -195,18 +195,6 @@ func onlavaServeEnv(repo, dashboardAddr, cacheDir string) []string {
 	)
 }
 
-func onlavaDevEnv(repo, dashboardAddr, cacheDir string) []string {
-	return append(
-		os.Environ(),
-		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
-		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
-		"ONLAVA_DEV_VICTORIA=0",
-		"ONLAVA_LOCAL_PROXY=0",
-		"ONLAVA_AGENT_DISABLE=1",
-		"ONLAVA_TEST_WATCH_SETTLE_DELAY_MS=20",
-	)
-}
-
 func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
 	env := append(
 		os.Environ(),
@@ -214,6 +202,7 @@ func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, front
 		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
 		"ONLAVA_DEV_VICTORIA=0",
 		"ONLAVA_AGENT_DISABLE=1",
+		"ONLAVA_TEST_WATCH_BACKUP_POLL_MS=20",
 		"ONLAVA_TEST_WATCH_SETTLE_DELAY_MS=20",
 		"ONLAVA_LOCAL_PROXY_HTTP_PORT="+httpPort,
 		"ONLAVA_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
@@ -481,6 +470,36 @@ func killOnlavaProcess(t *testing.T, cancel context.CancelFunc, cmd *exec.Cmd) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatalf("timed out waiting for onlava process to exit")
+	}
+}
+
+type onlavaTestProcess struct {
+	cancel context.CancelFunc
+	cmd    *exec.Cmd
+}
+
+func killOnlavaProcesses(t *testing.T, processes ...onlavaTestProcess) {
+	t.Helper()
+	for _, process := range processes {
+		process.cancel()
+		if process.cmd.Process != nil {
+			_ = syscall.Kill(-process.cmd.Process.Pid, syscall.SIGKILL)
+			_ = process.cmd.Process.Kill()
+		}
+	}
+
+	done := make(chan error, len(processes))
+	for _, process := range processes {
+		cmd := process.cmd
+		go func() { done <- cmd.Wait() }()
+	}
+	deadline := time.After(5 * time.Second)
+	for range processes {
+		select {
+		case <-done:
+		case <-deadline:
+			t.Fatalf("timed out waiting for onlava processes to exit")
+		}
 	}
 }
 

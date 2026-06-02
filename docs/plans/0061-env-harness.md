@@ -24,7 +24,7 @@ After this work, `onlava harness self --json --write` must make ENV drift visibl
 - 2026-06-01: `docs/environment.md` states the desired direction already: prefer `.onlava.json` for stable app configuration and reserve env vars for local overrides, secrets, process identity, or explicit escape hatches. The harness should enforce that policy rather than relying on prose.
 - 2026-06-01: Recent hardening PRs added or documented several env surfaces around Grafana and Temporal. PRs #15 and #17 describe new Grafana environment variables and hardening, and PRs #14 and #16 describe Temporal production/runtime configuration changes. Those are exactly the areas where future work should prefer typed config or managed manifests unless an env escape hatch is deliberately approved.
 - 2026-06-01: The broader scanner initially misclassified Temporal span-kind constants such as `TEMPORAL_WORKFLOW` as process env names. The implementation now treats `TEMPORAL_*`, `VITE_*`, `ELECTRIC_*`, and OTEL names as exact approved names unless the registry uses a deliberate prefix family.
-- 2026-06-01: `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS` is a test-named process-level escape hatch read by production dev watcher code so integration tests can shorten debounce timing. It is registry-approved as `test_escape_hatch` instead of `test_only`, while pure `ONLAVA_TEST_*` and `ONLAVA_INTEGRATION_*` names remain disallowed in production code.
+- 2026-06-01: `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS` and related watch timing overrides are test-named process-level escape hatches read by production dev watcher code so integration tests can shorten debounce/poll timing. They are registry-approved as `test_escape_hatch` instead of `test_only`, while pure `ONLAVA_TEST_*` and `ONLAVA_INTEGRATION_*` names remain disallowed in production code.
 
 ## Decision Log
 
@@ -228,7 +228,7 @@ Current audit:
 | Managed toolchain controls | keep for now | `ONLAVA_TOOLCHAIN_DIR`, `ONLAVA_TOOLCHAIN_DOWNLOAD`, and explicit per-tool binary/download overrides stay registered escape hatches because plan 0059 owns the typed managed-toolchain surface. |
 | Grafana/Victoria controls | keep for now | Local dev sidecar knobs remain registered `dev_escape_hatch` variables; future promotion should prefer `.onlava.json dev.observability` or managed manifests. |
 | Local proxy/frontends | compatibility/dev escape hatches | Legacy proxy variables and `ONLAVA_FRONTEND_<NAME>_ADDR` remain registered for explicit manual debugging while agent routing is preferred. |
-| Test-only controls | restrict | `ONLAVA_TEST_*` and `ONLAVA_INTEGRATION_*` are allowed only in tests/docs unless a concrete registry entry documents a process-level exception such as `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS`. |
+| Test-only controls | restrict | `ONLAVA_TEST_*` and `ONLAVA_INTEGRATION_*` are allowed only in tests/docs unless a concrete registry entry documents a process-level exception such as the `ONLAVA_TEST_WATCH_*_MS` timing overrides. |
 
 ## Plan of Work
 

@@ -24,6 +24,20 @@ Use the narrowest current source of truth that applies:
 
 When implementation and docs disagree, treat it as drift. Fix the drift in the same change when practical.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs for this repo live in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-role triage label vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a multi-context domain docs layout with root `CONTEXT-MAP.md` plus per-context `CONTEXT.md` files. See `docs/agents/domain.md`.
+
 ## Current Mental Model
 
 onlava is a Go-native service runtime and local development platform. Think in app sessions and capability surfaces first; Grafana, Victoria, Temporal dev server, local proxying, generated cache files, hidden ports, and local stores are substrate details unless the task is explicitly debugging that substrate.
@@ -103,7 +117,7 @@ onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <n
 onlava build [--app-root <path>] [-o <path>]
 onlava test [--app-root <path>] [go test flags/packages...]
 onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
-onlava db psql|reset|drop|snapshot [--app-root <path>]
+onlava db psql|apply|seed|setup|reset|drop|snapshot [--app-root <path>]
 ```
 
 `onlava dev` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, session routing, and managed dev services. `onlava serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `onlava run` is for operational scripts.

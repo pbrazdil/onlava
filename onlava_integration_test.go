@@ -486,14 +486,13 @@ func Concurrency(ctx context.Context) (*Response, error) {
 	dashAddr := "127.0.0.1:" + freePort(t)
 	cacheDir := sharedIntegrationCache(t)
 	binary := buildOnlavaBinary(t, repo)
-	temporalAddr := startTemporalDevServerForTest(t, filepath.Join(t.TempDir(), "temporal-cache"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	var output strings.Builder
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
-	cmd.Env = append(onlavaServeEnv(repo, dashAddr, cacheDir), "TEMPORAL_ADDRESS="+temporalAddr)
+	cmd.Env = onlavaServeEnv(repo, dashAddr, cacheDir)
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	cmd.Stdin = nil
@@ -538,6 +537,12 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var processes []onlavaTestProcess
+	defer func() {
+		if len(processes) > 0 {
+			killOnlavaProcesses(t, processes...)
+		}
+	}()
 
 	var apiOutput strings.Builder
 	cmd := exec.CommandContext(ctx, binary, "serve", "--listen", addr)
@@ -550,17 +555,7 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start onlava serve: %v", err)
 	}
-	defer killOnlavaProcess(t, cancel, cmd)
-
-	waitForHTTPWithProcessOutput(t, "http://"+addr+"/cron/status", &apiOutput)
-	temporalCtx, temporalCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer temporalCancel()
-	temporalClient, err := temporalclient.Dial(temporalclient.Options{HostPort: temporalAddr})
-	if err != nil {
-		t.Fatalf("dial temporal: %v", err)
-	}
-	defer temporalClient.Close()
-	waitForCronScheduleReconciliation(t, &apiOutput, "onlava-tick", "onlava.cronapp.cron.go")
+	processes = append(processes, onlavaTestProcess{cancel: cancel, cmd: cmd})
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
@@ -575,7 +570,17 @@ func TestOnlavaServeExecutesCronJobs(t *testing.T) {
 	if err := workerCmd.Start(); err != nil {
 		t.Fatalf("start onlava worker: %v", err)
 	}
-	defer killOnlavaProcess(t, workerCancel, workerCmd)
+	processes = append(processes, onlavaTestProcess{cancel: workerCancel, cmd: workerCmd})
+
+	waitForHTTPWithProcessOutput(t, "http://"+addr+"/cron/status", &apiOutput)
+	temporalCtx, temporalCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer temporalCancel()
+	temporalClient, err := temporalclient.Dial(temporalclient.Options{HostPort: temporalAddr})
+	if err != nil {
+		t.Fatalf("dial temporal: %v", err)
+	}
+	defer temporalClient.Close()
+	waitForCronScheduleReconciliation(t, &apiOutput, "onlava-tick", "onlava.cronapp.cron.go")
 
 	// Temporal's local dev schedule Describe/List/Trigger returned inconsistent
 	// scheduler state in this environment; start the same cron workflow
@@ -694,9 +699,8 @@ func Ping(context.Context) (*Response, error) {
 	}
 }
 
-func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
-	repo := repoRoot(t)
-	serviceSource := `package service
+func devRouteServiceSource() string {
+	return `package service
 
 import "context"
 
@@ -723,9 +727,14 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 	return s.Secret(ctx)
 }
 `
-	appDir := cachedSyntheticApp(t, "devdashboard", map[string]string{
-		"go.mod":         "module example.com/devdashboard\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repo + "\n",
-		".onlava.json":   `{"name":"basicapp","proxy":{"workspace":"ignored","api_host":"api.acme.localhost","console_host":"console.acme.localhost","frontends":{"web":{"host":"web.acme.localhost"}}}}`,
+}
+
+func prepareMutableDevRouteApp(t *testing.T, repo, fixtureName, moduleName, config string) (string, string, string) {
+	t.Helper()
+	serviceSource := devRouteServiceSource()
+	appDir := cachedSyntheticApp(t, fixtureName, map[string]string{
+		"go.mod":         "module example.com/" + moduleName + "\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repo + "\n",
+		".onlava.json":   config,
 		".env":           "# Fixture environment intentionally empty.\n",
 		"service/api.go": serviceSource,
 	})
@@ -736,6 +745,14 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 	t.Cleanup(func() {
 		writeFileIfChanged(t, apiPath, serviceSource)
 	})
+	return appDir, apiPath, serviceSource
+}
+
+func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
+	t.Parallel()
+
+	repo := repoRoot(t)
+	appDir, apiPath, _ := prepareMutableDevRouteApp(t, repo, "devdashboard", "devdashboard", `{"name":"basicapp","proxy":{"workspace":"ignored","api_host":"api.acme.localhost","console_host":"console.acme.localhost","frontends":{"web":{"host":"web.acme.localhost"}}}}`)
 
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
@@ -841,11 +858,13 @@ func (s *Service) CallPrivate(ctx context.Context) (*Response, error) {
 	if err := os.WriteFile(apiPath, []byte(updated), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := waitForWSMethodsErr(wsConn, 15*time.Second, "process/compile-start", "process/output", "process/reload"); err != nil {
 		t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
 	}
 	if err := waitForJSONWithClientErr(&http.Client{Timeout: time.Second}, directURL, http.StatusOK, map[string]any{"message": "secret:dashboard"}); err != nil {
+		t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
+	}
+	if err := waitForJSONWithClientErr(client, apiURL, http.StatusOK, map[string]any{"message": "secret:dashboard"}); err != nil {
 		t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
 	}
 }

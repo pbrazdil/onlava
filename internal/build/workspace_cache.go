@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/codegen"
 )
 
@@ -188,6 +189,9 @@ func RefreshCachedWorkspaceWithOptions(appRoot string, result *Result, opts Refr
 	if err := removeUnexpectedFilesFromLists(result.Dir, result.SourceFiles, result.GeneratedFiles); err != nil {
 		return false, err
 	}
+	if err := seedOnlavaGoSum(result.Dir, app.RepoRoot()); err != nil {
+		return false, err
+	}
 	depFingerprint, err := dependencyFingerprintFromWorkspace(result.Dir)
 	if err != nil {
 		return false, err
@@ -200,7 +204,7 @@ func RefreshCachedWorkspaceWithOptions(appRoot string, result *Result, opts Refr
 	}
 	result.BuildFingerprint = buildFingerprint
 	result.Binary = filepath.Join(result.Dir, workspaceBinaryName(appRoot, buildFingerprint))
-	result.ReuseCompiled = !result.NeedsTidy && pathExists(result.Binary)
+	result.ReuseCompiled = pathExists(result.Binary)
 	return true, nil
 }
 

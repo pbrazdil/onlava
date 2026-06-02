@@ -3,13 +3,17 @@
   "$id": "https://onlava.com/schemas/onlava.inspect.generators.v1.schema.json",
   "title": "onlava.inspect.generators.v1",
   "type": "object",
-  "required": ["schema_version", "app", "generators"],
+  "required": ["schema_version", "app", "generators", "db_artifacts"],
   "properties": {
     "schema_version": { "const": "onlava.inspect.generators.v1" },
     "app": { "$ref": "#/$defs/appRef" },
     "generators": {
       "type": "array",
       "items": { "$ref": "#/$defs/generator" }
+    },
+    "db_artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dbArtifact" }
     }
   },
   "additionalProperties": false,
@@ -41,6 +45,23 @@
           "items": { "type": "string" }
         },
         "tool": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "dbArtifact": {
+      "type": "object",
+      "required": ["service", "kind", "role", "path"],
+      "properties": {
+        "service": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["schema-source", "query", "generated-schema", "seed"]
+        },
+        "role": {
+          "type": "string",
+          "enum": ["schema", "query-generation-input", "generated-source", "initial-data"]
+        },
+        "path": { "type": "string" }
       },
       "additionalProperties": false
     }

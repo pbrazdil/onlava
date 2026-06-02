@@ -730,6 +730,181 @@ func TestLoadReusableBinaryRequiresMatchingSourceFingerprint(t *testing.T) {
 	}
 }
 
+func TestPrepareReusesExistingFingerprintBinaryWhenStatePointsElsewhere(t *testing.T) {
+	useFakeGoRunner(t)
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+	cfg := appcfg.Config{Name: "buildtest"}
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	first, err := Prepare(appDir, model, cfg, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("first prepare: %v", err)
+	}
+	if err := Compile(first); err != nil {
+		t.Fatalf("first compile: %v", err)
+	}
+	firstBinary := first.Binary
+
+	writeBuildTestFile(t, appDir, "svc/api.go", `package svc
+
+import "context"
+
+//onlava:api public
+func Hello(ctx context.Context) error {
+	return nil
+}
+`)
+	model, err = parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse changed app: %v", err)
+	}
+	second, err := Prepare(appDir, model, cfg, PrepareOptions{ChangedPaths: []string{"svc/api.go"}})
+	if err != nil {
+		t.Fatalf("second prepare: %v", err)
+	}
+	if err := Compile(second); err != nil {
+		t.Fatalf("second compile: %v", err)
+	}
+	if second.Binary == firstBinary {
+		t.Fatal("expected source change to produce a different fingerprint binary")
+	}
+
+	writeBuildTestFile(t, appDir, "svc/api.go", `package svc
+
+import "context"
+
+//onlava:api public
+func Hello(ctx context.Context) error { return nil }
+`)
+	model, err = parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse reverted app: %v", err)
+	}
+	reverted, err := Prepare(appDir, model, cfg, PrepareOptions{ChangedPaths: []string{"svc/api.go"}})
+	if err != nil {
+		t.Fatalf("reverted prepare: %v", err)
+	}
+	if reverted.Binary != firstBinary {
+		t.Fatalf("reverted binary = %q, want first binary %q", reverted.Binary, firstBinary)
+	}
+	if !reverted.ReuseCompiled {
+		t.Fatal("expected prepare to reuse existing fingerprint binary after reverting source")
+	}
+}
+
+func TestCompileUpdatesDependencyFingerprintAfterSuccessfulBuild(t *testing.T) {
+	old := runGo
+	runGo = func(_ context.Context, dir string, args ...string) error {
+		if len(args) == 5 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" && args[4] == "./onlava_internal_main" {
+			if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte("example.com/dep v1.0.0 h1:dep\n"), 0o644); err != nil {
+				return err
+			}
+			out := args[3]
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+		}
+		return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
+	}
+	t.Cleanup(func() { runGo = old })
+
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+	workspace, err := workspaceDir(appDir, "buildtest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBuildTestFile(t, workspace, "go.mod", "module example.com/buildtest\n\ngo 1.26.3\n")
+	writeBuildTestFile(t, workspace, "go.sum", "")
+	writeBuildTestFile(t, workspace, "onlava_internal_main/main.go", "package main\n\nfunc main() {}\n")
+	result := &Result{
+		AppRoot:               appDir,
+		AppName:               "buildtest",
+		Dir:                   workspace,
+		Binary:                filepath.Join(workspace, "onlava-app-test"),
+		NeedsTidy:             true,
+		DependencyFingerprint: "stale",
+		BuildFingerprint:      "test",
+		SourceFiles:           []string{"go.mod"},
+		GeneratedFiles:        []string{"onlava_internal_main/main.go"},
+	}
+
+	if err := Compile(result); err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	state, err := loadBuildState(workspace)
+	if err != nil {
+		t.Fatalf("loadBuildState: %v", err)
+	}
+	want, err := dependencyFingerprintFromWorkspace(workspace)
+	if err != nil {
+		t.Fatalf("dependencyFingerprintFromWorkspace: %v", err)
+	}
+	if state.DependencyFingerprint != want {
+		t.Fatalf("saved dependency fingerprint = %q, want post-build fingerprint %q", state.DependencyFingerprint, want)
+	}
+}
+
+func TestCompileReusesExistingBinaryDespiteDependencyFingerprintDrift(t *testing.T) {
+	old := runGo
+	runGo = func(_ context.Context, dir string, args ...string) error {
+		return fmt.Errorf("unexpected fake go command in %s: go %s", dir, strings.Join(args, " "))
+	}
+	t.Cleanup(func() { runGo = old })
+
+	cacheDir := t.TempDir()
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+	workspace, err := workspaceDir(appDir, "buildtest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBuildTestFile(t, workspace, "go.mod", "module example.com/buildtest\n\ngo 1.26.3\n")
+	writeBuildTestFile(t, workspace, "go.sum", "example.com/dep v1.0.0 h1:dep\n")
+	writeBuildTestFile(t, workspace, "onlava_internal_main/main.go", "package main\n\nfunc main() {}\n")
+	depFingerprint, err := dependencyFingerprintFromWorkspace(workspace)
+	if err != nil {
+		t.Fatalf("dependencyFingerprintFromWorkspace: %v", err)
+	}
+	binary := filepath.Join(workspace, "onlava-app-existing")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write cached binary: %v", err)
+	}
+	result := &Result{
+		AppRoot:               appDir,
+		AppName:               "buildtest",
+		Dir:                   workspace,
+		Binary:                binary,
+		NeedsTidy:             true,
+		DependencyFingerprint: depFingerprint,
+		BuildFingerprint:      "existing",
+		ReuseCompiled:         true,
+		SourceFiles:           []string{"go.mod"},
+		GeneratedFiles:        []string{"onlava_internal_main/main.go"},
+	}
+
+	if err := Compile(result); err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if result.NeedsTidy {
+		t.Fatal("expected cached compile to clear NeedsTidy")
+	}
+	state, err := loadBuildState(workspace)
+	if err != nil {
+		t.Fatalf("loadBuildState: %v", err)
+	}
+	if state.DependencyFingerprint != depFingerprint {
+		t.Fatalf("saved dependency fingerprint = %q, want %q", state.DependencyFingerprint, depFingerprint)
+	}
+}
+
 func TestCachedGeneratorFingerprintInvalidatesOnSourceMetadata(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
@@ -1154,6 +1329,56 @@ import _ "rsc.io/quote"
 	}
 	if !cached.Result.NeedsTidy {
 		t.Fatal("expected refreshed cached workspace to require go mod tidy")
+	}
+}
+
+func TestRefreshCachedWorkspaceSeedsDependencyFingerprintBeforeReuse(t *testing.T) {
+	appDir, result := newCachedBuildTestWorkspace(t, "graph-1")
+
+	if err := seedOnlavaGoSum(result.Dir, repoRoot(t)); err != nil {
+		t.Fatalf("seedOnlavaGoSum() error = %v", err)
+	}
+	depFingerprint, err := dependencyFingerprintFromWorkspace(result.Dir)
+	if err != nil {
+		t.Fatalf("dependencyFingerprintFromWorkspace() error = %v", err)
+	}
+	state, err := loadBuildState(result.Dir)
+	if err != nil {
+		t.Fatalf("loadBuildState() error = %v", err)
+	}
+	state.DependencyFingerprint = depFingerprint
+	if err := saveBuildState(result.Dir, state); err != nil {
+		t.Fatalf("saveBuildState() error = %v", err)
+	}
+	if err := os.WriteFile(result.Binary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write cached binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(result.Dir, "go.sum"), nil, 0o644); err != nil {
+		t.Fatalf("write stale workspace go.sum: %v", err)
+	}
+
+	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() error = %v", err)
+	}
+	if !ok || cached == nil || cached.Result == nil {
+		t.Fatal("expected cached graph to load")
+	}
+	reused, err := RefreshCachedWorkspaceWithOptions(appDir, cached.Result, RefreshOptions{ChangedPaths: []string{"svc/api.go"}})
+	if err != nil {
+		t.Fatalf("RefreshCachedWorkspaceWithOptions() error = %v", err)
+	}
+	if !reused {
+		t.Fatal("expected cached workspace refresh to be reusable")
+	}
+	if cached.Result.NeedsTidy {
+		t.Fatal("expected seeded dependency fingerprint to avoid tidy")
+	}
+	if !cached.Result.ReuseCompiled {
+		t.Fatal("expected existing fingerprint binary to be reused")
+	}
+	if cached.Result.DependencyFingerprint != depFingerprint {
+		t.Fatalf("dependency fingerprint = %q, want seeded %q", cached.Result.DependencyFingerprint, depFingerprint)
 	}
 }
 

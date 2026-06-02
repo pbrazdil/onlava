@@ -35,9 +35,10 @@ type generatorExecutionPlan struct {
 }
 
 type generatorGraphResponse struct {
-	SchemaVersion string             `json:"schema_version"`
-	App           inspectdata.AppRef `json:"app"`
-	Generators    []generatorRecord  `json:"generators"`
+	SchemaVersion string                   `json:"schema_version"`
+	App           inspectdata.AppRef       `json:"app"`
+	Generators    []generatorRecord        `json:"generators"`
+	DBArtifacts   []databaseArtifactRecord `json:"db_artifacts"`
 }
 
 type generatorRecord struct {
@@ -58,12 +59,20 @@ type sqlcGeneratorPlan struct {
 	Record     generatorRecord
 	ConfigPath string
 	Schemas    []sqlcSchemaPlan
+	Queries    []string
 }
 
 type sqlcSchemaPlan struct {
 	SQLCSchema  string
 	AtlasSource string
 	AtlasDevURL string
+}
+
+type databaseArtifactRecord struct {
+	Service string `json:"service"`
+	Kind    string `json:"kind"`
+	Role    string `json:"role"`
+	Path    string `json:"path"`
 }
 
 type lifecycleExecRequest struct {
@@ -261,6 +270,7 @@ func buildGenerateExecutionPlan(appRoot string, cfg appcfg.Config, hasApp bool, 
 			plan.Graph.Generators = append(plan.Graph.Generators, sqlcPlan.Record)
 		}
 	}
+	plan.Graph.DBArtifacts = buildDatabaseArtifactRecords(appRoot, plan.SQLC)
 	if opts.Subject == "client" && len(plan.Clients) == 0 {
 		return generatorExecutionPlan{}, fmt.Errorf("client generator is not configured")
 	}
@@ -286,6 +296,7 @@ func buildInspectGeneratorsResponse(appRoot string, cfg appcfg.Config) (generato
 	if ok {
 		graph.Generators = append(graph.Generators, sqlcPlan.Record)
 	}
+	graph.DBArtifacts = buildDatabaseArtifactRecords(appRoot, sqlcPlan)
 	return graph, nil
 }
 
@@ -298,6 +309,8 @@ func baseGeneratorGraph(appRoot string, cfg appcfg.Config, hasApp bool) generato
 			Root:       appRoot,
 			ConfigPath: filepath.Join(appRoot, ".onlava.json"),
 		},
+		Generators:  []generatorRecord{},
+		DBArtifacts: []databaseArtifactRecord{},
 	}
 	if !hasApp {
 		graph.App.ConfigPath = ""
@@ -430,10 +443,13 @@ func buildSQLCGeneratorPlan(appRoot string, cfg appcfg.Config) (*sqlcGeneratorPl
 	}
 	var inputs []string
 	var outputs []string
+	var queries []string
 	inputs = append(inputs, filepath.ToSlash(configRel))
 	for _, block := range sqlcCfg.SQL {
 		for _, query := range block.Queries.Values {
-			inputs = append(inputs, filepath.ToSlash(query))
+			query = filepath.ToSlash(query)
+			inputs = append(inputs, query)
+			queries = append(queries, query)
 		}
 		for _, schema := range block.Schema.Values {
 			schema = filepath.ToSlash(schema)
@@ -466,7 +482,123 @@ func buildSQLCGeneratorPlan(appRoot string, cfg appcfg.Config) (*sqlcGeneratorPl
 		Record:     record,
 		ConfigPath: filepath.ToSlash(configRel),
 		Schemas:    schemaPlans,
+		Queries:    uniqueSorted(queries),
 	}, true, nil
+}
+
+func buildDatabaseArtifactRecords(appRoot string, sqlcPlan *sqlcGeneratorPlan) []databaseArtifactRecord {
+	var records []databaseArtifactRecord
+	seen := map[string]bool{}
+	keepMissing := map[string]bool{}
+	add := func(path, kind, role string) {
+		path = strings.TrimSpace(filepath.ToSlash(path))
+		if path == "" {
+			return
+		}
+		service := serviceNameForDBArtifact(path)
+		key := service + "\x00" + kind + "\x00" + role + "\x00" + path
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		records = append(records, databaseArtifactRecord{
+			Service: service,
+			Kind:    kind,
+			Role:    role,
+			Path:    path,
+		})
+	}
+
+	if sqlcPlan != nil {
+		for _, schema := range sqlcPlan.Schemas {
+			add(schema.AtlasSource, "schema-source", "schema")
+			if schema.SQLCSchema != "" {
+				keepMissing[filepath.ToSlash(schema.SQLCSchema)] = true
+			}
+			add(schema.SQLCSchema, "generated-schema", "generated-source")
+		}
+		for _, query := range sqlcPlan.Queries {
+			add(query, "query", "query-generation-input")
+		}
+	}
+
+	entries, err := os.ReadDir(appRoot)
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() || skipDBArtifactServiceDir(entry.Name()) {
+				continue
+			}
+			service := entry.Name()
+			dbRoot := filepath.Join(appRoot, service, "db")
+			if !pathExists(dbRoot) {
+				continue
+			}
+			relRoot := filepath.ToSlash(filepath.Join(service, "db"))
+			add(filepath.ToSlash(filepath.Join(relRoot, "schema.hcl")), "schema-source", "schema")
+			add(filepath.ToSlash(filepath.Join(relRoot, "queries.sql")), "query", "query-generation-input")
+			add(filepath.ToSlash(filepath.Join(relRoot, "gen", "schema.sql")), "generated-schema", "generated-source")
+			add(filepath.ToSlash(filepath.Join(relRoot, "seed.sql")), "seed", "initial-data")
+		}
+	}
+
+	filtered := records[:0]
+	for _, record := range records {
+		if keepMissing[record.Path] {
+			filtered = append(filtered, record)
+			continue
+		}
+		if pathExists(filepath.Join(appRoot, filepath.FromSlash(record.Path))) {
+			filtered = append(filtered, record)
+		}
+	}
+	records = filtered
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Service != records[j].Service {
+			return records[i].Service < records[j].Service
+		}
+		if databaseArtifactKindRank(records[i].Kind) != databaseArtifactKindRank(records[j].Kind) {
+			return databaseArtifactKindRank(records[i].Kind) < databaseArtifactKindRank(records[j].Kind)
+		}
+		return records[i].Path < records[j].Path
+	})
+	return records
+}
+
+func skipDBArtifactServiceDir(name string) bool {
+	switch name {
+	case "", ".", "..", ".git", ".onlava", "node_modules", "ui":
+		return true
+	default:
+		return strings.HasPrefix(name, ".")
+	}
+}
+
+func serviceNameForDBArtifact(path string) string {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for i, part := range parts {
+		if part == "db" && i > 0 {
+			return parts[i-1]
+		}
+	}
+	if len(parts) > 0 && parts[0] != "" {
+		return parts[0]
+	}
+	return "."
+}
+
+func databaseArtifactKindRank(kind string) int {
+	switch kind {
+	case "schema-source":
+		return 0
+	case "query":
+		return 1
+	case "generated-schema":
+		return 2
+	case "seed":
+		return 3
+	default:
+		return 99
+	}
 }
 
 func configuredSQLCSchemaPlans(conf appcfg.SQLCGeneratorConfig) []sqlcSchemaPlan {

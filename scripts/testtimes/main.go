@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -26,6 +28,18 @@ type testTiming struct {
 	Test    string
 }
 
+const defaultPackageParallelism = "4"
+const shardedCmdOnlavaPackage = "github.com/pbrazdil/onlava/cmd/onlava"
+
+var shardedCmdOnlavaDefaultRegexes = []string{
+	"^Test[A-E].*",
+	"^Test[F-L].*",
+	"^Test[M-O].*",
+	"^TestP.*",
+	"^TestR.*",
+	"^Test([^A-Z]|[QST-Z]).*",
+}
+
 func main() {
 	exitCode, err := run(os.Args[1:])
 	if err != nil {
@@ -38,27 +52,31 @@ func main() {
 }
 
 func run(args []string) (int, error) {
-	if len(args) > 0 && args[0] == "--" {
-		args = args[1:]
-	}
+	started := time.Now()
+	exitCode, rows, err := runTests(args)
+	printTable(rows, time.Since(started))
+	return exitCode, err
+}
 
-	goArgs := []string{"test", "-count=1", "-json"}
-	if len(args) == 0 {
-		goArgs = append(goArgs, "./...")
-	} else {
-		goArgs = append(goArgs, args...)
+func runTests(args []string) (int, []testTiming, error) {
+	if useDefaultShards(args) {
+		return runDefaultShards()
 	}
+	goArgs := buildGoTestArgs(args)
+	return runAndCollect("", "go", goArgs...)
+}
 
-	cmd := exec.Command("go", goArgs...)
+func runAndCollect(dir, name string, args ...string) (int, []testTiming, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
 	cmd.Stderr = os.Stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return 1, err
+		return 1, nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return 1, err
+		return 1, nil, err
 	}
-	started := time.Now()
 
 	var rows []testTiming
 	scanner := bufio.NewScanner(stdout)
@@ -84,19 +102,171 @@ func run(args []string) (int, error) {
 	scanErr := scanner.Err()
 	waitErr := cmd.Wait()
 
-	printTable(rows, time.Since(started))
-
 	exitCode := 0
 	if waitErr != nil {
 		exitCode = commandExitCode(waitErr)
 	}
 	if scanErr != nil {
-		return exitCode, scanErr
+		return exitCode, rows, scanErr
 	}
 	if waitErr != nil {
-		return exitCode, waitErr
+		return exitCode, rows, waitErr
 	}
-	return 0, nil
+	return 0, rows, nil
+}
+
+func useDefaultShards(args []string) bool {
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+	return len(args) == 0
+}
+
+func runDefaultShards() (int, []testTiming, error) {
+	type result struct {
+		rows     []testTiming
+		exitCode int
+		err      error
+	}
+
+	results := make(chan result, len(shardedCmdOnlavaDefaultRegexes)+1)
+	var wg sync.WaitGroup
+	run := func(args []string) {
+		defer wg.Done()
+		exitCode, rows, err := runAndCollect("", "go", args...)
+		results <- result{rows: rows, exitCode: exitCode, err: err}
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		packages, err := listPackages()
+		if err != nil {
+			results <- result{exitCode: 1, err: err}
+			return
+		}
+		otherPackages := make([]string, 0, len(packages))
+		for _, pkg := range packages {
+			if pkg != shardedCmdOnlavaPackage {
+				otherPackages = append(otherPackages, pkg)
+			}
+		}
+		if len(otherPackages) == 0 {
+			results <- result{}
+			return
+		}
+		goArgs := append([]string{"test", "-json", "-p=" + defaultPackageParallelism}, otherPackages...)
+		exitCode, rows, err := runAndCollect("", "go", goArgs...)
+		results <- result{rows: rows, exitCode: exitCode, err: err}
+	}()
+
+	for _, regex := range shardedCmdOnlavaDefaultRegexes {
+		wg.Add(1)
+		go run([]string{"test", "-json", "-run", regex, "./cmd/onlava"})
+	}
+
+	wg.Wait()
+	close(results)
+
+	var rows []testTiming
+	exitCode := 0
+	var err error
+	for result := range results {
+		rows = append(rows, result.rows...)
+		if result.exitCode != 0 && exitCode == 0 {
+			exitCode = result.exitCode
+		}
+		if result.err != nil && err == nil {
+			err = result.err
+		}
+	}
+	return exitCode, rows, err
+}
+
+func listPackages() ([]string, error) {
+	cmd := exec.Command("go", "list", "./...")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(string(out)), nil
+}
+
+func nonEmptyLines(text string) []string {
+	var lines []string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func buildGoTestArgs(args []string) []string {
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+
+	goArgs := []string{"test", "-json"}
+	if !hasPackageParallelism(args) {
+		goArgs = append(goArgs, "-p="+defaultPackageParallelism)
+	}
+	goArgs = append(goArgs, args...)
+	if !hasPackagePattern(args) {
+		goArgs = append(goArgs, "./...")
+	}
+	return goArgs
+}
+
+func hasPackageParallelism(args []string) bool {
+	for _, arg := range args {
+		switch {
+		case arg == "-p":
+			return true
+		case arg == "--":
+			return false
+		case len(arg) > len("-p=") && arg[:len("-p=")] == "-p=":
+			return true
+		}
+	}
+	return false
+}
+
+func hasPackagePattern(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return false
+		}
+		if arg == "-args" || arg == "--args" {
+			return false
+		}
+		if strings.HasPrefix(arg, "-") {
+			if flagConsumesValue(arg) && !strings.Contains(arg, "=") {
+				i++
+			}
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func flagConsumesValue(arg string) bool {
+	name := strings.TrimLeft(arg, "-")
+	if i := strings.Index(name, "="); i >= 0 {
+		name = name[:i]
+	}
+	switch name {
+	case "C", "bench", "benchtime", "blockprofile", "blockprofilerate", "count", "covermode",
+		"coverpkg", "coverprofile", "cpu", "cpuprofile", "exec", "fuzz", "fuzztime", "fuzzminimizetime",
+		"list", "memprofile", "memprofilerate", "mutexprofile", "mutexprofilefraction",
+		"o", "outputdir", "p", "parallel", "run", "shuffle", "skip", "timeout", "trace", "vet":
+		return true
+	default:
+		return false
+	}
 }
 
 func printTable(rows []testTiming, actualElapsed time.Duration) {

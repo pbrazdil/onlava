@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	appcfg "github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/envpolicy"
+	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
 )
 
 type psqlOptions struct {
@@ -20,11 +22,17 @@ type psqlOptions struct {
 
 func dbCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava db psql|sync|reset|drop|snapshot [--app-root <path>]")
+		return fmt.Errorf("usage: onlava db psql|apply|seed|setup|sync|reset|drop|snapshot [--app-root <path>]")
 	}
 	switch args[0] {
 	case "psql":
 		return psqlCommandWithOptions(args[1:], true)
+	case "apply":
+		return dbApplyCommand(args[1:])
+	case "seed":
+		return dbSeedCommand(args[1:])
+	case "setup":
+		return dbSetupCommand(args[1:])
 	case "sync":
 		return dbSyncCommand(args[1:])
 	case "reset":
@@ -36,6 +44,30 @@ func dbCommand(args []string) error {
 	default:
 		return fmt.Errorf("unknown db command %q", args[0])
 	}
+}
+
+func dbApplyCommand(args []string) error {
+	return runDBApply(context.Background(), os.Stdout, args)
+}
+
+func runDBApply(ctx context.Context, stdout io.Writer, args []string) error {
+	opts, err := parseDBApplyArgs(args)
+	if err != nil {
+		return err
+	}
+	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
+	if err != nil {
+		return err
+	}
+	if err := runDatabaseApplyProvider(ctx, appRoot, cfg.Database.Apply); err != nil {
+		return err
+	}
+	result := buildDBApplyResult(appRoot, cfg)
+	if opts.JSON {
+		return writeInspectJSON(stdout, result)
+	}
+	fmt.Fprintf(stdout, "onlava: database apply complete using %s provider\n", result.Apply.Provider)
+	return nil
 }
 
 func dbSyncCommand(args []string) error {
@@ -60,7 +92,52 @@ func dbSyncCommand(args []string) error {
 	return nil
 }
 
+type dbApplyOptions struct {
+	AppRoot string
+	JSON    bool
+}
+
+type dbApplyResult struct {
+	SchemaVersion string             `json:"schema_version"`
+	App           inspectdata.AppRef `json:"app"`
+	Apply         dbApplyRecord      `json:"apply"`
+}
+
+type dbApplyRecord struct {
+	Provider string `json:"provider"`
+	Command  string `json:"command,omitempty"`
+	CWD      string `json:"cwd,omitempty"`
+	Status   string `json:"status"`
+}
+
+func buildDBApplyResult(appRoot string, cfg appcfg.Config) dbApplyResult {
+	provider := firstNonEmpty(cfg.Database.Apply.Provider, "exec")
+	return dbApplyResult{
+		SchemaVersion: "onlava.db.apply.result.v1",
+		App: inspectdata.AppRef{
+			Name:       cfg.Name,
+			ID:         cfg.ID,
+			Root:       appRoot,
+			ConfigPath: filepath.Join(appRoot, ".onlava.json"),
+		},
+		Apply: dbApplyRecord{
+			Provider: provider,
+			Command:  cfg.Database.Apply.Command,
+			CWD:      cfg.Database.Apply.CWD,
+			Status:   "applied",
+		},
+	}
+}
+
 func runDatabaseApplyProvider(ctx context.Context, appRoot string, apply appcfg.DatabaseApplyConfig) error {
+	env, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
+	if err != nil {
+		return err
+	}
+	return runDatabaseApplyProviderWithEnv(ctx, appRoot, apply, env)
+}
+
+func runDatabaseApplyProviderWithEnv(ctx context.Context, appRoot string, apply appcfg.DatabaseApplyConfig, env []string) error {
 	command := strings.TrimSpace(apply.Command)
 	if command == "" {
 		return fmt.Errorf("database.apply is not configured")
@@ -68,10 +145,6 @@ func runDatabaseApplyProvider(ctx context.Context, appRoot string, apply appcfg.
 	provider := firstNonEmpty(apply.Provider, "exec")
 	if provider != "exec" {
 		return fmt.Errorf("unsupported database apply provider %q", apply.Provider)
-	}
-	env, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
-	if err != nil {
-		return err
 	}
 	program, args := shellInvocation(command)
 	return runLifecycleExec(ctx, lifecycleExecRequest{
@@ -297,25 +370,9 @@ func buildPSQLInvocationForConfig(ctx context.Context, appRoot string, cfg appcf
 	if err != nil {
 		return psqlInvocation{}, fmt.Errorf("psql not found in PATH")
 	}
-	var dsn string
-	if opts.UseManaged {
-		plan, err := managedPostgresPlanForCurrentSession(ctx, appRoot, cfg, baseEnv)
-		if err != nil {
-			return psqlInvocation{}, err
-		}
-		if plan != nil {
-			if err := ensureManagedPostgresDatabase(ctx, plan.AdminURL, plan.DatabaseName); err != nil {
-				return psqlInvocation{}, err
-			}
-			dsn = plan.DatabaseURL
-		}
-	}
-	if dsn == "" {
-		var err error
-		dsn, _, err = discoverDatabaseURL(appRoot)
-		if err != nil {
-			return psqlInvocation{}, err
-		}
+	dsn, err := resolveDatabaseURLForConfig(ctx, appRoot, cfg, baseEnv, opts.UseManaged)
+	if err != nil {
+		return psqlInvocation{}, err
 	}
 	env, err := appEnvWithDotEnv(baseEnv, appRoot)
 	if err != nil {
@@ -327,6 +384,26 @@ func buildPSQLInvocationForConfig(ctx context.Context, appRoot string, cfg appcf
 		Dir:     appRoot,
 		Env:     env,
 	}, nil
+}
+
+func resolveDatabaseURLForConfig(ctx context.Context, appRoot string, cfg appcfg.Config, baseEnv []string, useManaged bool) (string, error) {
+	if useManaged {
+		plan, err := managedPostgresPlanForCurrentSession(ctx, appRoot, cfg, baseEnv)
+		if err != nil {
+			return "", err
+		}
+		if plan != nil {
+			if err := ensureManagedPostgresDatabase(ctx, plan.AdminURL, plan.DatabaseName); err != nil {
+				return "", err
+			}
+			return plan.DatabaseURL, nil
+		}
+	}
+	dsn, _, err := discoverDatabaseURLFromEnvList(appRoot, baseEnv)
+	if err != nil {
+		return "", err
+	}
+	return dsn, nil
 }
 
 type dbResetOptions struct {
@@ -351,6 +428,25 @@ func parseDBResetArgs(args []string) (dbResetOptions, error) {
 			opts.AppRoot = args[i]
 		default:
 			return dbResetOptions{}, fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+	return opts, nil
+}
+
+func parseDBApplyArgs(args []string) (dbApplyOptions, error) {
+	var opts dbApplyOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--app-root":
+			i++
+			if i >= len(args) {
+				return dbApplyOptions{}, fmt.Errorf("missing value for --app-root")
+			}
+			opts.AppRoot = args[i]
+		case "--json":
+			opts.JSON = true
+		default:
+			return dbApplyOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	return opts, nil

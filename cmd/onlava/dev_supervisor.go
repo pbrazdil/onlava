@@ -66,18 +66,19 @@ type devSupervisor struct {
 	agent        *localagent.Client
 	agentSession *localagent.Session
 
-	closeOnce        sync.Once
-	mu               sync.RWMutex
-	current          *runningApp
-	typescript       *runningTypeScriptWorker
-	status           devdash.AppRecord
-	pendingDevEvents []devdash.DevEvent
-	victoriaStarted  bool
+	closeOnce          sync.Once
+	mu                 sync.RWMutex
+	current            *runningApp
+	typescript         *runningTypeScriptWorker
+	status             devdash.AppRecord
+	pendingDevEvents   []devdash.DevEvent
+	victoriaStarted    bool
+	dbSetupFingerprint string
 }
 
 const (
 	appStartupTimeout      = 30 * time.Second
-	appStartupPollInterval = 50 * time.Millisecond
+	appStartupPollInterval = 10 * time.Millisecond
 )
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -413,6 +414,9 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 			metadata = append(json.RawMessage(nil), cached.Metadata...)
 			apiEncoding = append(json.RawMessage(nil), cached.APIEncoding...)
 			result = cached.Result
+			if !s.cfg.Temporal.Enabled {
+				return nil
+			}
 		}
 		model, err = parse.App(s.root, s.cfg.Name)
 		return err
@@ -446,7 +450,9 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 			return s.handleCompileError(ctx, metadata, apiEncoding, err)
 		}
 	}
-	s.cfg = effectiveDevConfigForModel(s.cfg, model)
+	if model != nil {
+		s.cfg = effectiveDevConfigForModel(s.cfg, model)
+	}
 	s.cfg = effectiveDevConfigForTypeScriptWorker(s.cfg, tsModel)
 	if err := s.ensureManagedElectric(ctx); err != nil {
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
@@ -499,6 +505,17 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	s.setMetadata(metadata, apiEncoding)
 	if err := s.persistStatus(ctx); err != nil {
 		return err
+	}
+	dbSetup, shouldRunDBSetup, err := s.nextDevDatabaseSetup(initial)
+	if err != nil {
+		return s.handleCompileError(ctx, metadata, apiEncoding, err)
+	}
+	if shouldRunDBSetup {
+		if err := s.console.Phase("Running database setup", func() error {
+			return s.runDevDatabaseSetup(ctx, dbSetup)
+		}); err != nil {
+			return s.handleCompileError(ctx, metadata, apiEncoding, err)
+		}
 	}
 	if len(s.cfg.Dev.Setup) > 0 {
 		if err := s.console.Phase("Running development setup", func() error {
@@ -807,6 +824,99 @@ func (s *devSupervisor) runDevSetup(ctx context.Context) error {
 		stdout.Close()
 		stderr.Close()
 	}
+	return nil
+}
+
+type devDatabaseSetup struct {
+	Fingerprint string
+	Seeds       []dbSeedPlan
+}
+
+func (s *devSupervisor) nextDevDatabaseSetup(initial bool) (devDatabaseSetup, bool, error) {
+	setup, hasWork, err := buildDevDatabaseSetup(s.root, s.cfg)
+	if err != nil || !hasWork {
+		return setup, false, err
+	}
+	if !initial && setup.Fingerprint == s.dbSetupFingerprint {
+		if s.console != nil && s.console.verbose {
+			s.console.Event("database.setup.skip", map[string]any{
+				"reason": "unchanged-inputs",
+			})
+		}
+		return setup, false, nil
+	}
+	return setup, true, nil
+}
+
+func buildDevDatabaseSetup(root string, cfg app.Config) (devDatabaseSetup, bool, error) {
+	var inputs []string
+	applyCommand := strings.TrimSpace(cfg.Database.Apply.Command)
+	if applyCommand != "" {
+		data, err := json.Marshal(cfg.Database.Apply)
+		if err != nil {
+			return devDatabaseSetup{}, false, err
+		}
+		inputs = append(inputs, "apply:"+string(data))
+	}
+	seeds, err := discoverDBSeedPlans(root, cfg)
+	if err != nil {
+		return devDatabaseSetup{}, false, err
+	}
+	for _, seed := range seeds {
+		inputs = append(inputs, "seed:"+seed.Path+":"+seed.SHA256)
+	}
+	if len(inputs) == 0 {
+		return devDatabaseSetup{}, false, nil
+	}
+	sort.Strings(inputs)
+	sum := sha256.Sum256([]byte(strings.Join(inputs, "\n")))
+	return devDatabaseSetup{
+		Fingerprint: hex.EncodeToString(sum[:]),
+		Seeds:       seeds,
+	}, true, nil
+}
+
+func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDatabaseSetup) error {
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), s.root, ".env", ".env.local")
+	if err != nil {
+		return err
+	}
+	managedEnv, err := s.managedAppEnv(ctx, baseEnv)
+	if err != nil {
+		return err
+	}
+	env := appChildEnv(
+		baseEnv,
+		s.console != nil && s.console.palette.Enabled(),
+		"ONLAVA_APP_ID="+s.activeAppID(),
+		"ONLAVA_APP_ROOT="+s.root,
+		"ONLAVA_DEV_SUPERVISOR=1",
+	)
+	env = append(env, managedEnv...)
+	source := devdash.DevSource{ID: "database-setup", Kind: "setup", Name: "database setup", Role: "database", Status: "running"}
+	s.emitDevEvent(ctx, source, "info", "database setup started", map[string]any{
+		"seed_count": len(setup.Seeds),
+	})
+	if err := runDatabaseApplyProviderWithEnv(ctx, s.root, s.cfg.Database.Apply, env); err != nil {
+		source.Status = "error"
+		s.emitDevEvent(ctx, source, "error", "database apply failed", map[string]any{
+			"error": err.Error(),
+		})
+		return err
+	}
+	seedResult, err := buildDBSeedResultWithEnv(ctx, s.root, s.cfg, dbSeedOptions{}, env, false)
+	if err != nil {
+		source.Status = "error"
+		s.emitDevEvent(ctx, source, "error", "database seed failed", map[string]any{
+			"error": err.Error(),
+		})
+		return err
+	}
+	source.Status = "ready"
+	s.emitDevEvent(ctx, source, "info", "database setup completed", map[string]any{
+		"seeds": seedResult.Summary,
+	})
+	s.dbSetupFingerprint = setup.Fingerprint
 	return nil
 }
 

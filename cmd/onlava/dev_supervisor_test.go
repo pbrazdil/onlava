@@ -363,6 +363,119 @@ func TestPrepareSessionAppBinaryErrorsWhenSessionTargetBlocked(t *testing.T) {
 	}
 }
 
+func TestDevDatabaseSetupRunsInitialAndSkipsUnchangedRebuild(t *testing.T) {
+	root := writeSetupCommandFixture(t)
+	_, cfg, err := app.DiscoverRoot(root)
+	if err != nil {
+		t.Fatalf("DiscoverRoot: %v", err)
+	}
+	store := newFakeSeedStore()
+	restoreSeed := stubSeedStore(t, store)
+	defer restoreSeed()
+	var applyRuns int
+	restoreExec := stubLifecycleExec(t, func(context.Context, lifecycleExecRequest) error {
+		applyRuns++
+		return nil
+	}, nil)
+	defer restoreExec()
+
+	s := &devSupervisor{root: root, cfg: cfg, status: devdash.AppRecord{ID: cfg.AppID()}}
+	setup, shouldRun, err := s.nextDevDatabaseSetup(true)
+	if err != nil || !shouldRun {
+		t.Fatalf("initial nextDevDatabaseSetup shouldRun=%v err=%v", shouldRun, err)
+	}
+	if err := s.runDevDatabaseSetup(context.Background(), setup); err != nil {
+		t.Fatalf("runDevDatabaseSetup initial: %v", err)
+	}
+	if applyRuns != 1 || len(store.applied) != 1 {
+		t.Fatalf("applyRuns=%d applied=%+v", applyRuns, store.applied)
+	}
+
+	_, shouldRun, err = s.nextDevDatabaseSetup(false)
+	if err != nil {
+		t.Fatalf("rebuild nextDevDatabaseSetup: %v", err)
+	}
+	if shouldRun {
+		t.Fatal("unchanged rebuild should skip database setup")
+	}
+	if applyRuns != 1 || len(store.applied) != 1 {
+		t.Fatalf("unchanged rebuild reran setup: applyRuns=%d applied=%+v", applyRuns, store.applied)
+	}
+}
+
+func TestDevDatabaseSetupRerunsWhenSeedChanges(t *testing.T) {
+	root := writeSetupCommandFixture(t)
+	_, cfg, err := app.DiscoverRoot(root)
+	if err != nil {
+		t.Fatalf("DiscoverRoot: %v", err)
+	}
+	store := newFakeSeedStore()
+	restoreSeed := stubSeedStore(t, store)
+	defer restoreSeed()
+	var applyRuns int
+	restoreExec := stubLifecycleExec(t, func(context.Context, lifecycleExecRequest) error {
+		applyRuns++
+		return nil
+	}, nil)
+	defer restoreExec()
+
+	s := &devSupervisor{root: root, cfg: cfg, status: devdash.AppRecord{ID: cfg.AppID()}}
+	setup, shouldRun, err := s.nextDevDatabaseSetup(true)
+	if err != nil || !shouldRun {
+		t.Fatalf("initial nextDevDatabaseSetup shouldRun=%v err=%v", shouldRun, err)
+	}
+	if err := s.runDevDatabaseSetup(context.Background(), setup); err != nil {
+		t.Fatalf("runDevDatabaseSetup initial: %v", err)
+	}
+	writeTestAppFile(t, root, "auth/db/seed.sql", "insert into onlava_auth.users(id) values ('changed-user');\n")
+
+	setup, shouldRun, err = s.nextDevDatabaseSetup(false)
+	if err != nil || !shouldRun {
+		t.Fatalf("changed seed nextDevDatabaseSetup shouldRun=%v err=%v", shouldRun, err)
+	}
+	err = s.runDevDatabaseSetup(context.Background(), setup)
+	if err == nil || !strings.Contains(err.Error(), "changed after it was applied") {
+		t.Fatalf("changed seed runDevDatabaseSetup error = %v", err)
+	}
+	if applyRuns != 2 {
+		t.Fatalf("applyRuns=%d, want 2", applyRuns)
+	}
+}
+
+func TestDevDatabaseSetupRetriesAfterApplyFailure(t *testing.T) {
+	root := writeSetupCommandFixture(t)
+	_, cfg, err := app.DiscoverRoot(root)
+	if err != nil {
+		t.Fatalf("DiscoverRoot: %v", err)
+	}
+	store := newFakeSeedStore()
+	restoreSeed := stubSeedStore(t, store)
+	defer restoreSeed()
+	var applyRuns int
+	restoreExec := stubLifecycleExec(t, func(context.Context, lifecycleExecRequest) error {
+		applyRuns++
+		return fmt.Errorf("apply failed")
+	}, nil)
+	defer restoreExec()
+
+	s := &devSupervisor{root: root, cfg: cfg, status: devdash.AppRecord{ID: cfg.AppID()}}
+	setup, shouldRun, err := s.nextDevDatabaseSetup(true)
+	if err != nil || !shouldRun {
+		t.Fatalf("initial nextDevDatabaseSetup shouldRun=%v err=%v", shouldRun, err)
+	}
+	if err := s.runDevDatabaseSetup(context.Background(), setup); err == nil || !strings.Contains(err.Error(), "apply failed") {
+		t.Fatalf("runDevDatabaseSetup apply error = %v", err)
+	}
+
+	_, shouldRun, err = s.nextDevDatabaseSetup(false)
+	if err != nil || !shouldRun {
+		t.Fatalf("failed setup should be retried on rebuild: shouldRun=%v err=%v", shouldRun, err)
+	}
+	if applyRuns != 1 || len(store.applied) != 0 {
+		t.Fatalf("applyRuns=%d applied=%+v", applyRuns, store.applied)
+	}
+}
+
 func TestTypeScriptWorkerAutoStartRequiresTemporalEnabled(t *testing.T) {
 	cfg := app.Config{
 		Name: "demo",

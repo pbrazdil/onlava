@@ -384,11 +384,27 @@ onlava run inspect billing:reconcile --json
 
 Common failure: putting two single-file Go scripts with `package main` in the same directory without `//go:build ignore`. Normal Go package loading may see both files before onlava can filter anything. Use the build tag for `*.script.go`, or use a per-script directory.
 
-## Configured SQLC And DB Sync
+## Configured SQLC And DB Lifecycle
 
 Use `onlava generate sqlc` for file generation. It reads `sqlc.yaml`, refreshes convention-matched Atlas schema SQL such as `auth/db/gen/schema.sql` from `auth/db/schema.hcl`, and then runs `sqlc generate`.
 
-Use `onlava db sync` only when `.onlava.json` explicitly configures `database.apply`; it may mutate the selected development database before regenerating dependent SQLC artifacts.
+SQLC generation does not mutate a database and does not read seed files as inputs.
+
+The DB lifecycle split is:
+
+```text
+onlava db apply
+onlava db seed
+onlava db setup
+```
+
+`onlava db apply` mutates schema or app-owned database setup only. It does not run SQLC generation or seed files. `onlava db seed` applies initial data such as `SERVICE/db/seed.sql` only, records successful runs in a small internal ledger, skips unchanged seeds, and fails closed if a previously-applied seed changes or if seed SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, or broad `DELETE`. `onlava db setup` runs apply, then seed.
+
+During `onlava dev`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL`/`DATABASE_URL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
+
+`SERVICE/db/seed.sql` is data, not Atlas schema input and not SQLC input. The first seed implementation fails closed when a previously-applied seed changes or destructive seed SQL is detected, rather than offering force or reseed escape hatches.
+
+`onlava db sync` is the existing deprecated beta mixed command. It runs only when `.onlava.json` explicitly configures `database.apply`, and it currently mutates the selected development database before regenerating dependent SQLC artifacts. New lifecycle work should use the split commands instead.
 
 ## Local Proxy And Frontends
 

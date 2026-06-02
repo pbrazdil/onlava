@@ -159,6 +159,9 @@ Prefer JSON when output will feed another tool or decision.
 | Inspect traces/metrics | `onlava inspect traces --json --session current`, `onlava inspect metrics --json --session current` |
 | Generate TypeScript client | `onlava gen client --lang typescript --output <path>` |
 | Run configured generation | `onlava generate --dry-run --json`, then `onlava generate` |
+| Apply configured DB lifecycle | `onlava db apply --json` |
+| Apply service seed data | `onlava db seed --json` |
+| Setup local DB lifecycle | `onlava db setup --json` |
 | Sync configured dev DB | `onlava db sync` |
 | Connect to managed Postgres | `onlava db psql` |
 | Run repo-local task | `onlava task list`, `onlava task run <name>` |
@@ -177,7 +180,8 @@ Use non-JSON output only for human inspection.
 - Use `onlava serve` for headless API-role execution. Do not expect dashboard, proxy, watch mode, or dev/admin endpoints.
 - Use `onlava worker` for worker-role execution of native Temporal workers and cron.
 - Use `onlava build` for a deployable binary artifact.
-- Use `onlava generate` for configured file-producing generators. It is separate from `onlava db sync`, which can mutate the configured development database before refreshing dependent SQLC artifacts.
+- Use `onlava generate` for configured file-producing generators. `onlava generate sqlc` is generated-source work only; it must not apply schema or seed data.
+- Use `onlava db apply` to mutate schema/app database setup only. Use `onlava db seed` to apply service-local initial data only; changed previously-applied seeds and destructive seed SQL fail closed with path/line diagnostics. Use `onlava db setup` for the one-command local setup path: apply then seed. `onlava dev` runs that setup lifecycle before app startup when DB setup inputs exist, and skips it on ordinary rebuilds until `database.apply` config or seed file hashes change. Treat `onlava db sync` as the existing deprecated beta mixed command.
 - Use `onlava run list`, `onlava run inspect <domain>:<script>`, and `onlava run <domain>:<script>` for app-local operational scripts. Script flags appear before the target.
 - Use `onlava task run <name>` only for repo-local workflows that are not core onlava lifecycle commands.
 
