@@ -40,6 +40,28 @@ type ActivityConfig struct {
 	RetryPolicy    RetryPolicy
 }
 
+type ActivityOption interface {
+	applyActivityOption(*activityOptions)
+}
+
+type activityOptions struct {
+	HeartbeatTimeout time.Duration
+}
+
+type activityOptionFunc func(*activityOptions)
+
+func (f activityOptionFunc) applyActivityOption(opts *activityOptions) {
+	if f != nil {
+		f(opts)
+	}
+}
+
+func WithHeartbeatTimeout(timeout time.Duration) ActivityOption {
+	return activityOptionFunc(func(opts *activityOptions) {
+		opts.HeartbeatTimeout = timeout
+	})
+}
+
 type WorkflowIdentity struct {
 	id     string
 	prefix string
@@ -116,17 +138,20 @@ type Workflow[I, O any] struct {
 type Activity[I, O any] struct {
 	name    string
 	config  ActivityConfig
+	options activityOptions
 	handler func(context.Context, I) (O, error)
 }
 
 type ExternalActivity[I, O any] struct {
-	name   string
-	config ActivityConfig
+	name    string
+	config  ActivityConfig
+	options activityOptions
 }
 
 type ActivityHandle[I, O any] interface {
 	temporalActivityName() string
 	temporalActivityConfig() ActivityConfig
+	temporalActivityOptions() activityOptions
 }
 
 type Run[O any] struct {
@@ -182,7 +207,7 @@ func NewWorkflow[I, O any](name string, cfg WorkflowConfig, handler func(workflo
 	return w
 }
 
-func NewActivity[I, O any](name string, cfg ActivityConfig, handler func(context.Context, I) (O, error)) *Activity[I, O] {
+func NewActivity[I, O any](name string, cfg ActivityConfig, handler func(context.Context, I) (O, error), opts ...ActivityOption) *Activity[I, O] {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		panic("temporal: activity name must not be empty")
@@ -193,12 +218,16 @@ func NewActivity[I, O any](name string, cfg ActivityConfig, handler func(context
 	if err := validateActivityConfig(name, cfg); err != nil {
 		panic(err.Error())
 	}
-	a := &Activity[I, O]{name: name, config: cfg, handler: handler}
+	options, err := applyActivityOptions(name, opts)
+	if err != nil {
+		panic(err.Error())
+	}
+	a := &Activity[I, O]{name: name, config: cfg, options: options, handler: handler}
 	registerDeclaration(a)
 	return a
 }
 
-func NewExternalActivity[I, O any](name string, cfg ActivityConfig) *ExternalActivity[I, O] {
+func NewExternalActivity[I, O any](name string, cfg ActivityConfig, opts ...ActivityOption) *ExternalActivity[I, O] {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		panic("temporal: external activity name must not be empty")
@@ -206,7 +235,11 @@ func NewExternalActivity[I, O any](name string, cfg ActivityConfig) *ExternalAct
 	if err := validateActivityConfig(name, cfg); err != nil {
 		panic(err.Error())
 	}
-	return &ExternalActivity[I, O]{name: name, config: cfg}
+	options, err := applyActivityOptions(name, opts)
+	if err != nil {
+		panic(err.Error())
+	}
+	return &ExternalActivity[I, O]{name: name, config: cfg, options: options}
 }
 
 func (w *Workflow[I, O]) Name() string {
@@ -276,6 +309,13 @@ func (a *Activity[I, O]) temporalActivityConfig() ActivityConfig {
 	return a.config
 }
 
+func (a *Activity[I, O]) temporalActivityOptions() activityOptions {
+	if a == nil {
+		return activityOptions{}
+	}
+	return a.options
+}
+
 func (a *Activity[I, O]) taskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
 	if a != nil {
 		return onlavaruntime.SessionScopedTemporalTaskQueue(info, a.config.TaskQueue)
@@ -329,6 +369,13 @@ func (a *ExternalActivity[I, O]) temporalActivityConfig() ActivityConfig {
 	return a.config
 }
 
+func (a *ExternalActivity[I, O]) temporalActivityOptions() activityOptions {
+	if a == nil {
+		return activityOptions{}
+	}
+	return a.options
+}
+
 func Start[I, O any](ctx context.Context, w *Workflow[I, O], input I, identity WorkflowIdentity, opts ...StartOption) (Run[O], error) {
 	if w == nil {
 		return Run[O]{}, errors.New("temporal: nil workflow")
@@ -354,9 +401,11 @@ func ExecuteActivity[I, O any](ctx workflow.Context, a ActivityHandle[I, O], inp
 		return ActivityFuture[O]{}
 	}
 	cfg := a.temporalActivityConfig()
+	activityOpts := a.temporalActivityOptions()
 	opts := workflow.ActivityOptions{
 		TaskQueue:           onlavaruntime.SessionScopedTemporalTaskQueueFromEnv(cfg.TaskQueue),
 		StartToCloseTimeout: cfg.StartToClose,
+		HeartbeatTimeout:    activityOpts.HeartbeatTimeout,
 		RetryPolicy:         retryPolicy(cfg.RetryPolicy),
 	}
 	if opts.StartToCloseTimeout <= 0 {
@@ -963,6 +1012,20 @@ func retryPolicyIsZero(policy RetryPolicy) bool {
 		policy.MaximumInterval == 0 &&
 		policy.MaximumAttempts == 0 &&
 		len(policy.NonRetryableErrorTypes) == 0
+}
+
+func applyActivityOptions(name string, opts []ActivityOption) (activityOptions, error) {
+	var out activityOptions
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		opt.applyActivityOption(&out)
+	}
+	if out.HeartbeatTimeout < 0 {
+		return activityOptions{}, fmt.Errorf("temporal: activity %s HeartbeatTimeout cannot be negative", name)
+	}
+	return out, nil
 }
 
 func validateActivityConfig(name string, cfg ActivityConfig) error {

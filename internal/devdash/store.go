@@ -1,6 +1,7 @@
 package devdash
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -16,9 +17,36 @@ import (
 )
 
 type Store struct {
-	path string
-	mu   *sync.Mutex
+	path   string
+	shared *storeShared
 }
+
+type storeShared struct {
+	mu          sync.Mutex
+	state       *storeState
+	stamp       storeStamp
+	dirty       bool
+	savePending bool
+	pending     []storeMutation
+}
+
+type storeMutation func(*storeState) error
+
+type storeStamp struct {
+	exists  bool
+	size    int64
+	modTime time.Time
+}
+
+const (
+	maxStoredProcessEvents  = 1000
+	maxStoredProcessOutput  = 5000
+	maxStoredDevEvents      = 5000
+	maxStoredTraceSummaries = 2000
+	maxStoredTraceEvents    = 6000
+	maxStoredLogEvents      = 5000
+	deferredSaveDelay       = 500 * time.Millisecond
+)
 
 type ProcessEvent struct {
 	ID          int64           `json:"id"`
@@ -96,60 +124,178 @@ func OpenStore(cacheRoot string) (*Store, error) {
 		return nil, err
 	}
 	path := filepath.Join(cacheRoot, "devdash.json")
-	lockAny, _ := storeLocks.LoadOrStore(path, &sync.Mutex{})
-	store := &Store{path: path, mu: lockAny.(*sync.Mutex)}
+	sharedAny, _ := storeLocks.LoadOrStore(path, &storeShared{})
+	store := &Store{path: path, shared: sharedAny.(*storeShared)}
 	if err := store.withState(context.Background(), true, func(*storeState) error { return nil }); err != nil {
 		return nil, err
 	}
 	return store, nil
 }
 
-func (s *Store) Close() error { return nil }
+func (s *Store) Close() error {
+	return s.Flush(context.Background())
+}
+
+func (s *Store) Flush(ctx context.Context) error {
+	if s == nil || s.path == "" || s.shared == nil {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.shared.mu.Lock()
+	defer s.shared.mu.Unlock()
+	if err := s.ensureLoadedLocked(); err != nil {
+		return err
+	}
+	if !s.shared.dirty {
+		s.shared.savePending = false
+		return nil
+	}
+	if err := s.refreshForExternalChangeLocked(); err != nil {
+		s.shared.savePending = false
+		return err
+	}
+	if err := s.saveState(s.shared.state); err != nil {
+		s.shared.savePending = false
+		return err
+	}
+	if stamp, err := s.statStamp(); err == nil {
+		s.shared.stamp = stamp
+	}
+	s.shared.dirty = false
+	s.shared.savePending = false
+	s.shared.pending = nil
+	return nil
+}
 
 func (s *Store) withState(ctx context.Context, write bool, fn func(*storeState) error) error {
-	if s == nil || s.path == "" || s.mu == nil {
+	return s.withStatePersist(ctx, write, true, fn)
+}
+
+func (s *Store) withDeferredState(ctx context.Context, mutation storeMutation) error {
+	return s.withStatePersist(ctx, true, false, mutation)
+}
+
+func (s *Store) withStatePersist(ctx context.Context, write bool, immediate bool, fn storeMutation) error {
+	if s == nil || s.path == "" || s.shared == nil {
 		return errors.New("devdash store is nil")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	state, err := s.loadState()
-	if err != nil {
+	s.shared.mu.Lock()
+	defer s.shared.mu.Unlock()
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
-	if err := fn(state); err != nil {
+	if err := s.refreshForExternalChangeLocked(); err != nil {
+		return err
+	}
+	if err := fn(s.shared.state); err != nil {
 		return err
 	}
 	if write {
-		return s.saveState(state)
+		pruneStoreState(s.shared.state)
+		if immediate {
+			if err := s.saveState(s.shared.state); err != nil {
+				return err
+			}
+			if stamp, err := s.statStamp(); err == nil {
+				s.shared.stamp = stamp
+			}
+			s.shared.dirty = false
+			s.shared.pending = nil
+			return nil
+		}
+		s.shared.pending = append(s.shared.pending, fn)
+		s.scheduleSaveLocked()
 	}
 	return nil
 }
 
+func (s *Store) ensureLoadedLocked() error {
+	if s.shared.state != nil {
+		return nil
+	}
+	state, stamp, err := s.loadStateWithStamp()
+	if err != nil {
+		return err
+	}
+	s.shared.state = state
+	s.shared.stamp = stamp
+	return nil
+}
+
 func (s *Store) loadState() (*storeState, error) {
+	state, _, err := s.loadStateWithStamp()
+	return state, err
+}
+
+func (s *Store) loadStateWithStamp() (*storeState, storeStamp, error) {
+	stamp, err := s.statStamp()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return newStoreState(), storeStamp{}, nil
+		}
+		return nil, storeStamp{}, err
+	}
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return newStoreState(), nil
+			return newStoreState(), storeStamp{}, nil
 		}
-		return nil, err
+		return nil, storeStamp{}, err
 	}
-	if len(strings.TrimSpace(string(data))) == 0 {
-		return newStoreState(), nil
+	if len(bytes.TrimSpace(data)) == 0 {
+		return newStoreState(), stamp, nil
 	}
 	var state storeState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, err
+		return nil, storeStamp{}, err
 	}
 	normalizeStoreState(&state)
-	return &state, nil
+	pruneStoreState(&state)
+	return &state, stamp, nil
+}
+
+func (s *Store) statStamp() (storeStamp, error) {
+	info, err := os.Stat(s.path)
+	if err != nil {
+		return storeStamp{}, err
+	}
+	return storeStamp{exists: true, size: info.Size(), modTime: info.ModTime()}, nil
+}
+
+func (s *Store) refreshForExternalChangeLocked() error {
+	stamp, err := s.statStamp()
+	if errors.Is(err, os.ErrNotExist) {
+		stamp = storeStamp{}
+	} else if err != nil {
+		return err
+	}
+	if stamp == s.shared.stamp {
+		return nil
+	}
+	state, loadedStamp, err := s.loadStateWithStamp()
+	if err != nil {
+		return err
+	}
+	for _, mutation := range s.shared.pending {
+		if err := mutation(state); err != nil {
+			return err
+		}
+	}
+	pruneStoreState(state)
+	s.shared.state = state
+	s.shared.stamp = loadedStamp
+	return nil
 }
 
 func (s *Store) saveState(state *storeState) error {
 	normalizeStoreState(state)
-	data, err := json.MarshalIndent(state, "", "  ")
+	pruneStoreState(state)
+	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
@@ -180,6 +326,37 @@ func (s *Store) saveState(state *storeState) error {
 	}
 	ok = true
 	return nil
+}
+
+func (s *Store) scheduleSaveLocked() {
+	s.shared.dirty = true
+	if s.shared.savePending {
+		return
+	}
+	s.shared.savePending = true
+	go func() {
+		time.Sleep(deferredSaveDelay)
+		_ = s.Flush(context.Background())
+	}()
+}
+
+func pruneStoreState(state *storeState) {
+	if state == nil {
+		return
+	}
+	state.ProcessEvents = tailSlice(state.ProcessEvents, maxStoredProcessEvents)
+	state.ProcessOutput = tailSlice(state.ProcessOutput, maxStoredProcessOutput)
+	state.DevEvents = tailSlice(state.DevEvents, maxStoredDevEvents)
+	state.TraceSummaries = tailSlice(state.TraceSummaries, maxStoredTraceSummaries)
+	state.TraceEvents = tailSlice(state.TraceEvents, maxStoredTraceEvents)
+	state.LogEvents = tailSlice(state.LogEvents, maxStoredLogEvents)
+}
+
+func tailSlice[T any](items []T, max int) []T {
+	if max <= 0 || len(items) <= max {
+		return items
+	}
+	return items[len(items)-max:]
 }
 
 func newStoreState() *storeState {
@@ -761,11 +938,19 @@ func splitDevSourceKey(key string) (string, string, string) {
 }
 
 func (s *Store) AppendTraceSummary(ctx context.Context, summary *TraceSummary) error {
+	return s.appendTraceSummary(ctx, summary, false)
+}
+
+func (s *Store) AppendTraceSummaryDeferred(ctx context.Context, summary *TraceSummary) error {
+	return s.appendTraceSummary(ctx, summary, true)
+}
+
+func (s *Store) appendTraceSummary(ctx context.Context, summary *TraceSummary, deferred bool) error {
 	if summary == nil {
 		return errors.New("trace summary is nil")
 	}
-	return s.withState(ctx, true, func(state *storeState) error {
-		replacement := storeTraceSummary(*summary)
+	replacement := storeTraceSummary(*summary)
+	update := func(state *storeState) error {
 		for i, existing := range state.TraceSummaries {
 			if existing.AppID == replacement.AppID && existing.SessionID == replacement.SessionID && existing.TraceID == replacement.TraceID && existing.SpanID == replacement.SpanID {
 				state.TraceSummaries[i] = replacement
@@ -774,7 +959,11 @@ func (s *Store) AppendTraceSummary(ctx context.Context, summary *TraceSummary) e
 		}
 		state.TraceSummaries = append(state.TraceSummaries, replacement)
 		return nil
-	})
+	}
+	if deferred {
+		return s.withDeferredState(ctx, update)
+	}
+	return s.withState(ctx, true, update)
 }
 
 func (s *Store) ListTraceSummaries(ctx context.Context, appID string, limit int, messageID string) ([]*TraceSummary, error) {
@@ -890,13 +1079,26 @@ func traceSummaryMatches(summary TraceSummary, query TraceQuery, messageID strin
 }
 
 func (s *Store) AppendTraceEvent(ctx context.Context, event *TraceEvent) error {
+	return s.appendTraceEvent(ctx, event, false)
+}
+
+func (s *Store) AppendTraceEventDeferred(ctx context.Context, event *TraceEvent) error {
+	return s.appendTraceEvent(ctx, event, true)
+}
+
+func (s *Store) appendTraceEvent(ctx context.Context, event *TraceEvent, deferred bool) error {
 	if event == nil {
 		return errors.New("trace event is nil")
 	}
-	return s.withState(ctx, true, func(state *storeState) error {
-		state.TraceEvents = append(state.TraceEvents, storeTraceEvent(*event))
+	stored := storeTraceEvent(*event)
+	update := func(state *storeState) error {
+		state.TraceEvents = append(state.TraceEvents, stored)
 		return nil
-	})
+	}
+	if deferred {
+		return s.withDeferredState(ctx, update)
+	}
+	return s.withState(ctx, true, update)
 }
 
 func (s *Store) GetTraceEvents(ctx context.Context, appID, traceID, spanID string) ([]*TraceEvent, error) {
@@ -927,16 +1129,29 @@ func (s *Store) GetTraceEventsForSession(ctx context.Context, appID, sessionID, 
 }
 
 func (s *Store) WriteLogEvent(ctx context.Context, event *LogEvent) error {
+	return s.writeLogEvent(ctx, event, false)
+}
+
+func (s *Store) WriteLogEventDeferred(ctx context.Context, event *LogEvent) error {
+	return s.writeLogEvent(ctx, event, true)
+}
+
+func (s *Store) writeLogEvent(ctx context.Context, event *LogEvent, deferred bool) error {
 	if event == nil {
 		return errors.New("log event is nil")
 	}
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now().UTC()
 	}
-	return s.withState(ctx, true, func(state *storeState) error {
-		state.LogEvents = append(state.LogEvents, *event)
+	stored := *event
+	update := func(state *storeState) error {
+		state.LogEvents = append(state.LogEvents, stored)
 		return nil
-	})
+	}
+	if deferred {
+		return s.withDeferredState(ctx, update)
+	}
+	return s.withState(ctx, true, update)
 }
 
 func (s *Store) ClearTraces(ctx context.Context, appID string) error {

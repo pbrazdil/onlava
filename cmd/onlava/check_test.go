@@ -105,7 +105,7 @@ func TestRunOnlavaCheckJSONReportsTypeScriptTemporalContractFailure(t *testing.T
 
 	root := persistentTestAppRoot(t, "check-ts-contract")
 	preparePersistentTestApp(t, root, map[string]string{
-		".onlava.json": `{"name":"checkts"}`,
+		".onlava.json": `{"name":"checkts","temporal":{"enabled":true}}`,
 		"go.mod":       "module example.com/checkts\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRootForTest(t) + "\n",
 		"svc/api.go":   "package svc\n\nimport \"context\"\n\n//onlava:api public\nfunc Ping(context.Context) error { return nil }\n",
 		"jobs/runtime.go": `package jobs

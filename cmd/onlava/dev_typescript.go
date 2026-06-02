@@ -49,7 +49,6 @@ func effectiveDevConfigForTypeScriptWorker(cfg app.Config, ts workers.TypeScript
 	if !typeScriptWorkerAutoStartEnabled(cfg, ts) {
 		return cfg
 	}
-	cfg.Temporal.Enabled = true
 	if strings.TrimSpace(cfg.Temporal.Mode) == "" {
 		cfg.Temporal.Mode = "local"
 	}
@@ -58,7 +57,7 @@ func effectiveDevConfigForTypeScriptWorker(cfg app.Config, ts workers.TypeScript
 }
 
 func typeScriptWorkerAutoStartEnabled(cfg app.Config, ts workers.TypeScriptWorkerModel) bool {
-	return cfg.Temporal.TypeScript.Enabled && cfg.Temporal.TypeScript.AutoStart && len(ts.Activities) > 0
+	return cfg.Temporal.Enabled && cfg.Temporal.TypeScript.Enabled && cfg.Temporal.TypeScript.AutoStart && len(ts.Activities) > 0
 }
 
 func (s *devSupervisor) generateTypeScriptTemporalWorker() (*workers.TypeScriptWorkerResult, error) {

@@ -6,6 +6,8 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,11 +49,72 @@ func TestCleanupSupersededDevSessionsStopsSameSessionChildren(t *testing.T) {
 	if err := cleanupStaleDevSessionProcesses(context.Background(), current, []localagent.Session{previous, unrelated}); err != nil {
 		t.Fatalf("cleanupStaleDevSessionProcesses: %v", err)
 	}
-	_, _ = stale.Process.Wait()
 	waitForProcessExitForCleanupTest(t, stale.Process.Pid)
+	_, _ = stale.Process.Wait()
 	if !processAliveForTest(other.Process.Pid) {
 		t.Fatal("cleanup killed child from a different session")
 	}
+}
+
+func TestCleanupStaleDevSessionProcessesStopsStateRootMatchedOrphans(t *testing.T) {
+	root := t.TempDir()
+	current := localagent.Session{
+		SessionID: "review-a",
+		AppRoot:   root,
+		StateRoot: filepath.Join(root, ".onlava", "sessions", "review-a"),
+		OwnerPID:  os.Getpid(),
+		Owner:     localagent.CurrentOwner("test"),
+	}
+	stale := startStateRootAppProcessForCleanupTest(t, current.StateRoot)
+	otherStateRoot := filepath.Join(root, ".onlava", "sessions", "review-b")
+	other := startStateRootAppProcessForCleanupTest(t, otherStateRoot)
+	defer func() {
+		_ = killProcessTree(other)
+		_, _ = other.Process.Wait()
+	}()
+
+	if err := cleanupStaleDevSessionProcesses(context.Background(), current, nil); err != nil {
+		t.Fatalf("cleanupStaleDevSessionProcesses: %v", err)
+	}
+	waitForProcessExitForCleanupTest(t, stale.Process.Pid)
+	_, _ = stale.Process.Wait()
+	if !processAliveForTest(other.Process.Pid) {
+		t.Fatal("cleanup killed state-root matched child from a different session")
+	}
+}
+
+func TestStopDeletedSessionProcessesStopsOwner(t *testing.T) {
+	root := t.TempDir()
+	owner := startSleepProcessForCleanupTest(t)
+	session := localagent.Session{
+		SessionID: "review-a",
+		AppRoot:   root,
+		StateRoot: filepath.Join(root, ".onlava", "sessions", "review-a"),
+		OwnerPID:  owner.Process.Pid,
+		Owner:     localagent.CaptureOwner(owner.Process.Pid, "test"),
+	}
+
+	if err := stopDeletedSessionProcesses(context.Background(), session); err != nil {
+		t.Fatalf("stopDeletedSessionProcesses: %v", err)
+	}
+	waitForProcessExitForCleanupTest(t, owner.Process.Pid)
+	_, _ = owner.Process.Wait()
+}
+
+func TestStopDeletedSessionProcessesStopsStateRootMatchedOrphan(t *testing.T) {
+	root := t.TempDir()
+	session := localagent.Session{
+		SessionID: "review-a",
+		AppRoot:   root,
+		StateRoot: filepath.Join(root, ".onlava", "sessions", "review-a"),
+	}
+	stale := startStateRootAppProcessForCleanupTest(t, session.StateRoot)
+
+	if err := stopDeletedSessionProcesses(context.Background(), session); err != nil {
+		t.Fatalf("stopDeletedSessionProcesses: %v", err)
+	}
+	waitForProcessExitForCleanupTest(t, stale.Process.Pid)
+	_, _ = stale.Process.Wait()
 }
 
 func TestMarkInconsistentStatusSessionsMarksDeadOwnerStale(t *testing.T) {
@@ -124,11 +187,28 @@ func startSleepProcessForCleanupTest(t *testing.T) *exec.Cmd {
 	return cmd
 }
 
+func startStateRootAppProcessForCleanupTest(t *testing.T, stateRoot string) *exec.Cmd {
+	t.Helper()
+	appPath := filepath.Join(stateRoot, "run", "app", "onlava-app-test")
+	if err := os.MkdirAll(filepath.Dir(appPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(appPath, []byte("#!/bin/sh\nsleep \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(appPath, "30")
+	configureChildProcess(cmd)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start app path sleep fixture: %v", err)
+	}
+	return cmd
+}
+
 func waitForProcessExitForCleanupTest(t *testing.T, pid int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if !processAliveForTest(pid) {
+		if info, ok := inspectProcess(pid); !ok || strings.Contains(info.stat, "Z") {
 			return
 		}
 		time.Sleep(25 * time.Millisecond)

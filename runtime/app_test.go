@@ -152,7 +152,11 @@ func TestStartTemporalWorkerRuntimeUsesRegisteredStarter(t *testing.T) {
 		}, nil
 	}
 
-	stop, err := startTemporalWorkerRuntime(context.Background(), AppConfig{Name: "testapp", Role: "worker"})
+	stop, err := startTemporalWorkerRuntime(context.Background(), AppConfig{
+		Name:     "testapp",
+		Role:     "worker",
+		Temporal: TemporalConfig{Enabled: true},
+	})
 	if err != nil {
 		t.Fatalf("startTemporalWorkerRuntime() error = %v", err)
 	}
@@ -164,5 +168,27 @@ func TestStartTemporalWorkerRuntimeUsesRegisteredStarter(t *testing.T) {
 	}
 	if !stopped {
 		t.Fatal("expected stop callback to be invoked")
+	}
+}
+
+func TestStartTemporalWorkerRuntimeDisabledNoops(t *testing.T) {
+	prev := temporalWorkerStarter
+	defer func() { temporalWorkerStarter = prev }()
+
+	called := false
+	temporalWorkerStarter = func(ctx context.Context, cfg AppConfig) (func(context.Context) error, error) {
+		called = true
+		return func(context.Context) error { return nil }, nil
+	}
+
+	stop, err := startTemporalWorkerRuntime(context.Background(), AppConfig{Name: "testapp", Role: "worker"})
+	if err != nil {
+		t.Fatalf("startTemporalWorkerRuntime() error = %v", err)
+	}
+	if called {
+		t.Fatal("expected disabled temporal worker runtime to skip registered starter")
+	}
+	if err := stop(context.Background()); err != nil {
+		t.Fatalf("stop() error = %v", err)
 	}
 }

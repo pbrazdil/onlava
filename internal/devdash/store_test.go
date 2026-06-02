@@ -1,9 +1,13 @@
 package devdash
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,6 +59,269 @@ func TestOpenStorePersistsJSONState(t *testing.T) {
 	}
 	if len(requests) != 1 || requests[0].Title != "Persisted" {
 		t.Fatalf("persisted requests = %+v", requests)
+	}
+}
+
+func TestStoreSaveStateCompactsAndPrunesLocalHistory(t *testing.T) {
+	t.Parallel()
+
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	now := time.Now().UTC()
+	state := newStoreState()
+	for i := 0; i < maxStoredTraceSummaries+5; i++ {
+		traceID := fmt.Sprintf("trace-%04d", i)
+		state.TraceSummaries = append(state.TraceSummaries, storeTraceSummary(TraceSummary{
+			AppID:         "app-test",
+			SessionID:     "session-a",
+			TraceID:       traceID,
+			SpanID:        "root",
+			Type:          "REQUEST",
+			IsRoot:        true,
+			StartedAt:     now.Add(time.Duration(i) * time.Millisecond),
+			DurationNanos: uint64(time.Millisecond),
+			ServiceName:   "tasks",
+		}))
+	}
+	for i := 0; i < maxStoredTraceEvents+5; i++ {
+		traceID := fmt.Sprintf("trace-%04d", i)
+		state.TraceEvents = append(state.TraceEvents, storeTraceEvent(TraceEvent{
+			AppID:     "app-test",
+			SessionID: "session-a",
+			TraceID:   traceID,
+			SpanID:    "root",
+			EventID:   uint64(i + 1),
+			EventTime: now.Add(time.Duration(i) * time.Millisecond),
+			Event: map[string]any{
+				"request": map[string]any{
+					"method": "POST",
+					"path":   "/tasks/items",
+					"body":   strings.Repeat("x", 128),
+				},
+			},
+		}))
+	}
+
+	if err := store.saveState(state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	data, err := os.ReadFile(store.path)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if bytes.Contains(data, []byte("\n  \"")) {
+		t.Fatalf("state was written with pretty indentation")
+	}
+
+	var saved storeState
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("unmarshal saved state: %v", err)
+	}
+	if len(saved.TraceSummaries) != maxStoredTraceSummaries {
+		t.Fatalf("trace summary count = %d, want %d", len(saved.TraceSummaries), maxStoredTraceSummaries)
+	}
+	if len(saved.TraceEvents) != maxStoredTraceEvents {
+		t.Fatalf("trace event count = %d, want %d", len(saved.TraceEvents), maxStoredTraceEvents)
+	}
+	if got := saved.TraceSummaries[0].TraceID; got != "trace-0005" {
+		t.Fatalf("first kept trace summary = %q, want trace-0005", got)
+	}
+	if got := saved.TraceEvents[0].TraceID; got != "trace-0005" {
+		t.Fatalf("first kept trace event = %q, want trace-0005", got)
+	}
+}
+
+func TestStoreDeferredObservabilityWritesFlush(t *testing.T) {
+	t.Parallel()
+
+	cacheRoot := t.TempDir()
+	store, err := OpenStore(cacheRoot)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.AppendTraceSummaryDeferred(ctx, &TraceSummary{
+		AppID:         "app-test",
+		SessionID:     "session-a",
+		TraceID:       "trace-deferred",
+		SpanID:        "root",
+		Type:          "REQUEST",
+		IsRoot:        true,
+		StartedAt:     now,
+		DurationNanos: uint64(time.Millisecond),
+		ServiceName:   "tasks",
+	}); err != nil {
+		t.Fatalf("append deferred summary: %v", err)
+	}
+	if err := store.AppendTraceEventDeferred(ctx, &TraceEvent{
+		AppID:     "app-test",
+		SessionID: "session-a",
+		TraceID:   "trace-deferred",
+		SpanID:    "root",
+		EventID:   1,
+		EventTime: now,
+		Event:     map[string]any{"request": map[string]any{"path": "/tasks"}},
+	}); err != nil {
+		t.Fatalf("append deferred event: %v", err)
+	}
+
+	events, err := store.GetTraceEventsForSession(ctx, "app-test", "session-a", "trace-deferred", "root")
+	if err != nil {
+		t.Fatalf("get in-memory deferred event: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("in-memory deferred event count = %d, want 1", len(events))
+	}
+	if err := store.Flush(ctx); err != nil {
+		t.Fatalf("flush deferred state: %v", err)
+	}
+
+	reopened, err := OpenStore(cacheRoot)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	defer reopened.Close()
+	summaries, err := reopened.GetTraceSummariesForSession(ctx, "app-test", "session-a", "trace-deferred")
+	if err != nil {
+		t.Fatalf("get flushed summary: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("flushed summary count = %d, want 1", len(summaries))
+	}
+}
+
+func TestStoreFlushErrorAllowsDeferredRetry(t *testing.T) {
+	t.Parallel()
+
+	store := &Store{
+		path: filepath.Join(t.TempDir(), "missing", "devdash.json"),
+		shared: &storeShared{
+			state:       newStoreState(),
+			dirty:       true,
+			savePending: true,
+		},
+	}
+	if err := store.Flush(context.Background()); err == nil {
+		t.Fatal("Flush returned nil for unwritable store path")
+	}
+	if !store.shared.dirty {
+		t.Fatal("failed flush cleared dirty state")
+	}
+	if store.shared.savePending {
+		t.Fatal("failed flush left savePending set, blocking retry scheduling")
+	}
+}
+
+func TestStoreDeferredFlushDoesNotOverwriteExternalClear(t *testing.T) {
+	t.Parallel()
+
+	cacheRoot := t.TempDir()
+	store, err := OpenStore(cacheRoot)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	ctx := context.Background()
+	if err := store.AppendTraceSummary(ctx, &TraceSummary{
+		AppID:         "app-test",
+		SessionID:     "session-a",
+		TraceID:       "trace-old",
+		SpanID:        "root",
+		Type:          "REQUEST",
+		IsRoot:        true,
+		StartedAt:     time.Now().UTC(),
+		DurationNanos: uint64(time.Millisecond),
+		ServiceName:   "tasks",
+	}); err != nil {
+		t.Fatalf("append old trace: %v", err)
+	}
+	if err := store.AppendTraceSummaryDeferred(ctx, &TraceSummary{
+		AppID:         "app-test",
+		SessionID:     "session-a",
+		TraceID:       "trace-deferred",
+		SpanID:        "root",
+		Type:          "REQUEST",
+		IsRoot:        true,
+		StartedAt:     time.Now().UTC(),
+		DurationNanos: uint64(time.Millisecond),
+		ServiceName:   "tasks",
+	}); err != nil {
+		t.Fatalf("append deferred trace: %v", err)
+	}
+
+	external := &Store{path: store.path, shared: &storeShared{}}
+	if err := external.ClearTraces(ctx, "app-test"); err != nil {
+		t.Fatalf("external clear traces: %v", err)
+	}
+	if err := store.Flush(ctx); err != nil {
+		t.Fatalf("flush after external clear: %v", err)
+	}
+
+	reopened := &Store{path: store.path, shared: &storeShared{}}
+	summaries, err := reopened.GetTraceSummaries(ctx, "app-test", "trace-old")
+	if err != nil {
+		t.Fatalf("get old trace: %v", err)
+	}
+	if len(summaries) != 0 {
+		t.Fatalf("external clear was overwritten, old summaries = %+v", summaries)
+	}
+}
+
+func TestStoreHandlesForSamePathShareState(t *testing.T) {
+	t.Parallel()
+
+	cacheRoot := t.TempDir()
+	first, err := OpenStore(cacheRoot)
+	if err != nil {
+		t.Fatalf("open first store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = first.Close()
+	})
+	second, err := OpenStore(cacheRoot)
+	if err != nil {
+		t.Fatalf("open second store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = second.Close()
+	})
+
+	ctx := context.Background()
+	if err := first.AppendTraceSummary(ctx, &TraceSummary{
+		AppID:         "app-test",
+		SessionID:     "session-a",
+		TraceID:       "trace-shared",
+		SpanID:        "root",
+		Type:          "REQUEST",
+		IsRoot:        true,
+		StartedAt:     time.Now().UTC(),
+		DurationNanos: uint64(time.Millisecond),
+		ServiceName:   "tasks",
+	}); err != nil {
+		t.Fatalf("append trace: %v", err)
+	}
+	if err := second.ClearTracesForSession(ctx, "app-test", "session-a"); err != nil {
+		t.Fatalf("clear traces: %v", err)
+	}
+	summaries, err := first.GetTraceSummariesForSession(ctx, "app-test", "session-a", "trace-shared")
+	if err != nil {
+		t.Fatalf("get traces: %v", err)
+	}
+	if len(summaries) != 0 {
+		t.Fatalf("first store saw stale summaries after second store cleared: %+v", summaries)
 	}
 }
 

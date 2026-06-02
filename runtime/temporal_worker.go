@@ -37,6 +37,10 @@ func StartTemporalRuntime(ctx context.Context, cfg AppConfig) (func(context.Cont
 }
 
 func startTemporalWorkerRuntime(ctx context.Context, cfg AppConfig) (func(context.Context) error, error) {
+	info := ResolveTemporalConfig(cfg.Name, cfg.Temporal)
+	if !info.Enabled {
+		return func(context.Context) error { return nil }, nil
+	}
 	if temporalWorkerStarter == nil {
 		return func(context.Context) error { return nil }, nil
 	}

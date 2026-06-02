@@ -59,6 +59,9 @@ func runDetachedDev(args []string, opts devOptions) error {
 	if client == nil {
 		return fmt.Errorf("onlava dev --detach requires the local onlava agent")
 	}
+	if err := rejectDetachedDuplicateDevSession(ctx, client, root, opts); err != nil {
+		return err
+	}
 
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
@@ -110,6 +113,17 @@ func runDetachedDev(args []string, opts devOptions) error {
 		DownCommand:   fmt.Sprintf("onlava down --session %s", session.SessionID),
 		Session:       session,
 	})
+}
+
+func rejectDetachedDuplicateDevSession(ctx context.Context, client *localagent.Client, root string, opts devOptions) error {
+	if client == nil || opts.NewSession {
+		return nil
+	}
+	sessions, err := client.List(ctx, root)
+	if err != nil {
+		return err
+	}
+	return rejectLiveDuplicateDevSession(root, opts.SessionID, sessions)
 }
 
 func detachedDevChildMode() bool {

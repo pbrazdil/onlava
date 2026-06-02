@@ -151,7 +151,7 @@ func TestRunOnlavaDoctorDiscoversAppSensitiveChecks(t *testing.T) {
 			Proxy: appcfg.ProxyConfig{Frontends: map[string]appcfg.FrontendConfig{
 				"web": {Host: "web.demo.localhost"},
 			}},
-			Temporal: appcfg.TemporalConfig{TypeScript: appcfg.TemporalTypeScript{Enabled: true}},
+			Temporal: appcfg.TemporalConfig{Enabled: true, TypeScript: appcfg.TemporalTypeScript{Enabled: true}},
 			Dev: appcfg.DevConfig{Services: map[string]appcfg.DevServiceConfig{
 				"postgres": {Kind: "postgres", Image: "postgres:18"},
 			}},

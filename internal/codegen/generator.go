@@ -342,12 +342,8 @@ func appConfigLiteral(appModel *model.App, cfg appcfg.Config) string {
 	return "onlavaruntime.AppConfig{" + strings.Join(fields, ", ") + "}"
 }
 
-func effectiveTemporalConfig(appModel *model.App, cfg appcfg.Config) appcfg.TemporalConfig {
-	temporal := cfg.Temporal
-	if appUsesTemporalRuntime(appModel) {
-		temporal.Enabled = true
-	}
-	return temporal
+func effectiveTemporalConfig(_ *model.App, cfg appcfg.Config) appcfg.TemporalConfig {
+	return cfg.Temporal
 }
 
 func appUsesTemporalRuntime(appModel *model.App) bool {

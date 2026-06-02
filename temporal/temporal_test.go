@@ -61,6 +61,38 @@ func TestNewExternalActivityDoesNotRegisterWorkerDeclaration(t *testing.T) {
 	}
 }
 
+func TestActivityConfigUnkeyedLiteralCompatibility(t *testing.T) {
+	cfg := ActivityConfig{"orders.legacy.go", time.Minute, 2, RetryPolicy{}}
+	if cfg.TaskQueue != "orders.legacy.go" || cfg.StartToClose != time.Minute || cfg.MaxConcurrency != 2 {
+		t.Fatalf("unkeyed ActivityConfig = %#v", cfg)
+	}
+}
+
+func TestActivityHeartbeatOption(t *testing.T) {
+	act := NewExternalActivity[testWorkflowInput, testWorkflowOutput](
+		"payments.Heartbeat/v1",
+		ActivityConfig{TaskQueue: "payments.ts"},
+		WithHeartbeatTimeout(5*time.Second),
+	)
+	if got := act.temporalActivityOptions().HeartbeatTimeout; got != 5*time.Second {
+		t.Fatalf("HeartbeatTimeout = %s, want 5s", got)
+	}
+}
+
+func TestActivityHeartbeatOptionRejectsNegative(t *testing.T) {
+	defer func() {
+		got := recover()
+		if got == nil || !strings.Contains(fmt.Sprint(got), "HeartbeatTimeout cannot be negative") {
+			t.Fatalf("panic = %v, want HeartbeatTimeout validation", got)
+		}
+	}()
+	_ = NewExternalActivity[testWorkflowInput, testWorkflowOutput](
+		"payments.NegativeHeartbeat/v1",
+		ActivityConfig{TaskQueue: "payments.ts"},
+		WithHeartbeatTimeout(-time.Second),
+	)
+}
+
 func TestWorkflowVersioningBehaviorConversion(t *testing.T) {
 	if workflowVersioningBehavior(VersioningDefault) != workflow.VersioningBehaviorUnspecified {
 		t.Fatal("default behavior should leave registration behavior unspecified")

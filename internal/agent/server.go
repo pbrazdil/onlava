@@ -490,12 +490,16 @@ func (s *Server) handleSession(w http.ResponseWriter, req *http.Request) {
 	case http.MethodDelete:
 		ownerPID := 0
 		if raw := strings.TrimSpace(req.URL.Query().Get("owner_pid")); raw != "" {
-			parsed, err := strconv.Atoi(raw)
-			if err != nil || parsed <= 0 {
-				http.Error(w, "owner_pid must be a positive integer", http.StatusBadRequest)
-				return
+			if raw == "none" {
+				ownerPID = -1
+			} else {
+				parsed, err := strconv.Atoi(raw)
+				if err != nil || parsed <= 0 {
+					http.Error(w, "owner_pid must be a positive integer or none", http.StatusBadRequest)
+					return
+				}
+				ownerPID = parsed
 			}
-			ownerPID = parsed
 		}
 		session, ok, err := s.registry.DeleteOwned(id, ownerPID)
 		if err != nil {

@@ -414,14 +414,20 @@ func downCommand(args []string) error {
 		opts.DB = true
 		opts.State = true
 	}
-	sessionID := session.SessionID
 	appRoot := session.AppRoot
 	if strings.TrimSpace(appRoot) == "" {
 		appRoot, _ = resolveStatusAppRoot(opts.AppRoot)
 	}
-	deletedSession, err := client.Delete(ctx, sessionID, true)
+	if err := stopDeletedSessionProcesses(ctx, session); err != nil {
+		return err
+	}
+	deletedSession, deleted, err := deleteStoppedSessionRecord(ctx, client, session)
 	if err != nil {
 		return err
+	}
+	if !deleted {
+		fmt.Fprintf(os.Stdout, "stopped onlava session %s processes; preserved active session record because the owner changed\n", session.SessionID)
+		return nil
 	}
 	if opts.DB {
 		if err := dropSessionManagedDatabase(ctx, appRoot, deletedSession); err != nil {
@@ -437,6 +443,62 @@ func downCommand(args []string) error {
 	}
 	fmt.Fprintf(os.Stdout, "stopped onlava session %s\n", deletedSession.SessionID)
 	return nil
+}
+
+func deleteStoppedSessionRecord(ctx context.Context, client *localagent.Client, session localagent.Session) (localagent.Session, bool, error) {
+	ownerPID := firstPositiveInt(session.OwnerPID, session.Owner.PID)
+	if ownerPID <= 0 {
+		deletedSession, deleted, err := client.DeleteUnowned(ctx, session.SessionID)
+		if err == nil {
+			if !deleted {
+				return session, false, nil
+			}
+			if strings.TrimSpace(deletedSession.SessionID) == "" {
+				return session, true, nil
+			}
+			return deletedSession, true, nil
+		}
+		if localagent.IsNotFound(err) {
+			return session, true, nil
+		}
+		return localagent.Session{}, false, err
+	}
+	deletedSession, deleted, err := client.DeleteOwned(ctx, session.SessionID, ownerPID, false)
+	if err == nil {
+		if !deleted {
+			return session, false, nil
+		}
+		if strings.TrimSpace(deletedSession.SessionID) == "" {
+			return session, true, nil
+		}
+		return deletedSession, true, nil
+	}
+	if localagent.IsNotFound(err) {
+		return session, true, nil
+	}
+	return localagent.Session{}, false, err
+}
+
+func stopDeletedSessionProcesses(ctx context.Context, session localagent.Session) error {
+	var errs []error
+	seen := map[int]bool{}
+	ownerPID := firstPositiveInt(session.OwnerPID, session.Owner.PID)
+	if ownerPID > 0 && ownerPID != os.Getpid() && shouldSignalSessionOwner(session) {
+		errs = append(errs, stopSessionOwnerPID(ctx, ownerPID))
+		seen[ownerPID] = true
+	}
+	for _, pid := range sessionProcessPIDs(session) {
+		if pid <= 0 || pid == os.Getpid() || seen[pid] {
+			continue
+		}
+		if err := stopStaleSessionChildPID(ctx, pid); err != nil {
+			errs = append(errs, err)
+		}
+		seen[pid] = true
+	}
+	errs = append(errs, stopSessionCommandProcesses(ctx, session, seen))
+	errs = append(errs, stopSessionEnvProcesses(ctx, session, seen))
+	return errors.Join(errs...)
 }
 
 func resolveDownSession(ctx context.Context, client *localagent.Client, opts downOptions) (localagent.Session, error) {

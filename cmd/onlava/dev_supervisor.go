@@ -435,14 +435,16 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	if err := validateLocalSecretsFiles(s.root); err != nil {
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
-	if err := s.console.Phase("Validating TypeScript Temporal workers", func() error {
-		tsModel = workers.DiscoverTypeScriptActivities(s.root)
-		if diagnostics := workers.ValidateTypeScriptContracts(tsModel, temporalExternalActivityDeclarations(s.root, model), nativeGoTemporalDeclarations(s.root, model)); len(diagnostics) > 0 {
-			return workers.DiagnosticsError(diagnostics)
+	if s.cfg.Temporal.Enabled {
+		if err := s.console.Phase("Validating TypeScript Temporal workers", func() error {
+			tsModel = workers.DiscoverTypeScriptActivities(s.root)
+			if diagnostics := workers.ValidateTypeScriptContracts(tsModel, temporalExternalActivityDeclarations(s.root, model), nativeGoTemporalDeclarations(s.root, model)); len(diagnostics) > 0 {
+				return workers.DiagnosticsError(diagnostics)
+			}
+			return nil
+		}); err != nil {
+			return s.handleCompileError(ctx, metadata, apiEncoding, err)
 		}
-		return nil
-	}); err != nil {
-		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
 	s.cfg = effectiveDevConfigForModel(s.cfg, model)
 	s.cfg = effectiveDevConfigForTypeScriptWorker(s.cfg, tsModel)
@@ -613,10 +615,9 @@ func (s *devSupervisor) reloadConfig() (app.Config, error) {
 }
 
 func effectiveDevConfigForModel(cfg app.Config, appModel *model.App) app.Config {
-	if !codegen.AppUsesTemporalRuntime(appModel) {
+	if !cfg.Temporal.Enabled || !codegen.AppUsesTemporalRuntime(appModel) {
 		return cfg
 	}
-	cfg.Temporal.Enabled = true
 	if strings.TrimSpace(cfg.Temporal.Mode) == "" {
 		cfg.Temporal.Mode = "local"
 	}
@@ -625,7 +626,13 @@ func effectiveDevConfigForModel(cfg app.Config, appModel *model.App) app.Config 
 }
 
 func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, metadata, apiEncoding json.RawMessage) (*runningApp, error) {
-	cmd := exec.Command(result.Binary)
+	binary := result.Binary
+	if sessionBinary, err := prepareSessionAppBinary(s.agentSession, result.Binary); err != nil {
+		return nil, err
+	} else if sessionBinary != "" {
+		binary = sessionBinary
+	}
+	cmd := exec.Command(binary)
 	configureChildProcess(cmd)
 	cmd.WaitDelay = stopTimeout + time.Second
 	cmd.Dir = s.root
@@ -703,6 +710,64 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		return nil, err
 	}
 	return app, nil
+}
+
+func prepareSessionAppBinary(session *localagent.Session, binary string) (string, error) {
+	if session == nil || strings.TrimSpace(session.StateRoot) == "" || strings.TrimSpace(binary) == "" {
+		return "", nil
+	}
+	dir := filepath.Join(session.StateRoot, "run", "app")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	name := filepath.Base(binary)
+	if strings.TrimSpace(name) == "" || name == "." || name == string(filepath.Separator) {
+		name = "onlava-app"
+	}
+	if !strings.HasPrefix(name, "onlava-app") {
+		name = "onlava-app-" + name
+	}
+	target := filepath.Join(dir, name)
+	_ = os.Remove(target)
+	if err := os.Symlink(binary, target); err == nil {
+		return target, nil
+	} else {
+		linkErr := err
+		if err := os.Link(binary, target); err == nil {
+			return target, nil
+		} else if copyErr := copySessionAppBinary(binary, target); copyErr == nil {
+			return target, nil
+		} else {
+			return "", fmt.Errorf("prepare session app binary %s: symlink: %v; hardlink/copy: %w", target, linkErr, copyErr)
+		}
+	}
+}
+
+func copySessionAppBinary(source, target string) error {
+	stat, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, stat.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(target)
+		return copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(target)
+		return closeErr
+	}
+	return nil
 }
 
 func (s *devSupervisor) runDevSetup(ctx context.Context) error {

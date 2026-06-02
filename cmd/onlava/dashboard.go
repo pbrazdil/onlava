@@ -441,7 +441,7 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 				report.TraceSummary.SessionID = report.SessionID
 			}
 			fillTraceSummaryIdentity(report.TraceSummary, report)
-			_ = s.dashboardStore().AppendTraceSummary(req.Context(), report.TraceSummary)
+			_ = s.dashboardStore().AppendTraceSummaryDeferred(req.Context(), report.TraceSummary)
 			go s.exportVictoriaTraceSummary(context.Background(), report.TraceSummary)
 			s.notify(&devdash.Notification{
 				Method: "trace/new",
@@ -459,7 +459,7 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 				report.TraceEvent.SessionID = report.SessionID
 			}
 			fillTraceEventIdentity(report.TraceEvent, report)
-			_ = s.dashboardStore().AppendTraceEvent(req.Context(), report.TraceEvent)
+			_ = s.dashboardStore().AppendTraceEventDeferred(req.Context(), report.TraceEvent)
 		}
 	case "log":
 		if report.LogEvent != nil {
@@ -468,7 +468,7 @@ func (s *dashboardServer) handleReport(w http.ResponseWriter, req *http.Request)
 				report.LogEvent.SessionID = report.SessionID
 			}
 			fillLogEventIdentity(report.LogEvent, report)
-			_ = s.dashboardStore().WriteLogEvent(req.Context(), report.LogEvent)
+			_ = s.dashboardStore().WriteLogEventDeferred(req.Context(), report.LogEvent)
 			go s.exportVictoriaLogEvent(report.LogEvent)
 		}
 	}

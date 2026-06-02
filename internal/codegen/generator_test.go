@@ -216,8 +216,8 @@ var Fulfill = temporal.NewWorkflow[Input, Output]("orders.Fulfill/v1", temporal.
 	if !strings.Contains(got, `_ "example.com/runtimeimports/workers"`) {
 		t.Fatalf("expected generated main to import temporal declaration package, got:\n%s", got)
 	}
-	if !strings.Contains(got, `Temporal: onlavaruntime.TemporalConfig{Enabled: true}`) {
-		t.Fatalf("expected generated main to enable temporal runtime, got:\n%s", got)
+	if strings.Contains(got, `Temporal: onlavaruntime.TemporalConfig{Enabled: true}`) {
+		t.Fatalf("expected generated main to leave temporal disabled without explicit config, got:\n%s", got)
 	}
 }
 

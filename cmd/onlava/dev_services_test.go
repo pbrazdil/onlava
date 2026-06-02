@@ -437,8 +437,8 @@ func TestCleanupManagedElectricStreamProcessesStopsSameSessionProcess(t *testing
 	if err != nil {
 		t.Fatalf("cleanupManagedElectricStreamProcesses: %v", err)
 	}
-	_, _ = stale.Process.Wait()
 	waitForProcessExitForCleanupTest(t, stale.Process.Pid)
+	_, _ = stale.Process.Wait()
 }
 
 func TestCleanupManagedElectricStreamProcessesFailsForLiveUnownedStream(t *testing.T) {

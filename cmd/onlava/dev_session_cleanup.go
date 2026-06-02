@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ func cleanupStaleDevSessionProcesses(ctx context.Context, current localagent.Ses
 		}
 		errs = append(errs, stopStaleRegisteredSessionProcesses(ctx, current, session, seen))
 	}
+	errs = append(errs, stopSessionCommandProcesses(ctx, current, seen))
 	errs = append(errs, stopSessionEnvProcesses(ctx, current, seen))
 	return errors.Join(errs...)
 }
@@ -168,6 +170,49 @@ func looksLikeOnlavaSessionChildProcess(info procInfo) bool {
 	return strings.Contains(command, "/.onlava/") ||
 		strings.Contains(command, "onlava-app-") ||
 		strings.Contains(command, "worker.ts")
+}
+
+func stopSessionCommandProcesses(ctx context.Context, current localagent.Session, seen map[int]bool) error {
+	stateRoot := filepath.ToSlash(cleanAbsPath(current.StateRoot))
+	if stateRoot == "" {
+		return nil
+	}
+	output, err := exec.Command("ps", "-axo", "pid=,stat=,command=").Output()
+	if err != nil {
+		return nil
+	}
+	var errs []error
+	for _, line := range strings.Split(string(output), "\n") {
+		pid, stat, command, ok := parsePSCommandLine(line)
+		if !ok || pid <= 0 || pid == os.Getpid() || strings.Contains(stat, "Z") || seen[pid] {
+			continue
+		}
+		if !commandMatchesSessionStateRoot(command, stateRoot) {
+			continue
+		}
+		if err := stopStaleSessionChildPID(ctx, pid); err != nil {
+			errs = append(errs, err)
+		}
+		seen[pid] = true
+	}
+	return errors.Join(errs...)
+}
+
+func parsePSCommandLine(line string) (int, string, string, bool) {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) < 3 {
+		return 0, "", "", false
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return 0, "", "", false
+	}
+	return pid, fields[1], strings.Join(fields[2:], " "), true
+}
+
+func commandMatchesSessionStateRoot(command, stateRoot string) bool {
+	command = filepath.ToSlash(strings.TrimSpace(command))
+	return strings.Contains(command, stateRoot+"/") && strings.Contains(command, "onlava-app")
 }
 
 func atoiPID(value string) int {

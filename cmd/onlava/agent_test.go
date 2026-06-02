@@ -124,6 +124,174 @@ func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 	}
 }
 
+func TestDeleteStoppedSessionRecordToleratesAlreadyDeletedSession(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("agent shutdown: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for agent shutdown")
+		}
+	}()
+
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	appRoot := t.TempDir()
+	session, err := client.Register(ctx, localagent.RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   appRoot,
+		Branch:    "feature/self-delete",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Delete(ctx, session.SessionID, false); err != nil {
+		t.Fatal(err)
+	}
+	deleted, ok, err := deleteStoppedSessionRecord(ctx, client, session)
+	if err != nil {
+		t.Fatalf("deleteStoppedSessionRecord: %v", err)
+	}
+	if !ok {
+		t.Fatal("already deleted session should be treated as deleted")
+	}
+	if deleted.SessionID != session.SessionID || deleted.StateRoot != session.StateRoot {
+		t.Fatalf("deleted fallback session = %+v, want %+v", deleted, session)
+	}
+}
+
+func TestDeleteStoppedSessionRecordPreservesChangedOwner(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("agent shutdown: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for agent shutdown")
+		}
+	}()
+
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	appRoot := t.TempDir()
+	session, err := client.Register(ctx, localagent.RegisterRequest{
+		BaseAppID:  "demo",
+		AppRoot:    appRoot,
+		Branch:     "feature/owner-change",
+		OwnerPID:   os.Getpid(),
+		ClaimOwner: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := session
+	stale.OwnerPID = 99999992
+	stale.Owner = localagent.Owner{PID: stale.OwnerPID}
+	if _, deleted, err := deleteStoppedSessionRecord(ctx, client, stale); err != nil {
+		t.Fatalf("deleteStoppedSessionRecord: %v", err)
+	} else if deleted {
+		t.Fatal("stale owner delete should not delete current session record")
+	}
+	sessions, err := client.List(ctx, appRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].OwnerPID != os.Getpid() {
+		t.Fatalf("sessions after stale owner delete = %+v", sessions)
+	}
+}
+
+func TestDeleteStoppedSessionRecordPreservesOwnerClaimedFromOwnerlessSession(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("agent shutdown: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for agent shutdown")
+		}
+	}()
+
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	appRoot := t.TempDir()
+	ownerless, err := client.Register(ctx, localagent.RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   appRoot,
+		Branch:    "feature/ownerless-claim",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Register(ctx, localagent.RegisterRequest{
+		BaseAppID:  "demo",
+		AppRoot:    appRoot,
+		SessionID:  ownerless.SessionID,
+		OwnerPID:   os.Getpid(),
+		ClaimOwner: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, deleted, err := deleteStoppedSessionRecord(ctx, client, ownerless); err != nil {
+		t.Fatalf("deleteStoppedSessionRecord: %v", err)
+	} else if deleted {
+		t.Fatal("ownerless stale delete should not delete newly claimed session record")
+	}
+	sessions, err := client.List(ctx, appRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].OwnerPID != os.Getpid() {
+		t.Fatalf("sessions after ownerless stale delete = %+v", sessions)
+	}
+}
+
 func TestParseDownArgsCleanupFlags(t *testing.T) {
 	t.Parallel()
 

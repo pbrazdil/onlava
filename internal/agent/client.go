@@ -24,6 +24,26 @@ type Client struct {
 	http       *http.Client
 }
 
+type HTTPError struct {
+	Method     string
+	Path       string
+	Status     string
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("agent %s %s failed: %s: %s", e.Method, e.Path, e.Status, strings.TrimSpace(e.Body))
+}
+
+func IsNotFound(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
+}
+
 type StartOptions struct {
 	RouterAddr string
 	RouterTLS  bool
@@ -185,6 +205,15 @@ func (c *Client) DeleteOwned(ctx context.Context, sessionID string, ownerPID int
 	return out.Session, out.Deleted, nil
 }
 
+func (c *Client) DeleteUnowned(ctx context.Context, sessionID string) (Session, bool, error) {
+	path := "/v1/sessions/" + url.PathEscape(sessionID) + "?owner_pid=none"
+	var out RegisterResponse
+	if err := c.doJSON(ctx, http.MethodDelete, path, nil, &out); err != nil {
+		return Session{}, false, err
+	}
+	return out.Session, out.Deleted, nil
+}
+
 func (c *Client) UpsertSubstrate(ctx context.Context, req UpsertSubstrateRequest) (Substrate, error) {
 	var out SubstrateResponse
 	if err := c.postJSON(ctx, "/v1/substrates", req, &out); err != nil {
@@ -248,7 +277,13 @@ func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) e
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return fmt.Errorf("agent %s %s failed: %s: %s", method, path, resp.Status, strings.TrimSpace(string(data)))
+		return &HTTPError{
+			Method:     method,
+			Path:       path,
+			Status:     resp.Status,
+			StatusCode: resp.StatusCode,
+			Body:       string(data),
+		}
 	}
 	if out == nil {
 		return nil

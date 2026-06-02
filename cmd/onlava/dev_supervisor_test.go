@@ -324,10 +324,71 @@ func TestTemporalDevHelpers(t *testing.T) {
 	}
 }
 
-func TestTypeScriptWorkerAutoStartEnablesTemporalDevServer(t *testing.T) {
+func TestPrepareSessionAppBinaryUsesSessionStateRoot(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), ".onlava", "sessions", "review-a")
+	buildDir := t.TempDir()
+	binary := filepath.Join(buildDir, "onlava-app-abcdef")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := prepareSessionAppBinary(&localagent.Session{StateRoot: stateRoot}, binary)
+	if err != nil {
+		t.Fatalf("prepareSessionAppBinary: %v", err)
+	}
+	if !strings.HasPrefix(got, filepath.Join(stateRoot, "run", "app")+string(filepath.Separator)) {
+		t.Fatalf("session app binary = %q, want under state root %q", got, stateRoot)
+	}
+	if filepath.Base(got) != "onlava-app-abcdef" {
+		t.Fatalf("session app binary base = %q", filepath.Base(got))
+	}
+	if _, err := os.Stat(got); err != nil {
+		t.Fatalf("session app binary missing: %v", err)
+	}
+}
+
+func TestPrepareSessionAppBinaryErrorsWhenSessionTargetBlocked(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), ".onlava", "sessions", "review-a")
+	buildDir := t.TempDir()
+	binary := filepath.Join(buildDir, "onlava-app-abcdef")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(stateRoot, "run", "app", filepath.Base(binary))
+	if err := os.MkdirAll(filepath.Join(blocked, "child"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := prepareSessionAppBinary(&localagent.Session{StateRoot: stateRoot}, binary)
+	if err == nil {
+		t.Fatalf("prepareSessionAppBinary returned %q, want blocked target error", got)
+	}
+}
+
+func TestTypeScriptWorkerAutoStartRequiresTemporalEnabled(t *testing.T) {
 	cfg := app.Config{
 		Name: "demo",
 		Temporal: app.TemporalConfig{
+			TypeScript: app.TemporalTypeScript{
+				Enabled:   true,
+				AutoStart: true,
+			},
+		},
+	}
+	ts := workers.TypeScriptWorkerModel{Activities: []workers.TypeScriptActivity{{
+		Name:      "house.RenderRoofPreview/v1",
+		TaskQueue: "onlv.house.preview.ts",
+	}}}
+
+	got := effectiveDevConfigForTypeScriptWorker(cfg, ts)
+	if got.Temporal.Enabled || got.Temporal.Local.AutoStart {
+		t.Fatalf("TypeScript Temporal auto-start enabled temporal without explicit opt-in: %+v", got.Temporal)
+	}
+}
+
+func TestTypeScriptWorkerAutoStartEnablesTemporalDevServerWhenExplicit(t *testing.T) {
+	cfg := app.Config{
+		Name: "demo",
+		Temporal: app.TemporalConfig{
+			Enabled: true,
 			TypeScript: app.TemporalTypeScript{
 				Enabled:   true,
 				AutoStart: true,
@@ -349,6 +410,7 @@ func TestTypeScriptWorkerAutoStartRequiresActivity(t *testing.T) {
 	cfg := app.Config{
 		Name: "demo",
 		Temporal: app.TemporalConfig{
+			Enabled: true,
 			TypeScript: app.TemporalTypeScript{
 				Enabled:   true,
 				AutoStart: true,

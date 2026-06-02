@@ -251,7 +251,7 @@ Common failure: relying on globals outside request handling. Pass context or act
 
 ## Temporal Workflow Or Activity
 
-Use `github.com/pbrazdil/onlava/temporal` for beta workflow and activity declarations. Packages that call `temporal.NewWorkflow` or `temporal.NewActivity` are imported by generated main so worker processes can register them. Enable `temporal.enabled` in `.onlava.json`, use `onlava dev` for local combined API/worker execution, and use `onlava worker` for worker-only processes. Set `ActivityConfig.MaxConcurrency` when a dedicated task queue should cap concurrent activity executions for resource-heavy work.
+Use `github.com/pbrazdil/onlava/temporal` for beta workflow and activity declarations. Packages that call `temporal.NewWorkflow` or `temporal.NewActivity` are imported by generated main so worker processes can register them. Set `temporal.enabled: true` in `.onlava.json` to opt in; Temporal remains off when the field is omitted, even if declarations or TypeScript worker settings are present. Use `onlava dev` for local combined API/worker execution, and use `onlava worker` for worker-only processes. Set `ActivityConfig.MaxConcurrency` when a dedicated task queue should cap concurrent activity executions for resource-heavy work, and pass `temporal.WithHeartbeatTimeout(...)` when a workflow activity needs a heartbeat timeout.
 
 ## Cron Job
 

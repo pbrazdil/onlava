@@ -247,6 +247,9 @@ func (r *Registry) delete(id string, ownerPID int) (Session, bool, error) {
 	if !ok {
 		return Session{}, false, nil
 	}
+	if ownerPID < 0 && firstPositive(session.OwnerPID, session.Owner.PID) > 0 {
+		return session, false, nil
+	}
 	if ownerPID > 0 && firstPositive(session.OwnerPID, session.Owner.PID) != ownerPID {
 		return session, false, nil
 	}

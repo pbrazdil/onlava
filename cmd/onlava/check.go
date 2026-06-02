@@ -87,8 +87,10 @@ func runOnlavaCheck(ctx context.Context, stdout io.Writer, args []string) error 
 		return renderCheckFailure(stdout, opts.JSON, appInfo, "parse", err)
 	}
 	appInfo.ModulePath = model.ModulePath
-	if diagnostics := typeScriptTemporalDiagnostics(appRoot, model); len(diagnostics) > 0 {
-		return renderCheckFailure(stdout, opts.JSON, appInfo, "temporal-typescript", workers.DiagnosticsError(diagnostics))
+	if cfg.Temporal.Enabled {
+		if diagnostics := typeScriptTemporalDiagnostics(appRoot, model); len(diagnostics) > 0 {
+			return renderCheckFailure(stdout, opts.JSON, appInfo, "temporal-typescript", workers.DiagnosticsError(diagnostics))
+		}
 	}
 
 	result, err := build.Prepare(appRoot, model, cfg, build.PrepareOptions{})

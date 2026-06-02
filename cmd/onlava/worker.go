@@ -271,6 +271,9 @@ func runWorkerTypeScript(opts workerTypeScriptOptions, stdout io.Writer) error {
 	if opts.GenerateOnly {
 		return nil
 	}
+	if !cfg.Temporal.Enabled {
+		return fmt.Errorf("onlava worker typescript requires temporal.enabled=true to run; use --generate-only to generate the worker without starting Temporal")
+	}
 	if _, err := ensureTypeScriptWorkerAppDependencies(context.Background(), root, result.OutputDir); err != nil {
 		return err
 	}

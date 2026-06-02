@@ -484,6 +484,26 @@ export const render = activity<RenderInput, RenderOutput>({
 	}
 }
 
+func TestRunWorkerTypeScriptRequiresTemporalEnabledToRun(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTestAppFile(t, root, ".onlava.json", `{"name":"orders","temporal":{"typescript":{"enabled":true}}}`)
+	writeTestAppFile(t, root, "house/preview.worker.ts", `import { activity } from "onlava/worker";
+export type RenderInput = { id: string };
+export type RenderOutput = { url: string };
+export const render = activity<RenderInput, RenderOutput>({
+  name: "house.Render/v1",
+  taskQueue: "onlv.house.preview.ts"
+}, async (_ctx, input) => ({ url: input.id }));
+`)
+	var out bytes.Buffer
+	err := runWorkerTypeScript(workerTypeScriptOptions{AppRoot: root, TaskQueues: []string{"onlv.house.preview.ts"}}, &out)
+	if err == nil || !strings.Contains(err.Error(), "temporal.enabled=true") {
+		t.Fatalf("runWorkerTypeScript error = %v, want temporal.enabled gate", err)
+	}
+}
+
 func TestParseTemporalDeploymentArgs(t *testing.T) {
 	t.Parallel()
 

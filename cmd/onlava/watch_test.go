@@ -345,6 +345,49 @@ func TestPrepareDevAgentSessionNewSessionAddsSuffix(t *testing.T) {
 	waitForTestAgentServer(t, agentDone)
 }
 
+func TestPrepareDevAgentSessionRejectsLiveDuplicateOwner(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	agentDone := startTestAgentServer(t, ctx)
+
+	root := t.TempDir()
+	owner := exec.Command("sleep", "30")
+	if err := owner.Start(); err != nil {
+		t.Fatalf("start owner fixture: %v", err)
+	}
+	defer func() {
+		_ = owner.Process.Kill()
+		_ = owner.Wait()
+	}()
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	sessionID := localagent.SessionID(root, "")
+	if _, err := client.Register(ctx, localagent.RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: sessionID,
+		Status:    "running",
+		OwnerPID:  owner.Process.Pid,
+		Owner:     localagent.CaptureOwner(owner.Process.Pid, "test"),
+	}); err != nil {
+		t.Fatalf("register live owner session: %v", err)
+	}
+
+	_, _, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{})
+	defer restore()
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("prepareDevAgentSession duplicate error = %v, want already running", err)
+	}
+
+	cancel()
+	waitForTestAgentServer(t, agentDone)
+}
+
 func TestRejectLiveDuplicateDevSessionUsesEffectiveOwnerPID(t *testing.T) {
 	root := t.TempDir()
 	owner := exec.Command("sleep", "30")

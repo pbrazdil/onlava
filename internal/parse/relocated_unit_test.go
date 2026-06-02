@@ -124,6 +124,23 @@ func TestAppDiscoverRootAcceptsTemporalConfig(t *testing.T) {
 	}
 }
 
+func TestAppDiscoverRootTemporalRequiresExplicitEnabled(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"name":"temporaloff","temporal":{"mode":"local","local":{"auto_start":true},"typescript":{"enabled":true,"runtime":"bun","auto_start":true}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, cfg, err := appcfg.DiscoverRoot(dir)
+	if err != nil {
+		t.Fatalf("DiscoverRoot returned error: %v", err)
+	}
+	if cfg.Temporal.Enabled {
+		t.Fatalf("temporal.enabled = true without explicit opt-in: %+v", cfg.Temporal)
+	}
+}
+
 func TestAppDiscoverRootAcceptsDevServicesConfig(t *testing.T) {
 	t.Parallel()
 
