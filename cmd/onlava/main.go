@@ -105,7 +105,7 @@ func usageError() error {
     onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
     onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
     onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-    onlava edge install|trust|status|restart|uninstall|privileged [--json]
+    onlava edge install|trust|status|restart|uninstall|dns|privileged [--json]
     onlava status --json [--app-root <path>] [--session <id>] [--watch]
     onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
     onlava prune --older-than <duration> [--app-root <path>] [--json]
@@ -273,7 +273,7 @@ func parseDevArgs(args []string) (devOptions, error) {
 }
 
 func legacyDevProxyError(source string) error {
-	return fmt.Errorf("%s no longer enables the legacy local proxy in `onlava dev`; use the default agent-routed session URLs, or run `onlava edge install` then `onlava edge trust` to prepare trusted local HTTPS", source)
+	return fmt.Errorf("%s no longer enables the legacy local proxy in `onlava dev`; use the default agent-routed session URLs, or run `onlava edge dns install`, `onlava edge privileged install`, `onlava edge install`, then `onlava edge trust` to prepare trusted local HTTPS", source)
 }
 
 func resolveDevListenRequest(opts devOptions) devListenRequest {

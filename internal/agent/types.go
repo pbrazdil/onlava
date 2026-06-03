@@ -12,6 +12,8 @@ const (
 	RouteGrafana   = "grafana"
 	RouteTemporal  = "temporal"
 
+	DefaultRouteBaseDomain = "local.dev"
+
 	SubstrateGrafana  = "grafana"
 	SubstratePostgres = "postgres"
 	SubstrateTemporal = "temporal"

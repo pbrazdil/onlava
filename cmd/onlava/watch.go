@@ -337,32 +337,15 @@ func routeNamespaceForConfig(cfg app.Config) localagent.RouteNamespace {
 	if workspace == "" && len(hosts) == 0 {
 		workspace = sanitizeRouteLabel(cfg.AppID())
 	}
-	baseDomain := ""
-	if workspace != "" {
-		baseDomain = workspace + ".localhost"
-	} else if len(hosts) > 0 {
-		baseDomain = baseDomainFromRouteHosts(hosts)
+	baseDomain := normalizeRouteNamespaceHost(cfg.Proxy.RouteBaseDomain)
+	if baseDomain == "" {
+		baseDomain = localagent.DefaultRouteBaseDomain
 	}
 	return localagent.RouteNamespace{
 		Workspace:  workspace,
 		BaseDomain: baseDomain,
 		Hosts:      hosts,
 	}
-}
-
-func baseDomainFromRouteHosts(hosts map[string]string) string {
-	names := make([]string, 0, len(hosts))
-	for name := range hosts {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		host := hosts[name]
-		if firstDot := strings.IndexByte(host, '.'); firstDot > 0 && firstDot < len(host)-1 {
-			return host[firstDot+1:]
-		}
-	}
-	return ""
 }
 
 func normalizeRouteNamespaceHost(value string) string {

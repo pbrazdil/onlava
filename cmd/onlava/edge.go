@@ -26,6 +26,9 @@ import (
 const (
 	defaultEdgePublicAddr = "127.0.0.1:443"
 	defaultEdgeTargetAddr = "127.0.0.1:19443"
+	defaultEdgeDNSDomain  = localagent.DefaultRouteBaseDomain
+	defaultEdgeDNSListen  = "127.0.0.1:53535"
+	defaultEdgeDNSAddress = "127.0.0.1"
 	edgeHighPortMin       = 19000
 	edgeHighPortMax       = 19999
 	caddyStartupSettle    = 1500 * time.Millisecond
@@ -38,14 +41,21 @@ const (
 )
 
 type edgeOptions struct {
-	JSON bool
+	JSON   bool
+	Domain string
 }
 
 func edgeCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava edge install|trust|status|restart|uninstall|privileged [--json]")
+		return fmt.Errorf("usage: onlava edge install|trust|status|restart|uninstall|dns|privileged [--json]")
 	}
 	cmd := args[0]
+	if cmd == "dns" {
+		return edgeDNSCommand(args[1:])
+	}
+	if cmd == "dns-helper" {
+		return edgeDNSHelperCommand(args[1:])
+	}
 	if cmd == "privileged" {
 		return edgePrivilegedCommand(args[1:])
 	}
@@ -76,11 +86,44 @@ func parseEdgeArgs(args []string) (edgeOptions, error) {
 		switch args[i] {
 		case "--json":
 			opts.JSON = true
+		case "--domain":
+			if i+1 >= len(args) {
+				return edgeOptions{}, fmt.Errorf("missing value for --domain")
+			}
+			i++
+			opts.Domain = normalizeRouteNamespaceHost(args[i])
+			if opts.Domain == "" {
+				return edgeOptions{}, fmt.Errorf("--domain must be a valid domain")
+			}
 		default:
 			return edgeOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	return opts, nil
+}
+
+func edgeDNSCommand(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: onlava edge dns install|status|restart|uninstall [--domain <domain>] [--json]")
+	}
+	cmd := args[0]
+	opts, err := parseEdgeArgs(args[1:])
+	if err != nil {
+		return err
+	}
+	if opts.Domain == "" {
+		opts.Domain = defaultEdgeDNSDomain
+	}
+	switch cmd {
+	case "install", "restart":
+		return edgeDNSInstall(opts)
+	case "status":
+		return edgeDNSStatus(opts)
+	case "uninstall":
+		return edgeDNSUninstall(opts)
+	default:
+		return fmt.Errorf("unknown edge dns command %q", cmd)
+	}
 }
 
 func edgeRestart(opts edgeOptions) error {
@@ -168,6 +211,12 @@ func edgeRestart(opts edgeOptions) error {
 		fmt.Fprintf(os.Stdout, "onlava edge running at https://%s\n", state.PublicAddr)
 		return nil
 	}
+	if !status.DNS.Ready {
+		fmt.Fprintln(os.Stdout, "onlava edge Caddy is prepared, but wildcard local DNS is not installed or healthy.")
+		fmt.Fprintln(os.Stdout, "Run:")
+		fmt.Fprintln(os.Stdout, "  onlava edge dns install")
+		return fmt.Errorf("onlava edge dns is required for browser HTTPS routes under %s", defaultEdgeDNSDomain)
+	}
 	fmt.Fprintln(os.Stdout, "onlava edge Caddy is prepared, but the privileged port 443 listener is not installed or healthy.")
 	fmt.Fprintln(os.Stdout, "Run:")
 	fmt.Fprintln(os.Stdout, "  onlava edge privileged install")
@@ -211,6 +260,8 @@ func edgeStatus(opts edgeOptions) error {
 		fmt.Fprintf(os.Stdout, " (privileged listener missing; run `onlava edge privileged install`)")
 	} else if status.PrivilegedListener.State != "running" {
 		fmt.Fprintf(os.Stdout, " (privileged listener %s)", status.PrivilegedListener.State)
+	} else if !status.DNS.Ready {
+		fmt.Fprintf(os.Stdout, " (dns %s; run `onlava edge dns install`)", status.DNS.DNSMasq.State)
 	}
 	fmt.Fprintln(os.Stdout)
 	return nil
@@ -270,6 +321,586 @@ func edgeUninstall(opts edgeOptions) error {
 	return nil
 }
 
+type edgeDNSState struct {
+	SchemaVersion string    `json:"schema_version"`
+	Status        string    `json:"status"`
+	PID           int       `json:"pid,omitempty"`
+	Domain        string    `json:"domain"`
+	Listen        string    `json:"listen"`
+	Address       string    `json:"address"`
+	Executable    string    `json:"executable,omitempty"`
+	ConfigPath    string    `json:"config_path,omitempty"`
+	LogPath       string    `json:"log_path,omitempty"`
+	ResolverPath  string    `json:"resolver_path,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type edgeDNSStatusResult struct {
+	SchemaVersion  string               `json:"schema_version"`
+	Ready          bool                 `json:"ready"`
+	Domain         string               `json:"domain"`
+	Address        string               `json:"address"`
+	DNSMasq        edgeDNSMasqStatus    `json:"dnsmasq"`
+	Resolver       edgeDNSResolverState `json:"resolver"`
+	InstallCommand string               `json:"install_command"`
+}
+
+type edgeDNSMasqStatus struct {
+	State      string `json:"state"`
+	PID        int    `json:"pid,omitempty"`
+	Listen     string `json:"listen,omitempty"`
+	Executable string `json:"executable,omitempty"`
+	ConfigPath string `json:"config_path,omitempty"`
+	LogPath    string `json:"log_path,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+type edgeDNSResolverState struct {
+	Installed  bool   `json:"installed"`
+	State      string `json:"state"`
+	Path       string `json:"path,omitempty"`
+	Domain     string `json:"domain,omitempty"`
+	Nameserver string `json:"nameserver,omitempty"`
+	Port       string `json:"port,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+func edgeDNSInstall(opts edgeOptions) error {
+	if os.Geteuid() == 0 {
+		return fmt.Errorf("do not run `sudo onlava edge dns install`; run it as your normal user")
+	}
+	ctx := context.Background()
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		return err
+	}
+	if err := localagent.EnsureDirs(paths); err != nil {
+		return err
+	}
+	dnsmasqBin, err := resolveDNSMasqBinary(ctx, paths, true)
+	if err != nil {
+		return err
+	}
+	if err := stopEdgeDNS(paths, 2*time.Second); err != nil {
+		return err
+	}
+	configPath := edgeDNSConfigPath(paths)
+	logPath := edgeDNSLogPath(paths)
+	if err := os.WriteFile(configPath, []byte(dnsmasqEdgeConfig(opts.Domain, defaultEdgeDNSListen, defaultEdgeDNSAddress)), 0o600); err != nil {
+		return err
+	}
+	if err := startEdgeDNS(dnsmasqBin, paths, opts.Domain, defaultEdgeDNSListen, defaultEdgeDNSAddress); err != nil {
+		_ = writeEdgeDNSState(paths, edgeDNSState{
+			Status:       "stopped",
+			Domain:       opts.Domain,
+			Listen:       defaultEdgeDNSListen,
+			Address:      defaultEdgeDNSAddress,
+			Executable:   dnsmasqBin,
+			ConfigPath:   configPath,
+			LogPath:      logPath,
+			ResolverPath: edgeDNSResolverPath(opts.Domain),
+			Error:        err.Error(),
+			UpdatedAt:    time.Now().UTC(),
+		})
+		return err
+	}
+	if err := edgeDNSInstallResolver(opts.Domain, defaultEdgeDNSListen); err != nil {
+		_ = stopEdgeDNS(paths, 2*time.Second)
+		return err
+	}
+	status := edgeDNSStatusFor(paths, opts.Domain)
+	if opts.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(status)
+	}
+	fmt.Fprintf(os.Stdout, "onlava edge dns running for %s at %s\n", opts.Domain, defaultEdgeDNSListen)
+	return nil
+}
+
+func edgeDNSStatus(opts edgeOptions) error {
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		return err
+	}
+	status := edgeDNSStatusFor(paths, opts.Domain)
+	if opts.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(status)
+	}
+	fmt.Fprintf(os.Stdout, "onlava edge dns %s for %s", status.DNSMasq.State, status.Domain)
+	if status.DNSMasq.Listen != "" {
+		fmt.Fprintf(os.Stdout, " at %s", status.DNSMasq.Listen)
+	}
+	if status.Resolver.State != "installed" {
+		fmt.Fprintf(os.Stdout, " (resolver %s; run `%s`)", status.Resolver.State, status.InstallCommand)
+	}
+	fmt.Fprintln(os.Stdout)
+	return nil
+}
+
+func edgeDNSUninstall(opts edgeOptions) error {
+	if os.Geteuid() == 0 {
+		return fmt.Errorf("do not run `sudo onlava edge dns uninstall`; run it as your normal user")
+	}
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		return err
+	}
+	if opts.Domain == "" {
+		opts.Domain = defaultEdgeDNSDomain
+	}
+	if err := stopEdgeDNS(paths, 5*time.Second); err != nil {
+		return err
+	}
+	if err := edgeDNSUninstallResolver(opts.Domain); err != nil {
+		return err
+	}
+	_ = os.Remove(edgeDNSStatePath(paths))
+	if opts.JSON {
+		return edgeDNSStatus(edgeOptions{JSON: true, Domain: opts.Domain})
+	}
+	fmt.Fprintf(os.Stdout, "stopped onlava edge dns for %s\n", opts.Domain)
+	return nil
+}
+
+func resolveDNSMasqBinary(ctx context.Context, paths localagent.Paths, download bool) (string, error) {
+	storeDir := edgeToolchainStoreDir(paths)
+	if status, err := managedToolchainArtifactStatusInDir(storeDir, "dnsmasq"); err == nil && status.ManagedPath != "" && isExecutableFile(status.ManagedPath) {
+		return status.ManagedPath, nil
+	}
+	if !download {
+		return "", fmt.Errorf("managed dnsmasq is not installed in %s; run `onlava edge dns install` with downloads enabled", storeDir)
+	}
+	status, err := syncManagedToolchainArtifactInDir(ctx, storeDir, "dnsmasq")
+	if err != nil {
+		return "", fmt.Errorf("managed dnsmasq is not installed and could not be synced: %w", err)
+	}
+	if status.ManagedPath == "" || !isExecutableFile(status.ManagedPath) {
+		return "", fmt.Errorf("managed dnsmasq is not installed in %s; run `onlava edge dns install` with downloads enabled", storeDir)
+	}
+	return status.ManagedPath, nil
+}
+
+func dnsmasqEdgeConfig(domain, listen, address string) string {
+	host, port := splitHostPort(listen)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port == "" {
+		port = "53535"
+	}
+	return fmt.Sprintf(`no-daemon
+bind-interfaces
+listen-address=%s
+port=%s
+address=/%s/%s
+domain-needed
+bogus-priv
+no-resolv
+`, host, port, domain, address)
+}
+
+func startEdgeDNS(dnsmasqBin string, paths localagent.Paths, domain, listen, address string) error {
+	logPath := edgeDNSLogPath(paths)
+	logOffset := fileSize(logPath)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(dnsmasqBin, "--keep-in-foreground", "--conf-file="+edgeDNSConfigPath(paths))
+	cmd.Env = envpolicy.Environ()
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.Stdin = nil
+	configureDetachedChildProcess(cmd)
+	if err := cmd.Start(); err != nil {
+		_ = logFile.Close()
+		return err
+	}
+	exitCh := make(chan error, 1)
+	go func() {
+		exitCh <- cmd.Wait()
+	}()
+	if err := waitForEdgeDNSStartup(listen, exitCh, logPath, logOffset, caddyStartupSettle); err != nil {
+		_ = signalPID(cmd.Process.Pid, syscall.SIGTERM)
+		_ = logFile.Close()
+		return err
+	}
+	if err := writeEdgeDNSState(paths, edgeDNSState{
+		Status:       "running",
+		PID:          cmd.Process.Pid,
+		Domain:       domain,
+		Listen:       listen,
+		Address:      address,
+		Executable:   dnsmasqBin,
+		ConfigPath:   edgeDNSConfigPath(paths),
+		LogPath:      logPath,
+		ResolverPath: edgeDNSResolverPath(domain),
+		UpdatedAt:    time.Now().UTC(),
+	}); err != nil {
+		_ = signalPID(cmd.Process.Pid, syscall.SIGTERM)
+		_ = logFile.Close()
+		return err
+	}
+	_ = logFile.Close()
+	return nil
+}
+
+func waitForEdgeDNSStartup(listen string, exitCh <-chan error, logPath string, logOffset int64, timeout time.Duration) error {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-exitCh:
+			tail := tailFileFromOffset(logPath, logOffset, 4096)
+			if tail != "" {
+				return fmt.Errorf("dnsmasq exited during startup: %s", tail)
+			}
+			if err != nil {
+				return fmt.Errorf("dnsmasq exited during startup: %w", err)
+			}
+			return fmt.Errorf("dnsmasq exited during startup")
+		case <-deadline.C:
+			tail := tailFileFromOffset(logPath, logOffset, 4096)
+			if tail != "" {
+				return fmt.Errorf("dnsmasq did not listen on %s within %s: %s", listen, timeout, tail)
+			}
+			return fmt.Errorf("dnsmasq did not listen on %s within %s", listen, timeout)
+		case <-ticker.C:
+			conn, err := net.DialTimeout("tcp", listen, 50*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				return nil
+			}
+		}
+	}
+}
+
+func stopEdgeDNS(paths localagent.Paths, timeout time.Duration) error {
+	state, _ := loadEdgeDNSState(edgeDNSStatePath(paths))
+	if state.PID <= 0 || !processAliveForEdge(state.PID) {
+		return nil
+	}
+	_ = signalPID(state.PID, syscall.SIGTERM)
+	deadline := time.Now().Add(timeout)
+	for processAliveForEdge(state.PID) && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if processAliveForEdge(state.PID) {
+		return signalPID(state.PID, syscall.SIGKILL)
+	}
+	return nil
+}
+
+func edgeDNSStatusFor(paths localagent.Paths, domain string) edgeDNSStatusResult {
+	if domain == "" {
+		domain = defaultEdgeDNSDomain
+	}
+	state, _ := loadEdgeDNSState(edgeDNSStatePath(paths))
+	if state.Domain != "" && state.Domain != domain {
+		state = edgeDNSState{}
+	}
+	if state.Domain == "" {
+		state.Domain = domain
+		state.Listen = defaultEdgeDNSListen
+		state.Address = defaultEdgeDNSAddress
+		state.ConfigPath = edgeDNSConfigPath(paths)
+		state.LogPath = edgeDNSLogPath(paths)
+		state.ResolverPath = edgeDNSResolverPath(domain)
+	}
+	dnsState := state.Status
+	if dnsState == "" {
+		dnsState = "stopped"
+	}
+	if state.PID <= 0 || !processAliveForEdge(state.PID) {
+		dnsState = "stopped"
+	}
+	resolver := edgeDNSResolverStatus(state.Domain, state.Listen)
+	status := edgeDNSStatusResult{
+		SchemaVersion:  "onlava.edge.dns.status.v1",
+		Ready:          dnsState == "running" && resolver.State == "installed",
+		Domain:         state.Domain,
+		Address:        firstNonEmpty(state.Address, defaultEdgeDNSAddress),
+		InstallCommand: edgeDNSInstallCommand(domain),
+	}
+	status.DNSMasq.State = dnsState
+	status.DNSMasq.PID = state.PID
+	status.DNSMasq.Listen = firstNonEmpty(state.Listen, defaultEdgeDNSListen)
+	status.DNSMasq.Executable = state.Executable
+	status.DNSMasq.ConfigPath = state.ConfigPath
+	status.DNSMasq.LogPath = state.LogPath
+	status.DNSMasq.Error = state.Error
+	status.Resolver = resolver
+	return status
+}
+
+func edgeDNSInstallCommand(domain string) string {
+	if domain == "" || domain == defaultEdgeDNSDomain {
+		return "onlava edge dns install"
+	}
+	return "onlava edge dns install --domain " + domain
+}
+
+func writeEdgeDNSState(paths localagent.Paths, state edgeDNSState) error {
+	state.SchemaVersion = "onlava.edge.dns.state.v1"
+	if state.UpdatedAt.IsZero() {
+		state.UpdatedAt = time.Now().UTC()
+	}
+	if err := os.MkdirAll(filepath.Dir(edgeDNSStatePath(paths)), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(edgeDNSStatePath(paths), append(data, '\n'), 0o600)
+}
+
+func loadEdgeDNSState(path string) (edgeDNSState, error) {
+	var state edgeDNSState
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return state, err
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return state, err
+	}
+	return state, nil
+}
+
+func edgeDNSConfigPath(paths localagent.Paths) string {
+	return filepath.Join(paths.EdgeDir, "dnsmasq.conf")
+}
+
+func edgeDNSLogPath(paths localagent.Paths) string {
+	return filepath.Join(paths.EdgeDir, "dnsmasq.log")
+}
+
+func edgeDNSStatePath(paths localagent.Paths) string {
+	return filepath.Join(paths.RunDir, "edge-dns.json")
+}
+
+func edgeDNSInstallResolver(domain, listen string) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	if os.Geteuid() == 0 {
+		return fmt.Errorf("do not run `sudo onlava edge dns install`; run it as your normal user")
+	}
+	host, port := splitHostPort(listen)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port == "" {
+		port = "53535"
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	run := exec.Command("sudo", exe, "edge", "dns-helper", "install", "--domain", domain, "--nameserver", host, "--port", port)
+	run.Stdout = os.Stdout
+	run.Stderr = os.Stderr
+	run.Stdin = os.Stdin
+	return run.Run()
+}
+
+func edgeDNSUninstallResolver(domain string) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	if os.Geteuid() == 0 {
+		return fmt.Errorf("do not run `sudo onlava edge dns uninstall`; run it as your normal user")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	run := exec.Command("sudo", exe, "edge", "dns-helper", "uninstall", "--domain", domain)
+	run.Stdout = os.Stdout
+	run.Stderr = os.Stderr
+	run.Stdin = os.Stdin
+	return run.Run()
+}
+
+func edgeDNSResolverStatus(domain, listen string) edgeDNSResolverState {
+	status := edgeDNSResolverState{
+		State:  "unsupported",
+		Domain: domain,
+	}
+	if runtime.GOOS != "darwin" {
+		status.Message = "scoped resolver configuration is currently managed on macOS"
+		return status
+	}
+	status.Path = edgeDNSResolverPath(domain)
+	host, port := splitHostPort(listen)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port == "" {
+		port = "53535"
+	}
+	status.Nameserver = host
+	status.Port = port
+	data, err := os.ReadFile(status.Path)
+	if err != nil {
+		status.State = "missing"
+		status.Message = "run `onlava edge dns install`"
+		return status
+	}
+	fields := parseResolverFile(string(data))
+	if fields["domain"] == domain && fields["nameserver"] == host && fields["port"] == port {
+		status.Installed = true
+		status.State = "installed"
+		return status
+	}
+	status.State = "mismatch"
+	status.Message = "resolver file exists but does not match onlava edge dns"
+	return status
+}
+
+func parseResolverFile(data string) map[string]string {
+	fields := map[string]string{}
+	for _, line := range strings.Split(data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			fields[parts[0]] = parts[1]
+		}
+	}
+	return fields
+}
+
+func edgeDNSResolverPath(domain string) string {
+	domain = normalizeRouteNamespaceHost(domain)
+	if domain == "" {
+		domain = defaultEdgeDNSDomain
+	}
+	return filepath.Join("/etc/resolver", domain)
+}
+
+type edgeDNSHelperOptions struct {
+	Domain     string
+	Nameserver string
+	Port       string
+}
+
+func edgeDNSHelperCommand(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: onlava edge dns-helper install|uninstall --domain <domain> [--nameserver <ip>] [--port <port>]")
+	}
+	cmd := args[0]
+	opts, err := parseEdgeDNSHelperArgs(args[1:])
+	if err != nil {
+		return err
+	}
+	switch cmd {
+	case "install":
+		return edgeDNSHelperInstall(opts)
+	case "uninstall":
+		return edgeDNSHelperUninstall(opts)
+	default:
+		return fmt.Errorf("unknown edge dns-helper command %q", cmd)
+	}
+}
+
+func parseEdgeDNSHelperArgs(args []string) (edgeDNSHelperOptions, error) {
+	opts := edgeDNSHelperOptions{Nameserver: "127.0.0.1", Port: "53535"}
+	for i := 0; i < len(args); i++ {
+		value := func(name string) (string, error) {
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("%s requires a value", name)
+			}
+			i++
+			return args[i], nil
+		}
+		switch args[i] {
+		case "--domain":
+			raw, err := value(args[i])
+			if err != nil {
+				return edgeDNSHelperOptions{}, err
+			}
+			opts.Domain = normalizeRouteNamespaceHost(raw)
+		case "--nameserver":
+			raw, err := value(args[i])
+			if err != nil {
+				return edgeDNSHelperOptions{}, err
+			}
+			opts.Nameserver = strings.TrimSpace(raw)
+		case "--port":
+			raw, err := value(args[i])
+			if err != nil {
+				return edgeDNSHelperOptions{}, err
+			}
+			opts.Port = strings.TrimSpace(raw)
+		default:
+			return edgeDNSHelperOptions{}, fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+	if opts.Domain == "" {
+		return edgeDNSHelperOptions{}, fmt.Errorf("--domain is required")
+	}
+	if net.ParseIP(opts.Nameserver) == nil {
+		return edgeDNSHelperOptions{}, fmt.Errorf("--nameserver must be an IP address")
+	}
+	if _, err := strconv.Atoi(opts.Port); err != nil || opts.Port == "" {
+		return edgeDNSHelperOptions{}, fmt.Errorf("--port must be an integer")
+	}
+	return opts, nil
+}
+
+func edgeDNSHelperInstall(opts edgeDNSHelperOptions) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("onlava edge dns-helper install is currently supported on macOS")
+	}
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("onlava edge dns-helper install must run as root; use `onlava edge dns install`")
+	}
+	if err := os.MkdirAll("/etc/resolver", 0o755); err != nil {
+		return err
+	}
+	content := edgeDNSResolverFile(opts.Domain, opts.Nameserver, opts.Port)
+	if err := os.WriteFile(edgeDNSResolverPath(opts.Domain), []byte(content), 0o644); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "installed onlava resolver for %s\n", opts.Domain)
+	return nil
+}
+
+func edgeDNSHelperUninstall(opts edgeDNSHelperOptions) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("onlava edge dns-helper uninstall is currently supported on macOS")
+	}
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("onlava edge dns-helper uninstall must run as root; use `onlava edge dns uninstall`")
+	}
+	path := edgeDNSResolverPath(opts.Domain)
+	data, err := os.ReadFile(path)
+	if err == nil && strings.Contains(string(data), "Managed by onlava edge dns") {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(os.Stdout, "removed onlava resolver for %s\n", opts.Domain)
+	return nil
+}
+
+func edgeDNSResolverFile(domain, nameserver, port string) string {
+	return fmt.Sprintf(`# Managed by onlava edge dns
+domain %s
+nameserver %s
+port %s
+`, domain, nameserver, port)
+}
+
 func writeEdgeStatusJSON(status edgeStatusResult) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -281,6 +912,7 @@ type edgeStatusResult struct {
 	Ready              bool                         `json:"ready"`
 	PublicBase         string                       `json:"public_base"`
 	Edge               edgeStatusCaddy              `json:"edge"`
+	DNS                edgeDNSStatusResult          `json:"dns"`
 	PrivilegedListener edgeStatusPrivilegedListener `json:"privileged_listener"`
 }
 
@@ -324,9 +956,10 @@ func edgeStatusForState(paths localagent.Paths, state localagent.EdgeState) edge
 	caddyUID, _ := processUID(state.PID)
 	helper := privilegedListenerStatus(paths)
 	agentRouter := liveAgentRouterAddr(paths)
+	dns := edgeDNSStatusFor(paths, defaultEdgeDNSDomain)
 	return edgeStatusResult{
 		SchemaVersion: "onlava.edge.status.v1",
-		Ready:         edgeState == localagent.EdgeStatusRunning && helper.State == "running" && helper.Target == state.HTTPSListen && agentRouter == state.UpstreamAddr,
+		Ready:         edgeState == localagent.EdgeStatusRunning && dns.Ready && helper.State == "running" && helper.Target == state.HTTPSListen && agentRouter == state.UpstreamAddr,
 		PublicBase:    publicBaseForEdge(state.PublicAddr),
 		Edge: edgeStatusCaddy{
 			Kind:        localagent.EdgeKindCaddy,
@@ -341,6 +974,7 @@ func edgeStatusForState(paths localagent.Paths, state localagent.EdgeState) edge
 			LogPath:     state.LogPath,
 			Error:       state.Error,
 		},
+		DNS:                dns,
 		PrivilegedListener: helper,
 	}
 }
