@@ -31,6 +31,7 @@ func TestCaddyEdgeConfigUsesStableAgentRouterContract(t *testing.T) {
 		"strict_sni_host on",
 		"https://:19443 {",
 		"reverse_proxy 127.0.0.1:9440",
+		"flush_interval -1",
 		"header_up Host {host}",
 		"header_up X-Forwarded-Proto https",
 		"header_up X-Forwarded-Port 443",
@@ -178,7 +179,7 @@ func TestResolveDNSMasqBinaryUsesManagedToolchain(t *testing.T) {
 }
 
 func TestDNSMasqEdgeConfigUsesWildcardDevDomain(t *testing.T) {
-	config := dnsmasqEdgeConfig("local.dev", "127.0.0.1:53535", "127.0.0.1")
+	config := dnsmasqEdgeConfig([]string{"local.dev"}, "127.0.0.1:53535", "127.0.0.1")
 	for _, want := range []string{
 		"bind-interfaces",
 		"listen-address=127.0.0.1",
@@ -189,6 +190,34 @@ func TestDNSMasqEdgeConfigUsesWildcardDevDomain(t *testing.T) {
 		if !strings.Contains(config, want) {
 			t.Fatalf("dnsmasq config missing %q:\n%s", want, config)
 		}
+	}
+}
+
+func TestDNSMasqEdgeConfigSupportsMultipleDomains(t *testing.T) {
+	config := dnsmasqEdgeConfig([]string{"onlv.dev", "local.dev", "onlv.dev"}, "127.0.0.1:53535", "127.0.0.1")
+	for _, want := range []string{
+		"address=/local.dev/127.0.0.1",
+		"address=/onlv.dev/127.0.0.1",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("dnsmasq config missing %q:\n%s", want, config)
+		}
+	}
+	if strings.Count(config, "address=/onlv.dev/127.0.0.1") != 1 {
+		t.Fatalf("dnsmasq config should de-duplicate domains:\n%s", config)
+	}
+}
+
+func TestEdgeDNSConfigServesDomain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dnsmasq.conf")
+	if err := os.WriteFile(path, []byte(dnsmasqEdgeConfig([]string{"local.dev", "onlv.dev"}, "127.0.0.1:53535", "127.0.0.1")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !edgeDNSConfigServesDomain(path, "onlv.dev") {
+		t.Fatal("expected config to serve onlv.dev")
+	}
+	if edgeDNSConfigServesDomain(path, "other.dev") {
+		t.Fatal("did not expect config to serve other.dev")
 	}
 }
 

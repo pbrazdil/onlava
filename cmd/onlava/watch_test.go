@@ -571,6 +571,16 @@ func TestDevCommandMatchesSession(t *testing.T) {
 	}
 }
 
+func TestExcludeCurrentProcessAncestry(t *testing.T) {
+	excluded := excludeCurrentProcessAncestry(map[int]bool{})
+	if !excluded[os.Getpid()] {
+		t.Fatal("current pid was not excluded")
+	}
+	if ppid := os.Getppid(); ppid > 1 && !excluded[ppid] {
+		t.Fatalf("parent pid %d was not excluded", ppid)
+	}
+}
+
 func TestPrepareDevAgentSessionFallsBackWhenAgentDisabled(t *testing.T) {
 	t.Setenv("ONLAVA_AGENT_DISABLE", "1")
 	_, session, backend, restore, err := prepareDevAgentSession(context.Background(), t.TempDir(), app.Config{Name: "demo"}, devListenRequest{})

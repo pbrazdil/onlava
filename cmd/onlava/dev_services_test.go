@@ -148,6 +148,10 @@ func TestExternalPostgresDatabaseURLRequiresDatabaseURL(t *testing.T) {
 }
 
 func TestManagedPostgresAdminURLCanComeFromAgentSubstrate(t *testing.T) {
+	prevReachable := managedPostgresAdminReachableFn
+	managedPostgresAdminReachableFn = func(context.Context, string) bool { return true }
+	defer func() { managedPostgresAdminReachableFn = prevReachable }()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	agentDone := startTestAgentServer(t, ctx)
@@ -169,6 +173,38 @@ func TestManagedPostgresAdminURLCanComeFromAgentSubstrate(t *testing.T) {
 	env := envWithManagedPostgresAgentAdminURL(ctx, []string{"A=1"}, client)
 	if !containsString(env, devPostgresAdminURLEnv+"=postgres://localhost/postgres") {
 		t.Fatalf("env = %+v", env)
+	}
+}
+
+func TestManagedPostgresAgentAdminURLRejectsUnreachableSubstrate(t *testing.T) {
+	prevReachable := managedPostgresAdminReachableFn
+	managedPostgresAdminReachableFn = func(context.Context, string) bool { return false }
+	defer func() { managedPostgresAdminReachableFn = prevReachable }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	agentDone := startTestAgentServer(t, ctx)
+	defer func() {
+		cancel()
+		waitForTestAgentServer(t, agentDone)
+	}()
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.UpsertSubstrate(ctx, localagent.UpsertSubstrateRequest{
+		Kind:     localagent.SubstratePostgres,
+		OwnerPID: os.Getpid(),
+		URLs:     map[string]string{"admin": "postgres://127.0.0.1:1/postgres"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	env := envWithManagedPostgresAgentAdminURL(ctx, []string{"A=1"}, client)
+	if countEnvKey(env, devPostgresAdminURLEnv) != 0 {
+		t.Fatalf("env should not include unreachable postgres admin URL: %+v", env)
+	}
+	if _, err := client.GetSubstrate(ctx, localagent.SubstratePostgres); !localagent.IsNotFound(err) {
+		t.Fatalf("postgres substrate after stale rejection err=%v", err)
 	}
 }
 

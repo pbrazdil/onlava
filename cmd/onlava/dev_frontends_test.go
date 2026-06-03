@@ -18,7 +18,7 @@ func TestManagedFrontendCommandUsesViteLocalBin(t *testing.T) {
 	root := t.TempDir()
 	writeFrontendPackage(t, root, `{"scripts":{"dev":"vite"}}`)
 	bin := writeFrontendBin(t, root, "vite")
-	cmd, args, err := managedFrontendCommand(root, "49231")
+	cmd, args, err := managedFrontendCommand(root, "49231", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,14 +37,14 @@ func TestManagedFrontendCommandUsesAstroLocalBin(t *testing.T) {
 	root := t.TempDir()
 	writeFrontendPackage(t, root, `{"scripts":{"dev":"astro dev"}}`)
 	bin := writeFrontendBin(t, root, "astro")
-	cmd, args, err := managedFrontendCommand(root, "49232")
+	cmd, args, err := managedFrontendCommand(root, "49232", "blog.main-test.local.dev")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cmd != bin {
 		t.Fatalf("command = %q, want %q", cmd, bin)
 	}
-	wantArgs := []string{"dev", "--host", "127.0.0.1", "--port", "49232"}
+	wantArgs := []string{"dev", "--host", "127.0.0.1", "--port", "49232", "--allowed-hosts", "blog.main-test.local.dev"}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", args, wantArgs)
 	}
@@ -75,8 +75,9 @@ func TestFrontendDevEnvIncludesSessionRoutes(t *testing.T) {
 		Routes: map[string]string{
 			localagent.RouteAPI: "http://api.main-abc123.local.dev:9440/",
 			"electric":          "http://electric.main-abc123.local.dev:9440/",
+			"web":               "http://web.main-abc123.local.dev:9440/",
 		},
-	})
+	}, "web")
 	for _, want := range []string{
 		"EXISTING=1",
 		"HOST=127.0.0.1",
@@ -87,10 +88,31 @@ func TestFrontendDevEnvIncludesSessionRoutes(t *testing.T) {
 		"VITE_API_BASE_URL=http://api.main-abc123.local.dev:9440/",
 		"ONLAVA_ELECTRIC_URL=http://electric.main-abc123.local.dev:9440/",
 		"VITE_ELECTRIC_URL=http://electric.main-abc123.local.dev:9440/",
+		"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=web.main-abc123.local.dev",
 	} {
 		if !containsString(env, want) {
 			t.Fatalf("frontendDevEnv() missing %q in %s", want, strings.Join(env, "\n"))
 		}
+	}
+}
+
+func TestManagedFrontendAllowedHostFromRouteNamespace(t *testing.T) {
+	t.Parallel()
+
+	session := localagent.Session{
+		SessionID: "main-abc123",
+		RouteNamespace: localagent.RouteNamespace{
+			BaseDomain: "onlv.dev",
+			Hosts: map[string]string{
+				"blog": "blog.onlv.dev",
+			},
+		},
+	}
+	if got, want := managedFrontendAllowedHost(session, "blog"), "blog.main-abc123.onlv.dev"; got != want {
+		t.Fatalf("allowed host = %q, want %q", got, want)
+	}
+	if got, want := managedFrontendAllowedHost(session, "pulse"), "pulse.main-abc123.onlv.dev"; got != want {
+		t.Fatalf("fallback allowed host = %q, want %q", got, want)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -387,7 +388,8 @@ func edgeDNSInstall(opts edgeOptions) error {
 	}
 	configPath := edgeDNSConfigPath(paths)
 	logPath := edgeDNSLogPath(paths)
-	if err := os.WriteFile(configPath, []byte(dnsmasqEdgeConfig(opts.Domain, defaultEdgeDNSListen, defaultEdgeDNSAddress)), 0o600); err != nil {
+	domains := edgeDNSConfigDomains(opts.Domain)
+	if err := os.WriteFile(configPath, []byte(dnsmasqEdgeConfig(domains, defaultEdgeDNSListen, defaultEdgeDNSAddress)), 0o600); err != nil {
 		return err
 	}
 	if err := startEdgeDNS(dnsmasqBin, paths, opts.Domain, defaultEdgeDNSListen, defaultEdgeDNSAddress); err != nil {
@@ -484,7 +486,7 @@ func resolveDNSMasqBinary(ctx context.Context, paths localagent.Paths, download 
 	return status.ManagedPath, nil
 }
 
-func dnsmasqEdgeConfig(domain, listen, address string) string {
+func dnsmasqEdgeConfig(domains []string, listen, address string) string {
 	host, port := splitHostPort(listen)
 	if host == "" {
 		host = "127.0.0.1"
@@ -492,15 +494,70 @@ func dnsmasqEdgeConfig(domain, listen, address string) string {
 	if port == "" {
 		port = "53535"
 	}
-	return fmt.Sprintf(`no-daemon
+	domains = normalizeEdgeDNSDomains(domains)
+	if len(domains) == 0 {
+		domains = []string{defaultEdgeDNSDomain}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, `no-daemon
 bind-interfaces
 listen-address=%s
 port=%s
-address=/%s/%s
-domain-needed
+`, host, port)
+	for _, domain := range domains {
+		fmt.Fprintf(&b, "address=/%s/%s\n", domain, address)
+	}
+	b.WriteString(`domain-needed
 bogus-priv
 no-resolv
-`, host, port, domain, address)
+`)
+	return b.String()
+}
+
+func edgeDNSConfigDomains(domain string) []string {
+	domains := []string{defaultEdgeDNSDomain, domain}
+	if runtime.GOOS == "darwin" {
+		domains = append(domains, managedEdgeDNSResolverDomains()...)
+	}
+	return normalizeEdgeDNSDomains(domains)
+}
+
+func managedEdgeDNSResolverDomains() []string {
+	entries, err := os.ReadDir("/etc/resolver")
+	if err != nil {
+		return nil
+	}
+	var domains []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		domain := normalizeRouteNamespaceHost(entry.Name())
+		if domain == "" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join("/etc/resolver", entry.Name()))
+		if err != nil || !strings.Contains(string(data), "Managed by onlava edge dns") {
+			continue
+		}
+		domains = append(domains, domain)
+	}
+	return domains
+}
+
+func normalizeEdgeDNSDomains(domains []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, domain := range domains {
+		domain = normalizeRouteNamespaceHost(domain)
+		if domain == "" || seen[domain] {
+			continue
+		}
+		seen[domain] = true
+		out = append(out, domain)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func startEdgeDNS(dnsmasqBin string, paths localagent.Paths, domain, listen, address string) error {
@@ -601,10 +658,8 @@ func edgeDNSStatusFor(paths localagent.Paths, domain string) edgeDNSStatusResult
 	if domain == "" {
 		domain = defaultEdgeDNSDomain
 	}
+	domain = normalizeRouteNamespaceHost(domain)
 	state, _ := loadEdgeDNSState(edgeDNSStatePath(paths))
-	if state.Domain != "" && state.Domain != domain {
-		state = edgeDNSState{}
-	}
 	if state.Domain == "" {
 		state.Domain = domain
 		state.Listen = defaultEdgeDNSListen
@@ -620,11 +675,15 @@ func edgeDNSStatusFor(paths localagent.Paths, domain string) edgeDNSStatusResult
 	if state.PID <= 0 || !processAliveForEdge(state.PID) {
 		dnsState = "stopped"
 	}
-	resolver := edgeDNSResolverStatus(state.Domain, state.Listen)
+	configServesDomain := edgeDNSConfigServesDomain(state.ConfigPath, domain)
+	if dnsState == "running" && !configServesDomain {
+		dnsState = "mismatch"
+	}
+	resolver := edgeDNSResolverStatus(domain, state.Listen)
 	status := edgeDNSStatusResult{
 		SchemaVersion:  "onlava.edge.dns.status.v1",
-		Ready:          dnsState == "running" && resolver.State == "installed",
-		Domain:         state.Domain,
+		Ready:          dnsState == "running" && resolver.State == "installed" && configServesDomain,
+		Domain:         domain,
 		Address:        firstNonEmpty(state.Address, defaultEdgeDNSAddress),
 		InstallCommand: edgeDNSInstallCommand(domain),
 	}
@@ -635,8 +694,29 @@ func edgeDNSStatusFor(paths localagent.Paths, domain string) edgeDNSStatusResult
 	status.DNSMasq.ConfigPath = state.ConfigPath
 	status.DNSMasq.LogPath = state.LogPath
 	status.DNSMasq.Error = state.Error
+	if dnsState == "mismatch" && state.Error == "" {
+		status.DNSMasq.Error = "dnsmasq config does not serve " + domain
+	}
 	status.Resolver = resolver
 	return status
+}
+
+func edgeDNSConfigServesDomain(path, domain string) bool {
+	domain = normalizeRouteNamespaceHost(domain)
+	if path == "" || domain == "" {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	needle := "address=/" + domain + "/"
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func edgeDNSInstallCommand(domain string) string {
@@ -698,6 +778,9 @@ func edgeDNSInstallResolver(domain, listen string) error {
 	}
 	if port == "" {
 		port = "53535"
+	}
+	if edgeDNSResolverStatus(domain, net.JoinHostPort(host, port)).State == "installed" {
+		return nil
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -1318,6 +1401,7 @@ func caddyEdgeConfig(opts caddyEdgeConfigOptions) string {
 		on_demand
 	}
 	reverse_proxy %s {
+		flush_interval -1
 		header_up Host {host}
 		header_up X-Forwarded-Proto https
 		header_up X-Forwarded-Port %s

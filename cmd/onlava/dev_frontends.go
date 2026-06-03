@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,13 +116,14 @@ func startManagedFrontendProcess(ctx context.Context, appRoot, appID string, fro
 	if err != nil {
 		return nil, err
 	}
-	cmdName, args, err := managedFrontendCommand(root, port)
+	allowedHost := managedFrontendAllowedHost(session, frontend.Name)
+	cmdName, args, err := managedFrontendCommand(root, port, allowedHost)
 	if err != nil {
 		return nil, err
 	}
 	cmd := commandTreeContext(ctx, cmdName, args...)
 	cmd.Dir = root
-	cmd.Env = frontendDevEnv(baseEnv, appRoot, addr, session)
+	cmd.Env = frontendDevEnv(baseEnv, appRoot, addr, session, frontend.Name)
 	logFile, err := managedFrontendLogFile(session, frontend.Name)
 	if err != nil {
 		return nil, err
@@ -224,14 +226,18 @@ func managedFrontendRoot(appRoot string, frontend localproxy.FrontendConfig) str
 	return filepath.Join(appRoot, root)
 }
 
-func managedFrontendCommand(root, port string) (string, []string, error) {
+func managedFrontendCommand(root, port, allowedHost string) (string, []string, error) {
 	script, err := managedFrontendDevScript(root)
 	if err != nil {
 		return "", nil, err
 	}
 	if strings.Contains(script, "astro") {
 		if bin := managedFrontendLocalBin(root, "astro"); bin != "" {
-			return bin, []string{"dev", "--host", "127.0.0.1", "--port", port}, nil
+			args := []string{"dev", "--host", "127.0.0.1", "--port", port}
+			if allowedHost != "" {
+				args = append(args, "--allowed-hosts", allowedHost)
+			}
+			return bin, args, nil
 		}
 	}
 	if strings.Contains(script, "vite") {
@@ -314,7 +320,7 @@ func managedFrontendPackageManager(root string) string {
 	return "npm"
 }
 
-func frontendDevEnv(baseEnv []string, appRoot, addr string, session localagent.Session) []string {
+func frontendDevEnv(baseEnv []string, appRoot, addr string, session localagent.Session, frontendName string) []string {
 	env := appChildEnv(
 		baseEnv,
 		false,
@@ -337,7 +343,63 @@ func frontendDevEnv(baseEnv []string, appRoot, addr string, session localagent.S
 			"VITE_ELECTRIC_URL="+electricURL,
 		)
 	}
+	if allowedHost := managedFrontendAllowedHost(session, frontendName); allowedHost != "" {
+		env = append(env, "__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="+allowedHost)
+	}
 	return env
+}
+
+func managedFrontendAllowedHost(session localagent.Session, frontendName string) string {
+	frontendName = localagentLabel(frontendName)
+	if frontendName == "" {
+		return ""
+	}
+	if route := strings.TrimSpace(session.Routes[frontendName]); route != "" {
+		u, err := url.Parse(route)
+		if err == nil {
+			return strings.TrimSpace(u.Hostname())
+		}
+	}
+	sessionID := localagentLabel(session.SessionID)
+	if sessionID == "" {
+		return ""
+	}
+	if host := routeHostName(session.RouteNamespace.Hosts[frontendName]); host != "" {
+		return insertSessionIntoRouteHost(host, sessionID)
+	}
+	baseDomain := routeHostName(session.RouteNamespace.BaseDomain)
+	if baseDomain == "" {
+		baseDomain = localagent.DefaultRouteBaseDomain
+	}
+	return frontendName + "." + sessionID + "." + baseDomain
+}
+
+func routeHostName(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return ""
+	}
+	if u, err := url.Parse(value); err == nil && u.Hostname() != "" {
+		return strings.TrimSpace(strings.ToLower(u.Hostname()))
+	}
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+	return strings.Trim(strings.TrimSuffix(value, "/"), "[]")
+}
+
+func insertSessionIntoRouteHost(host, sessionID string) string {
+	host = routeHostName(host)
+	sessionID = localagentLabel(sessionID)
+	if host == "" || sessionID == "" {
+		return host
+	}
+	labels := strings.Split(host, ".")
+	if len(labels) < 2 {
+		return host
+	}
+	labels = append(labels[:1], append([]string{sessionID}, labels[1:]...)...)
+	return strings.Join(labels, ".")
 }
 
 func portFromAddr(addr string) string {

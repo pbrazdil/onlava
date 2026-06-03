@@ -428,6 +428,7 @@ func findLiveDevOwnerConflict(root, sessionID string, ownerPID int) (int, bool) 
 }
 
 func findLiveDevOwnerProcessExcept(root, sessionID string, excluded map[int]bool) (int, bool) {
+	excluded = excludeCurrentProcessAncestry(excluded)
 	output, err := exec.Command("ps", "-axo", "pid=,stat=,command=").Output()
 	if err != nil {
 		return 0, false
@@ -453,6 +454,21 @@ func findLiveDevOwnerProcessExcept(root, sessionID string, excluded map[int]bool
 		return pid, true
 	}
 	return 0, false
+}
+
+func excludeCurrentProcessAncestry(excluded map[int]bool) map[int]bool {
+	if excluded == nil {
+		excluded = map[int]bool{}
+	}
+	for pid := os.Getpid(); pid > 1; {
+		excluded[pid] = true
+		info, ok := inspectProcess(pid)
+		if !ok || info.ppid <= 0 || info.ppid == pid {
+			break
+		}
+		pid = info.ppid
+	}
+	return excluded
 }
 
 func looksLikeOnlavaDevOwnerCommand(command string) bool {

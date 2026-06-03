@@ -445,6 +445,8 @@ The session-scoped URLs in `routes` are canonical. Generated routes default to `
 
 Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is managed DNS plus the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `onlava edge dns install` and `onlava edge privileged install` once as the normal user, then `onlava edge install` to prepare user-owned Caddy. Do not run `sudo onlava edge install`. `onlava edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
 
+The managed edge Caddy config flushes proxied responses immediately so Electric and other SSE streams stay live. Do not disable upstream caching globally; Electric uses cache headers for request collapsing.
+
 ## Debugging With Inspect, Logs, Traces, Metrics
 
 Start here:

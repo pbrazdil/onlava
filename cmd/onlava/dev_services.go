@@ -110,6 +110,8 @@ type managedElectricStreamProcess struct {
 }
 
 var listManagedElectricStreamProcesses = scanManagedElectricStreamProcesses
+var managedPostgresAdminReachableFn = managedPostgresAdminReachable
+var postgresAdminVersionMatchesFn = postgresAdminVersionMatches
 
 func managedPostgresDeclared(cfg app.Config) (string, app.DevServiceConfig, bool) {
 	for name, svc := range cfg.Dev.Services {
@@ -1065,7 +1067,7 @@ func envWithManagedPostgresAdminURL(ctx context.Context, cfg app.Config, env []s
 	}
 	withAgent := envWithManagedPostgresAgentAdminURL(ctx, env, agent)
 	if adminURL, _ := lookupEnvValue(withAgent, devPostgresAdminURLEnv); adminURL != "" {
-		if managedPostgresAdminReachable(ctx, adminURL) && postgresAdminVersionMatches(ctx, adminURL, postgresServiceVersion(cfg)) {
+		if managedPostgresAdminReachableFn(ctx, adminURL) && postgresAdminVersionMatchesFn(ctx, adminURL, postgresServiceVersion(cfg)) {
 			return withAgent, nil
 		}
 		if agent != nil {
@@ -1098,6 +1100,10 @@ func envWithManagedPostgresAgentAdminURL(ctx context.Context, env []string, agen
 		return env
 	}
 	if adminURL := strings.TrimSpace(substrate.URLs["admin"]); adminURL != "" {
+		if !managedPostgresAdminReachableFn(ctx, adminURL) {
+			_, _ = agent.DeleteSubstrate(ctx, localagent.SubstratePostgres)
+			return env
+		}
 		return append(append([]string(nil), env...), devPostgresAdminURLEnv+"="+adminURL)
 	}
 	return env
@@ -1109,7 +1115,7 @@ func ensureLocalManagedPostgresSubstrate(ctx context.Context, cfg app.Config, ag
 	}
 	if substrate, err := agent.GetSubstrate(ctx, localagent.SubstratePostgres); err == nil {
 		if adminURL := strings.TrimSpace(substrate.URLs["admin"]); adminURL != "" {
-			if verifySubstrateOwner(substrate) == nil && managedPostgresAdminReachable(ctx, adminURL) && postgresAdminVersionMatches(ctx, adminURL, postgresServiceVersion(cfg)) {
+			if verifySubstrateOwner(substrate) == nil && managedPostgresAdminReachableFn(ctx, adminURL) && postgresAdminVersionMatchesFn(ctx, adminURL, postgresServiceVersion(cfg)) {
 				return adminURL, nil
 			}
 			_, _ = agent.DeleteSubstrate(ctx, localagent.SubstratePostgres)
