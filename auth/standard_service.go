@@ -308,7 +308,7 @@ func refreshCookie(value string, expiresAt time.Time) string {
 		Expires:  expiresAt,
 		MaxAge:   int(time.Until(expiresAt).Seconds()),
 		HttpOnly: true,
-		Secure:   !isLocalRuntime(),
+		Secure:   refreshCookieSecure(isLocalRuntime(), requestHeaders(), secrets.APIBaseURL),
 		SameSite: http.SameSiteLaxMode,
 	}).String()
 	if domain := strings.TrimSpace(secrets.AuthCookieDomain); domain != "" {
@@ -325,13 +325,32 @@ func clearRefreshCookie() string {
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   !isLocalRuntime(),
+		Secure:   refreshCookieSecure(isLocalRuntime(), requestHeaders(), secrets.APIBaseURL),
 		SameSite: http.SameSiteLaxMode,
 	}).String()
 	if domain := strings.TrimSpace(secrets.AuthCookieDomain); domain != "" {
 		cookie += "; Domain=" + domain
 	}
 	return cookie
+}
+
+func refreshCookieSecure(localRuntime bool, headers http.Header, apiBaseURL string) bool {
+	if localRuntime && (isForwardedHTTPS(headers) || isHTTPSOrigin(headers) || isHTTPSURL(apiBaseURL)) {
+		return true
+	}
+	return !localRuntime
+}
+
+func isForwardedHTTPS(headers http.Header) bool {
+	return strings.EqualFold(strings.TrimSpace(headers.Get("X-Forwarded-Proto")), "https")
+}
+
+func isHTTPSOrigin(headers http.Header) bool {
+	return isHTTPSURL(headers.Get("Origin"))
+}
+
+func isHTTPSURL(value string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "https://")
 }
 
 func (s *Service) recordEvent(ctx context.Context, q authdb.Querier, eventType string, userID pgtype.UUID, actorUserID pgtype.UUID, tenantID pgtype.UUID, sessionID pgtype.UUID, metadata any) {

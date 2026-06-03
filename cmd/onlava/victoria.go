@@ -53,9 +53,12 @@ type victoriaComponent struct {
 	baseURL     string
 	endpointURL string
 	storagePath string
+	stdoutLog   string
+	stderrLog   string
 	cmd         *exec.Cmd
 	done        chan error
 	external    bool
+	startedAt   time.Time
 }
 
 type victoriaStack struct {
@@ -116,6 +119,8 @@ func victoriaStackFromSubstrate(substrate localagent.Substrate) *victoriaStack {
 			spec:        spec,
 			baseURL:     baseURL,
 			endpointURL: endpoint,
+			stdoutLog:   strings.TrimSpace(substrate.Endpoints[spec.Name+"_stdout_log"]),
+			stderrLog:   strings.TrimSpace(substrate.Endpoints[spec.Name+"_stderr_log"]),
 			external:    true,
 		})
 	}
@@ -138,6 +143,12 @@ func (s *victoriaStack) SubstrateRequest(ownerPID int) localagent.UpsertSubstrat
 		}
 		urls[component.spec.Name] = component.baseURL
 		endpoints[component.spec.Name] = component.endpointURL
+		if component.stdoutLog != "" {
+			endpoints[component.spec.Name+"_stdout_log"] = component.stdoutLog
+		}
+		if component.stderrLog != "" {
+			endpoints[component.spec.Name+"_stderr_log"] = component.stderrLog
+		}
 		if component.cmd != nil && component.cmd.Process != nil {
 			pids[component.spec.Name] = component.cmd.Process.Pid
 		}
@@ -175,6 +186,21 @@ func (s *victoriaStack) MarkExternal() {
 			component.external = true
 		}
 	}
+}
+
+func (c *victoriaComponent) ExitRecord(err error) localagent.SubstrateExit {
+	if c == nil {
+		return localagent.SubstrateExit{}
+	}
+	pid := 0
+	var state *os.ProcessState
+	if c.cmd != nil {
+		state = c.cmd.ProcessState
+		if c.cmd.Process != nil {
+			pid = c.cmd.Process.Pid
+		}
+	}
+	return substrateExitRecord(c.spec.Name, pid, c.startedAt, c.stdoutLog, c.stderrLog, err, state)
 }
 
 func (s *victoriaStack) Reachable() bool {
@@ -327,19 +353,24 @@ func startVictoriaComponent(ctx context.Context, root, binDir string, spec victo
 	configureChildProcess(cmd)
 	configureCommandCancellation(cmd, 5*time.Second)
 	cmd.Dir = root
-	output := io.Writer(io.Discard)
-	if console != nil && console.verbose {
-		output = os.Stderr
+	logs, err := openSubstrateLogWriters(root, localagent.SubstrateVictoria, spec.Name, console)
+	if err != nil {
+		return nil, fmt.Errorf("open substrate logs: %w", err)
 	}
-	cmd.Stdout = output
-	cmd.Stderr = output
+	cmd.Stdout = logs.stdout
+	cmd.Stderr = logs.stderr
 	if err := cmd.Start(); err != nil {
+		_ = logs.close()
 		return nil, err
 	}
 	component.cmd = cmd
 	component.done = make(chan error, 1)
+	component.stdoutLog = logs.stdoutPath
+	component.stderrLog = logs.stderrPath
+	component.startedAt = time.Now().UTC()
 	go func() {
 		component.done <- cmd.Wait()
+		_ = logs.close()
 		close(component.done)
 	}()
 	if err := waitForVictoriaComponentReady(ctx, component, 5*time.Second); err != nil {

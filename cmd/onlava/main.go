@@ -39,6 +39,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "agent":
 		return agentCommand(args[1:])
+	case "edge":
+		return edgeCommand(args[1:])
 	case "dev":
 		return devCommand(args[1:])
 	case "attach":
@@ -97,11 +99,13 @@ func run(args []string) error {
 func usageError() error {
 	return fmt.Errorf(`usage:
   stable/dev commands:
-    onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [-v|--verbose] [--json] [--proxy] [--trust] [--detach]
+    onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
+    onlava dev --trust [--json]
     onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json] [--tui]
     onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
     onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
     onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+    onlava edge install|trust|status|restart|uninstall|privileged [--json]
     onlava status --json [--app-root <path>] [--session <id>] [--watch]
     onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
     onlava prune --older-than <duration> [--app-root <path>] [--json]
@@ -169,6 +173,12 @@ func devCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	if devProxyEnabledByEnv() {
+		return legacyDevProxyError("ONLAVA_LOCAL_PROXY")
+	}
+	if opts.Trust {
+		return edgeTrust(edgeOptions{JSON: opts.JSON})
+	}
 	restore := configureDevProcessEnv(opts)
 	defer restore()
 	warnDevEscapeHatches(opts)
@@ -180,27 +190,28 @@ func devCommand(args []string) error {
 }
 
 type devOptions struct {
-	Listen     string
-	Port       int
-	ListenSet  bool
-	PortSet    bool
-	Verbose    bool
-	JSON       bool
-	AppRoot    string
-	SessionID  string
-	NewSession bool
-	Proxy      bool
-	Trust      bool
-	Detach     bool
+	Listen       string
+	Port         int
+	ListenSet    bool
+	PortSet      bool
+	Verbose      bool
+	JSON         bool
+	AppRoot      string
+	SessionID    string
+	NewSession   bool
+	Detach       bool
+	ClaimAliases bool
+	Trust        bool
 }
 
 type devListenRequest struct {
-	Network    string
-	Addr       string
-	Explicit   bool
-	PreferTCP  bool
-	SessionID  string
-	NewSession bool
+	Network      string
+	Addr         string
+	Explicit     bool
+	PreferTCP    bool
+	SessionID    string
+	NewSession   bool
+	ClaimAliases bool
 }
 
 func parseDevArgs(args []string) (devOptions, error) {
@@ -230,10 +241,9 @@ func parseDevArgs(args []string) (devOptions, error) {
 		case "--json":
 			opts.JSON = true
 		case "--proxy":
-			opts.Proxy = true
+			return devOptions{}, legacyDevProxyError("--proxy")
 		case "--trust":
 			opts.Trust = true
-			opts.Proxy = true
 		case "--detach":
 			opts.Detach = true
 		case "--app-root":
@@ -250,6 +260,8 @@ func parseDevArgs(args []string) (devOptions, error) {
 			opts.SessionID = args[i]
 		case "--new-session":
 			opts.NewSession = true
+		case "--claim-aliases":
+			opts.ClaimAliases = true
 		default:
 			return devOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -260,38 +272,30 @@ func parseDevArgs(args []string) (devOptions, error) {
 	return opts, nil
 }
 
+func legacyDevProxyError(source string) error {
+	return fmt.Errorf("%s no longer enables the legacy local proxy in `onlava dev`; use the default agent-routed session URLs, or run `onlava edge install` then `onlava edge trust` to prepare trusted local HTTPS", source)
+}
+
 func resolveDevListenRequest(opts devOptions) devListenRequest {
 	if opts.ListenSet || opts.PortSet {
 		return devListenRequest{
-			Network:    "tcp",
-			Addr:       resolveListenAddr(opts.Listen, opts.Port),
-			Explicit:   true,
-			SessionID:  opts.SessionID,
-			NewSession: opts.NewSession,
+			Network:      "tcp",
+			Addr:         resolveListenAddr(opts.Listen, opts.Port),
+			Explicit:     true,
+			SessionID:    opts.SessionID,
+			NewSession:   opts.NewSession,
+			ClaimAliases: opts.ClaimAliases,
 		}
 	}
 	return devListenRequest{
-		PreferTCP:  opts.Proxy || opts.Trust || devProxyEnabledByEnv(),
-		SessionID:  opts.SessionID,
-		NewSession: opts.NewSession,
+		SessionID:    opts.SessionID,
+		NewSession:   opts.NewSession,
+		ClaimAliases: opts.ClaimAliases,
 	}
 }
 
 func configureDevProcessEnv(opts devOptions) func() {
-	changes := map[string]string{}
-	if opts.Proxy || opts.Trust {
-		changes["ONLAVA_LOCAL_PROXY"] = "1"
-		if opts.Trust {
-			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
-		} else if _, ok := envpolicy.Lookup("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
-			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
-		}
-	} else if devProxyEnabledByEnv() {
-		if _, ok := envpolicy.Lookup("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); !ok {
-			changes["ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"] = "0"
-		}
-	}
-	return applyTemporaryEnv(changes)
+	return applyTemporaryEnv(nil)
 }
 
 func warnDevEscapeHatches(opts devOptions) {
@@ -300,9 +304,6 @@ func warnDevEscapeHatches(opts devOptions) {
 	}
 	if opts.ListenSet || opts.PortSet {
 		fmt.Fprintln(cliStderr, "onlava: warning: --listen/--port force a manual TCP app backend; this is a debugging escape hatch and can be less parallel-safe than the default agent Unix-socket backend")
-	}
-	if opts.Proxy || opts.Trust || devProxyEnabledByEnv() {
-		fmt.Fprintln(cliStderr, "onlava: warning: local proxy mode uses legacy machine-global proxy ports; prefer default agent-routed session URLs for parallel worktrees")
 	}
 }
 

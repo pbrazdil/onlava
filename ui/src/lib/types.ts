@@ -21,6 +21,7 @@ export interface AppStatus {
   apiEncoding?: APIEncoding;
   grafana?: GrafanaState;
   routes?: Record<string, string>;
+  aliases?: Record<string, string>;
   compiling: boolean;
   compileError?: string;
 }

@@ -19,12 +19,20 @@ type Registry struct {
 	mu               sync.Mutex
 	sessions         map[string]Session
 	substrates       map[string]Substrate
+	aliases          map[string]AliasLease
+	routeHosts       map[string]routeTarget
 	currentByAppRoot map[string]string
+}
+
+type routeTarget struct {
+	SessionID string
+	Route     string
 }
 
 type registryFile struct {
 	Sessions         []Session         `json:"sessions"`
 	Substrates       []Substrate       `json:"substrates,omitempty"`
+	Aliases          []AliasLease      `json:"aliases,omitempty"`
 	CurrentByAppRoot map[string]string `json:"current_by_app_root,omitempty"`
 }
 
@@ -39,6 +47,8 @@ func OpenRegistry(path, routerAddr string, routerScheme ...string) (*Registry, e
 		scheme:           scheme,
 		sessions:         make(map[string]Session),
 		substrates:       make(map[string]Substrate),
+		aliases:          make(map[string]AliasLease),
+		routeHosts:       make(map[string]routeTarget),
 		currentByAppRoot: make(map[string]string),
 	}
 	if err := r.load(); err != nil {
@@ -78,18 +88,25 @@ func (r *Registry) UpsertSubstrate(req UpsertSubstrateRequest) (Substrate, error
 	owner = OwnerFromRequest(ownerPID, owner, "onlava substrate")
 	pids := copyIntMap(req.PIDs)
 	owners := ownersForSubstrate(kind, pids, req.Owners, current)
+	lastExit := copySubstrateExit(req.LastExit)
+	componentExits := componentExitsForSubstrate(status, req.ComponentExits, current)
+	if lastExit == nil && current != nil && status != "ready" {
+		lastExit = copySubstrateExit(current.LastExit)
+	}
 	substrate := Substrate{
-		SchemaVersion: SubstrateSchemaVersion,
-		Kind:          kind,
-		Status:        status,
-		OwnerPID:      ownerPID,
-		Owner:         owner,
-		PIDs:          pids,
-		Owners:        owners,
-		URLs:          copyStringMap(req.URLs),
-		Endpoints:     copyStringMap(req.Endpoints),
-		CreatedAt:     createdAt,
-		UpdatedAt:     now,
+		SchemaVersion:  SubstrateSchemaVersion,
+		Kind:           kind,
+		Status:         status,
+		OwnerPID:       ownerPID,
+		Owner:          owner,
+		PIDs:           pids,
+		Owners:         owners,
+		URLs:           copyStringMap(req.URLs),
+		Endpoints:      copyStringMap(req.Endpoints),
+		LastExit:       lastExit,
+		ComponentExits: componentExits,
+		CreatedAt:      createdAt,
+		UpdatedAt:      now,
 	}
 	r.substrates[kind] = substrate
 	if err := r.saveLocked(); err != nil {
@@ -152,8 +169,10 @@ func (r *Registry) Upsert(req RegisterRequest) (Session, error) {
 		existingPID := firstPositive(existing.OwnerPID, existing.Owner.PID)
 		return Session{}, fmt.Errorf("onlava dev session %q is already running for app root %s under owner PID %d", sessionID, existing.AppRoot, existingPID)
 	}
+	session.Aliases, session.AliasConflicts = r.claimAliasesLocked(session, req.ClaimAliases)
 	r.sessions[session.SessionID] = session
 	r.currentByAppRoot[filepath.Clean(session.AppRoot)] = session.SessionID
+	r.rebuildRouteHostIndexLocked()
 	if err := r.saveLocked(); err != nil {
 		return Session{}, err
 	}
@@ -206,6 +225,24 @@ func (r *Registry) List() []Session {
 	return sortedSessions(r.sessions)
 }
 
+func (r *Registry) RouteTargetForHost(host string) (Session, string, bool) {
+	host = normalizeRouteHost(host)
+	if host == "" {
+		return Session{}, "", false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	target, ok := r.routeHosts[host]
+	if !ok {
+		return Session{}, "", false
+	}
+	session, ok := r.sessions[target.SessionID]
+	if !ok {
+		return Session{}, "", false
+	}
+	return session, target.Route, true
+}
+
 func (r *Registry) FindByAppRoot(root string) []Session {
 	root = filepath.Clean(strings.TrimSpace(root))
 	r.mu.Lock()
@@ -247,7 +284,8 @@ func (r *Registry) DeleteOwnedIdentity(id string, ownerPID int, owner Owner, str
 func (r *Registry) delete(id string, ownerPID int, requestedOwner Owner, strict bool) (Session, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	session, ok := r.sessions[strings.TrimSpace(id)]
+	id = strings.TrimSpace(id)
+	session, ok := r.sessions[id]
 	if !ok {
 		return Session{}, false, nil
 	}
@@ -258,6 +296,11 @@ func (r *Registry) delete(id string, ownerPID int, requestedOwner Owner, strict 
 		return session, false, nil
 	}
 	delete(r.sessions, id)
+	for host, alias := range r.aliases {
+		if alias.SessionID == id {
+			delete(r.aliases, host)
+		}
+	}
 	key := filepath.Clean(session.AppRoot)
 	if r.currentByAppRoot[key] == id {
 		delete(r.currentByAppRoot, key)
@@ -268,6 +311,7 @@ func (r *Registry) delete(id string, ownerPID int, requestedOwner Owner, strict 
 			}
 		}
 	}
+	r.rebuildRouteHostIndexLocked()
 	if err := r.saveLocked(); err != nil {
 		return Session{}, false, err
 	}
@@ -305,6 +349,142 @@ func ownerHasFingerprint(owner Owner) bool {
 	return strings.TrimSpace(owner.StartedAt) != "" || strings.TrimSpace(owner.CmdlineHash) != "" || strings.TrimSpace(owner.Exe) != ""
 }
 
+func (r *Registry) claimAliasesLocked(session Session, force bool) (map[string]string, map[string]AliasLease) {
+	if len(session.RouteNamespace.Hosts) == 0 {
+		r.removeSessionAliasesLocked(session.SessionID)
+		return nil, nil
+	}
+	now := session.UpdatedAt
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	desired := map[string]string{}
+	for configuredRoute, configuredHost := range session.RouteNamespace.Hosts {
+		route := normalizeAliasRoute(configuredRoute)
+		host := normalizeRouteHost(configuredHost)
+		if route == "" || host == "" || session.Routes[route] == "" {
+			continue
+		}
+		desired[host] = route
+	}
+	for host, alias := range r.aliases {
+		if alias.SessionID == session.SessionID {
+			if desired[host] == "" {
+				delete(r.aliases, host)
+			}
+		}
+	}
+	aliases := map[string]string{}
+	conflicts := map[string]AliasLease{}
+	for host, route := range desired {
+		existing, claimed := r.aliases[host]
+		if claimed && existing.SessionID != session.SessionID {
+			if !force && !aliasLeaseOwnerStale(existing) {
+				conflicts[route] = existing
+				continue
+			}
+			r.removeAliasFromSessionLocked(existing)
+		}
+		createdAt := now
+		if claimed && !existing.CreatedAt.IsZero() {
+			createdAt = existing.CreatedAt
+		}
+		url := routeURL(r.scheme, host, r.router, "")
+		r.aliases[host] = AliasLease{
+			Host:      host,
+			Route:     route,
+			SessionID: session.SessionID,
+			AppRoot:   session.AppRoot,
+			OwnerPID:  session.OwnerPID,
+			Owner:     session.Owner,
+			URL:       url,
+			CreatedAt: createdAt,
+			UpdatedAt: now,
+		}
+		aliases[route] = url
+	}
+	for route, alias := range conflicts {
+		if aliases[route] != "" {
+			delete(conflicts, route)
+		} else {
+			conflicts[route] = normalizeAliasLease(alias)
+		}
+	}
+	if len(aliases) == 0 {
+		aliases = nil
+	}
+	if len(conflicts) == 0 {
+		conflicts = nil
+	}
+	return aliases, conflicts
+}
+
+func (r *Registry) removeSessionAliasesLocked(sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	for host, alias := range r.aliases {
+		if alias.SessionID == sessionID {
+			delete(r.aliases, host)
+		}
+	}
+}
+
+func (r *Registry) removeAliasFromSessionLocked(alias AliasLease) {
+	session, ok := r.sessions[alias.SessionID]
+	if !ok {
+		return
+	}
+	route := normalizeAliasRoute(alias.Route)
+	if route == "" {
+		return
+	}
+	if len(session.Aliases) > 0 {
+		delete(session.Aliases, route)
+		if len(session.Aliases) == 0 {
+			session.Aliases = nil
+		}
+	}
+	if len(session.AliasConflicts) > 0 {
+		delete(session.AliasConflicts, route)
+		if len(session.AliasConflicts) == 0 {
+			session.AliasConflicts = nil
+		}
+	}
+	r.sessions[session.SessionID] = session
+}
+
+func aliasLeaseOwnerStale(alias AliasLease) bool {
+	owner := alias.Owner
+	pid := firstPositive(alias.OwnerPID, owner.PID)
+	if pid <= 0 {
+		return false
+	}
+	if owner.PID > 0 && owner.PID != pid {
+		owner = Owner{}
+	}
+	owner.PID = pid
+	if !ownerHasFingerprint(owner) {
+		return false
+	}
+	return VerifyOwner(owner) != nil
+}
+
+func normalizeAliasLease(alias AliasLease) AliasLease {
+	alias.Host = normalizeRouteHost(alias.Host)
+	alias.Route = normalizeAliasRoute(alias.Route)
+	return alias
+}
+
+func normalizeAliasRoute(route string) string {
+	route = sanitizeLabel(route)
+	if route == "console" {
+		return RouteDashboard
+	}
+	return route
+}
+
 func (r *Registry) load() error {
 	data, err := os.ReadFile(r.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -331,6 +511,16 @@ func (r *Registry) load() error {
 		substrate.Kind = kind
 		r.substrates[kind] = substrate
 	}
+	for _, alias := range file.Aliases {
+		host := normalizeRouteHost(alias.Host)
+		route := normalizeAliasRoute(alias.Route)
+		if host == "" || route == "" || strings.TrimSpace(alias.SessionID) == "" {
+			continue
+		}
+		alias.Host = host
+		alias.Route = route
+		r.aliases[host] = alias
+	}
 	for appRoot, sessionID := range file.CurrentByAppRoot {
 		appRoot = filepath.Clean(strings.TrimSpace(appRoot))
 		sessionID = strings.TrimSpace(sessionID)
@@ -338,7 +528,34 @@ func (r *Registry) load() error {
 			r.currentByAppRoot[appRoot] = sessionID
 		}
 	}
+	r.rebuildRouteHostIndexLocked()
 	return nil
+}
+
+func (r *Registry) rebuildRouteHostIndexLocked() {
+	hosts := make(map[string]routeTarget)
+	for _, session := range r.sessions {
+		for route, routeURL := range session.Routes {
+			host := normalizeRouteHost(routeURL)
+			route = normalizeAliasRoute(route)
+			if host == "" || route == "" {
+				continue
+			}
+			hosts[host] = routeTarget{SessionID: session.SessionID, Route: route}
+		}
+	}
+	for host, alias := range r.aliases {
+		route := normalizeAliasRoute(alias.Route)
+		host = normalizeRouteHost(firstNonEmpty(alias.Host, host, alias.URL))
+		if host == "" || route == "" || strings.TrimSpace(alias.SessionID) == "" {
+			continue
+		}
+		if _, ok := r.sessions[alias.SessionID]; !ok {
+			continue
+		}
+		hosts[host] = routeTarget{SessionID: alias.SessionID, Route: route}
+	}
+	r.routeHosts = hosts
 }
 
 func (r *Registry) saveLocked() error {
@@ -348,6 +565,7 @@ func (r *Registry) saveLocked() error {
 	data, err := json.MarshalIndent(registryFile{
 		Sessions:         sortedSessions(r.sessions),
 		Substrates:       sortedSubstrates(r.substrates),
+		Aliases:          sortedAliases(r.aliases),
 		CurrentByAppRoot: copyRawStringMap(r.currentByAppRoot),
 	}, "", "  ")
 	if err != nil {
@@ -364,6 +582,20 @@ func sortedSubstrates(substrates map[string]Substrate) []Substrate {
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].Kind < items[j].Kind
+	})
+	return items
+}
+
+func sortedAliases(aliases map[string]AliasLease) []AliasLease {
+	items := make([]AliasLease, 0, len(aliases))
+	for _, alias := range aliases {
+		items = append(items, alias)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Host != items[j].Host {
+			return items[i].Host < items[j].Host
+		}
+		return items[i].SessionID < items[j].SessionID
 	})
 	return items
 }
@@ -466,6 +698,60 @@ func copyIntMap(values map[string]int) map[string]int {
 		return nil
 	}
 	return copied
+}
+
+func componentExitsForSubstrate(status string, requested map[string]SubstrateExit, current *Substrate) map[string]SubstrateExit {
+	if status == "ready" {
+		return copySubstrateExitMap(requested)
+	}
+	merged := map[string]SubstrateExit{}
+	if current != nil {
+		for key, value := range current.ComponentExits {
+			key = sanitizeLabel(key)
+			if key != "" {
+				merged[key] = value
+			}
+		}
+	}
+	for key, value := range requested {
+		key = sanitizeLabel(key)
+		if key == "" {
+			continue
+		}
+		value.Component = firstNonEmpty(value.Component, key)
+		merged[key] = value
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
+}
+
+func copySubstrateExitMap(values map[string]SubstrateExit) map[string]SubstrateExit {
+	if len(values) == 0 {
+		return nil
+	}
+	copied := make(map[string]SubstrateExit, len(values))
+	for key, value := range values {
+		key = sanitizeLabel(key)
+		if key == "" {
+			continue
+		}
+		value.Component = firstNonEmpty(value.Component, key)
+		copied[key] = value
+	}
+	if len(copied) == 0 {
+		return nil
+	}
+	return copied
+}
+
+func copySubstrateExit(value *SubstrateExit) *SubstrateExit {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }
 
 func sortedSessions(sessions map[string]Session) []Session {

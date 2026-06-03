@@ -153,6 +153,7 @@ Prefer JSON when output will feed another tool or decision.
 | Inspect docs knowledge base | `onlava inspect docs --json` |
 | Inspect managed local tools | `onlava toolchain list --json`, `onlava toolchain verify --json` |
 | Install managed local tools | `onlava toolchain sync --json` or `onlava toolchain sync --tool <name> --json` |
+| Inspect local HTTPS edge | `onlava edge status --json` |
 | Run app validation snapshot | `onlava harness --json --write` |
 | Run repo validation snapshot | `onlava harness self --json --write` |
 | Follow logs | `onlava logs --jsonl --session current --limit 200` |
@@ -167,7 +168,7 @@ Prefer JSON when output will feed another tool or decision.
 | Run repo-local task | `onlava task list`, `onlava task run <name>` |
 | Run app-local operational script | `onlava run list --json`, `onlava run <domain>:<script>` |
 
-When local dev fails because the host may be missing Go, disk space, memory, or optional tools, run `onlava doctor --json` first. Stay on onlava command surfaces for ordinary app work. Inspect managed Grafana, Victoria, Temporal CLI, Postgres, or Electric details only when intentionally debugging the substrate. Do not install global binaries as a hidden fix; use `onlava toolchain sync --json`, set an explicit per-tool env override, or document the configured external service.
+When local dev fails because the host may be missing Go, disk space, memory, or optional tools, run `onlava doctor --json` first. Stay on onlava command surfaces for ordinary app work. Inspect managed Caddy, Grafana, Victoria, Temporal CLI, Postgres, or Electric details only when intentionally debugging the substrate. Shared substrate failures are visible in `onlava status --json` under `substrates`, including exit metadata and stdout/stderr log paths. Do not install global binaries as a hidden fix; use `onlava edge install` for Caddy, `onlava toolchain sync --json` for managed app-root tools, set documented per-tool env overrides for tools that have them, or document the configured external service.
 
 Use non-JSON output only for human inspection.
 
@@ -175,6 +176,7 @@ Use non-JSON output only for human inspection.
 
 - Use `onlava dev` to run the app session and expose capabilities for local development, debugging, agents, dashboard, logs, traces, metrics, managed dev services, and frontend routing.
 - Use `onlava dev --detach` when the local agent should keep the dev session running.
+- Use `onlava edge privileged install`, `onlava edge install`, and `onlava edge trust` when the browser needs trusted local HTTPS on `127.0.0.1:443`; the privileged helper owns that port, forwards raw TCP to user-owned Caddy, and the edge syncs managed Caddy as needed.
 - Use `onlava attach` to follow a current detached or agent session.
 - Use `onlava down` to stop a session; add `--db`, `--state`, or `--all` only when destructive cleanup is intended.
 - Use `onlava serve` for headless API-role execution. Do not expect dashboard, proxy, watch mode, or dev/admin endpoints.
@@ -244,7 +246,9 @@ cd /Users/petrbrazdil/Repos/onlv
 onlava inspect app --json
 onlava inspect routes --json
 onlava inspect services --json
-onlava dev --detach --trust
+onlava edge install
+onlava edge trust
+onlava dev --detach
 onlava logs --session current --jsonl --limit 200
 ```
 

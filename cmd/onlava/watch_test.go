@@ -255,6 +255,15 @@ func TestPrepareDevAgentSessionDefaultsToUnixBackend(t *testing.T) {
 	if client == nil || session == nil {
 		t.Fatalf("agent client/session = %v/%v, want both", client, session)
 	}
+	if got, want := session.RouteNamespace.Workspace, ""; got != want {
+		t.Fatalf("route namespace workspace = %q, want %q", got, want)
+	}
+	if got, want := session.RouteNamespace.BaseDomain, "demo.localhost"; got != want {
+		t.Fatalf("route namespace base domain = %q, want %q", got, want)
+	}
+	if got, want := session.RouteNamespace.Hosts["web"], "web.demo.localhost"; got != want {
+		t.Fatalf("route namespace web host = %q, want %q", got, want)
+	}
 	agentPaths, err := localagent.DefaultPaths()
 	if err != nil {
 		t.Fatal(err)
@@ -279,7 +288,7 @@ func TestPrepareDevAgentSessionDefaultsToUnixBackend(t *testing.T) {
 	if _, ok := session.Backends[localagent.RouteDashboard]; ok {
 		t.Fatalf("session dashboard backend should not be visible when the agent dashboard is active: %+v", session.Backends)
 	}
-	if route := session.Routes[localagent.RouteDashboard]; !strings.Contains(route, "console.onlava.localhost") || !strings.Contains(route, "/s/"+session.SessionID) {
+	if route := session.Routes[localagent.RouteDashboard]; !strings.Contains(route, "console."+session.SessionID+".demo.localhost") || strings.Contains(route, "/s/"+session.SessionID) {
 		t.Fatalf("session dashboard route = %q", route)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")); err != nil {
@@ -289,19 +298,81 @@ func TestPrepareDevAgentSessionDefaultsToUnixBackend(t *testing.T) {
 	if web.Network != "tcp" || web.Addr != "127.0.0.1:5173" {
 		t.Fatalf("session frontend backend = %+v", web)
 	}
-	if route := session.Routes["web"]; !strings.Contains(route, "web."+session.SessionID+".onlava.localhost") {
+	if route := session.Routes["web"]; !strings.Contains(route, "web."+session.SessionID+".demo.localhost") {
 		t.Fatalf("session frontend route = %q", route)
 	}
 	electric := session.Backends["electric"]
 	if electric.Network != "tcp" || electric.Addr != "127.0.0.1:3001" {
 		t.Fatalf("session electric backend = %+v", electric)
 	}
-	if route := session.Routes["electric"]; !strings.Contains(route, "electric."+session.SessionID+".onlava.localhost") {
+	if route := session.Routes["electric"]; !strings.Contains(route, "electric."+session.SessionID+".demo.localhost") {
 		t.Fatalf("session electric route = %q", route)
 	}
 
 	cancel()
 	waitForTestAgentServer(t, agentDone)
+}
+
+func TestRouteNamespaceForConfigUsesWorkspaceAndConfiguredHosts(t *testing.T) {
+	namespace := routeNamespaceForConfig(app.Config{
+		ID: "pulse",
+		Proxy: app.ProxyConfig{
+			Workspace:    "ONLV",
+			APIHost:      "https://api.onlv.localhost:443",
+			ConsoleHost:  "console.onlv.localhost",
+			TemporalHost: "temporal.onlv.localhost",
+			GrafanaHost:  "grafana.onlv.localhost",
+			Frontends: map[string]app.FrontendConfig{
+				"Pulse": {Host: "Pulse.Onlv.Localhost/path"},
+				"blog":  {Host: "blog.onlv.localhost"},
+			},
+		},
+	})
+	if got, want := namespace.Workspace, "onlv"; got != want {
+		t.Fatalf("workspace = %q, want %q", got, want)
+	}
+	if got, want := namespace.BaseDomain, "onlv.localhost"; got != want {
+		t.Fatalf("base domain = %q, want %q", got, want)
+	}
+	wantHosts := map[string]string{
+		localagent.RouteAPI:      "api.onlv.localhost",
+		"console":                "console.onlv.localhost",
+		localagent.RouteTemporal: "temporal.onlv.localhost",
+		localagent.RouteGrafana:  "grafana.onlv.localhost",
+		"pulse":                  "pulse.onlv.localhost",
+		"blog":                   "blog.onlv.localhost",
+	}
+	for route, want := range wantHosts {
+		if got := namespace.Hosts[route]; got != want {
+			t.Fatalf("host %q = %q, want %q in %+v", route, got, want, namespace.Hosts)
+		}
+	}
+}
+
+func TestRouteNamespaceForConfigFallbacks(t *testing.T) {
+	byExplicitHost := routeNamespaceForConfig(app.Config{
+		ID: "pulse",
+		Proxy: app.ProxyConfig{
+			APIHost: "api.custom.localhost",
+		},
+	})
+	if byExplicitHost.Workspace != "" {
+		t.Fatalf("explicit-host workspace = %q, want empty", byExplicitHost.Workspace)
+	}
+	if got, want := byExplicitHost.BaseDomain, "custom.localhost"; got != want {
+		t.Fatalf("explicit-host base domain = %q, want %q", got, want)
+	}
+
+	byAppID := routeNamespaceForConfig(app.Config{ID: "Pulse App"})
+	if got, want := byAppID.Workspace, "pulse-app"; got != want {
+		t.Fatalf("app-id workspace = %q, want %q", got, want)
+	}
+	if got, want := byAppID.BaseDomain, "pulse-app.localhost"; got != want {
+		t.Fatalf("app-id base domain = %q, want %q", got, want)
+	}
+	if byAppID.Hosts != nil {
+		t.Fatalf("app-id hosts = %+v, want nil", byAppID.Hosts)
+	}
 }
 
 func TestPrepareDevAgentSessionPrefersTCPWhenRequested(t *testing.T) {

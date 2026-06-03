@@ -134,7 +134,7 @@ func TestRejectDetachedDuplicateDevSessionRejectsLiveOwner(t *testing.T) {
 		t.Fatalf("register live owner session: %v", err)
 	}
 
-	err = rejectDetachedDuplicateDevSession(ctx, client, root, devOptions{Trust: true})
+	err = rejectDetachedDuplicateDevSession(ctx, client, root, devOptions{})
 	if err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("rejectDetachedDuplicateDevSession error = %v, want already running", err)
 	}
@@ -159,7 +159,7 @@ func TestWriteDetachedDevResultJSON(t *testing.T) {
 			SessionID: "app-abc",
 			OwnerPID:  123,
 			Routes: map[string]string{
-				localagent.RouteAPI: "http://api.app-abc.onlava.localhost:9440",
+				localagent.RouteAPI: "http://api.app-abc.demo.localhost:9440",
 			},
 		},
 	}
@@ -173,5 +173,45 @@ func TestWriteDetachedDevResultJSON(t *testing.T) {
 	}
 	if payload.SchemaVersion != result.SchemaVersion || payload.PID != 123 || payload.Session.SessionID != "app-abc" {
 		t.Fatalf("payload = %+v", payload)
+	}
+}
+
+func TestWriteDetachedDevResultTextSeparatesAliases(t *testing.T) {
+	t.Parallel()
+
+	result := detachedDevResult{
+		PID:           123,
+		LogPath:       "/tmp/dev.log",
+		AttachCommand: `onlava attach --app-root "/tmp/app" --session app-abc`,
+		DownCommand:   "onlava down --session app-abc",
+		Session: localagent.Session{
+			SessionID: "app-abc",
+			Routes: map[string]string{
+				localagent.RouteAPI: "https://api.app-abc.demo.localhost/",
+			},
+			Aliases: map[string]string{
+				localagent.RouteAPI: "https://api.demo.localhost/",
+			},
+			AliasConflicts: map[string]localagent.AliasLease{
+				"web": {
+					Host:      "demo.localhost",
+					SessionID: "other-session",
+				},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := writeDetachedDevResult(&buf, false, result); err != nil {
+		t.Fatalf("writeDetachedDevResult: %v", err)
+	}
+	output := buf.String()
+	for _, want := range []string{
+		"canonical routes:\n  api: https://api.app-abc.demo.localhost/",
+		"friendly aliases:\n  api: https://api.demo.localhost/",
+		"friendly alias conflicts:\n  web: demo.localhost owned by session other-session",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output missing %q:\n%s", want, output)
+		}
 	}
 }

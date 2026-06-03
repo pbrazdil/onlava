@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -26,6 +25,8 @@ type temporalDevServer struct {
 	info      onlavaruntime.TemporalRuntimeInfo
 	uiURL     string
 	dbPath    string
+	stdoutLog string
+	stderrLog string
 	external  bool
 	startedAt time.Time
 }
@@ -88,13 +89,14 @@ func startTemporalDevServer(ctx context.Context, root string, cfg app.Config, co
 
 	cmd := commandTreeContext(ctx, path, args...)
 	cmd.Dir = root
-	output := io.Writer(io.Discard)
-	if console != nil && console.verbose {
-		output = os.Stderr
+	logs, err := openSubstrateLogWriters(root, localagent.SubstrateTemporal, "server", console)
+	if err != nil {
+		return nil, fmt.Errorf("temporal: open substrate logs: %w", err)
 	}
-	cmd.Stdout = output
-	cmd.Stderr = output
+	cmd.Stdout = logs.stdout
+	cmd.Stderr = logs.stderr
 	if err := cmd.Start(); err != nil {
+		_ = logs.close()
 		return nil, err
 	}
 
@@ -104,10 +106,13 @@ func startTemporalDevServer(ctx context.Context, root string, cfg app.Config, co
 		info:      info,
 		uiURL:     fmt.Sprintf("http://%s", net.JoinHostPort(host, strconv.Itoa(uiPort))),
 		dbPath:    dbPath,
+		stdoutLog: logs.stdoutPath,
+		stderrLog: logs.stderrPath,
 		startedAt: time.Now().UTC(),
 	}
 	go func() {
 		server.done <- cmd.Wait()
+		_ = logs.close()
 		close(server.done)
 	}()
 	if err := server.waitReady(ctx, cfg.Name, rtCfg); err != nil {
@@ -252,10 +257,12 @@ func temporalDevServerFromSubstrate(substrate localagent.Substrate, appName stri
 		uiURL = temporalUIURL(info)
 	}
 	return &temporalDevServer{
-		info:     info,
-		uiURL:    strings.TrimRight(uiURL, "/"),
-		dbPath:   strings.TrimSpace(substrate.Endpoints["db_path"]),
-		external: true,
+		info:      info,
+		uiURL:     strings.TrimRight(uiURL, "/"),
+		dbPath:    strings.TrimSpace(substrate.Endpoints["db_path"]),
+		stdoutLog: strings.TrimSpace(substrate.Endpoints["stdout_log"]),
+		stderrLog: strings.TrimSpace(substrate.Endpoints["stderr_log"]),
+		external:  true,
 	}
 }
 
@@ -275,6 +282,12 @@ func (s *temporalDevServer) SubstrateRequest(ownerPID int) localagent.UpsertSubs
 	if s.dbPath != "" {
 		endpoints["db_path"] = s.dbPath
 	}
+	if s.stdoutLog != "" {
+		endpoints["stdout_log"] = s.stdoutLog
+	}
+	if s.stderrLog != "" {
+		endpoints["stderr_log"] = s.stderrLog
+	}
 	return localagent.UpsertSubstrateRequest{
 		Kind:      localagent.SubstrateTemporal,
 		Status:    "ready",
@@ -283,6 +296,21 @@ func (s *temporalDevServer) SubstrateRequest(ownerPID int) localagent.UpsertSubs
 		URLs:      map[string]string{"ui": s.uiURL},
 		Endpoints: endpoints,
 	}
+}
+
+func (s *temporalDevServer) ExitRecord(err error) localagent.SubstrateExit {
+	if s == nil {
+		return localagent.SubstrateExit{}
+	}
+	pid := 0
+	var state *os.ProcessState
+	if s.cmd != nil {
+		state = s.cmd.ProcessState
+		if s.cmd.Process != nil {
+			pid = s.cmd.Process.Pid
+		}
+	}
+	return substrateExitRecord("server", pid, s.startedAt, s.stdoutLog, s.stderrLog, err, state)
 }
 
 func (s *temporalDevServer) MarkExternal() {

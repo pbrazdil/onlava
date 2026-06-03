@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -226,6 +227,7 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 	for name, backend := range electricBackends {
 		backends[name] = backend
 	}
+	routeNamespace := routeNamespaceForConfig(cfg)
 	if listen.Addr != "" {
 		backends[localagent.RouteAPI] = localagent.Backend{Network: "tcp", Addr: listen.Addr}
 	}
@@ -241,13 +243,15 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 		return nil, nil, devBackend{}, restore, err
 	}
 	session, err := client.Register(ctx, localagent.RegisterRequest{
-		BaseAppID:  cfg.AppID(),
-		AppRoot:    root,
-		SessionID:  sessionID,
-		Status:     "starting",
-		OwnerPID:   os.Getpid(),
-		Backends:   backends,
-		ClaimOwner: true,
+		BaseAppID:      cfg.AppID(),
+		AppRoot:        root,
+		SessionID:      sessionID,
+		Status:         "starting",
+		OwnerPID:       os.Getpid(),
+		Backends:       backends,
+		RouteNamespace: routeNamespace,
+		ClaimOwner:     true,
+		ClaimAliases:   listen.ClaimAliases,
 	})
 	if err != nil {
 		return nil, nil, devBackend{}, restore, err
@@ -263,13 +267,15 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 		}
 		backends[localagent.RouteAPI] = localagent.Backend{Network: backend.Network, Addr: backend.Addr}
 		session, err = client.Register(ctx, localagent.RegisterRequest{
-			BaseAppID: cfg.AppID(),
-			AppRoot:   root,
-			SessionID: session.SessionID,
-			Branch:    session.Branch,
-			Status:    "starting",
-			OwnerPID:  os.Getpid(),
-			Backends:  backends,
+			BaseAppID:      cfg.AppID(),
+			AppRoot:        root,
+			SessionID:      session.SessionID,
+			Branch:         session.Branch,
+			Status:         "starting",
+			OwnerPID:       os.Getpid(),
+			Backends:       backends,
+			RouteNamespace: routeNamespace,
+			ClaimAliases:   listen.ClaimAliases,
 		})
 		if err != nil {
 			return nil, nil, devBackend{}, restore, err
@@ -289,20 +295,111 @@ func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, li
 			backends[name] = backend
 		}
 		session, err = client.Register(ctx, localagent.RegisterRequest{
-			BaseAppID: cfg.AppID(),
-			AppRoot:   root,
-			SessionID: session.SessionID,
-			Branch:    session.Branch,
-			Status:    "starting",
-			OwnerPID:  os.Getpid(),
-			Backends:  backends,
-			Processes: frontendSessionProcesses(frontendProcesses),
+			BaseAppID:      cfg.AppID(),
+			AppRoot:        root,
+			SessionID:      session.SessionID,
+			Branch:         session.Branch,
+			Status:         "starting",
+			OwnerPID:       os.Getpid(),
+			Backends:       backends,
+			RouteNamespace: routeNamespace,
+			Processes:      frontendSessionProcesses(frontendProcesses),
+			ClaimAliases:   listen.ClaimAliases,
 		})
 		if err != nil {
 			return nil, nil, devBackend{}, restore, err
 		}
 	}
 	return client, &session, backend.normalized(), restore, nil
+}
+
+func routeNamespaceForConfig(cfg app.Config) localagent.RouteNamespace {
+	hosts := map[string]string{}
+	addHost := func(route, host string) {
+		route = sanitizeRouteLabel(route)
+		host = normalizeRouteNamespaceHost(host)
+		if route == "" || host == "" {
+			return
+		}
+		hosts[route] = host
+	}
+	addHost(localagent.RouteAPI, cfg.Proxy.APIHost)
+	addHost("console", cfg.Proxy.ConsoleHost)
+	addHost(localagent.RouteTemporal, cfg.Proxy.TemporalHost)
+	addHost(localagent.RouteGrafana, cfg.Proxy.GrafanaHost)
+	for name, frontend := range cfg.Proxy.Frontends {
+		addHost(name, frontend.Host)
+	}
+	if len(hosts) == 0 {
+		hosts = nil
+	}
+	workspace := sanitizeRouteLabel(cfg.Proxy.Workspace)
+	if workspace == "" && len(hosts) == 0 {
+		workspace = sanitizeRouteLabel(cfg.AppID())
+	}
+	baseDomain := ""
+	if workspace != "" {
+		baseDomain = workspace + ".localhost"
+	} else if len(hosts) > 0 {
+		baseDomain = baseDomainFromRouteHosts(hosts)
+	}
+	return localagent.RouteNamespace{
+		Workspace:  workspace,
+		BaseDomain: baseDomain,
+		Hosts:      hosts,
+	}
+}
+
+func baseDomainFromRouteHosts(hosts map[string]string) string {
+	names := make([]string, 0, len(hosts))
+	for name := range hosts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		host := hosts[name]
+		if firstDot := strings.IndexByte(host, '.'); firstDot > 0 && firstDot < len(host)-1 {
+			return host[firstDot+1:]
+		}
+	}
+	return ""
+}
+
+func normalizeRouteNamespaceHost(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	if scheme := strings.Index(value, "://"); scheme >= 0 {
+		value = value[scheme+3:]
+	}
+	if slash := strings.IndexByte(value, '/'); slash >= 0 {
+		value = value[:slash]
+	}
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+	return strings.Trim(value, "[]")
+}
+
+func sanitizeRouteLabel(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	dash := false
+	for _, r := range value {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			dash = false
+			continue
+		}
+		if r == '-' || r == '_' || r == '/' || r == '.' || unicode.IsSpace(r) {
+			if !dash && b.Len() > 0 {
+				b.WriteByte('-')
+				dash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 func rejectLiveDuplicateDevSession(root, sessionID string, existing []localagent.Session) error {
@@ -453,10 +550,11 @@ func ensureDevAgentDashboardBackend(ctx context.Context, client *localagent.Clie
 	case "http":
 		opts.RouterHTTP = true
 	}
+	logOffset := fileSize(paths.LogPath)
 	if err := localagent.StartProcess(paths, opts); err != nil {
 		return err
 	}
-	restarted, err := waitForAgentStart(ctx, client, health.PID)
+	restarted, err := waitForAgentStart(ctx, client, health.PID, paths.LogPath, logOffset)
 	if err != nil {
 		return err
 	}

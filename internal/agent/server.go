@@ -29,17 +29,21 @@ type RunOptions struct {
 }
 
 type Server struct {
-	paths        Paths
-	registry     *Registry
-	routerAddr   string
-	routerScheme string
-	dashboard    Backend
-	tlsCA        localproxy.LocalCA
-	tlsCerts     sync.Map
-	control      *http.Server
-	router       *http.Server
-	controlLn    net.Listener
-	routerLn     net.Listener
+	paths                Paths
+	registry             *Registry
+	routerAddr           string
+	publicRouterAddr     string
+	routerScheme         string
+	internalRouterScheme string
+	edge                 *EdgeState
+	edgeToken            string
+	dashboard            Backend
+	tlsCA                localproxy.LocalCA
+	tlsCerts             sync.Map
+	control              *http.Server
+	router               *http.Server
+	controlLn            net.Listener
+	routerLn             net.Listener
 }
 
 func Run(ctx context.Context, opts RunOptions) error {
@@ -95,7 +99,22 @@ func NewServer(opts RunOptions) (*Server, error) {
 			}
 		}
 	}
-	registry, err := OpenRegistry(paths.RegistryPath, actualRouterAddr, routerScheme)
+	edgeState, edgeErr := LoadEdgeState(paths.EdgeStatePath)
+	if edgeErr != nil {
+		slog.Warn("failed to read onlava edge state", "err", edgeErr)
+	}
+	publicRouterAddr := actualRouterAddr
+	routeScheme := routerScheme
+	var activeEdge *EdgeState
+	if EdgeStateRunning(edgeState) && edgeState.PublicAddr != "" {
+		edgeCopy := edgeState
+		activeEdge = &edgeCopy
+		publicRouterAddr = edgeState.PublicAddr
+		if edgeState.PublicScheme != "" {
+			routeScheme = edgeState.PublicScheme
+		}
+	}
+	registry, err := OpenRegistry(paths.RegistryPath, publicRouterAddr, routeScheme)
 	if err != nil {
 		_ = routerLn.Close()
 		return nil, err
@@ -106,14 +125,18 @@ func NewServer(opts RunOptions) (*Server, error) {
 		return nil, err
 	}
 	server := &Server{
-		paths:        paths,
-		registry:     registry,
-		routerAddr:   actualRouterAddr,
-		routerScheme: routerScheme,
-		dashboard:    normalizeBackend(opts.DashboardBackend),
-		tlsCA:        tlsCA,
-		controlLn:    controlLn,
-		routerLn:     routerLn,
+		paths:                paths,
+		registry:             registry,
+		routerAddr:           actualRouterAddr,
+		publicRouterAddr:     publicRouterAddr,
+		routerScheme:         routeScheme,
+		internalRouterScheme: routerScheme,
+		edge:                 activeEdge,
+		edgeToken:            readEdgeToken(paths.EdgeTokenPath),
+		dashboard:            normalizeBackend(opts.DashboardBackend),
+		tlsCA:                tlsCA,
+		controlLn:            controlLn,
+		routerLn:             routerLn,
 	}
 	server.control = &http.Server{Handler: server.controlMux()}
 	server.router = &http.Server{Handler: server.routerMux()}
@@ -135,7 +158,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 	go func() {
 		ln := s.routerLn
-		if s.routerScheme == "https" {
+		if s.internalRouterScheme == "https" {
 			ln = tls.NewListener(s.routerLn, s.routerTLSConfig())
 		}
 		if err := s.router.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
@@ -172,6 +195,13 @@ func (s *Server) RouterScheme() string {
 		return "http"
 	}
 	return s.routerScheme
+}
+
+func (s *Server) PublicRouterAddr() string {
+	if s == nil || strings.TrimSpace(s.publicRouterAddr) == "" {
+		return ""
+	}
+	return s.publicRouterAddr
 }
 
 func (s *Server) ListSessions() []Session {
@@ -275,15 +305,16 @@ func normalizeBackend(backend Backend) Backend {
 func (s *Server) routerTLSConfig() *tls.Config {
 	return &tls.Config{
 		MinVersion: tls.VersionTLS12,
+		NextProtos: []string{"h2", "http/1.1"},
 		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			host := ""
 			if hello != nil {
 				host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(hello.ServerName)), ".")
 			}
 			if host == "" {
-				host = "onlava.localhost"
+				host = "localhost"
 			}
-			if !agentTLSHostAllowed(host) {
+			if !s.agentTLSHostAllowed(host) {
 				return nil, fmt.Errorf("unsupported onlava agent TLS host %q", host)
 			}
 			if cert, ok := s.tlsCerts.Load(host); ok {
@@ -301,9 +332,12 @@ func (s *Server) routerTLSConfig() *tls.Config {
 	}
 }
 
-func agentTLSHostAllowed(host string) bool {
-	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
-	return host == "onlava.localhost" || strings.HasSuffix(host, ".onlava.localhost")
+func (s *Server) agentTLSHostAllowed(host string) bool {
+	host = normalizeRouteRequestHost(host)
+	if host == "localhost" {
+		return true
+	}
+	return s.hasRouteHost(host)
 }
 
 func listenRouter(addr string) (net.Listener, string, error) {
@@ -312,7 +346,7 @@ func listenRouter(addr string) (net.Listener, string, error) {
 		return ln, ln.Addr().String(), nil
 	}
 	if strings.TrimSpace(addr) != defaultRouterAddr {
-		return nil, "", err
+		return nil, "", fmt.Errorf("listen onlava agent router at %s failed; choose a different --router-listen address or free that port: %w", addr, err)
 	}
 	ln, fallbackErr := net.Listen("tcp", "127.0.0.1:0")
 	if fallbackErr != nil {
@@ -355,12 +389,14 @@ func removeStaleSocket(path string) error {
 
 func (s *Server) writeState() error {
 	state := State{
-		SchemaVersion: StateSchemaVersion,
-		PID:           os.Getpid(),
-		SocketPath:    s.paths.SocketPath,
-		RouterAddr:    s.routerAddr,
-		RouterScheme:  s.routerScheme,
-		UpdatedAt:     time.Now().UTC(),
+		SchemaVersion:    StateSchemaVersion,
+		PID:              os.Getpid(),
+		SocketPath:       s.paths.SocketPath,
+		RouterAddr:       s.routerAddr,
+		PublicRouterAddr: s.publicRouterAddr,
+		RouterScheme:     s.routerScheme,
+		Edge:             s.edge,
+		UpdatedAt:        time.Now().UTC(),
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -373,6 +409,7 @@ func (s *Server) writeState() error {
 func (s *Server) controlMux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/health", s.handleHealth)
+	mux.HandleFunc("/v1/tls/allow", s.handleTLSAllow)
 	mux.HandleFunc("/v1/sessions", s.handleSessions)
 	mux.HandleFunc("/v1/sessions/", s.handleSession)
 	mux.HandleFunc("/v1/substrates", s.handleSubstrates)
@@ -390,9 +427,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, req *http.Request) {
 		PID:              os.Getpid(),
 		SocketPath:       s.paths.SocketPath,
 		RouterAddr:       s.routerAddr,
+		PublicRouterAddr: s.publicRouterAddr,
 		RouterScheme:     s.routerScheme,
+		Edge:             s.edge,
 		DashboardBackend: s.dashboard,
 	})
+}
+
+func (s *Server) handleTLSAllow(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		methodNotAllowed(w, http.MethodGet, http.MethodHead)
+		return
+	}
+	domain := normalizeRouteRequestHost(req.URL.Query().Get("domain"))
+	if domain == "" || !s.tlsAllowedHost(domain) {
+		http.NotFound(w, req)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleSubstrates(w http.ResponseWriter, req *http.Request) {

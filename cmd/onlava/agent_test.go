@@ -52,6 +52,58 @@ func TestAgentRouterTLSDefaultsOn(t *testing.T) {
 	}
 }
 
+func TestWaitForAgentStartSurfacesRouterBindFailureFromLog(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "agent.log")
+	if err := os.WriteFile(logPath, []byte("old log line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	offset := fileSize(logPath)
+	failure := "listen onlava agent router at 127.0.0.1:443 failed; choose a different --router-listen address or free that port: listen tcp 127.0.0.1:443: bind: permission denied\n"
+	if err := os.WriteFile(logPath, []byte("old log line\n"+failure), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := localagent.NewClient(filepath.Join(dir, "missing.sock"))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := waitForAgentStart(ctx, client, 0, logPath, offset)
+	if err == nil {
+		t.Fatal("expected waitForAgentStart to fail")
+	}
+	if !strings.Contains(err.Error(), "restarted onlava agent failed to start") || !strings.Contains(err.Error(), "bind: permission denied") {
+		t.Fatalf("waitForAgentStart error = %v", err)
+	}
+	if strings.Contains(err.Error(), "old log line") {
+		t.Fatalf("waitForAgentStart included pre-existing log line: %v", err)
+	}
+}
+
+func TestWaitForAgentStartSurfacesPermissionFailureFromLog(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "agent.log")
+	if err := os.WriteFile(logPath, []byte("old log line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	offset := fileSize(logPath)
+	failure := "open /Users/petrbrazdil/.onlava/agent/dashboard/devdash.json: permission denied\n"
+	if err := os.WriteFile(logPath, []byte("old log line\n"+failure), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := localagent.NewClient(filepath.Join(dir, "missing.sock"))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := waitForAgentStart(ctx, client, 0, logPath, offset)
+	if err == nil {
+		t.Fatal("expected waitForAgentStart to fail")
+	}
+	if !strings.Contains(err.Error(), "restarted onlava agent failed to start") || !strings.Contains(err.Error(), "devdash.json: permission denied") {
+		t.Fatalf("waitForAgentStart error = %v", err)
+	}
+	if strings.Contains(err.Error(), "old log line") {
+		t.Fatalf("waitForAgentStart included pre-existing log line: %v", err)
+	}
+}
+
 func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
 	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
@@ -88,6 +140,11 @@ func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 		BaseAppID: "demo",
 		AppRoot:   appRoot,
 		Branch:    "feature/status",
+		RouteNamespace: localagent.RouteNamespace{
+			Hosts: map[string]string{
+				localagent.RouteAPI: "api.demo.localhost",
+			},
+		},
 		Backends: map[string]localagent.Backend{
 			localagent.RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
 		},
@@ -95,18 +152,45 @@ func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	aliasURL := session.Aliases[localagent.RouteAPI]
+	if aliasURL == "" {
+		t.Fatalf("session did not claim api alias: %+v", session.Aliases)
+	}
+	exit := localagent.SubstrateExit{
+		Component:     "server",
+		PID:           123,
+		ExitedAt:      time.Now().UTC(),
+		ExitCode:      2,
+		LogPath:       "/tmp/temporal.stderr.log",
+		StdoutLogPath: "/tmp/temporal.stdout.log",
+		StderrLogPath: "/tmp/temporal.stderr.log",
+	}
+	if _, err := client.UpsertSubstrate(ctx, localagent.UpsertSubstrateRequest{
+		Kind:     localagent.SubstrateTemporal,
+		Status:   "exited",
+		LastExit: &exit,
+		ComponentExits: map[string]localagent.SubstrateExit{
+			"server": exit,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	output := captureStdout(t, func() error {
 		return statusCommand([]string{"--json", "--app-root", appRoot})
 	})
 	var status struct {
-		Sessions []localagent.Session `json:"sessions"`
+		Sessions   []localagent.Session   `json:"sessions"`
+		Substrates []localagent.Substrate `json:"substrates"`
 	}
 	if err := json.Unmarshal([]byte(output), &status); err != nil {
 		t.Fatalf("status json: %v\n%s", err, output)
 	}
 	if len(status.Sessions) != 1 || status.Sessions[0].SessionID != session.SessionID {
 		t.Fatalf("status sessions = %+v, want %s", status.Sessions, session.SessionID)
+	}
+	if len(status.Substrates) != 1 || status.Substrates[0].Status != "exited" || status.Substrates[0].LastExit == nil {
+		t.Fatalf("status substrates = %+v", status.Substrates)
 	}
 
 	output = captureStdout(t, func() error {
@@ -121,6 +205,25 @@ func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 	}
 	if len(sessions) != 0 {
 		t.Fatalf("sessions after down = %+v, want none", sessions)
+	}
+	replacement, err := client.Register(ctx, localagent.RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		SessionID: "replacement",
+		RouteNamespace: localagent.RouteNamespace{
+			Hosts: map[string]string{
+				localagent.RouteAPI: "api.demo.localhost",
+			},
+		},
+		Backends: map[string]localagent.Backend{
+			localagent.RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4001"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.Aliases[localagent.RouteAPI] != aliasURL {
+		t.Fatalf("down did not free api alias: replacement=%+v want %q", replacement.Aliases, aliasURL)
 	}
 }
 

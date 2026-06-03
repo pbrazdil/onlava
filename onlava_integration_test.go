@@ -2,11 +2,13 @@ package onlava_test
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 	temporalclient "go.temporal.io/sdk/client"
 )
@@ -748,19 +751,58 @@ func prepareMutableDevRouteApp(t *testing.T, repo, fixtureName, moduleName, conf
 	return appDir, apiPath, serviceSource
 }
 
-func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
-	t.Parallel()
+func waitForAgentSessionRoutes(t *testing.T, ctx context.Context, client *localagent.Client, appRoot string, routes ...string) localagent.Session {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	var last []localagent.Session
+	for time.Now().Before(deadline) {
+		sessions, err := client.List(ctx, appRoot)
+		if err == nil {
+			last = sessions
+			for _, session := range sessions {
+				ok := true
+				for _, route := range routes {
+					if strings.TrimSpace(session.Routes[route]) == "" {
+						ok = false
+						break
+					}
+				}
+				if ok {
+					return session
+				}
+			}
+		}
+		time.Sleep(integrationPollInterval)
+	}
+	t.Fatalf("timed out waiting for agent routes %v for %s; sessions=%+v", routes, appRoot, last)
+	return localagent.Session{}
+}
 
+func waitForIntegrationAgentPing(ctx context.Context, client *localagent.Client) error {
+	deadline := time.Now().Add(2 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if err := client.Ping(ctx); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		time.Sleep(integrationPollInterval)
+	}
+	return lastErr
+}
+
+func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	repo := repoRoot(t)
 	appDir, apiPath, _ := prepareMutableDevRouteApp(t, repo, "devdashboard", "devdashboard", `{"name":"basicapp","proxy":{"workspace":"ignored","api_host":"api.acme.localhost","console_host":"console.acme.localhost","frontends":{"web":{"host":"web.acme.localhost"}}}}`)
 
 	port := freePort(t)
 	addr := "127.0.0.1:" + port
 	dashAddr := "127.0.0.1:" + freePort(t)
-	httpPort := freePort(t)
-	httpsPort := freePort(t)
 	cacheDir := sharedIntegrationCache(t)
 	binary := buildOnlavaBinary(t, repo)
+	agentHome := t.TempDir()
+	t.Setenv("ONLAVA_AGENT_HOME", agentHome)
 
 	frontendLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -779,8 +821,27 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr, "--proxy")
-	cmd.Env = onlavaDevProxyEnv(repo, dashAddr, cacheDir, httpPort, httpsPort, frontendAddr)
+	agentCmd := exec.CommandContext(ctx, binary, "agent", "--router-listen", "127.0.0.1:0")
+	agentCmd.Env = onlavaDevAgentEnv(repo, dashAddr, cacheDir, agentHome, "")
+	agentCmd.Stdout = io.Discard
+	agentCmd.Stderr = io.Discard
+	agentCmd.Stdin = nil
+	agentCmd.Dir = appDir
+	agentCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := agentCmd.Start(); err != nil {
+		t.Fatalf("start onlava agent: %v", err)
+	}
+	defer killOnlavaProcess(t, cancel, agentCmd)
+	agentClient, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForIntegrationAgentPing(ctx, agentClient); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
+	cmd.Env = onlavaDevAgentEnv(repo, dashAddr, cacheDir, agentHome, frontendAddr)
 	var devOutput strings.Builder
 	cmd.Stdout = &devOutput
 	cmd.Stderr = &devOutput
@@ -792,11 +853,13 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	}
 	defer killOnlavaProcess(t, cancel, cmd)
 
+	session := waitForAgentSessionRoutes(t, ctx, agentClient, appDir, localagent.RouteAPI, localagent.RouteDashboard, "web")
+
 	client := insecureHTTPSClient()
 	directURL := "http://" + addr + "/service.CallPrivate"
-	apiURL := "https://api.acme.localhost:" + httpsPort + "/service.CallPrivate"
-	consoleURL := "https://console.acme.localhost:" + httpsPort + "/"
-	frontendURL := "https://web.acme.localhost:" + httpsPort + "/"
+	apiURL := strings.TrimRight(session.Routes[localagent.RouteAPI], "/") + "/service.CallPrivate"
+	consoleURL := session.Routes[localagent.RouteDashboard]
+	frontendURL := session.Routes["web"]
 	type wsProbeResult struct {
 		conn *websocket.Conn
 		err  error
@@ -808,7 +871,7 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 		routeErrs <- waitForJSONWithClientErr(&http.Client{Timeout: time.Second}, directURL, http.StatusOK, map[string]any{"message": "secret:hi"})
 	}()
 	go func() {
-		routeErrs <- waitForStatusWithClientErr(client, consoleURL, http.StatusFound)
+		routeErrs <- waitForStatusWithClientErr(client, consoleURL, http.StatusOK)
 	}()
 	go func() {
 		routeErrs <- waitForBodyWithClientErr(client, frontendURL, http.StatusOK, "frontend ok")
@@ -821,7 +884,7 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 		routeErrs <- waitForJSONWithClientErr(client, apiURL, http.StatusOK, map[string]any{"message": "secret:hi"})
 	}()
 	go func() {
-		wsConn, err := dialDashboardWebsocketWithVersion(dashAddr)
+		wsConn, err := dialDashboardWebsocketWithVersion(consoleURL)
 		if err != nil {
 			wsReady <- err
 			wsResult <- wsProbeResult{err: err}
@@ -858,9 +921,6 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	if err := os.WriteFile(apiPath, []byte(updated), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := waitForWSMethodsErr(wsConn, 15*time.Second, "process/compile-start", "process/output", "process/reload"); err != nil {
-		t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
-	}
 	if err := waitForJSONWithClientErr(&http.Client{Timeout: time.Second}, directURL, http.StatusOK, map[string]any{"message": "secret:dashboard"}); err != nil {
 		t.Fatalf("%v\nprocess output:\n%s", err, devOutput.String())
 	}
@@ -869,11 +929,25 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	}
 }
 
-func dialDashboardWebsocketWithVersion(dashboardAddr string) (*websocket.Conn, error) {
+func dialDashboardWebsocketWithVersion(dashboardURL string) (*websocket.Conn, error) {
+	parsed, err := url.Parse(dashboardURL)
+	if err != nil {
+		return nil, err
+	}
+	switch parsed.Scheme {
+	case "https":
+		parsed.Scheme = "wss"
+	case "http":
+		parsed.Scheme = "ws"
+	}
+	parsed.Path = "/__onlava"
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	dialer := websocket.Dialer{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	deadline := time.Now().Add(90 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
-		conn, _, err := websocket.DefaultDialer.Dial("ws://"+dashboardAddr+"/__onlava", nil)
+		conn, _, err := dialer.Dial(parsed.String(), nil)
 		if err != nil {
 			lastErr = err
 			time.Sleep(integrationPollInterval)

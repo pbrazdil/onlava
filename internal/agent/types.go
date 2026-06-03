@@ -34,24 +34,27 @@ type Owner struct {
 }
 
 type Session struct {
-	SchemaVersion string             `json:"schema_version"`
-	SessionID     string             `json:"session_id"`
-	BaseAppID     string             `json:"base_app_id"`
-	RuntimeAppID  string             `json:"runtime_app_id"`
-	AppRoot       string             `json:"app_root"`
-	StateRoot     string             `json:"state_root"`
-	Branch        string             `json:"branch,omitempty"`
-	Status        string             `json:"status"`
-	StatusReason  string             `json:"status_reason,omitempty"`
-	OwnerPID      int                `json:"owner_pid,omitempty"`
-	Owner         Owner              `json:"owner,omitempty"`
-	AppPID        string             `json:"app_pid,omitempty"`
-	Processes     map[string]Process `json:"processes,omitempty"`
-	Routes        map[string]string  `json:"routes"`
-	Backends      map[string]Backend `json:"backends"`
-	ReportToken   string             `json:"-"`
-	CreatedAt     time.Time          `json:"created_at"`
-	UpdatedAt     time.Time          `json:"updated_at"`
+	SchemaVersion  string                `json:"schema_version"`
+	SessionID      string                `json:"session_id"`
+	BaseAppID      string                `json:"base_app_id"`
+	RuntimeAppID   string                `json:"runtime_app_id"`
+	RouteNamespace RouteNamespace        `json:"route_namespace,omitempty"`
+	AppRoot        string                `json:"app_root"`
+	StateRoot      string                `json:"state_root"`
+	Branch         string                `json:"branch,omitempty"`
+	Status         string                `json:"status"`
+	StatusReason   string                `json:"status_reason,omitempty"`
+	OwnerPID       int                   `json:"owner_pid,omitempty"`
+	Owner          Owner                 `json:"owner,omitempty"`
+	AppPID         string                `json:"app_pid,omitempty"`
+	Processes      map[string]Process    `json:"processes,omitempty"`
+	Routes         map[string]string     `json:"routes"`
+	Aliases        map[string]string     `json:"aliases,omitempty"`
+	AliasConflicts map[string]AliasLease `json:"alias_conflicts,omitempty"`
+	Backends       map[string]Backend    `json:"backends"`
+	ReportToken    string                `json:"-"`
+	CreatedAt      time.Time             `json:"created_at"`
+	UpdatedAt      time.Time             `json:"updated_at"`
 }
 
 type Process struct {
@@ -60,18 +63,38 @@ type Process struct {
 }
 
 type RegisterRequest struct {
-	BaseAppID   string             `json:"base_app_id"`
-	AppRoot     string             `json:"app_root"`
-	SessionID   string             `json:"session_id,omitempty"`
-	Branch      string             `json:"branch,omitempty"`
-	Status      string             `json:"status,omitempty"`
-	OwnerPID    int                `json:"owner_pid,omitempty"`
-	Owner       Owner              `json:"owner,omitempty"`
-	AppPID      string             `json:"app_pid,omitempty"`
-	Processes   map[string]Process `json:"processes,omitempty"`
-	Backends    map[string]Backend `json:"backends,omitempty"`
-	ReportToken string             `json:"report_token,omitempty"`
-	ClaimOwner  bool               `json:"claim_owner,omitempty"`
+	BaseAppID      string             `json:"base_app_id"`
+	AppRoot        string             `json:"app_root"`
+	SessionID      string             `json:"session_id,omitempty"`
+	Branch         string             `json:"branch,omitempty"`
+	Status         string             `json:"status,omitempty"`
+	OwnerPID       int                `json:"owner_pid,omitempty"`
+	Owner          Owner              `json:"owner,omitempty"`
+	AppPID         string             `json:"app_pid,omitempty"`
+	Processes      map[string]Process `json:"processes,omitempty"`
+	Backends       map[string]Backend `json:"backends,omitempty"`
+	RouteNamespace RouteNamespace     `json:"route_namespace,omitempty"`
+	ReportToken    string             `json:"report_token,omitempty"`
+	ClaimOwner     bool               `json:"claim_owner,omitempty"`
+	ClaimAliases   bool               `json:"claim_aliases,omitempty"`
+}
+
+type RouteNamespace struct {
+	Workspace  string            `json:"workspace,omitempty"`
+	BaseDomain string            `json:"base_domain,omitempty"`
+	Hosts      map[string]string `json:"hosts,omitempty"`
+}
+
+type AliasLease struct {
+	Host      string    `json:"host"`
+	Route     string    `json:"route"`
+	SessionID string    `json:"session_id"`
+	AppRoot   string    `json:"app_root"`
+	OwnerPID  int       `json:"owner_pid,omitempty"`
+	Owner     Owner     `json:"owner,omitempty"`
+	URL       string    `json:"url"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type RegisterResponse struct {
@@ -84,28 +107,45 @@ type StatusResponse struct {
 }
 
 type Substrate struct {
-	SchemaVersion string            `json:"schema_version"`
-	Kind          string            `json:"kind"`
-	Status        string            `json:"status"`
-	OwnerPID      int               `json:"owner_pid,omitempty"`
-	Owner         Owner             `json:"owner,omitempty"`
-	PIDs          map[string]int    `json:"pids,omitempty"`
-	Owners        map[string]Owner  `json:"owners,omitempty"`
-	URLs          map[string]string `json:"urls,omitempty"`
-	Endpoints     map[string]string `json:"endpoints,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
+	SchemaVersion  string                   `json:"schema_version"`
+	Kind           string                   `json:"kind"`
+	Status         string                   `json:"status"`
+	OwnerPID       int                      `json:"owner_pid,omitempty"`
+	Owner          Owner                    `json:"owner,omitempty"`
+	PIDs           map[string]int           `json:"pids,omitempty"`
+	Owners         map[string]Owner         `json:"owners,omitempty"`
+	URLs           map[string]string        `json:"urls,omitempty"`
+	Endpoints      map[string]string        `json:"endpoints,omitempty"`
+	LastExit       *SubstrateExit           `json:"last_exit,omitempty"`
+	ComponentExits map[string]SubstrateExit `json:"component_exits,omitempty"`
+	CreatedAt      time.Time                `json:"created_at"`
+	UpdatedAt      time.Time                `json:"updated_at"`
 }
 
 type UpsertSubstrateRequest struct {
-	Kind      string            `json:"kind"`
-	Status    string            `json:"status,omitempty"`
-	OwnerPID  int               `json:"owner_pid,omitempty"`
-	Owner     Owner             `json:"owner,omitempty"`
-	PIDs      map[string]int    `json:"pids,omitempty"`
-	Owners    map[string]Owner  `json:"owners,omitempty"`
-	URLs      map[string]string `json:"urls,omitempty"`
-	Endpoints map[string]string `json:"endpoints,omitempty"`
+	Kind           string                   `json:"kind"`
+	Status         string                   `json:"status,omitempty"`
+	OwnerPID       int                      `json:"owner_pid,omitempty"`
+	Owner          Owner                    `json:"owner,omitempty"`
+	PIDs           map[string]int           `json:"pids,omitempty"`
+	Owners         map[string]Owner         `json:"owners,omitempty"`
+	URLs           map[string]string        `json:"urls,omitempty"`
+	Endpoints      map[string]string        `json:"endpoints,omitempty"`
+	LastExit       *SubstrateExit           `json:"last_exit,omitempty"`
+	ComponentExits map[string]SubstrateExit `json:"component_exits,omitempty"`
+}
+
+type SubstrateExit struct {
+	Component     string    `json:"component,omitempty"`
+	PID           int       `json:"pid,omitempty"`
+	StartedAt     time.Time `json:"started_at,omitempty"`
+	ExitedAt      time.Time `json:"exited_at"`
+	ExitCode      int       `json:"exit_code"`
+	Signal        string    `json:"signal,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	LogPath       string    `json:"log_path,omitempty"`
+	StdoutLogPath string    `json:"stdout_log_path,omitempty"`
+	StderrLogPath string    `json:"stderr_log_path,omitempty"`
 }
 
 type SubstrateResponse struct {
@@ -117,19 +157,51 @@ type SubstratesResponse struct {
 }
 
 type HealthResponse struct {
-	SchemaVersion    string  `json:"schema_version"`
-	PID              int     `json:"pid"`
-	SocketPath       string  `json:"socket_path"`
-	RouterAddr       string  `json:"router_addr"`
-	RouterScheme     string  `json:"router_scheme"`
-	DashboardBackend Backend `json:"dashboard_backend,omitempty"`
+	SchemaVersion    string     `json:"schema_version"`
+	PID              int        `json:"pid"`
+	SocketPath       string     `json:"socket_path"`
+	RouterAddr       string     `json:"router_addr"`
+	PublicRouterAddr string     `json:"public_router_addr,omitempty"`
+	RouterScheme     string     `json:"router_scheme"`
+	Edge             *EdgeState `json:"edge,omitempty"`
+	DashboardBackend Backend    `json:"dashboard_backend,omitempty"`
 }
 
 type State struct {
+	SchemaVersion    string     `json:"schema_version"`
+	PID              int        `json:"pid"`
+	SocketPath       string     `json:"socket_path"`
+	RouterAddr       string     `json:"router_addr"`
+	PublicRouterAddr string     `json:"public_router_addr,omitempty"`
+	RouterScheme     string     `json:"router_scheme,omitempty"`
+	Edge             *EdgeState `json:"edge,omitempty"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type EdgeState struct {
+	SchemaVersion string    `json:"schema_version,omitempty"`
+	Kind          string    `json:"kind"`
+	Status        string    `json:"status"`
+	PID           int       `json:"pid,omitempty"`
+	PublicAddr    string    `json:"public_addr,omitempty"`
+	PublicScheme  string    `json:"public_scheme,omitempty"`
+	HTTPSListen   string    `json:"https_listen,omitempty"`
+	UpstreamAddr  string    `json:"upstream_addr,omitempty"`
+	AdminSocket   string    `json:"admin_socket,omitempty"`
+	ConfigPath    string    `json:"config_path,omitempty"`
+	LogPath       string    `json:"log_path,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+}
+
+type EdgeTargetState struct {
 	SchemaVersion string    `json:"schema_version"`
+	Kind          string    `json:"kind"`
+	TargetAddr    string    `json:"target_addr"`
 	PID           int       `json:"pid"`
-	SocketPath    string    `json:"socket_path"`
-	RouterAddr    string    `json:"router_addr"`
-	RouterScheme  string    `json:"router_scheme,omitempty"`
+	OwnerUID      int       `json:"owner_uid"`
+	OwnerGID      int       `json:"owner_gid"`
+	ProcessStart  string    `json:"process_start"`
+	Executable    string    `json:"executable"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }

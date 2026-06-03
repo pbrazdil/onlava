@@ -86,6 +86,12 @@ func TestAgentDashboardControllerMarksMissingRegistrySessionOffline(t *testing.T
 		BaseAppID: "demo",
 		AppRoot:   t.TempDir(),
 		Branch:    "feature/live",
+		RouteNamespace: localagent.RouteNamespace{
+			Hosts: map[string]string{
+				localagent.RouteAPI: "api.demo.localhost",
+				"victoria":          "victoria.demo.localhost",
+			},
+		},
 		Backends: map[string]localagent.Backend{
 			localagent.RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
 			"victoria":          {Network: "tcp", Addr: "127.0.0.1:8428"},
@@ -159,6 +165,12 @@ func TestAgentDashboardControllerMarksMissingRegistrySessionOffline(t *testing.T
 	}
 	if _, ok := status.Routes["victoria"]; ok {
 		t.Fatalf("live status exposed victoria route: %+v", status.Routes)
+	}
+	if status.Aliases[localagent.RouteAPI] == "" {
+		t.Fatalf("live status aliases missing api entry: %+v", status.Aliases)
+	}
+	if _, ok := status.Aliases["victoria"]; ok {
+		t.Fatalf("live status exposed victoria alias: %+v", status.Aliases)
 	}
 
 	status, err = controller.dashboardStatusFor(ctx, "stale-session")

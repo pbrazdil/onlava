@@ -195,18 +195,15 @@ func onlavaServeEnv(repo, dashboardAddr, cacheDir string) []string {
 	)
 }
 
-func onlavaDevProxyEnv(repo, dashboardAddr, cacheDir, httpPort, httpsPort, frontendAddr string) []string {
+func onlavaDevAgentEnv(repo, dashboardAddr, cacheDir, agentHome, frontendAddr string) []string {
 	env := append(
 		os.Environ(),
+		"ONLAVA_AGENT_HOME="+agentHome,
 		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
 		"ONLAVA_DEV_DASHBOARD_UI_DIR="+filepath.Join(repo, "ui", "dist"),
 		"ONLAVA_DEV_VICTORIA=0",
-		"ONLAVA_AGENT_DISABLE=1",
 		"ONLAVA_TEST_WATCH_BACKUP_POLL_MS=20",
 		"ONLAVA_TEST_WATCH_SETTLE_DELAY_MS=20",
-		"ONLAVA_LOCAL_PROXY_HTTP_PORT="+httpPort,
-		"ONLAVA_LOCAL_PROXY_HTTPS_PORT="+httpsPort,
-		"ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL=1",
 	)
 	if frontendAddr != "" {
 		env = append(env, frontendAddrEnv("web")+"="+frontendAddr)

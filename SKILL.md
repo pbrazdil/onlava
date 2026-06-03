@@ -38,7 +38,7 @@ Run `onlava doctor --json` before deep app debugging when local readiness is in 
 
 - `.onlava.json` marks the app root.
 - Go source is the app model.
-- `onlava dev` starts the supervised local platform: app process, rebuild/restart loop, dashboard, API Explorer, logs, traces, metrics, managed dev services when configured, and optional frontend/proxy routing.
+- `onlava dev` starts the supervised local platform: app process, rebuild/restart loop, dashboard, API Explorer, logs, traces, metrics, managed dev services when configured, and optional frontend routing through the local agent.
 - `onlava serve` starts a headless API-role server and does not start dashboard, proxy, or watch mode.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and called through generated helpers.
 - Typed endpoints decode path, query, header, cookie, and JSON body inputs into Go values.
@@ -129,7 +129,9 @@ onlava console
 onlava down
 ```
 
-`onlava dev --json` emits JSONL. `onlava dev --detach` starts an agent-backed app session. `onlava attach` follows session logs. `onlava attach --tui` and `onlava console` open the source-aware terminal console.
+`onlava dev --json` emits JSONL. `onlava dev --detach` starts an agent-backed app session. `onlava attach` follows session logs. `onlava attach --tui` and `onlava console` open the source-aware terminal console. Agent session `routes` are canonical; configured friendly hosts appear separately in `aliases` only for the live session that owns the free alias. Use `onlava dev --claim-aliases` only for intentional live alias transfer.
+
+Use `onlava edge privileged install`, `onlava edge install`, then `onlava edge trust` when a browser needs trusted local HTTPS on `127.0.0.1:443`. The privileged helper owns only the default HTTPS loopback listener and forwards raw TCP to user-owned Caddy on an unprivileged loopback port; do not run Caddy, the agent router, or `onlava edge install` as root. `onlava edge` uses managed Caddy from the toolchain. `onlava edge trust` uses a temporary admin-only Caddy process and does not require the port-443 edge to already be running. `onlava dev --trust` is only a compatibility alias for edge trust setup.
 
 For managed Postgres, app processes, setup commands, DB setup, and workers receive `DatabaseURL` as the app database authority. Onlava does not inject `DATABASE_URL` into those app-facing environments; treat `ONLAVA_MANAGED_DATABASE_URL` as tooling/debug metadata. To use an explicit external DB with declared managed Postgres, set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` and provide `DatabaseURL`; `DATABASE_URL` is ignored.
 
@@ -164,7 +166,7 @@ onlava toolchain list --json
 onlava toolchain verify --json
 ```
 
-Onlava-managed tools live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. Treat managed Grafana, Victoria, and Temporal CLI details as substrate unless intentionally debugging them. Agents should not rely on system `PATH` binaries for those issues; use `onlava toolchain sync --json` or an explicit per-tool env override.
+Onlava-managed tools live under `.onlava/toolchain/`, `~/.onlava/toolchain/` for machine-level edge tools, or `ONLAVA_TOOLCHAIN_DIR`. Treat managed Caddy, Grafana, Victoria, and Temporal CLI details as substrate unless intentionally debugging them. Agents should not rely on system `PATH` binaries for those issues; use `onlava toolchain sync --json` for app-root tools or `onlava edge install` for Caddy edge. Shared substrate failures appear in `onlava status --json` under `substrates` with `last_exit`, `component_exits`, and stdout/stderr log paths.
 
 Do not introduce new onlava-owned production environment variables by default. Prefer `.onlava.json`, explicit CLI flags, or checked-in manifests; when an env variable is truly required, update `docs/environment.registry.json`, `docs/environment.md`, and tests together.
 
@@ -212,9 +214,11 @@ billing/scripts/reconcile/main.go
 Use `docs/local-contract.md` for the full grammar. Common agent commands:
 
 ```text
-onlava dev [--app-root <path>] [--session <id>|--new-session] [--json] [--detach]
+onlava dev [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [--json] [--detach]
+onlava dev --trust [--json]
 onlava attach [--app-root <path>] [--session current|<id>] [--jsonl|--json] [--tui]
 onlava console [--app-root <path>] [--session current|<id>]
+onlava edge install|trust|status|restart|uninstall|privileged [--json]
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>]
 onlava serve [--app-root <path>] [--env <name>] [--log-format text|json]

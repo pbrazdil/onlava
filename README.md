@@ -34,7 +34,7 @@ Available now:
 - local logs, traces, and metrics inspection
 - local observability and Grafana capabilities
 - Temporal workflow/activity and cron local runtime support
-- local HTTPS/frontend proxy with optional trust-store installation
+- local HTTPS edge and frontend routing with optional trust-store installation
 - dashboard and API explorer
 - configured generators, SQLC refresh, database sync, and repo task commands
 - app-local operational scripts
@@ -148,9 +148,10 @@ Common options:
 ```sh
 onlava dev --port 4000 --listen 127.0.0.1
 onlava dev --json
-onlava dev --proxy
-onlava dev --proxy --trust
 onlava dev --detach
+onlava edge privileged install
+onlava edge install
+onlava edge trust
 onlava attach
 onlava attach --tui
 onlava console
@@ -158,7 +159,7 @@ onlava console
 
 `--detach` starts an agent-backed dev session in the background and returns after the session is registered. `onlava attach` follows the current session logs from VictoriaLogs. `onlava attach --tui` or `onlava console` opens a source-aware terminal console when attached to a real TTY. `onlava down` stops the current or selected session.
 
-`--proxy` enables local HTTPS/frontend domains from `.onlava.json` proxy config. `--trust` allows onlava to install the local development CA into the OS trust store. Without `--trust`, onlava skips trust-store changes.
+`onlava dev` uses canonical agent-routed session URLs from `.onlava.json` proxy config. Configured hosts such as `api.myteam.localhost` are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `onlava dev --claim-aliases` only when intentionally transferring live aliases to this session. Use `onlava edge privileged install`, `onlava edge install`, and `onlava edge trust` when you want trusted local HTTPS routes on the default HTTPS port; edge syncs managed Caddy when needed and keeps Caddy user-owned.
 
 Example proxy config:
 
@@ -187,11 +188,13 @@ Example proxy config:
 ## CLI Overview
 
 ```text
-onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [-v|--verbose] [--json] [--proxy] [--trust] [--detach]
+onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
+onlava dev --trust [--json]
 onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json] [--tui]
 onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
 onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+onlava edge install|trust|status|restart|uninstall|privileged [--json]
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava prune --older-than <duration> [--app-root <path>] [--json]
@@ -273,7 +276,7 @@ The DB lifecycle split uses `onlava db apply` for schema/app database mutation, 
 
 ## Managed Toolchain
 
-The root `onlava.toolchain.json` freezes Onlava-owned local tools, images, plugins, and source lock references for this source version. Managed binaries install under `.onlava/toolchain/` by default; set `ONLAVA_TOOLCHAIN_DIR` to use a controlled cache elsewhere.
+The root `onlava.toolchain.json` freezes Onlava-owned local tools, images, plugins, and source lock references for this source version. Managed binaries install under `.onlava/toolchain/` by default, while machine-level edge tools install under `~/.onlava/toolchain/`; set `ONLAVA_TOOLCHAIN_DIR` to use a controlled cache elsewhere.
 
 ```sh
 onlava toolchain list --json
@@ -281,7 +284,7 @@ onlava toolchain sync --json
 onlava toolchain verify --json
 ```
 
-Grafana, Victoria sidecars, and the local Temporal CLI are backing substrate for local capabilities. When intentionally debugging them, use explicit env overrides or the managed store; they do not silently fall back to system `PATH` binaries.
+Caddy edge, Grafana, Victoria sidecars, and the local Temporal CLI are backing substrate for local capabilities. Caddy edge is managed-toolchain only; for the other tools, use documented env overrides, the managed store, `onlava status --json` substrate records, and the recorded stdout/stderr log paths when intentionally debugging them. They do not silently fall back to system `PATH` binaries.
 
 ## Observability And Inspection
 
@@ -298,10 +301,11 @@ onlava inspect routes --json
 onlava inspect endpoints --json
 onlava inspect traces --json --session current --since 15m --slowest
 onlava inspect metrics --json --session current --since 1h
+onlava status --json
 onlava harness --json --write
 ```
 
-Grafana substrate files are generated under `.onlava/grafana/` when you need to debug them. Set `ONLAVA_DEV_GRAFANA=0` to disable Grafana or `ONLAVA_DEV_GRAFANA=1` to require it during `onlava dev` startup.
+Grafana substrate files are generated under `.onlava/grafana/` when you need to debug them. Shared Temporal and Victoria substrate failures are exposed in `onlava status --json` as `last_exit` / `component_exits` and emit structured dev log events with component, PID, exit code or signal, and log paths. Set `ONLAVA_DEV_GRAFANA=0` to disable Grafana or `ONLAVA_DEV_GRAFANA=1` to require it during `onlava dev` startup.
 
 ## Development
 

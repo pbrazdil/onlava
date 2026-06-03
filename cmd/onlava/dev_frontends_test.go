@@ -73,8 +73,8 @@ func TestFrontendDevEnvIncludesSessionRoutes(t *testing.T) {
 	env := frontendDevEnv([]string{"EXISTING=1"}, "/repo/app", "127.0.0.1:49231", localagent.Session{
 		SessionID: "main-abc123",
 		Routes: map[string]string{
-			localagent.RouteAPI: "http://api.main-abc123.onlava.localhost:9440/",
-			"electric":          "http://electric.main-abc123.onlava.localhost:9440/",
+			localagent.RouteAPI: "http://api.main-abc123.demo.localhost:9440/",
+			"electric":          "http://electric.main-abc123.demo.localhost:9440/",
 		},
 	})
 	for _, want := range []string{
@@ -83,10 +83,10 @@ func TestFrontendDevEnvIncludesSessionRoutes(t *testing.T) {
 		"PORT=49231",
 		"ONLAVA_APP_ROOT=/repo/app",
 		"ONLAVA_SESSION_ID=main-abc123",
-		"ONLAVA_API_BASE_URL=http://api.main-abc123.onlava.localhost:9440/",
-		"VITE_API_BASE_URL=http://api.main-abc123.onlava.localhost:9440/",
-		"ONLAVA_ELECTRIC_URL=http://electric.main-abc123.onlava.localhost:9440/",
-		"VITE_ELECTRIC_URL=http://electric.main-abc123.onlava.localhost:9440/",
+		"ONLAVA_API_BASE_URL=http://api.main-abc123.demo.localhost:9440/",
+		"VITE_API_BASE_URL=http://api.main-abc123.demo.localhost:9440/",
+		"ONLAVA_ELECTRIC_URL=http://electric.main-abc123.demo.localhost:9440/",
+		"VITE_ELECTRIC_URL=http://electric.main-abc123.demo.localhost:9440/",
 	} {
 		if !containsString(env, want) {
 			t.Fatalf("frontendDevEnv() missing %q in %s", want, strings.Join(env, "\n"))

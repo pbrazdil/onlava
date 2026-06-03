@@ -19,12 +19,12 @@ Process environment wins over values loaded from `.env` and `.env.local`. `onlav
 | `ONLAVA_DEV_CACHE_DIR` | user input | Overrides build/dashboard cache root. This does not change agent home. |
 | `ONLAVA_DEV_DASHBOARD_ADDR` | internal/user input | Overrides the dashboard backend address used by dev sessions. Normally allocated automatically. |
 | `ONLAVA_DEV_DASHBOARD_UI_DIR` | user input | Overrides the built dashboard UI directory used by the dashboard backend. |
-| `ONLAVA_LOCAL_PROXY` | user input | `1` enables the legacy local HTTPS/frontend proxy path. Default agent dev does not need it. |
-| `ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL` | user input | `1` skips local CA trust installation for the legacy local proxy. |
-| `ONLAVA_LOCAL_PROXY_HTTP_PORT` | user input | Overrides the legacy local proxy HTTP port. |
-| `ONLAVA_LOCAL_PROXY_HTTPS_PORT` | user input | Overrides the legacy local proxy HTTPS port. |
+| `ONLAVA_LOCAL_PROXY` | legacy/internal | `1` is rejected by normal `onlava dev`; the legacy local proxy variable remains only for internal proxy code and tests. |
+| `ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL` | legacy/internal | Legacy local proxy trust-install control; normal `onlava dev` uses the agent trust path instead. |
+| `ONLAVA_LOCAL_PROXY_HTTP_PORT` | legacy/internal | Legacy local proxy HTTP port override, not used by normal `onlava dev`. |
+| `ONLAVA_LOCAL_PROXY_HTTPS_PORT` | legacy/internal | Legacy local proxy HTTPS port override, not used by normal `onlava dev`. |
 | `ONLAVA_FRONTEND_<NAME>_ADDR` | user input | Manual frontend upstream override, for example `ONLAVA_FRONTEND_PULSE_ADDR=127.0.0.1:4321`. |
-| `ONLAVA_DISABLE_FRONTEND_PROXY` | user input | Disables frontend proxy/upstream discovery in the legacy local proxy. |
+| `ONLAVA_DISABLE_FRONTEND_PROXY` | legacy/internal | Disables frontend proxy/upstream discovery in the legacy local proxy; normal `onlava dev` uses agent-routed frontend sessions. |
 
 ## App Child Identity
 
@@ -84,10 +84,10 @@ App-defined auth env names such as `JWTSecret`, `GoogleOAuthClientID`, `GoogleOA
 
 | Variable | Direction | Description |
 | --- | --- | --- |
-| `ONLAVA_TOOLCHAIN_DIR` | user input | Overrides the managed toolchain store root. Default is `.onlava/toolchain/` under the app or repo root. |
+| `ONLAVA_TOOLCHAIN_DIR` | user input | Overrides the managed toolchain store root. Default is `.onlava/toolchain/` under the app or repo root; machine-level edge tools use `~/.onlava/toolchain/`. |
 | `ONLAVA_TOOLCHAIN_DOWNLOAD` | user input | `0` disables automatic downloads for managed toolchain binaries. |
 
-Managed toolchain artifacts come from `onlava.toolchain.json`, explicit per-tool env overrides, or manifest-driven downloads into the managed store. They do not fall back to ambient system `PATH` binaries.
+Managed toolchain artifacts come from `onlava.toolchain.json` and manifest-driven downloads into the managed store. Some app-root tools also expose documented per-tool env overrides. They do not fall back to ambient system `PATH` binaries.
 
 ## Managed Postgres And Electric
 
@@ -182,6 +182,8 @@ onlava also injects standard OpenTelemetry endpoint variables when Victoria side
 | `ONLAVA_BIN` | user input | Target-app helper override for the onlava binary path. |
 | `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` | user input | Optional external app root for release-gate smoke validation. |
 | `ONLAVA_RELEASE_GATE_LOG_DIR` | user input | Release-gate log directory override. |
+| `ONLAVA_ONLV_SMOKE_ROOT` | user input | ONLV checkout root for the two-worktree release-gate smoke. |
+| `ONLAVA_ONLV_SMOKE_LOG_DIR` | user input | Log directory override for the ONLV two-worktree release-gate smoke. |
 | `ONLAVA_TEST_DATABASE_URL` | test input | PostgreSQL admin URL for integration tests that need a real database; tests create package-scoped databases from it. |
 | `ONLAVA_TEST_WATCH_BACKUP_POLL_MS` | test escape hatch | Overrides `onlava dev` file-watch backup poll interval in integration tests so missed fsnotify events do not wait on the production fallback delay. |
 | `ONLAVA_TEST_WATCH_POLL_MS` | test escape hatch | Overrides `onlava dev` file-watch polling interval in integration tests that intentionally exercise polling paths. |

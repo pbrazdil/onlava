@@ -180,6 +180,7 @@ func (c *agentDashboardController) appRecordWithRegistryLiveness(app devdash.App
 		return app
 	}
 	app.Routes = visibleDashboardRoutesFromAgent(session.Routes)
+	app.Aliases = visibleDashboardRoutesFromAgent(session.Aliases)
 	return app
 }
 
@@ -210,6 +211,7 @@ func appRecordStatus(app devdash.AppRecord) devdash.AppStatus {
 		APIEncoding:  app.APIEncoding,
 		Grafana:      decodeGrafanaState(app.Grafana),
 		Routes:       app.Routes,
+		Aliases:      app.Aliases,
 		Compiling:    app.Compiling,
 		CompileError: app.CompileError,
 	}

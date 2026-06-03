@@ -330,6 +330,7 @@ func (s *devSupervisor) startVictoriaStack(ctx context.Context) *victoriaStack {
 		return stack
 	}
 	stack.MarkExternal()
+	s.monitorSharedVictoriaStack(stack)
 	s.emitDevEvent(ctx, devdash.DevSource{ID: "victoria", Kind: "substrate", Name: "victoria", Role: "observability", Status: "running"}, "info", "shared Victoria stack ready", map[string]any{
 		"owner":     "agent",
 		"endpoints": stack.SubstrateRequest(os.Getpid()).Endpoints,
@@ -351,6 +352,9 @@ func (s *devSupervisor) agentVictoriaStack(ctx context.Context) *victoriaStack {
 	if err != nil {
 		return nil
 	}
+	if strings.TrimSpace(substrate.Status) != "" && substrate.Status != "ready" {
+		return nil
+	}
 	if err := verifySubstrateOwner(substrate); err != nil {
 		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateVictoria)
 		return nil
@@ -367,6 +371,49 @@ func (s *devSupervisor) agentVictoriaStack(ctx context.Context) *victoriaStack {
 		})
 	}
 	return stack
+}
+
+func (s *devSupervisor) monitorSharedVictoriaStack(stack *victoriaStack) <-chan struct{} {
+	done := make(chan struct{})
+	if s == nil || s.agent == nil || stack == nil {
+		close(done)
+		return done
+	}
+	var wg sync.WaitGroup
+	for _, component := range stack.components {
+		component := component
+		if component == nil || component.done == nil {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err, ok := <-component.done
+			if !ok {
+				return
+			}
+			exit := component.ExitRecord(err)
+			req := stack.SubstrateRequest(os.Getpid())
+			req.Status = "degraded"
+			req.LastExit = &exit
+			req.ComponentExits = map[string]localagent.SubstrateExit{component.spec.Name: exit}
+			_, _ = s.agent.UpsertSubstrate(context.Background(), req)
+			s.emitDevEvent(context.Background(), devdash.DevSource{
+				ID:     "victoria." + component.spec.Name,
+				Kind:   "substrate",
+				Name:   component.spec.DisplayName,
+				Role:   "observability",
+				PID:    fmt.Sprint(exit.PID),
+				Status: "degraded",
+				URL:    component.baseURL,
+			}, "error", component.spec.DisplayName+" exited", substrateExitEventFields(exit))
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	return done
 }
 
 func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, snapshot fileSnapshot, changedPaths []string) error {
@@ -1661,6 +1708,7 @@ func (s *devSupervisor) ensureAgentTemporalDevServer(ctx context.Context) (*temp
 		return temporal, err
 	}
 	temporal.MarkExternal()
+	s.monitorSharedTemporalDevServer(temporal)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("temporal.shared", map[string]any{
 			"owner":     "agent",
@@ -1678,6 +1726,9 @@ func (s *devSupervisor) agentTemporalDevServer(ctx context.Context) *temporalDev
 	}
 	substrate, err := s.agent.GetSubstrate(ctx, localagent.SubstrateTemporal)
 	if err != nil {
+		return nil
+	}
+	if strings.TrimSpace(substrate.Status) != "" && substrate.Status != "ready" {
 		return nil
 	}
 	if err := verifySubstrateOwner(substrate); err != nil {
@@ -1702,6 +1753,57 @@ func (s *devSupervisor) agentTemporalDevServer(ctx context.Context) *temporalDev
 		})
 	}
 	return temporal
+}
+
+func (s *devSupervisor) monitorSharedTemporalDevServer(temporal *temporalDevServer) <-chan struct{} {
+	done := make(chan struct{})
+	if s == nil || s.agent == nil || temporal == nil || temporal.done == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		defer close(done)
+		err, ok := <-temporal.done
+		if !ok {
+			return
+		}
+		exit := temporal.ExitRecord(err)
+		req := temporal.SubstrateRequest(os.Getpid())
+		req.Status = "exited"
+		req.LastExit = &exit
+		req.ComponentExits = map[string]localagent.SubstrateExit{"server": exit}
+		_, _ = s.agent.UpsertSubstrate(context.Background(), req)
+		s.emitDevEvent(context.Background(), devdash.DevSource{
+			ID:     "temporal",
+			Kind:   "substrate",
+			Name:   "temporal",
+			Role:   "workflow-server",
+			PID:    fmt.Sprint(exit.PID),
+			Status: "exited",
+			URL:    temporal.URL(),
+		}, "error", "Temporal dev server exited", substrateExitEventFields(exit))
+	}()
+	return done
+}
+
+func substrateExitEventFields(exit localagent.SubstrateExit) map[string]any {
+	fields := map[string]any{
+		"component":       exit.Component,
+		"pid":             exit.PID,
+		"started_at":      exit.StartedAt,
+		"exited_at":       exit.ExitedAt,
+		"exit_code":       exit.ExitCode,
+		"log_path":        exit.LogPath,
+		"stdout_log_path": exit.StdoutLogPath,
+		"stderr_log_path": exit.StderrLogPath,
+	}
+	if exit.Signal != "" {
+		fields["signal"] = exit.Signal
+	}
+	if exit.Error != "" {
+		fields["error"] = exit.Error
+	}
+	return fields
 }
 
 func (s *devSupervisor) startGrafana(ctx context.Context) error {
@@ -2104,6 +2206,7 @@ func (s *devSupervisor) appStatus() devdash.AppStatus {
 		APIEncoding:  s.status.APIEncoding,
 		Grafana:      decodeGrafanaState(s.status.Grafana),
 		Routes:       s.statusDashboardRoutesLocked(s.status.SessionID),
+		Aliases:      s.statusDashboardAliasesLocked(s.status.SessionID),
 		Compiling:    s.status.Compiling,
 		CompileError: s.status.CompileError,
 	}
@@ -2161,6 +2264,7 @@ func (s *devSupervisor) statusFor(ctx context.Context, appID string) (devdash.Ap
 		APIEncoding:  app.APIEncoding,
 		Grafana:      decodeGrafanaState(app.Grafana),
 		Routes:       s.statusDashboardRoutesLocked(app.SessionID),
+		Aliases:      s.statusDashboardAliasesLocked(app.SessionID),
 		Compiling:    app.Compiling,
 		CompileError: app.CompileError,
 	}, nil
@@ -2184,6 +2288,17 @@ func (s *devSupervisor) statusDashboardRoutesLocked(sessionID string) map[string
 		}
 	}
 	return nil
+}
+
+func (s *devSupervisor) statusDashboardAliasesLocked(sessionID string) map[string]string {
+	if s == nil || s.agentSession == nil {
+		return nil
+	}
+	currentSessionID := strings.TrimSpace(s.agentSession.SessionID)
+	if sessionID != "" && sessionID != currentSessionID {
+		return nil
+	}
+	return visibleDashboardRoutesFromAgent(s.agentSession.Aliases)
 }
 
 func randomToken() (string, error) {

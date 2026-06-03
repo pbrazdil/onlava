@@ -200,6 +200,14 @@ external_app_smoke() {
   run "$ONLAVA_BIN" check --json --app-root "$EXTERNAL_APP_ROOT"
 }
 
+onlv_two_worktree_smoke() {
+  if [[ -z "${ONLAVA_ONLV_SMOKE_ROOT:-}" && -z "${ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT:-}" && ! -d "/Users/petrbrazdil/Repos/onlv" ]]; then
+    printf 'skipping ONLV two-worktree smoke; set ONLAVA_ONLV_SMOKE_ROOT to enable\n'
+    return
+  fi
+  run env ONLAVA_BIN="$ONLAVA_BIN" ONLAVA_ONLV_SMOKE_LOG_DIR="$LOG_DIR/onlv-two-worktree" "$ROOT/scripts/onlv-two-worktree-smoke.sh"
+}
+
 router_safety() {
   local tmp app port addr log status
   tmp="$(mktemp -d)"
@@ -288,6 +296,7 @@ main() {
   step "go lint" lint_go
   step "ui build" ui_builds
   step "install onlava" install_onlava
+  step "ONLV two-worktree smoke" onlv_two_worktree_smoke
   step "self harness" self_harness
   step "clean checkout install" clean_checkout_install
   step "fixture smoke" fixture_smoke

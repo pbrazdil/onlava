@@ -343,12 +343,12 @@ func TestManagedElectricBackendsAndEnv(t *testing.T) {
 	}
 
 	env, err := managedElectricEnv(cfg, &localagent.Session{Routes: map[string]string{
-		"electric": "http://electric.session.onlava.localhost",
+		"electric": "http://electric.session.demo.localhost",
 	}}, baseEnv)
 	if err != nil {
 		t.Fatalf("managedElectricEnv returned error: %v", err)
 	}
-	if !containsString(env, "ELECTRIC_URL=http://electric.session.onlava.localhost") {
+	if !containsString(env, "ELECTRIC_URL=http://electric.session.demo.localhost") {
 		t.Fatalf("electric env missing route URL: %+v", env)
 	}
 	if containsString(env, "DATABASE_URL=postgres://localhost/session") || containsString(env, "ELECTRIC_USAGE_REPORTING=false") {

@@ -412,7 +412,7 @@ During `onlava dev`, the supervisor runs this DB setup lifecycle before starting
 
 For Electric-backed writes, call generated TypeScript `WithMeta` methods so the response headers and parsed `txid` are available. Treat the API mutation and Electric observation as separate phases: once the HTTP response is successful and contains `X-Txid`, the mutation committed; a later `awaitTxId` timeout or Electric/Postgres error is a sync observation failure. Wrap the app's observer with generated `observeAPIResponseTxid(response, observer, context)` to get `SyncObservationError` diagnostics that include txid, app/session, API URL, Electric URL or stream context, and the observer error.
 
-## Local Proxy And Frontends
+## Agent Routes And Frontends
 
 Use `.onlava.json` proxy config:
 
@@ -436,11 +436,15 @@ Use `.onlava.json` proxy config:
 Run:
 
 ```sh
-onlava dev --proxy
-onlava dev --proxy --trust
+onlava dev
+onlava edge privileged install
+onlava edge install
+onlava edge trust
 ```
 
-Common failure: expecting trust-store prompts every startup. Trusting the local CA should be a one-time operation unless the CA changes.
+The session-scoped URLs in `routes` are canonical. Configured hosts such as `api.acme.localhost` and `app.acme.localhost` appear as friendly aliases only for the live session that owns the free alias. Use `onlava dev --claim-aliases` only when intentionally transferring live aliases to the current session.
+
+Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `onlava edge privileged install` once as the normal user to install the helper, then `onlava edge install` to prepare user-owned Caddy. Do not run `sudo onlava edge install`. `onlava edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
 
 ## Debugging With Inspect, Logs, Traces, Metrics
 

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
@@ -46,12 +48,28 @@ func TestParseServeArgsRejectsDevFlags(t *testing.T) {
 func TestParseDevArgs(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app", "--session", "review-a", "--proxy", "--trust", "--detach"})
+	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app", "--session", "review-a", "--detach", "--claim-aliases"})
 	if err != nil {
 		t.Fatalf("parseDevArgs returned error: %v", err)
 	}
-	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.PortSet || !opts.ListenSet || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" || opts.SessionID != "review-a" || !opts.Proxy || !opts.Trust || !opts.Detach {
+	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.PortSet || !opts.ListenSet || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" || opts.SessionID != "review-a" || !opts.Detach || !opts.ClaimAliases {
 		t.Fatalf("opts = %+v", opts)
+	}
+}
+
+func TestParseDevArgsRejectsLegacyProxyFlags(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseDevArgs([]string{"--proxy"})
+	if err == nil || !strings.Contains(err.Error(), "onlava edge install") {
+		t.Fatalf("parseDevArgs(--proxy) error = %v, want trusted edge replacement hint", err)
+	}
+	opts, err := parseDevArgs([]string{"--trust", "--json"})
+	if err != nil {
+		t.Fatalf("parseDevArgs(--trust) returned error: %v", err)
+	}
+	if !opts.Trust || !opts.JSON {
+		t.Fatalf("opts = %+v, want trust JSON setup", opts)
 	}
 }
 
@@ -70,19 +88,16 @@ func TestDevCommandUsesWatcherPath(t *testing.T) {
 	called := false
 	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
-		if listen.Network != "tcp" || listen.Addr != "127.0.0.1:4444" || !listen.Explicit || listen.SessionID != "review-a" || !verbose || !jsonMode || appRoot != "/tmp/app" {
+		if listen.Network != "tcp" || listen.Addr != "127.0.0.1:4444" || !listen.Explicit || listen.SessionID != "review-a" || !listen.ClaimAliases || !verbose || !jsonMode || appRoot != "/tmp/app" {
 			t.Fatalf("watch args = %+v %v %v %q", listen, verbose, jsonMode, appRoot)
 		}
-		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "1" {
-			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want 1", got)
-		}
-		if got := getenvForTest("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
-			t.Fatalf("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
+		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "" {
+			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want empty", got)
 		}
 		return nil
 	}
 
-	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app", "--session", "review-a", "--proxy"}); err != nil {
+	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app", "--session", "review-a", "--claim-aliases"}); err != nil {
 		t.Fatalf("devCommand returned error: %v", err)
 	}
 	if !called {
@@ -199,29 +214,19 @@ func TestDevCommandRespectsProxyDisableEnv(t *testing.T) {
 	}
 }
 
-func TestDevCommandProxyFlagOverridesDisableEnv(t *testing.T) {
-	silenceCLIStderr(t)
+func TestDevCommandRejectsLegacyProxyFlag(t *testing.T) {
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
 	t.Setenv("ONLAVA_LOCAL_PROXY", "0")
 
-	called := false
 	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
-		called = true
-		if !listen.PreferTCP {
-			t.Fatalf("listen = %+v, want TCP preference for proxy", listen)
-		}
-		if got := getenvForTest("ONLAVA_LOCAL_PROXY"); got != "1" {
-			t.Fatalf("ONLAVA_LOCAL_PROXY = %q, want 1", got)
-		}
+		t.Fatal("watcher should not run when --proxy is rejected")
 		return nil
 	}
 
-	if err := devCommand([]string{"--proxy"}); err != nil {
-		t.Fatalf("devCommand returned error: %v", err)
-	}
-	if !called {
-		t.Fatal("expected watcher path to be called")
+	err := devCommand([]string{"--proxy"})
+	if err == nil || !strings.Contains(err.Error(), "legacy local proxy") {
+		t.Fatalf("devCommand --proxy error = %v, want legacy proxy rejection", err)
 	}
 }
 
@@ -248,68 +253,54 @@ func TestDevCommandPreservesTrustSkipEnv(t *testing.T) {
 	}
 }
 
-func TestDevCommandTrustFlagOverridesTrustSkipEnv(t *testing.T) {
-	silenceCLIStderr(t)
+func TestDevCommandTrustRunsEdgeTrust(t *testing.T) {
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
-	t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", "1")
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := localagent.EnsureDirs(paths); err != nil {
+		t.Fatal(err)
+	}
+	caddy := filepath.Join(edgeToolchainStoreDir(paths), "artifacts", "caddy", "2.11.3", currentPlatformDirForTest(), "bin", "caddy")
+	if err := os.MkdirAll(filepath.Dir(caddy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeTrustCaddy(t, caddy, filepath.Join(t.TempDir(), "marker"))
+	if err := os.WriteFile(paths.EdgeConfigPath, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
-	called := false
 	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
-		called = true
-		if !listen.PreferTCP {
-			t.Fatalf("listen = %+v, want TCP preference for trust proxy", listen)
-		}
-		if got := getenvForTest("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
-			t.Fatalf("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
-		}
+		t.Fatal("watcher should not run when --trust performs edge trust setup")
 		return nil
 	}
 
-	if err := devCommand([]string{"--trust"}); err != nil {
-		t.Fatalf("devCommand returned error: %v", err)
-	}
-	if !called {
-		t.Fatal("expected watcher path to be called")
+	err = devCommand([]string{"--trust"})
+	if err != nil {
+		t.Fatalf("devCommand --trust returned error: %v", err)
 	}
 }
 
-func TestDevCommandProxyEnvPrefersTCP(t *testing.T) {
-	silenceCLIStderr(t)
+func TestDevCommandRejectsLegacyProxyEnv(t *testing.T) {
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
 	t.Setenv("ONLAVA_LOCAL_PROXY", "1")
 
-	called := false
 	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
-		called = true
-		if !listen.PreferTCP {
-			t.Fatalf("listen = %+v, want TCP preference for proxy env", listen)
-		}
-		if got := getenvForTest("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL"); got != "0" {
-			t.Fatalf("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL = %q, want 0", got)
-		}
+		t.Fatal("watcher should not run when ONLAVA_LOCAL_PROXY=1 is rejected")
 		return nil
 	}
 
-	if err := devCommand([]string{}); err != nil {
-		t.Fatalf("devCommand returned error: %v", err)
+	err := devCommand([]string{})
+	if err == nil || !strings.Contains(err.Error(), "ONLAVA_LOCAL_PROXY") {
+		t.Fatalf("devCommand with ONLAVA_LOCAL_PROXY=1 error = %v, want env rejection", err)
 	}
-	if !called {
-		t.Fatal("expected watcher path to be called")
-	}
-}
-
-func TestWarnDevEscapeHatchesProxyMode(t *testing.T) {
-	var buf bytes.Buffer
-	old := cliStderr
-	cliStderr = &buf
-	t.Cleanup(func() { cliStderr = old })
-
-	warnDevEscapeHatches(devOptions{Proxy: true})
-
-	if got := buf.String(); !strings.Contains(got, "legacy machine-global proxy ports") {
-		t.Fatalf("warning = %q", got)
+	err = devCommand([]string{"--trust"})
+	if err == nil || !strings.Contains(err.Error(), "ONLAVA_LOCAL_PROXY") {
+		t.Fatalf("devCommand --trust with ONLAVA_LOCAL_PROXY=1 error = %v, want env rejection", err)
 	}
 }
 

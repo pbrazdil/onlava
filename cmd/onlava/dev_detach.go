@@ -215,13 +215,41 @@ func writeDetachedDevResult(w io.Writer, jsonMode bool, result detachedDevResult
 		return enc.Encode(result)
 	}
 	fmt.Fprintf(w, "started onlava session %s (pid %d)\n", result.Session.SessionID, result.PID)
+	if len(result.Session.Routes) > 0 {
+		fmt.Fprintln(w, "canonical routes:")
+	}
 	for _, name := range sortedRouteNames(result.Session.Routes) {
-		fmt.Fprintf(w, "%s: %s\n", name, result.Session.Routes[name])
+		fmt.Fprintf(w, "  %s: %s\n", name, result.Session.Routes[name])
+	}
+	if len(result.Session.Aliases) > 0 {
+		fmt.Fprintln(w, "friendly aliases:")
+	}
+	for _, name := range sortedRouteNames(result.Session.Aliases) {
+		fmt.Fprintf(w, "  %s: %s\n", name, result.Session.Aliases[name])
+	}
+	if len(result.Session.AliasConflicts) > 0 {
+		fmt.Fprintln(w, "friendly alias conflicts:")
+	}
+	for _, name := range sortedAliasConflictNames(result.Session.AliasConflicts) {
+		conflict := result.Session.AliasConflicts[name]
+		fmt.Fprintf(w, "  %s: %s owned by session %s\n", name, conflict.Host, conflict.SessionID)
 	}
 	fmt.Fprintf(w, "logs: %s\n", result.LogPath)
 	fmt.Fprintf(w, "attach: %s\n", result.AttachCommand)
 	fmt.Fprintf(w, "stop: %s\n", result.DownCommand)
 	return nil
+}
+
+func sortedAliasConflictNames(conflicts map[string]localagent.AliasLease) []string {
+	names := make([]string, 0, len(conflicts))
+	for name, conflict := range conflicts {
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(conflict.Host) == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func sortedRouteNames(routes map[string]string) []string {

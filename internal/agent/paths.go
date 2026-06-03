@@ -23,13 +23,19 @@ const (
 )
 
 type Paths struct {
-	Home         string
-	RunDir       string
-	AgentDir     string
-	SocketPath   string
-	StatePath    string
-	RegistryPath string
-	LogPath      string
+	Home           string
+	RunDir         string
+	AgentDir       string
+	EdgeDir        string
+	SocketPath     string
+	StatePath      string
+	EdgeStatePath  string
+	EdgeTokenPath  string
+	EdgeTargetPath string
+	EdgeConfigPath string
+	EdgeLogPath    string
+	RegistryPath   string
+	LogPath        string
 }
 
 func DefaultPaths() (Paths, error) {
@@ -44,6 +50,7 @@ func DefaultPaths() (Paths, error) {
 	home = filepath.Clean(home)
 	runDir := filepath.Join(home, "run")
 	agentDir := filepath.Join(home, "agent")
+	edgeDir := filepath.Join(agentDir, "edge")
 	socketPath := strings.TrimSpace(envpolicy.Get(envAgentSocket))
 	if socketPath == "" {
 		socketPath = filepath.Join(runDir, "agent.sock")
@@ -53,13 +60,19 @@ func DefaultPaths() (Paths, error) {
 		}
 	}
 	return Paths{
-		Home:         home,
-		RunDir:       runDir,
-		AgentDir:     agentDir,
-		SocketPath:   filepath.Clean(socketPath),
-		StatePath:    filepath.Join(runDir, "agent.json"),
-		RegistryPath: filepath.Join(agentDir, "sessions.json"),
-		LogPath:      filepath.Join(agentDir, "agent.log"),
+		Home:           home,
+		RunDir:         runDir,
+		AgentDir:       agentDir,
+		EdgeDir:        edgeDir,
+		SocketPath:     filepath.Clean(socketPath),
+		StatePath:      filepath.Join(runDir, "agent.json"),
+		EdgeStatePath:  filepath.Join(runDir, "edge.json"),
+		EdgeTargetPath: filepath.Join(runDir, "edge-target.json"),
+		EdgeTokenPath:  filepath.Join(edgeDir, "edge-token"),
+		EdgeConfigPath: filepath.Join(edgeDir, "Caddyfile"),
+		EdgeLogPath:    filepath.Join(edgeDir, "caddy.log"),
+		RegistryPath:   filepath.Join(agentDir, "sessions.json"),
+		LogPath:        filepath.Join(agentDir, "agent.log"),
 	}, nil
 }
 
@@ -110,7 +123,13 @@ func EnsureDirs(paths Paths) error {
 	if err := os.MkdirAll(paths.RunDir, 0o700); err != nil {
 		return err
 	}
-	return os.MkdirAll(paths.AgentDir, 0o755)
+	if err := os.MkdirAll(paths.AgentDir, 0o755); err != nil {
+		return err
+	}
+	if paths.EdgeDir != "" {
+		return os.MkdirAll(paths.EdgeDir, 0o700)
+	}
+	return nil
 }
 
 func StateRoot(appRoot, sessionID string) string {

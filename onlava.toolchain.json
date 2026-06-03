@@ -44,6 +44,28 @@
       }
     },
     {
+      "name": "caddy",
+      "kind": "binary",
+      "version": "2.11.3",
+      "license": "Apache-2.0",
+      "default_binary": "caddy",
+      "binaries": ["caddy"],
+      "platforms": {
+        "linux/amd64": {
+          "archive": "tar.gz",
+          "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.3/caddy_2.11.3_linux_amd64.tar.gz",
+          "sha256": "3894577b14657feab3624d782f64175050211e52a228a6f57b4f24f4b0d970f3",
+          "extract": "caddy"
+        },
+        "darwin/arm64": {
+          "archive": "tar.gz",
+          "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.3/caddy_2.11.3_mac_arm64.tar.gz",
+          "sha256": "b37757be82ef630dddf359e6f1685731a1c657576ce80c469e0e3e6a8fb49e9d",
+          "extract": "caddy"
+        }
+      }
+    },
+    {
       "name": "victoriametrics-metrics-datasource",
       "kind": "plugin",
       "version": "0.24.0",

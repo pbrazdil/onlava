@@ -81,25 +81,30 @@ func NewSession(req RegisterRequest, routerAddr, routerScheme string, existing *
 		}
 	}
 	backends := copyBackends(req.Backends)
-	routes := routesForSession(sessionID, routerAddr, routerScheme, backends)
+	routeNamespace := normalizeRouteNamespace(req.RouteNamespace, baseAppID)
+	if routeNamespaceEmpty(req.RouteNamespace) && existing != nil && !routeNamespaceEmpty(existing.RouteNamespace) {
+		routeNamespace = existing.RouteNamespace
+	}
+	routes := routesForSession(sessionID, routerAddr, routerScheme, backends, routeNamespace)
 	session := Session{
-		SchemaVersion: SessionSchemaVersion,
-		SessionID:     sessionID,
-		BaseAppID:     baseAppID,
-		RuntimeAppID:  baseAppID + "--" + sessionID,
-		AppRoot:       appRoot,
-		StateRoot:     StateRoot(appRoot, sessionID),
-		Branch:        branch,
-		Status:        status,
-		OwnerPID:      ownerPID,
-		Owner:         owner,
-		AppPID:        strings.TrimSpace(req.AppPID),
-		Processes:     processes,
-		Routes:        routes,
-		Backends:      backends,
-		ReportToken:   reportToken,
-		CreatedAt:     createdAt,
-		UpdatedAt:     now,
+		SchemaVersion:  SessionSchemaVersion,
+		SessionID:      sessionID,
+		BaseAppID:      baseAppID,
+		RuntimeAppID:   baseAppID + "--" + sessionID,
+		RouteNamespace: routeNamespace,
+		AppRoot:        appRoot,
+		StateRoot:      StateRoot(appRoot, sessionID),
+		Branch:         branch,
+		Status:         status,
+		OwnerPID:       ownerPID,
+		Owner:          owner,
+		AppPID:         strings.TrimSpace(req.AppPID),
+		Processes:      processes,
+		Routes:         routes,
+		Backends:       backends,
+		ReportToken:    reportToken,
+		CreatedAt:      createdAt,
+		UpdatedAt:      now,
 	}
 	return session, nil
 }
@@ -196,6 +201,77 @@ func copyBackends(backends map[string]Backend) map[string]Backend {
 	return copied
 }
 
+func normalizeRouteNamespace(namespace RouteNamespace, baseAppID string) RouteNamespace {
+	namespace.Workspace = sanitizeLabel(namespace.Workspace)
+	namespace.BaseDomain = normalizeRouteHost(namespace.BaseDomain)
+	namespace.Hosts = copyRouteHosts(namespace.Hosts)
+	if namespace.BaseDomain == "" {
+		if namespace.Workspace != "" {
+			namespace.BaseDomain = namespace.Workspace + ".localhost"
+		} else if len(namespace.Hosts) > 0 {
+			namespace.BaseDomain = deriveBaseDomainFromHosts(namespace.Hosts)
+		}
+	}
+	if namespace.BaseDomain == "" {
+		if fallback := sanitizeLabel(baseAppID); fallback != "" {
+			if namespace.Workspace == "" && len(namespace.Hosts) == 0 {
+				namespace.Workspace = fallback
+			}
+			namespace.BaseDomain = fallback + ".localhost"
+		}
+	}
+	return namespace
+}
+
+func routeNamespaceEmpty(namespace RouteNamespace) bool {
+	return strings.TrimSpace(namespace.Workspace) == "" && strings.TrimSpace(namespace.BaseDomain) == "" && len(namespace.Hosts) == 0
+}
+
+func copyRouteHosts(hosts map[string]string) map[string]string {
+	if len(hosts) == 0 {
+		return nil
+	}
+	copied := make(map[string]string, len(hosts))
+	for key, host := range hosts {
+		key = sanitizeLabel(key)
+		host = normalizeRouteHost(host)
+		if key == "" || host == "" {
+			continue
+		}
+		copied[key] = host
+	}
+	if len(copied) == 0 {
+		return nil
+	}
+	return copied
+}
+
+func deriveBaseDomainFromHosts(hosts map[string]string) string {
+	for _, host := range hosts {
+		if firstDot := strings.IndexByte(host, '.'); firstDot > 0 && firstDot < len(host)-1 {
+			return host[firstDot+1:]
+		}
+	}
+	return ""
+}
+
+func normalizeRouteHost(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	if scheme := strings.Index(value, "://"); scheme >= 0 {
+		value = value[scheme+3:]
+	}
+	if slash := strings.IndexByte(value, '/'); slash >= 0 {
+		value = value[:slash]
+	}
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+	return strings.Trim(value, "[]")
+}
+
 func currentProcesses(existing *Session) map[string]Process {
 	if existing == nil {
 		return nil
@@ -261,20 +337,55 @@ func parseProcessPID(value string) int {
 	return pid
 }
 
-func routesForSession(sessionID, routerAddr, routerScheme string, backends map[string]Backend) map[string]string {
+func routesForSession(sessionID, routerAddr, routerScheme string, backends map[string]Backend, namespace RouteNamespace) map[string]string {
 	routes := map[string]string{}
 	if _, ok := backends[RouteAPI]; ok {
-		routes[RouteAPI] = routeURL(routerScheme, "api."+sessionID+".onlava.localhost", routerAddr, "")
+		routes[RouteAPI] = routeURL(routerScheme, sessionRouteHost(RouteAPI, sessionID, namespace), routerAddr, "")
 	}
-	routes[RouteDashboard] = routeURL(routerScheme, "console.onlava.localhost", routerAddr, "/s/"+sessionID)
+	routes[RouteDashboard] = routeURL(routerScheme, sessionRouteHost("console", sessionID, namespace), routerAddr, "")
 	for kind := range backends {
 		switch kind {
 		case RouteAPI, RouteDashboard:
 			continue
 		}
-		routes[kind] = routeURL(routerScheme, kind+"."+sessionID+".onlava.localhost", routerAddr, "")
+		routes[kind] = routeURL(routerScheme, sessionRouteHost(kind, sessionID, namespace), routerAddr, "")
 	}
 	return routes
+}
+
+func sessionRouteHost(route, sessionID string, namespace RouteNamespace) string {
+	route = sanitizeLabel(route)
+	sessionID = sanitizeLabel(sessionID)
+	if route == "" || sessionID == "" {
+		return ""
+	}
+	if host := namespace.Hosts[route]; host != "" {
+		return insertSessionIntoHost(host, sessionID)
+	}
+	baseDomain := normalizeRouteHost(namespace.BaseDomain)
+	if baseDomain == "" {
+		if workspace := sanitizeLabel(namespace.Workspace); workspace != "" {
+			baseDomain = workspace + ".localhost"
+		}
+	}
+	if baseDomain == "" {
+		baseDomain = "localhost"
+	}
+	return route + "." + sessionID + "." + baseDomain
+}
+
+func insertSessionIntoHost(host, sessionID string) string {
+	host = normalizeRouteHost(host)
+	sessionID = sanitizeLabel(sessionID)
+	if host == "" || sessionID == "" {
+		return host
+	}
+	labels := strings.Split(host, ".")
+	if len(labels) < 2 {
+		return host
+	}
+	labels = append(labels[:1], append([]string{sessionID}, labels[1:]...)...)
+	return strings.Join(labels, ".")
 }
 
 func routeURL(scheme, host, routerAddr, path string) string {

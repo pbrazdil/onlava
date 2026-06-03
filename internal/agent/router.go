@@ -14,19 +14,18 @@ import (
 
 func (s *Server) routerMux() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		host := requestHost(req)
-		if host == "console.onlava.localhost" {
-			s.handleConsole(w, req)
+		if cleanRequestPath(req.URL.Path) == "/v1/tls/allow" {
+			s.handleTLSAllow(w, req)
 			return
 		}
-		kind, sessionID, ok := routeHostParts(host)
+		host := requestHost(req)
+		session, kind, ok := s.routeTargetForHost(host)
 		if !ok {
 			http.NotFound(w, req)
 			return
 		}
-		session, found := s.registry.Get(sessionID)
-		if !found {
-			http.NotFound(w, req)
+		if kind == RouteDashboard {
+			s.handleConsole(w, req, session)
 			return
 		}
 		backend, ok := session.Backends[kind]
@@ -38,57 +37,74 @@ func (s *Server) routerMux() http.Handler {
 			s.handleFrontendRoute(w, req, session, backend)
 			return
 		}
-		proxyBackend(w, req, backend, "")
+		s.proxyBackend(w, req, backend, "")
 	})
 }
 
+func (s *Server) routeTargetForHost(host string) (Session, string, bool) {
+	host = normalizeRouteRequestHost(host)
+	if host == "" || s == nil || s.registry == nil {
+		return Session{}, "", false
+	}
+	return s.registry.RouteTargetForHost(host)
+}
+
+func (s *Server) hasRouteHost(host string) bool {
+	_, _, ok := s.routeTargetForHost(host)
+	return ok
+}
+
+func (s *Server) tlsAllowedHost(host string) bool {
+	session, _, ok := s.routeTargetForHost(host)
+	if !ok {
+		return false
+	}
+	return sessionOwnerVerifies(session)
+}
+
+func sessionOwnerVerifies(session Session) bool {
+	ownerPID := firstPositive(session.OwnerPID, session.Owner.PID)
+	if ownerPID <= 0 {
+		return false
+	}
+	owner := session.Owner
+	if owner.PID <= 0 {
+		owner.PID = ownerPID
+	}
+	return VerifyOwner(owner) == nil
+}
+
 func (s *Server) handleFrontendRoute(w http.ResponseWriter, req *http.Request, session Session, backend Backend) {
-	if req.URL.Path == "/__onlava/config" {
+	requestPath := cleanRequestPath(req.URL.Path)
+	if requestPath == "/__onlava/config" {
 		api, ok := session.Backends[RouteAPI]
 		if !ok {
 			http.NotFound(w, req)
 			return
 		}
-		proxyBackend(w, req, api, "")
+		s.proxyBackend(w, req, api, "")
 		return
 	}
-	if isProtectedFrontendPath(req.URL.Path) {
+	if isProtectedFrontendPath(requestPath) {
 		http.NotFound(w, req)
 		return
 	}
-	proxyBackendWithOptions(w, req, backend, proxyBackendOptions{
+	s.proxyBackendWithOptions(w, req, backend, proxyBackendOptions{
 		spaFallback: shouldUseSPAFallback(req),
 	})
 }
 
-func (s *Server) handleConsole(w http.ResponseWriter, req *http.Request) {
+func (s *Server) handleConsole(w http.ResponseWriter, req *http.Request, session Session) {
 	if s.dashboard.Addr != "" {
-		proxyBackend(w, req, s.dashboard, "")
+		s.proxyBackend(w, req, s.dashboard, "")
 		return
 	}
-	path := strings.Trim(req.URL.Path, "/")
-	if path == "" {
-		s.serveConsoleIndex(w, req)
+	backend, ok := session.Backends[RouteDashboard]
+	if !ok {
+		http.NotFound(w, req)
 		return
 	}
-	parts := strings.Split(path, "/")
-	if len(parts) >= 2 && parts[0] == "s" {
-		sessionID := parts[1]
-		session, ok := s.registry.Get(sessionID)
-		if !ok {
-			http.NotFound(w, req)
-			return
-		}
-		backend, ok := session.Backends[RouteDashboard]
-		if !ok {
-			http.NotFound(w, req)
-			return
-		}
-		strip := "/s/" + sessionID
-		proxyBackend(w, req, backend, strip)
-		return
-	}
-	http.NotFound(w, req)
+	s.proxyBackend(w, req, backend, "")
 }
 
 func (s *Server) serveConsoleIndex(w http.ResponseWriter, req *http.Request) {
@@ -111,29 +127,15 @@ func requestHost(req *http.Request) string {
 	if host == "" && req.URL != nil {
 		host = strings.ToLower(strings.TrimSpace(req.URL.Host))
 	}
+	return normalizeRouteRequestHost(host)
+}
+
+func normalizeRouteRequestHost(host string) string {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
 	return host
-}
-
-func routeHostParts(host string) (kind, sessionID string, ok bool) {
-	const suffix = ".onlava.localhost"
-	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
-	if !strings.HasSuffix(host, suffix) {
-		return "", "", false
-	}
-	prefix := strings.TrimSuffix(host, suffix)
-	parts := strings.Split(prefix, ".")
-	if len(parts) != 2 {
-		return "", "", false
-	}
-	kind = sanitizeLabel(parts[0])
-	sessionID = sanitizeLabel(parts[1])
-	if kind == "" || sessionID == "" {
-		return "", "", false
-	}
-	return kind, sessionID, true
 }
 
 type proxyBackendOptions struct {
@@ -141,11 +143,11 @@ type proxyBackendOptions struct {
 	spaFallback bool
 }
 
-func proxyBackend(w http.ResponseWriter, req *http.Request, backend Backend, stripPrefix string) {
-	proxyBackendWithOptions(w, req, backend, proxyBackendOptions{stripPrefix: stripPrefix})
+func (s *Server) proxyBackend(w http.ResponseWriter, req *http.Request, backend Backend, stripPrefix string) {
+	s.proxyBackendWithOptions(w, req, backend, proxyBackendOptions{stripPrefix: stripPrefix})
 }
 
-func proxyBackendWithOptions(w http.ResponseWriter, req *http.Request, backend Backend, opts proxyBackendOptions) {
+func (s *Server) proxyBackendWithOptions(w http.ResponseWriter, req *http.Request, backend Backend, opts proxyBackendOptions) {
 	target := &url.URL{Scheme: "http", Host: backend.Addr}
 	transport := http.DefaultTransport
 	if backend.Network == "unix" {
@@ -165,8 +167,8 @@ func proxyBackendWithOptions(w http.ResponseWriter, req *http.Request, backend B
 		originalDirector(out)
 		out.Host = req.Host
 		out.Header.Set("X-Forwarded-Host", req.Host)
-		out.Header.Set("X-Forwarded-Proto", forwardedProto(req))
-		out.Header.Set("X-Forwarded-Port", forwardedPort(req))
+		out.Header.Set("X-Forwarded-Proto", s.forwardedProto(req))
+		out.Header.Set("X-Forwarded-Port", s.forwardedPort(req))
 		if opts.stripPrefix != "" {
 			out.URL.Path = strings.TrimPrefix(req.URL.Path, opts.stripPrefix)
 			if out.URL.Path == "" {
@@ -261,14 +263,24 @@ func cleanRequestPath(value string) string {
 	return path.Clean(value)
 }
 
-func forwardedProto(req *http.Request) string {
+func (s *Server) forwardedProto(req *http.Request) string {
+	if s.trustedEdgeRequest(req) {
+		if proto := strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")); proto != "" {
+			return proto
+		}
+	}
 	if req.TLS != nil {
 		return "https"
 	}
 	return "http"
 }
 
-func forwardedPort(req *http.Request) string {
+func (s *Server) forwardedPort(req *http.Request) string {
+	if s.trustedEdgeRequest(req) {
+		if port := strings.TrimSpace(req.Header.Get("X-Forwarded-Port")); port != "" {
+			return port
+		}
+	}
 	if _, port, err := net.SplitHostPort(strings.TrimSpace(req.Host)); err == nil && port != "" {
 		return port
 	}
@@ -276,4 +288,19 @@ func forwardedPort(req *http.Request) string {
 		return "443"
 	}
 	return "80"
+}
+
+func (s *Server) trustedEdgeRequest(req *http.Request) bool {
+	if s == nil || strings.TrimSpace(s.edgeToken) == "" || req == nil {
+		return false
+	}
+	if req.Header.Get("X-Onlava-Edge-Token") != s.edgeToken {
+		return false
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(req.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(req.RemoteAddr)
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

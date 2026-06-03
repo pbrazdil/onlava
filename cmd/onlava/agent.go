@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -126,6 +127,7 @@ func agentRestartCommand(args []string) error {
 			return err
 		}
 	}
+	logOffset := fileSize(paths.LogPath)
 	if err := localagent.StartProcess(paths, localagent.StartOptions{
 		RouterAddr: opts.RouterAddr,
 		RouterTLS:  opts.effectiveRouterTLS(),
@@ -134,7 +136,7 @@ func agentRestartCommand(args []string) error {
 	}); err != nil {
 		return err
 	}
-	health, err := waitForAgentStart(ctx, client, oldHealth.PID)
+	health, err := waitForAgentStart(ctx, client, oldHealth.PID, paths.LogPath, logOffset)
 	if err != nil {
 		return err
 	}
@@ -235,7 +237,7 @@ func waitForAgentStop(ctx context.Context, client *localagent.Client, pid int) e
 	}
 }
 
-func waitForAgentStart(ctx context.Context, client *localagent.Client, oldPID int) (localagent.HealthResponse, error) {
+func waitForAgentStart(ctx context.Context, client *localagent.Client, oldPID int, logPath string, logOffset int64) (localagent.HealthResponse, error) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	var lastErr error
@@ -245,8 +247,14 @@ func waitForAgentStart(ctx context.Context, client *localagent.Client, oldPID in
 			return health, nil
 		}
 		lastErr = err
+		if failure := agentStartFailureFromLog(logPath, logOffset); failure != nil {
+			return localagent.HealthResponse{}, failure
+		}
 		select {
 		case <-ctx.Done():
+			if failure := agentStartFailureFromLog(logPath, logOffset); failure != nil {
+				return localagent.HealthResponse{}, failure
+			}
 			if lastErr == nil {
 				lastErr = ctx.Err()
 			}
@@ -254,6 +262,44 @@ func waitForAgentStart(ctx context.Context, client *localagent.Client, oldPID in
 		case <-ticker.C:
 		}
 	}
+}
+
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func agentStartFailureFromLog(path string, offset int64) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	if offset > 0 {
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
+			return nil
+		}
+	}
+	data, err := io.ReadAll(io.LimitReader(file, 64<<10))
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "listen onlava agent router") {
+			return fmt.Errorf("restarted onlava agent failed to start: %s", line)
+		}
+		if strings.Contains(line, "permission denied") {
+			return fmt.Errorf("restarted onlava agent failed to start: %s", line)
+		}
+	}
+	return nil
 }
 
 func statusCommand(args []string) error {
@@ -328,6 +374,7 @@ func writeStatus(ctx context.Context, client *localagent.Client, appRoot string,
 	sessions = markInconsistentStatusSessions(sessions)
 	if opts.JSON {
 		health, _ := client.Health(ctx)
+		substrates, _ := client.ListSubstrates(ctx)
 		enc := json.NewEncoder(os.Stdout)
 		if !opts.Watch {
 			enc.SetIndent("", "  ")
@@ -336,6 +383,7 @@ func writeStatus(ctx context.Context, client *localagent.Client, appRoot string,
 			"schema_version": "onlava.agent.status.v1",
 			"agent":          health,
 			"sessions":       sessions,
+			"substrates":     substrates,
 		})
 	}
 	for _, session := range sessions {

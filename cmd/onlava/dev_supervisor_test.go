@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -162,18 +163,18 @@ func TestSessionAuthEnvUsesRoutedSessionURLs(t *testing.T) {
 		agentSession: &localagent.Session{
 			SessionID: "feature-a-123abc",
 			Routes: map[string]string{
-				localagent.RouteAPI: "http://api.feature-a-123abc.onlava.localhost",
+				localagent.RouteAPI: "http://api.feature-a-123abc.demo.localhost",
 			},
 		},
 	}
 	env := s.sessionAuthEnv()
 	for _, want := range []string{
-		"API_URL=http://api.feature-a-123abc.onlava.localhost",
-		"API_BASE_URL=http://api.feature-a-123abc.onlava.localhost",
-		"ONLAVA_API_BASE_URL=http://api.feature-a-123abc.onlava.localhost",
-		"APP_URL=http://api.feature-a-123abc.onlava.localhost",
-		"PUBLIC_APP_URL=http://api.feature-a-123abc.onlava.localhost",
-		"ONLAVA_PUBLIC_APP_URL=http://api.feature-a-123abc.onlava.localhost",
+		"API_URL=http://api.feature-a-123abc.demo.localhost",
+		"API_BASE_URL=http://api.feature-a-123abc.demo.localhost",
+		"ONLAVA_API_BASE_URL=http://api.feature-a-123abc.demo.localhost",
+		"APP_URL=http://api.feature-a-123abc.demo.localhost",
+		"PUBLIC_APP_URL=http://api.feature-a-123abc.demo.localhost",
+		"ONLAVA_PUBLIC_APP_URL=http://api.feature-a-123abc.demo.localhost",
 		"COOKIE_DOMAIN=",
 		"AUTH_COOKIE_DOMAIN=",
 		"ONLAVA_AUTH_COOKIE_DOMAIN=",
@@ -196,11 +197,17 @@ func TestAppStatusIncludesVisibleSessionRoutes(t *testing.T) {
 		agentSession: &localagent.Session{
 			SessionID: "feature-a-123abc",
 			Routes: map[string]string{
-				localagent.RouteAPI:       "https://api.feature-a-123abc.onlava.localhost:9440/",
-				localagent.RouteDashboard: "https://console.onlava.localhost:9440/s/feature-a-123abc",
-				localagent.RouteGrafana:   "https://grafana.feature-a-123abc.onlava.localhost:9440/",
-				"web":                     "https://web.feature-a-123abc.onlava.localhost:9440/",
-				"victoria":                "https://victoria.feature-a-123abc.onlava.localhost:9440/",
+				localagent.RouteAPI:       "https://api.feature-a-123abc.demo.localhost:9440/",
+				localagent.RouteDashboard: "https://console.feature-a-123abc.demo.localhost:9440/",
+				localagent.RouteGrafana:   "https://grafana.feature-a-123abc.demo.localhost:9440/",
+				"web":                     "https://web.feature-a-123abc.demo.localhost:9440/",
+				"victoria":                "https://victoria.feature-a-123abc.demo.localhost:9440/",
+			},
+			Aliases: map[string]string{
+				localagent.RouteAPI:       "https://api.demo.localhost/",
+				localagent.RouteDashboard: "https://console.demo.localhost/",
+				"web":                     "https://demo.localhost/",
+				"victoria":                "https://victoria.demo.localhost/",
 			},
 		},
 	}
@@ -212,6 +219,14 @@ func TestAppStatusIncludesVisibleSessionRoutes(t *testing.T) {
 	}
 	if _, ok := status.Routes["victoria"]; ok {
 		t.Fatalf("appStatus exposed victoria route: %+v", status.Routes)
+	}
+	for _, name := range []string{localagent.RouteAPI, localagent.RouteDashboard, "web"} {
+		if status.Aliases[name] == "" {
+			t.Fatalf("appStatus aliases missing %q: %+v", name, status.Aliases)
+		}
+	}
+	if _, ok := status.Aliases["victoria"]; ok {
+		t.Fatalf("appStatus exposed victoria alias: %+v", status.Aliases)
 	}
 }
 
@@ -747,18 +762,18 @@ func countEnvKey(env []string, key string) int {
 
 func TestFrontendURLsFromAgentRoutes(t *testing.T) {
 	urls := frontendURLsFromAgentRoutes(map[string]string{
-		localagent.RouteAPI:       "http://api.session.onlava.localhost",
-		localagent.RouteDashboard: "http://console.onlava.localhost/s/session",
-		localagent.RouteGrafana:   "http://grafana.session.onlava.localhost",
-		"web":                     "http://web.session.onlava.localhost",
-		"blog":                    "http://blog.session.onlava.localhost",
-		"electric":                "http://electric.session.onlava.localhost",
-		localagent.RouteTemporal:  "http://temporal.session.onlava.localhost",
+		localagent.RouteAPI:       "http://api.session.demo.localhost",
+		localagent.RouteDashboard: "http://console.session.demo.localhost",
+		localagent.RouteGrafana:   "http://grafana.session.demo.localhost",
+		"web":                     "http://web.session.demo.localhost",
+		"blog":                    "http://blog.session.demo.localhost",
+		"electric":                "http://electric.session.demo.localhost",
+		localagent.RouteTemporal:  "http://temporal.session.demo.localhost",
 	}, map[string]app.FrontendConfig{"web": {}, "blog": {}})
 	if len(urls) != 2 {
 		t.Fatalf("frontend urls = %+v", urls)
 	}
-	if urls["web"] != "http://web.session.onlava.localhost" || urls["blog"] != "http://blog.session.onlava.localhost" {
+	if urls["web"] != "http://web.session.demo.localhost" || urls["blog"] != "http://blog.session.demo.localhost" {
 		t.Fatalf("frontend urls = %+v", urls)
 	}
 }
@@ -766,12 +781,226 @@ func TestFrontendURLsFromAgentRoutes(t *testing.T) {
 func TestTemporalURLUsesAgentRoute(t *testing.T) {
 	s := &devSupervisor{
 		agentSession: &localagent.Session{Routes: map[string]string{
-			localagent.RouteTemporal: "http://temporal.session.onlava.localhost",
+			localagent.RouteTemporal: "http://temporal.session.demo.localhost",
 		}},
 		temporal: &temporalDevServer{info: onlavaRuntimeInfoForTest()},
 	}
-	if got, want := s.temporalURL(), "http://temporal.session.onlava.localhost"; got != want {
+	if got, want := s.temporalURL(), "http://temporal.session.demo.localhost"; got != want {
 		t.Fatalf("temporalURL() = %q, want %q", got, want)
+	}
+}
+
+func TestAgentTemporalDevServerRejectsDeadOwnerSubstrate(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	ctx := context.Background()
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- server.Run(runCtx) }()
+	defer stopAgentServerForTest(t, cancel, done)
+
+	client := localagent.NewClient(server.Paths().SocketPath)
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.UpsertSubstrate(ctx, localagent.UpsertSubstrateRequest{
+		Kind:     localagent.SubstrateTemporal,
+		Status:   "ready",
+		OwnerPID: 999999,
+		Endpoints: map[string]string{
+			"address":   "127.0.0.1:7233",
+			"namespace": "default",
+		},
+		URLs: map[string]string{"ui": "http://127.0.0.1:8233"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := &devSupervisor{
+		agent: client,
+		cfg: app.Config{
+			Name: "demo",
+			Temporal: app.TemporalConfig{
+				Enabled: true,
+				Local:   app.TemporalLocalConfig{AutoStart: true},
+			},
+		},
+	}
+	if temporal := s.agentTemporalDevServer(ctx); temporal != nil {
+		t.Fatalf("agentTemporalDevServer reused stale substrate: %+v", temporal)
+	}
+	if _, err := client.GetSubstrate(ctx, localagent.SubstrateTemporal); !localagent.IsNotFound(err) {
+		t.Fatalf("temporal substrate after stale rejection err=%v", err)
+	}
+}
+
+func TestAgentVictoriaStackRejectsClosedListenerSubstrate(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	ctx := context.Background()
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- server.Run(runCtx) }()
+	defer stopAgentServerForTest(t, cancel, done)
+
+	client := localagent.NewClient(server.Paths().SocketPath)
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	urls := map[string]string{}
+	endpoints := map[string]string{}
+	pids := map[string]int{}
+	for _, spec := range victoriaComponentSpecs() {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		_ = ln.Close()
+		baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+		urls[spec.Name] = baseURL
+		endpoints[spec.Name] = baseURL + spec.EndpointPath
+		pids[spec.Name] = os.Getpid()
+	}
+	if _, err := client.UpsertSubstrate(ctx, localagent.UpsertSubstrateRequest{
+		Kind:      localagent.SubstrateVictoria,
+		Status:    "ready",
+		OwnerPID:  os.Getpid(),
+		PIDs:      pids,
+		URLs:      urls,
+		Endpoints: endpoints,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := &devSupervisor{agent: client}
+	if stack := s.agentVictoriaStack(ctx); stack != nil {
+		t.Fatalf("agentVictoriaStack reused closed listener substrate: %+v", stack)
+	}
+	if _, err := client.GetSubstrate(ctx, localagent.SubstrateVictoria); !localagent.IsNotFound(err) {
+		t.Fatalf("victoria substrate after closed listener rejection err=%v", err)
+	}
+}
+
+func TestMonitorSharedTemporalPersistsExitState(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	ctx := context.Background()
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- server.Run(runCtx) }()
+	defer stopAgentServerForTest(t, cancel, done)
+
+	client := localagent.NewClient(server.Paths().SocketPath)
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	temporal := &temporalDevServer{
+		done:      make(chan error, 1),
+		info:      onlavaRuntimeInfoForTest(),
+		uiURL:     "http://127.0.0.1:8233",
+		stdoutLog: "/tmp/temporal.stdout.log",
+		stderrLog: "/tmp/temporal.stderr.log",
+		startedAt: time.Now().Add(-time.Second).UTC(),
+	}
+	s := &devSupervisor{agent: client, cfg: app.Config{Name: "demo"}}
+	monitorDone := s.monitorSharedTemporalDevServer(temporal)
+	temporal.done <- fmt.Errorf("exit status 2")
+	close(temporal.done)
+
+	substrate := waitForSubstrateStatus(t, ctx, client, localagent.SubstrateTemporal, "exited")
+	if substrate.LastExit == nil || substrate.LastExit.Component != "server" || substrate.LastExit.StderrLogPath == "" {
+		t.Fatalf("temporal exit substrate = %+v", substrate)
+	}
+	waitForMonitorDone(t, monitorDone)
+}
+
+func TestMonitorSharedVictoriaPersistsComponentExitState(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	ctx := context.Background()
+	server, err := localagent.NewServer(localagent.RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- server.Run(runCtx) }()
+	defer stopAgentServerForTest(t, cancel, done)
+
+	client := localagent.NewClient(server.Paths().SocketPath)
+	if err := waitForAgentCommandPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	spec := victoriaComponentSpecs()[0]
+	component := &victoriaComponent{
+		spec:        spec,
+		baseURL:     "http://127.0.0.1:8428",
+		endpointURL: "http://127.0.0.1:8428" + spec.EndpointPath,
+		stdoutLog:   "/tmp/victoria.stdout.log",
+		stderrLog:   "/tmp/victoria.stderr.log",
+		done:        make(chan error, 1),
+		startedAt:   time.Now().Add(-time.Second).UTC(),
+	}
+	stack := &victoriaStack{components: []*victoriaComponent{component}}
+	s := &devSupervisor{agent: client, cfg: app.Config{Name: "demo"}}
+	monitorDone := s.monitorSharedVictoriaStack(stack)
+	component.done <- fmt.Errorf("exit status 9")
+	close(component.done)
+
+	substrate := waitForSubstrateStatus(t, ctx, client, localagent.SubstrateVictoria, "degraded")
+	if substrate.LastExit == nil || substrate.ComponentExits[spec.Name].Component != spec.Name {
+		t.Fatalf("victoria exit substrate = %+v", substrate)
+	}
+	waitForMonitorDone(t, monitorDone)
+}
+
+func stopAgentServerForTest(t *testing.T, cancel context.CancelFunc, done <-chan error) {
+	t.Helper()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("agent shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for agent shutdown")
+	}
+}
+
+func waitForSubstrateStatus(t *testing.T, ctx context.Context, client *localagent.Client, kind, status string) localagent.Substrate {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	var last localagent.Substrate
+	var lastErr error
+	for time.Now().Before(deadline) {
+		got, err := client.GetSubstrate(ctx, kind)
+		if err == nil {
+			last = got
+			if got.Status == status {
+				return got
+			}
+		} else {
+			lastErr = err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("substrate %s status = %+v err=%v, want %s", kind, last, lastErr, status)
+	return localagent.Substrate{}
+}
+
+func waitForMonitorDone(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for substrate monitor")
 	}
 }
 
@@ -786,7 +1015,7 @@ func TestDevReportURLUsesLocalDashboardReportEndpoint(t *testing.T) {
 	s := &devSupervisor{
 		agentSession: &localagent.Session{
 			Routes: map[string]string{
-				localagent.RouteDashboard: "http://console.session.onlava.localhost:4100/s/session",
+				localagent.RouteDashboard: "http://console.session.demo.localhost:4100",
 			},
 		},
 	}

@@ -34,6 +34,7 @@ type AppRecord struct {
 	APIEncoding  json.RawMessage
 	Grafana      json.RawMessage
 	Routes       map[string]string
+	Aliases      map[string]string
 	Offline      bool
 	Running      bool
 	Compiling    bool
@@ -55,6 +56,7 @@ type AppStatus struct {
 	APIEncoding  json.RawMessage   `json:"apiEncoding,omitempty"`
 	Grafana      *GrafanaState     `json:"grafana,omitempty"`
 	Routes       map[string]string `json:"routes,omitempty"`
+	Aliases      map[string]string `json:"aliases,omitempty"`
 	Compiling    bool              `json:"compiling"`
 	CompileError string            `json:"compileError,omitempty"`
 }

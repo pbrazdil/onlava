@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,19 @@ import (
 	"testing"
 	"time"
 )
+
+func testRouteHost(t *testing.T, route string) string {
+	t.Helper()
+	parsed, err := url.Parse(route)
+	if err != nil || parsed.Host == "" {
+		t.Fatalf("invalid route URL %q: %v", route, err)
+	}
+	host := parsed.Host
+	if splitHost, _, err := net.SplitHostPort(host); err == nil {
+		host = splitHost
+	}
+	return host
+}
 
 func TestSessionIDUsesBranchAndRootHash(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "my-app")
@@ -68,6 +82,9 @@ func TestRegistryUpsertWritesSessionManifest(t *testing.T) {
 	if session.RuntimeAppID != "demo--"+session.SessionID {
 		t.Fatalf("runtime app id = %q", session.RuntimeAppID)
 	}
+	if session.RouteNamespace.Workspace != "demo" || session.RouteNamespace.BaseDomain != "demo.localhost" {
+		t.Fatalf("route namespace = %+v, want demo fallback namespace", session.RouteNamespace)
+	}
 	manifestPath := filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")
 	if _, err := os.Stat(manifestPath); err != nil {
 		t.Fatalf("manifest not written at %s: %v", manifestPath, err)
@@ -78,6 +95,488 @@ func TestRegistryUpsertWritesSessionManifest(t *testing.T) {
 	}
 	if strings.Contains(string(data), "private-report-token") || strings.Contains(string(data), "report_token") {
 		t.Fatalf("manifest leaked report token: %s", data)
+	}
+	if !strings.Contains(string(data), `"route_namespace"`) || !strings.Contains(string(data), `"base_domain": "demo.localhost"`) {
+		t.Fatalf("manifest missing route namespace: %s", data)
+	}
+}
+
+func TestRegistryUpsertPersistsRouteNamespace(t *testing.T) {
+	root := t.TempDir()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   root,
+		Branch:    "main",
+		RouteNamespace: RouteNamespace{
+			Workspace:  "ONLV",
+			BaseDomain: "",
+			Hosts: map[string]string{
+				RouteAPI:       "https://api.onlv.localhost:443/path",
+				RouteDashboard: "",
+				"console":      "console.onlv.localhost",
+				"Pulse App":    "Pulse.Onlv.Localhost",
+				RouteTemporal:  "[temporal.onlv.localhost]",
+			},
+		},
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := session.RouteNamespace.Workspace, "onlv"; got != want {
+		t.Fatalf("workspace = %q, want %q", got, want)
+	}
+	if got, want := session.RouteNamespace.BaseDomain, "onlv.localhost"; got != want {
+		t.Fatalf("base domain = %q, want %q", got, want)
+	}
+	wantHosts := map[string]string{
+		RouteAPI:      "api.onlv.localhost",
+		"console":     "console.onlv.localhost",
+		"pulse-app":   "pulse.onlv.localhost",
+		RouteTemporal: "temporal.onlv.localhost",
+	}
+	for route, want := range wantHosts {
+		if got := session.RouteNamespace.Hosts[route]; got != want {
+			t.Fatalf("host %q = %q, want %q in %+v", route, got, want, session.RouteNamespace.Hosts)
+		}
+	}
+
+	updated, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   root,
+		SessionID: session.SessionID,
+		Status:    "running",
+		Backends:  session.Backends,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.RouteNamespace.BaseDomain != "onlv.localhost" || updated.RouteNamespace.Hosts["console"] != "console.onlv.localhost" {
+		t.Fatalf("route namespace was not preserved on update: %+v", updated.RouteNamespace)
+	}
+}
+
+func TestRouteNamespaceFallsBackToExplicitHostBaseDomain(t *testing.T) {
+	root := t.TempDir()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   root,
+		RouteNamespace: RouteNamespace{
+			Hosts: map[string]string{
+				RouteAPI: "api.custom.localhost",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RouteNamespace.Workspace != "" {
+		t.Fatalf("workspace = %q, want empty for explicit-host namespace", session.RouteNamespace.Workspace)
+	}
+	if got, want := session.RouteNamespace.BaseDomain, "custom.localhost"; got != want {
+		t.Fatalf("base domain = %q, want %q", got, want)
+	}
+}
+
+func TestRegistryClaimsConfiguredRouteAliases(t *testing.T) {
+	root := t.TempDir()
+	registryPath := filepath.Join(t.TempDir(), "sessions.json")
+	registry, err := OpenRegistry(registryPath, "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   root,
+		SessionID: "review-a",
+		RouteNamespace: RouteNamespace{
+			Hosts: map[string]string{
+				RouteAPI:  "api.onlv.localhost",
+				"console": "console.onlv.localhost",
+				"web":     "pulse.onlv.localhost",
+			},
+		},
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+			"web":    {Network: "tcp", Addr: "127.0.0.1:5173"},
+		},
+		OwnerPID: os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := session.Aliases[RouteAPI], "http://api.onlv.localhost:9440/"; got != want {
+		t.Fatalf("api alias = %q, want %q", got, want)
+	}
+	if got, want := session.Aliases[RouteDashboard], "http://console.onlv.localhost:9440/"; got != want {
+		t.Fatalf("dashboard alias = %q, want %q", got, want)
+	}
+	if got, want := session.Aliases["web"], "http://pulse.onlv.localhost:9440/"; got != want {
+		t.Fatalf("web alias = %q, want %q", got, want)
+	}
+	if !strings.Contains(session.Routes[RouteAPI], "api."+session.SessionID+".onlv.localhost") {
+		t.Fatalf("canonical api route = %q, want session-scoped host", session.Routes[RouteAPI])
+	}
+	if session.Routes[RouteAPI] == session.Aliases[RouteAPI] {
+		t.Fatalf("canonical route and alias should differ: route=%q alias=%q", session.Routes[RouteAPI], session.Aliases[RouteAPI])
+	}
+
+	manifestPath := filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")
+	manifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(manifest), `"aliases"`) || !strings.Contains(string(manifest), `"api.onlv.localhost`) {
+		t.Fatalf("manifest missing aliases: %s", manifest)
+	}
+
+	reopened, err := OpenRegistry(registryPath, "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, ok := reopened.Get(session.SessionID)
+	if !ok {
+		t.Fatalf("reloaded registry missing session %q", session.SessionID)
+	}
+	if reloaded.Aliases[RouteAPI] != session.Aliases[RouteAPI] {
+		t.Fatalf("reloaded aliases = %+v, want %+v", reloaded.Aliases, session.Aliases)
+	}
+}
+
+func TestRegistryDoesNotStealLiveAliasLease(t *testing.T) {
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespace := RouteNamespace{
+		Hosts: map[string]string{
+			RouteAPI: "api.onlv.localhost",
+			"web":    "pulse.onlv.localhost",
+		},
+	}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID:      "pulse",
+		AppRoot:        filepath.Join(t.TempDir(), "worktree-a"),
+		SessionID:      "review-a",
+		RouteNamespace: namespace,
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+			"web":    {Network: "tcp", Addr: "127.0.0.1:5173"},
+		},
+		OwnerPID: os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasURL := first.Aliases[RouteAPI]
+	if aliasURL == "" {
+		t.Fatalf("first session did not claim api alias: %+v", first.Aliases)
+	}
+	second, err := registry.Upsert(RegisterRequest{
+		BaseAppID:      "pulse",
+		AppRoot:        filepath.Join(t.TempDir(), "worktree-b"),
+		SessionID:      "review-b",
+		RouteNamespace: namespace,
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4001"},
+			"web":    {Network: "tcp", Addr: "127.0.0.1:5174"},
+		},
+		OwnerPID: os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Aliases[RouteAPI] == "" || first.Aliases["web"] == "" {
+		t.Fatalf("first session did not claim aliases: %+v", first.Aliases)
+	}
+	if len(second.Aliases) != 0 {
+		t.Fatalf("second session stole live aliases: %+v", second.Aliases)
+	}
+	currentFirst, ok := registry.Get(first.SessionID)
+	if !ok {
+		t.Fatalf("first session missing")
+	}
+	if currentFirst.Aliases[RouteAPI] != first.Aliases[RouteAPI] {
+		t.Fatalf("first aliases changed: %+v", currentFirst.Aliases)
+	}
+	if second.AliasConflicts[RouteAPI].SessionID != first.SessionID {
+		t.Fatalf("second session did not report alias conflict: %+v", second.AliasConflicts)
+	}
+}
+
+func TestRegistryExplicitlyTransfersAliasLease(t *testing.T) {
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespace := RouteNamespace{Hosts: map[string]string{RouteAPI: "api.onlv.localhost"}}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID:      "pulse",
+		AppRoot:        filepath.Join(t.TempDir(), "worktree-a"),
+		SessionID:      "review-a",
+		RouteNamespace: namespace,
+		Backends:       map[string]Backend{RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"}},
+		OwnerPID:       os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasURL := first.Aliases[RouteAPI]
+	if aliasURL == "" {
+		t.Fatalf("first session did not claim api alias: %+v", first.Aliases)
+	}
+	second, err := registry.Upsert(RegisterRequest{
+		BaseAppID:      "pulse",
+		AppRoot:        filepath.Join(t.TempDir(), "worktree-b"),
+		SessionID:      "review-b",
+		RouteNamespace: namespace,
+		Backends:       map[string]Backend{RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4001"}},
+		OwnerPID:       os.Getpid(),
+		ClaimAliases:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Aliases[RouteAPI] != aliasURL {
+		t.Fatalf("transferred alias = %+v, want %q", second.Aliases, aliasURL)
+	}
+	currentFirst, ok := registry.Get(first.SessionID)
+	if !ok {
+		t.Fatal("first session missing after alias transfer")
+	}
+	if len(currentFirst.Aliases) != 0 {
+		t.Fatalf("first session kept transferred alias: %+v", currentFirst.Aliases)
+	}
+	if len(second.AliasConflicts) != 0 {
+		t.Fatalf("transferring session reported conflicts: %+v", second.AliasConflicts)
+	}
+}
+
+func TestRegistryReclaimsStaleAliasLease(t *testing.T) {
+	stale := exec.Command("sleep", "30")
+	if err := stale.Start(); err != nil {
+		t.Fatalf("start stale owner fixture: %v", err)
+	}
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	if err := stale.Process.Kill(); err != nil {
+		t.Fatalf("kill stale owner fixture: %v", err)
+	}
+	_ = stale.Wait()
+
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespace := RouteNamespace{Hosts: map[string]string{RouteAPI: "api.onlv.localhost"}}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID:      "pulse",
+		AppRoot:        filepath.Join(t.TempDir(), "worktree-a"),
+		SessionID:      "review-a",
+		RouteNamespace: namespace,
+		Backends:       map[string]Backend{RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"}},
+		OwnerPID:       staleOwner.PID,
+		Owner:          staleOwner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasURL := first.Aliases[RouteAPI]
+	if aliasURL == "" {
+		t.Fatalf("first session did not claim api alias: %+v", first.Aliases)
+	}
+	second, err := registry.Upsert(RegisterRequest{
+		BaseAppID:      "pulse",
+		AppRoot:        filepath.Join(t.TempDir(), "worktree-b"),
+		SessionID:      "review-b",
+		RouteNamespace: namespace,
+		Backends:       map[string]Backend{RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4001"}},
+		OwnerPID:       os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Aliases[RouteAPI] != aliasURL {
+		t.Fatalf("stale alias was not reclaimed: second=%+v first=%+v", second.Aliases, first.Aliases)
+	}
+	currentFirst, ok := registry.Get(first.SessionID)
+	if !ok {
+		t.Fatal("first session missing after stale alias reclaim")
+	}
+	if len(currentFirst.Aliases) != 0 {
+		t.Fatalf("stale session kept reclaimed alias: %+v", currentFirst.Aliases)
+	}
+}
+
+func TestRegistryDeleteRemovesOnlyOwnedAliasLeases(t *testing.T) {
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   filepath.Join(t.TempDir(), "worktree-a"),
+		SessionID: "review-a",
+		RouteNamespace: RouteNamespace{Hosts: map[string]string{
+			RouteAPI: "api.onlv.localhost",
+		}},
+		Backends: map[string]Backend{RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"}},
+		OwnerPID: os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   filepath.Join(t.TempDir(), "worktree-b"),
+		SessionID: "review-b",
+		RouteNamespace: RouteNamespace{Hosts: map[string]string{
+			"web": "pulse.onlv.localhost",
+		}},
+		Backends: map[string]Backend{"web": {Network: "tcp", Addr: "127.0.0.1:5173"}},
+		OwnerPID: os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := registry.Delete(first.SessionID); err != nil || !ok {
+		t.Fatalf("delete first ok=%v err=%v", ok, err)
+	}
+	reloadedSecond, ok := registry.Get(second.SessionID)
+	if !ok {
+		t.Fatal("second session missing after first delete")
+	}
+	if len(reloadedSecond.Aliases) != 1 || reloadedSecond.Aliases["web"] != second.Aliases["web"] {
+		t.Fatalf("second aliases changed after first delete: %+v", reloadedSecond.Aliases)
+	}
+	third, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   filepath.Join(t.TempDir(), "worktree-c"),
+		SessionID: "review-c",
+		RouteNamespace: RouteNamespace{Hosts: map[string]string{
+			RouteAPI: "api.onlv.localhost",
+		}},
+		Backends: map[string]Backend{RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4002"}},
+		OwnerPID: os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.Aliases[RouteAPI] != first.Aliases[RouteAPI] {
+		t.Fatalf("deleted session alias was not freed: third=%+v first=%+v", third.Aliases, first.Aliases)
+	}
+}
+
+func TestRegistryRouteTargetForHostUsesCanonicalAndAliasIndex(t *testing.T) {
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   filepath.Join(t.TempDir(), "worktree-a"),
+		SessionID: "review-a",
+		RouteNamespace: RouteNamespace{Hosts: map[string]string{
+			RouteAPI: "api.onlv.localhost",
+			"web":    "pulse.onlv.localhost",
+		}},
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+			"web":    {Network: "tcp", Addr: "127.0.0.1:5173"},
+		},
+		OwnerPID: os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	canonicalHost := testRouteHost(t, session.Routes["web"])
+	found, route, ok := registry.RouteTargetForHost(canonicalHost)
+	if !ok || found.SessionID != session.SessionID || route != "web" {
+		t.Fatalf("canonical route target = %+v %q %v, want %s web true", found, route, ok, session.SessionID)
+	}
+	aliasHost := testRouteHost(t, session.Aliases[RouteAPI])
+	found, route, ok = registry.RouteTargetForHost(aliasHost)
+	if !ok || found.SessionID != session.SessionID || route != RouteAPI {
+		t.Fatalf("alias route target = %+v %q %v, want %s api true", found, route, ok, session.SessionID)
+	}
+	if _, _, ok := registry.RouteTargetForHost("random.localhost"); ok {
+		t.Fatal("random host unexpectedly resolved")
+	}
+	if _, ok, err := registry.Delete(session.SessionID); err != nil || !ok {
+		t.Fatalf("delete session ok=%v err=%v", ok, err)
+	}
+	if _, _, ok := registry.RouteTargetForHost(canonicalHost); ok {
+		t.Fatalf("deleted canonical host %q still resolved", canonicalHost)
+	}
+	if _, _, ok := registry.RouteTargetForHost(aliasHost); ok {
+		t.Fatalf("deleted alias host %q still resolved", aliasHost)
+	}
+}
+
+func TestSessionRoutesOmitHTTPSDefaultPort(t *testing.T) {
+	root := t.TempDir()
+	session, err := NewSession(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "main",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+			"web":    {Network: "tcp", Addr: "127.0.0.1:5173"},
+		},
+	}, "127.0.0.1:443", "https", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for route, url := range session.Routes {
+		if strings.Contains(url, ":443") {
+			t.Fatalf("route %q kept HTTPS default port: %q", route, url)
+		}
+	}
+	if got, want := session.Routes[RouteAPI], "https://api.main.demo.localhost/"; got != want {
+		t.Fatalf("api route = %q, want %q", got, want)
+	}
+
+	session, err = NewSession(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "main",
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	}, "127.0.0.1:9440", "https", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Routes[RouteAPI]; !strings.Contains(got, ":9440") {
+		t.Fatalf("api route omitted non-default port: %q", got)
+	}
+}
+
+func TestListenRouterExplicitAddrDoesNotFallback(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	defer ln.Close()
+
+	router, _, err := listenRouter(addr)
+	if err == nil {
+		router.Close()
+		t.Fatalf("listenRouter(%q) succeeded despite occupied explicit port", addr)
+	}
+	if !strings.Contains(err.Error(), "choose a different --router-listen") {
+		t.Fatalf("listenRouter error = %q, want actionable router-listen message", err)
 	}
 }
 
@@ -605,6 +1104,71 @@ func TestRegistryPersistsSharedSubstrate(t *testing.T) {
 	}
 }
 
+func TestRegistryPersistsSubstrateExitState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sessions.json")
+	registry, err := OpenRegistry(path, "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exit := SubstrateExit{
+		Component:     "traces",
+		PID:           456,
+		StartedAt:     time.Now().Add(-time.Second).UTC(),
+		ExitedAt:      time.Now().UTC(),
+		ExitCode:      2,
+		Error:         "exit status 2",
+		LogPath:       "/tmp/traces.stderr.log",
+		StdoutLogPath: "/tmp/traces.stdout.log",
+		StderrLogPath: "/tmp/traces.stderr.log",
+	}
+	substrate, err := registry.UpsertSubstrate(UpsertSubstrateRequest{
+		Kind:     SubstrateVictoria,
+		Status:   "degraded",
+		OwnerPID: 123,
+		PIDs:     map[string]int{"traces": 456},
+		LastExit: &exit,
+		ComponentExits: map[string]SubstrateExit{
+			"traces": exit,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if substrate.Status != "degraded" || substrate.LastExit == nil || substrate.LastExit.ExitCode != 2 {
+		t.Fatalf("substrate exit state = %+v", substrate)
+	}
+
+	secondExit := exit
+	secondExit.Component = "logs"
+	secondExit.PID = 789
+	secondExit.ExitCode = 9
+	substrate, err = registry.UpsertSubstrate(UpsertSubstrateRequest{
+		Kind:     SubstrateVictoria,
+		Status:   "degraded",
+		OwnerPID: 123,
+		PIDs:     map[string]int{"logs": 789},
+		LastExit: &secondExit,
+		ComponentExits: map[string]SubstrateExit{
+			"logs": secondExit,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(substrate.ComponentExits) != 2 || substrate.ComponentExits["traces"].ExitCode != 2 || substrate.ComponentExits["logs"].ExitCode != 9 {
+		t.Fatalf("component exits were not merged: %+v", substrate.ComponentExits)
+	}
+
+	reopened, err := OpenRegistry(path, "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := reopened.GetSubstrate(SubstrateVictoria)
+	if !ok || got.LastExit == nil || got.ComponentExits["logs"].ExitCode != 9 {
+		t.Fatalf("persisted substrate exit state = %+v ok=%v", got, ok)
+	}
+}
+
 func TestRegistryCapturesSubstrateComponentOwners(t *testing.T) {
 	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
 	if err != nil {
@@ -708,7 +1272,7 @@ func TestServerRegistersAndRoutesSessionBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publicHost = "api." + session.SessionID + ".onlava.localhost"
+	publicHost = testRouteHost(t, session.Routes[RouteAPI])
 
 	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/hello", nil)
 	if err != nil {
@@ -723,6 +1287,193 @@ func TestServerRegistersAndRoutesSessionBackend(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || string(body) != "backend ok" {
 		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+}
+
+func TestServerUsesRunningEdgeStateForPublicRoutes(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureDirs(paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.EdgeTokenPath, []byte("edge-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteEdgeState(paths.EdgeStatePath, EdgeState{
+		Kind:         EdgeKindCaddy,
+		Status:       EdgeStatusRunning,
+		PID:          os.Getpid(),
+		PublicAddr:   "127.0.0.1:443",
+		PublicScheme: "https",
+		UpstreamAddr: "127.0.0.1:9440",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	session, err := server.registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/edge",
+		OwnerPID:  os.Getpid(),
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(session.Routes[RouteAPI], "https://api."+session.SessionID+".demo.localhost/") {
+		t.Fatalf("edge route = %q", session.Routes[RouteAPI])
+	}
+	if strings.Contains(session.Routes[RouteAPI], ":443") {
+		t.Fatalf("edge route should omit default HTTPS port: %q", session.Routes[RouteAPI])
+	}
+	if server.RouterAddr() == server.PublicRouterAddr() {
+		t.Fatalf("internal and public router addr should differ with edge: %s", server.RouterAddr())
+	}
+	if server.RouterScheme() != "https" {
+		t.Fatalf("public router scheme = %q, want https", server.RouterScheme())
+	}
+}
+
+func TestTLSAllowEndpointRequiresLiveRegisteredHost(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	server, err := NewServer(RunOptions{RouterAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	live, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/live",
+		OwnerPID:  os.Getpid(),
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4000"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/stale",
+		OwnerPID:  99999991,
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: "127.0.0.1:4001"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTLSAllowStatus := func(host string, want int) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/v1/tls/allow?domain="+url.QueryEscape(host), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Fatalf("tls allow %s status = %d, want %d", host, resp.StatusCode, want)
+		}
+	}
+	assertTLSAllowStatus(testRouteHost(t, live.Routes[RouteAPI]), http.StatusNoContent)
+	assertTLSAllowStatus(testRouteHost(t, stale.Routes[RouteAPI]), http.StatusNotFound)
+	assertTLSAllowStatus("random.localhost", http.StatusNotFound)
+}
+
+func TestRouterTrustsForwardedHeadersOnlyFromEdgeToken(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureDirs(paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.EdgeTokenPath, []byte("edge-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var seen []string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		seen = append(seen, req.Header.Get("X-Forwarded-Proto")+":"+req.Header.Get("X-Forwarded-Port"))
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer backend.Close()
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   t.TempDir(),
+		Branch:    "feature/forwarded",
+		OwnerPID:  os.Getpid(),
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: strings.TrimPrefix(backend.URL, "http://")},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := testRouteHost(t, session.Routes[RouteAPI])
+	request := func(token string) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Host = host
+		req.Header.Set("X-Forwarded-Proto", "https")
+		req.Header.Set("X-Forwarded-Port", "443")
+		if token != "" {
+			req.Header.Set("X-Onlava-Edge-Token", token)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+	}
+	request("edge-token")
+	request("wrong-token")
+	if strings.Join(seen, ",") != "https:443,http:80" {
+		t.Fatalf("forwarded proto/port seen = %v", seen)
 	}
 }
 
@@ -820,13 +1571,14 @@ func TestServerRouterTLSGeneratesHTTPSRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	apiURL := session.Routes[RouteAPI]
-	if !strings.HasPrefix(apiURL, "https://api."+session.SessionID+".onlava.localhost:") {
+	if !strings.HasPrefix(apiURL, "https://api."+session.SessionID+".demo.localhost:") {
 		t.Fatalf("api route = %q", apiURL)
 	}
 
 	routerAddr := server.RouterAddr()
 	httpClient := &http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		ForceAttemptHTTP2: true,
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "tcp", routerAddr)
@@ -839,6 +1591,94 @@ func TestServerRouterTLSGeneratesHTTPSRoutes(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || string(body) != "tls backend ok" {
+		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
+	}
+	if resp.ProtoMajor != 2 {
+		t.Fatalf("router response protocol = %s, want HTTP/2", resp.Proto)
+	}
+}
+
+func TestServerRoutesOwnedAliasThroughTLS(t *testing.T) {
+	t.Setenv(envAgentHome, t.TempDir())
+	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
+	var publicRequestHost string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Host != publicRequestHost {
+			t.Fatalf("backend host = %q, want %q", req.Host, publicRequestHost)
+		}
+		_, _ = io.WriteString(w, "alias tls ok")
+	}))
+	defer backend.Close()
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	paths, err := DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(RunOptions{
+		SocketPath: paths.SocketPath,
+		RouterAddr: "127.0.0.1:0",
+		RouterTLS:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+	defer stopTestAgent(t, cancel, done)
+
+	client := NewClient(server.paths.SocketPath)
+	if err := waitForAgentPing(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Register(ctx, RegisterRequest{
+		BaseAppID: "pulse",
+		AppRoot:   t.TempDir(),
+		SessionID: "review-a",
+		RouteNamespace: RouteNamespace{
+			Hosts: map[string]string{
+				RouteAPI: "api.onlv.localhost",
+			},
+		},
+		Backends: map[string]Backend{
+			RouteAPI: {Network: "tcp", Addr: backendAddr},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasURL := session.Aliases[RouteAPI]
+	if aliasURL == "" {
+		t.Fatalf("session missing api alias: %+v", session)
+	}
+	if !server.agentTLSHostAllowed("api.onlv.localhost") {
+		t.Fatal("TLS host allow-list rejected owned alias")
+	}
+	if server.agentTLSHostAllowed("unclaimed.onlv.localhost") {
+		t.Fatal("TLS host allow-list accepted unclaimed alias")
+	}
+	parsedAliasURL, err := url.Parse(aliasURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicRequestHost = parsedAliasURL.Host
+
+	routerAddr := server.RouterAddr()
+	httpClient := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", routerAddr)
+		},
+	}}
+	resp, err := httpClient.Get(aliasURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "alias tls ok" {
 		t.Fatalf("router response status=%d body=%q", resp.StatusCode, body)
 	}
 }
@@ -887,10 +1727,10 @@ func TestServerRoutesFrontendBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Routes["web"] == "" || !strings.Contains(session.Routes["web"], "web."+session.SessionID+".onlava.localhost") {
+	if session.Routes["web"] == "" || !strings.Contains(session.Routes["web"], "web."+session.SessionID+".demo.localhost") {
 		t.Fatalf("frontend route = %q", session.Routes["web"])
 	}
-	publicHost = "web." + session.SessionID + ".onlava.localhost"
+	publicHost = testRouteHost(t, session.Routes["web"])
 
 	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
 	if err != nil {
@@ -969,7 +1809,7 @@ func TestServerRoutesFrontendSPAFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publicHost := "web." + session.SessionID + ".onlava.localhost"
+	publicHost := testRouteHost(t, session.Routes["web"])
 
 	request := func(targetPath, accept string) (int, string) {
 		t.Helper()
@@ -1033,8 +1873,8 @@ func TestServerRoutesParallelSessionsWithoutRouteCollision(t *testing.T) {
 	backend := func(label string) (*httptest.Server, *string) {
 		var addr string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if !strings.HasSuffix(req.Host, ".onlava.localhost") {
-				t.Fatalf("%s backend host = %q, want onlava public host", label, req.Host)
+			if !strings.HasSuffix(req.Host, ".localhost") {
+				t.Fatalf("%s backend host = %q, want public localhost host", label, req.Host)
 			}
 			_, _ = io.WriteString(w, label)
 		}))
@@ -1115,10 +1955,10 @@ func TestServerRoutesParallelSessionsWithoutRouteCollision(t *testing.T) {
 			t.Fatalf("%s response status=%d body=%q, want %q", host, resp.StatusCode, body, want)
 		}
 	}
-	assertRouteBody("api."+sessionA.SessionID+".onlava.localhost", "api-a")
-	assertRouteBody("web."+sessionA.SessionID+".onlava.localhost", "web-a")
-	assertRouteBody("api."+sessionB.SessionID+".onlava.localhost", "api-b")
-	assertRouteBody("web."+sessionB.SessionID+".onlava.localhost", "web-b")
+	assertRouteBody(testRouteHost(t, sessionA.Routes[RouteAPI]), "api-a")
+	assertRouteBody(testRouteHost(t, sessionA.Routes["web"]), "web-a")
+	assertRouteBody(testRouteHost(t, sessionB.Routes[RouteAPI]), "api-b")
+	assertRouteBody(testRouteHost(t, sessionB.Routes["web"]), "web-b")
 }
 
 func TestServerRoutesSharedSubstrateBackends(t *testing.T) {
@@ -1164,10 +2004,10 @@ func TestServerRoutesSharedSubstrateBackends(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Routes[RouteGrafana] == "" || !strings.Contains(session.Routes[RouteGrafana], "grafana."+session.SessionID+".onlava.localhost") {
+	if session.Routes[RouteGrafana] == "" || !strings.Contains(session.Routes[RouteGrafana], "grafana."+session.SessionID+".demo.localhost") {
 		t.Fatalf("grafana route = %q", session.Routes[RouteGrafana])
 	}
-	publicHost = "grafana." + session.SessionID + ".onlava.localhost"
+	publicHost = testRouteHost(t, session.Routes[RouteGrafana])
 
 	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
 	if err != nil {
@@ -1225,11 +2065,11 @@ func TestServerRoutesConsoleBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/s/"+session.SessionID+"/", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Host = "console.onlava.localhost"
+	req.Host = testRouteHost(t, session.Routes[RouteDashboard])
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1297,11 +2137,11 @@ func TestServerRoutesConsoleToGlobalDashboardBackend(t *testing.T) {
 		t.Fatalf("dashboard route missing: %+v", session.Routes)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/s/"+session.SessionID, nil)
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Host = "console.onlava.localhost"
+	req.Host = testRouteHost(t, session.Routes[RouteDashboard])
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1311,8 +2151,8 @@ func TestServerRoutesConsoleToGlobalDashboardBackend(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || string(body) != "global dashboard ok" {
 		t.Fatalf("global console response status=%d body=%q", resp.StatusCode, body)
 	}
-	if gotPath != "/s/"+session.SessionID {
-		t.Fatalf("global dashboard path = %q, want /s/%s", gotPath, session.SessionID)
+	if gotPath != "/" {
+		t.Fatalf("global dashboard path = %q, want /", gotPath)
 	}
 }
 
@@ -1372,20 +2212,21 @@ func TestServerConsoleFollowsGlobalDashboardRedirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionPath = "/s/" + session.SessionID
+	sessionPath = "/"
 	appPath = "/" + session.SessionID
 
+	consoleHost := testRouteHost(t, session.Routes[RouteDashboard])
 	httpClient := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			req.Host = "console.onlava.localhost"
+			req.Host = consoleHost
 			return nil
 		},
 	}
-	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/s/"+session.SessionID, nil)
+	req, err := http.NewRequest(http.MethodGet, "http://"+server.routerAddr+"/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Host = "console.onlava.localhost"
+	req.Host = consoleHost
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1505,7 +2346,7 @@ func TestUnixBackendRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Host = "api." + session.SessionID + ".onlava.localhost"
+	req.Host = testRouteHost(t, session.Routes[RouteAPI])
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
