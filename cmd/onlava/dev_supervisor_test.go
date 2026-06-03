@@ -163,18 +163,18 @@ func TestSessionAuthEnvUsesRoutedSessionURLs(t *testing.T) {
 		agentSession: &localagent.Session{
 			SessionID: "feature-a-123abc",
 			Routes: map[string]string{
-				localagent.RouteAPI: "http://api.feature-a-123abc.demo.localhost",
+				localagent.RouteAPI: "http://api.feature-a-123abc.local.dev",
 			},
 		},
 	}
 	env := s.sessionAuthEnv()
 	for _, want := range []string{
-		"API_URL=http://api.feature-a-123abc.demo.localhost",
-		"API_BASE_URL=http://api.feature-a-123abc.demo.localhost",
-		"ONLAVA_API_BASE_URL=http://api.feature-a-123abc.demo.localhost",
-		"APP_URL=http://api.feature-a-123abc.demo.localhost",
-		"PUBLIC_APP_URL=http://api.feature-a-123abc.demo.localhost",
-		"ONLAVA_PUBLIC_APP_URL=http://api.feature-a-123abc.demo.localhost",
+		"API_URL=http://api.feature-a-123abc.local.dev",
+		"API_BASE_URL=http://api.feature-a-123abc.local.dev",
+		"ONLAVA_API_BASE_URL=http://api.feature-a-123abc.local.dev",
+		"APP_URL=http://api.feature-a-123abc.local.dev",
+		"PUBLIC_APP_URL=http://api.feature-a-123abc.local.dev",
+		"ONLAVA_PUBLIC_APP_URL=http://api.feature-a-123abc.local.dev",
 		"COOKIE_DOMAIN=",
 		"AUTH_COOKIE_DOMAIN=",
 		"ONLAVA_AUTH_COOKIE_DOMAIN=",
@@ -197,11 +197,11 @@ func TestAppStatusIncludesVisibleSessionRoutes(t *testing.T) {
 		agentSession: &localagent.Session{
 			SessionID: "feature-a-123abc",
 			Routes: map[string]string{
-				localagent.RouteAPI:       "https://api.feature-a-123abc.demo.localhost:9440/",
-				localagent.RouteDashboard: "https://console.feature-a-123abc.demo.localhost:9440/",
-				localagent.RouteGrafana:   "https://grafana.feature-a-123abc.demo.localhost:9440/",
-				"web":                     "https://web.feature-a-123abc.demo.localhost:9440/",
-				"victoria":                "https://victoria.feature-a-123abc.demo.localhost:9440/",
+				localagent.RouteAPI:       "https://api.feature-a-123abc.local.dev:9440/",
+				localagent.RouteDashboard: "https://console.feature-a-123abc.local.dev:9440/",
+				localagent.RouteGrafana:   "https://grafana.feature-a-123abc.local.dev:9440/",
+				"web":                     "https://web.feature-a-123abc.local.dev:9440/",
+				"victoria":                "https://victoria.feature-a-123abc.local.dev:9440/",
 			},
 			Aliases: map[string]string{
 				localagent.RouteAPI:       "https://api.demo.localhost/",

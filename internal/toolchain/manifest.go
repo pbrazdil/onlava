@@ -47,12 +47,14 @@ type Artifact struct {
 }
 
 type PlatformArtifact struct {
-	Archive         string `json:"archive"`
-	URL             string `json:"url"`
-	SHA256          string `json:"sha256"`
-	Extract         string `json:"extract"`
-	Home            bool   `json:"home,omitempty"`
-	StripComponents int    `json:"strip_components,omitempty"`
+	Archive         string   `json:"archive"`
+	URL             string   `json:"url"`
+	SHA256          string   `json:"sha256"`
+	Extract         string   `json:"extract"`
+	Home            bool     `json:"home,omitempty"`
+	StripComponents int      `json:"strip_components,omitempty"`
+	Build           []string `json:"build,omitempty"`
+	BuildOutput     string   `json:"build_output,omitempty"`
 }
 
 type ImageArtifact struct {
@@ -168,6 +170,9 @@ func (m Manifest) Validate() error {
 			}
 			if cleanExtract(platform.Extract) == "" {
 				return fmt.Errorf("artifact %q platform %s missing valid extract path", artifact.Name, key)
+			}
+			if len(platform.Build) > 0 && cleanExtract(platform.BuildOutput) == "" {
+				return fmt.Errorf("artifact %q platform %s missing valid build_output", artifact.Name, key)
 			}
 		}
 		for j, image := range artifact.Images {

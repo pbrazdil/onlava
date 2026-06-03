@@ -737,7 +737,7 @@ function inferSyncObservationContext(apiURL?: string): SyncObservationContext {
         return context
     }
     context.apiURL = apiURL
-    const match = /^https?:\/\/api\.([^.]+)\.onlava\.localhost(?::\d+)?(?:\/|$)/.exec(apiURL)
+    const match = /^https?:\/\/api\.([^.]+)\.[^/:]+(?:\.[^/:]+)*(?::\d+)?(?:\/|$)/.exec(apiURL)
     if (match) {
         context.sessionID = match[1]
         context.electricURL = apiURL.replace("://api.", "://electric.").replace(/\/[^/]*$/, "/")

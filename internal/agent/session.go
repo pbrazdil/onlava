@@ -206,19 +206,12 @@ func normalizeRouteNamespace(namespace RouteNamespace, baseAppID string) RouteNa
 	namespace.BaseDomain = normalizeRouteHost(namespace.BaseDomain)
 	namespace.Hosts = copyRouteHosts(namespace.Hosts)
 	if namespace.BaseDomain == "" {
-		if namespace.Workspace != "" {
-			namespace.BaseDomain = namespace.Workspace + ".localhost"
-		} else if len(namespace.Hosts) > 0 {
-			namespace.BaseDomain = deriveBaseDomainFromHosts(namespace.Hosts)
-		}
-	}
-	if namespace.BaseDomain == "" {
 		if fallback := sanitizeLabel(baseAppID); fallback != "" {
 			if namespace.Workspace == "" && len(namespace.Hosts) == 0 {
 				namespace.Workspace = fallback
 			}
-			namespace.BaseDomain = fallback + ".localhost"
 		}
+		namespace.BaseDomain = DefaultRouteBaseDomain
 	}
 	return namespace
 }
@@ -244,15 +237,6 @@ func copyRouteHosts(hosts map[string]string) map[string]string {
 		return nil
 	}
 	return copied
-}
-
-func deriveBaseDomainFromHosts(hosts map[string]string) string {
-	for _, host := range hosts {
-		if firstDot := strings.IndexByte(host, '.'); firstDot > 0 && firstDot < len(host)-1 {
-			return host[firstDot+1:]
-		}
-	}
-	return ""
 }
 
 func normalizeRouteHost(value string) string {
@@ -364,12 +348,7 @@ func sessionRouteHost(route, sessionID string, namespace RouteNamespace) string 
 	}
 	baseDomain := normalizeRouteHost(namespace.BaseDomain)
 	if baseDomain == "" {
-		if workspace := sanitizeLabel(namespace.Workspace); workspace != "" {
-			baseDomain = workspace + ".localhost"
-		}
-	}
-	if baseDomain == "" {
-		baseDomain = "localhost"
+		baseDomain = DefaultRouteBaseDomain
 	}
 	return route + "." + sessionID + "." + baseDomain
 }

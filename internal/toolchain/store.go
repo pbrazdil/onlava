@@ -418,8 +418,14 @@ func (s *Store) installArtifact(ctx context.Context, artifact Artifact, platform
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return err
 	}
-	if err := s.extractArtifact(data, artifact, entry, tmpDir); err != nil {
-		return err
+	if len(entry.Build) > 0 {
+		if err := s.buildArtifact(ctx, data, artifact, entry, tmpDir); err != nil {
+			return err
+		}
+	} else {
+		if err := s.extractArtifact(data, artifact, entry, tmpDir); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(finalDir), 0o755); err != nil {
 		return err
@@ -445,7 +451,71 @@ func (s *Store) installArtifact(ctx context.Context, artifact Artifact, platform
 	return os.WriteFile(filepath.Join(finalDir, "install.json"), append(data, '\n'), 0o644)
 }
 
+func (s *Store) buildArtifact(ctx context.Context, data []byte, artifact Artifact, entry PlatformArtifact, dir string) error {
+	srcDir := filepath.Join(dir, "src")
+	installDir := filepath.Join(dir, "build-install")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		return err
+	}
+	if err := extractTarArchive(data, entry.StripComponents, srcDir); err != nil {
+		return err
+	}
+	for _, command := range entry.Build {
+		command = strings.TrimSpace(command)
+		if command == "" {
+			continue
+		}
+		command = expandBuildCommand(command, srcDir, installDir)
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+		cmd.Dir = srcDir
+		cmd.Env = envpolicy.Environ()
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("build %s: %w: %s", artifact.Name, err, strings.TrimSpace(string(output)))
+		}
+	}
+	outputPath := filepath.Join(installDir, cleanExtract(entry.BuildOutput))
+	target := filepath.Join(dir, "bin", artifact.DefaultBinary)
+	if err := copyExecutableFile(outputPath, target); err != nil {
+		return fmt.Errorf("install built %s from %s: %w", artifact.Name, entry.BuildOutput, err)
+	}
+	return nil
+}
+
+func expandBuildCommand(command, sourceDir, installDir string) string {
+	command = strings.ReplaceAll(command, "{source}", shellQuote(sourceDir))
+	command = strings.ReplaceAll(command, "{install}", shellQuote(installDir))
+	return command
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
 func (s *Store) extractArtifact(data []byte, artifact Artifact, entry PlatformArtifact, dir string) error {
+	if err := extractSelectedArtifact(data, artifact, entry, dir); err != nil {
+		return err
+	}
+	for _, binary := range append([]string{artifact.DefaultBinary}, artifact.Binaries...) {
+		path := filepath.Join(dir, "bin", binary)
+		if isExecutableFile(path) {
+			continue
+		}
+		homePath := filepath.Join(dir, "home", "bin", binary)
+		if isExecutableFile(homePath) {
+			continue
+		}
+	}
+	return nil
+}
+
+func extractSelectedArtifact(data []byte, artifact Artifact, entry PlatformArtifact, dir string) error {
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -486,17 +556,64 @@ func (s *Store) extractArtifact(data []byte, artifact Artifact, entry PlatformAr
 	if !found {
 		return fmt.Errorf("archive did not contain expected path %s", entry.Extract)
 	}
-	for _, binary := range append([]string{artifact.DefaultBinary}, artifact.Binaries...) {
-		path := filepath.Join(dir, "bin", binary)
-		if isExecutableFile(path) {
+	return nil
+}
+
+func extractTarArchive(data []byte, stripComponents int, dir string) error {
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		name, ok := cleanArchivePath(header.Name, stripComponents)
+		if !ok {
 			continue
 		}
-		homePath := filepath.Join(dir, "home", "bin", binary)
-		if isExecutableFile(homePath) {
-			continue
+		if err := extractTarEntry(tr, header, filepath.Join(dir, name)); err != nil {
+			return err
 		}
 	}
-	return nil
+}
+
+func copyExecutableFile(source, target string) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("source is a directory")
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	mode := info.Mode().Perm()
+	if mode&0o111 == 0 {
+		mode |= 0o755
+	}
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func extractTarEntry(r io.Reader, header *tar.Header, target string) error {

@@ -82,7 +82,7 @@ func TestRegistryUpsertWritesSessionManifest(t *testing.T) {
 	if session.RuntimeAppID != "demo--"+session.SessionID {
 		t.Fatalf("runtime app id = %q", session.RuntimeAppID)
 	}
-	if session.RouteNamespace.Workspace != "demo" || session.RouteNamespace.BaseDomain != "demo.localhost" {
+	if session.RouteNamespace.Workspace != "demo" || session.RouteNamespace.BaseDomain != DefaultRouteBaseDomain {
 		t.Fatalf("route namespace = %+v, want demo fallback namespace", session.RouteNamespace)
 	}
 	manifestPath := filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")
@@ -96,7 +96,7 @@ func TestRegistryUpsertWritesSessionManifest(t *testing.T) {
 	if strings.Contains(string(data), "private-report-token") || strings.Contains(string(data), "report_token") {
 		t.Fatalf("manifest leaked report token: %s", data)
 	}
-	if !strings.Contains(string(data), `"route_namespace"`) || !strings.Contains(string(data), `"base_domain": "demo.localhost"`) {
+	if !strings.Contains(string(data), `"route_namespace"`) || !strings.Contains(string(data), `"base_domain": "local.dev"`) {
 		t.Fatalf("manifest missing route namespace: %s", data)
 	}
 }
@@ -113,7 +113,7 @@ func TestRegistryUpsertPersistsRouteNamespace(t *testing.T) {
 		Branch:    "main",
 		RouteNamespace: RouteNamespace{
 			Workspace:  "ONLV",
-			BaseDomain: "",
+			BaseDomain: "local.onlv.dev",
 			Hosts: map[string]string{
 				RouteAPI:       "https://api.onlv.localhost:443/path",
 				RouteDashboard: "",
@@ -132,7 +132,7 @@ func TestRegistryUpsertPersistsRouteNamespace(t *testing.T) {
 	if got, want := session.RouteNamespace.Workspace, "onlv"; got != want {
 		t.Fatalf("workspace = %q, want %q", got, want)
 	}
-	if got, want := session.RouteNamespace.BaseDomain, "onlv.localhost"; got != want {
+	if got, want := session.RouteNamespace.BaseDomain, "local.onlv.dev"; got != want {
 		t.Fatalf("base domain = %q, want %q", got, want)
 	}
 	wantHosts := map[string]string{
@@ -157,12 +157,12 @@ func TestRegistryUpsertPersistsRouteNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.RouteNamespace.BaseDomain != "onlv.localhost" || updated.RouteNamespace.Hosts["console"] != "console.onlv.localhost" {
+	if updated.RouteNamespace.BaseDomain != "local.onlv.dev" || updated.RouteNamespace.Hosts["console"] != "console.onlv.localhost" {
 		t.Fatalf("route namespace was not preserved on update: %+v", updated.RouteNamespace)
 	}
 }
 
-func TestRouteNamespaceFallsBackToExplicitHostBaseDomain(t *testing.T) {
+func TestRouteNamespaceDefaultsEvenWithExplicitHosts(t *testing.T) {
 	root := t.TempDir()
 	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
 	if err != nil {
@@ -183,7 +183,7 @@ func TestRouteNamespaceFallsBackToExplicitHostBaseDomain(t *testing.T) {
 	if session.RouteNamespace.Workspace != "" {
 		t.Fatalf("workspace = %q, want empty for explicit-host namespace", session.RouteNamespace.Workspace)
 	}
-	if got, want := session.RouteNamespace.BaseDomain, "custom.localhost"; got != want {
+	if got, want := session.RouteNamespace.BaseDomain, DefaultRouteBaseDomain; got != want {
 		t.Fatalf("base domain = %q, want %q", got, want)
 	}
 }
@@ -542,7 +542,7 @@ func TestSessionRoutesOmitHTTPSDefaultPort(t *testing.T) {
 			t.Fatalf("route %q kept HTTPS default port: %q", route, url)
 		}
 	}
-	if got, want := session.Routes[RouteAPI], "https://api.main.demo.localhost/"; got != want {
+	if got, want := session.Routes[RouteAPI], "https://api.main.local.dev/"; got != want {
 		t.Fatalf("api route = %q, want %q", got, want)
 	}
 
@@ -1332,7 +1332,7 @@ func TestServerUsesRunningEdgeStateForPublicRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(session.Routes[RouteAPI], "https://api."+session.SessionID+".demo.localhost/") {
+	if !strings.HasPrefix(session.Routes[RouteAPI], "https://api."+session.SessionID+"."+DefaultRouteBaseDomain+"/") {
 		t.Fatalf("edge route = %q", session.Routes[RouteAPI])
 	}
 	if strings.Contains(session.Routes[RouteAPI], ":443") {
@@ -1571,7 +1571,7 @@ func TestServerRouterTLSGeneratesHTTPSRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	apiURL := session.Routes[RouteAPI]
-	if !strings.HasPrefix(apiURL, "https://api."+session.SessionID+".demo.localhost:") {
+	if !strings.HasPrefix(apiURL, "https://api."+session.SessionID+"."+DefaultRouteBaseDomain+":") {
 		t.Fatalf("api route = %q", apiURL)
 	}
 
@@ -1727,7 +1727,7 @@ func TestServerRoutesFrontendBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Routes["web"] == "" || !strings.Contains(session.Routes["web"], "web."+session.SessionID+".demo.localhost") {
+	if session.Routes["web"] == "" || !strings.Contains(session.Routes["web"], "web."+session.SessionID+"."+DefaultRouteBaseDomain) {
 		t.Fatalf("frontend route = %q", session.Routes["web"])
 	}
 	publicHost = testRouteHost(t, session.Routes["web"])
@@ -1873,8 +1873,8 @@ func TestServerRoutesParallelSessionsWithoutRouteCollision(t *testing.T) {
 	backend := func(label string) (*httptest.Server, *string) {
 		var addr string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if !strings.HasSuffix(req.Host, ".localhost") {
-				t.Fatalf("%s backend host = %q, want public localhost host", label, req.Host)
+			if !strings.HasSuffix(req.Host, "."+DefaultRouteBaseDomain) {
+				t.Fatalf("%s backend host = %q, want public dev-domain host", label, req.Host)
 			}
 			_, _ = io.WriteString(w, label)
 		}))
@@ -2004,7 +2004,7 @@ func TestServerRoutesSharedSubstrateBackends(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Routes[RouteGrafana] == "" || !strings.Contains(session.Routes[RouteGrafana], "grafana."+session.SessionID+".demo.localhost") {
+	if session.Routes[RouteGrafana] == "" || !strings.Contains(session.Routes[RouteGrafana], "grafana."+session.SessionID+"."+DefaultRouteBaseDomain) {
 		t.Fatalf("grafana route = %q", session.Routes[RouteGrafana])
 	}
 	publicHost = testRouteHost(t, session.Routes[RouteGrafana])

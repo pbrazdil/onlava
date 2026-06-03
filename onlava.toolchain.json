@@ -66,6 +66,38 @@
       }
     },
     {
+      "name": "dnsmasq",
+      "kind": "binary",
+      "version": "2.92",
+      "license": "GPL-2.0-only OR GPL-3.0-only",
+      "default_binary": "dnsmasq",
+      "binaries": ["dnsmasq"],
+      "platforms": {
+        "linux/amd64": {
+          "archive": "tar.gz",
+          "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.92.tar.gz",
+          "sha256": "fd908e79ff37f73234afcb6d3363f78353e768703d92abd8e3220ade6819b1e1",
+          "extract": "dnsmasq",
+          "strip_components": 1,
+          "build": [
+            "make install PREFIX={install}"
+          ],
+          "build_output": "sbin/dnsmasq"
+        },
+        "darwin/arm64": {
+          "archive": "tar.gz",
+          "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.92.tar.gz",
+          "sha256": "fd908e79ff37f73234afcb6d3363f78353e768703d92abd8e3220ade6819b1e1",
+          "extract": "dnsmasq",
+          "strip_components": 1,
+          "build": [
+            "make install PREFIX={install} CFLAGS=\"-D__APPLE_USE_RFC_3542\""
+          ],
+          "build_output": "sbin/dnsmasq"
+        }
+      }
+    },
+    {
       "name": "victoriametrics-metrics-datasource",
       "kind": "plugin",
       "version": "0.24.0",

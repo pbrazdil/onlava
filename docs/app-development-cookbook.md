@@ -421,11 +421,9 @@ Use `.onlava.json` proxy config:
   "name": "myapp",
   "proxy": {
     "workspace": "acme",
-    "api_host": "api.acme.localhost",
-    "console_host": "console.acme.localhost",
+    "route_base_domain": "local.dev",
     "frontends": {
       "app": {
-        "host": "app.acme.localhost",
         "root": "apps/app"
       }
     }
@@ -437,14 +435,15 @@ Run:
 
 ```sh
 onlava dev
+onlava edge dns install
 onlava edge privileged install
 onlava edge install
 onlava edge trust
 ```
 
-The session-scoped URLs in `routes` are canonical. Configured hosts such as `api.acme.localhost` and `app.acme.localhost` appear as friendly aliases only for the live session that owns the free alias. Use `onlava dev --claim-aliases` only when intentionally transferring live aliases to the current session.
+The session-scoped URLs in `routes` are canonical. Generated routes default to `api.<session>.local.dev`, frontend routes under `<frontend>.<session>.local.dev`, and direct browser API calls should use the generated API route. Configured hosts appear as friendly aliases only for the live session that owns the free alias. Use `onlava dev --claim-aliases` only when intentionally transferring live aliases to the current session.
 
-Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `onlava edge privileged install` once as the normal user to install the helper, then `onlava edge install` to prepare user-owned Caddy. Do not run `sudo onlava edge install`. `onlava edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
+Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is managed DNS plus the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `onlava edge dns install` and `onlava edge privileged install` once as the normal user, then `onlava edge install` to prepare user-owned Caddy. Do not run `sudo onlava edge install`. `onlava edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
 
 ## Debugging With Inspect, Logs, Traces, Metrics
 

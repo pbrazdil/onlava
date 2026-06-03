@@ -151,6 +151,71 @@ func TestResolveCaddyBinaryUsesManagedToolchain(t *testing.T) {
 	}
 }
 
+func TestResolveDNSMasqBinaryUsesManagedToolchain(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake executable shell fixture is Unix-only")
+	}
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	t.Setenv("ONLAVA_TOOLCHAIN_DIR", "")
+	paths, err := localagent.DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dnsmasq := filepath.Join(edgeToolchainStoreDir(paths), "artifacts", "dnsmasq", "2.92", currentPlatformDirForTest(), "bin", "dnsmasq")
+	if err := os.MkdirAll(filepath.Dir(dnsmasq), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dnsmasq, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveDNSMasqBinary(context.Background(), paths, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != dnsmasq {
+		t.Fatalf("resolveDNSMasqBinary() = %q, want %q", got, dnsmasq)
+	}
+}
+
+func TestDNSMasqEdgeConfigUsesWildcardDevDomain(t *testing.T) {
+	config := dnsmasqEdgeConfig("local.dev", "127.0.0.1:53535", "127.0.0.1")
+	for _, want := range []string{
+		"bind-interfaces",
+		"listen-address=127.0.0.1",
+		"port=53535",
+		"address=/local.dev/127.0.0.1",
+		"no-resolv",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("dnsmasq config missing %q:\n%s", want, config)
+		}
+	}
+}
+
+func TestEdgeDNSHelperArgsNormalizeDomain(t *testing.T) {
+	opts, err := parseEdgeDNSHelperArgs([]string{"--domain", "HTTPS://LOCAL.DEV/path", "--nameserver", "127.0.0.1", "--port", "53535"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Domain != "local.dev" || opts.Nameserver != "127.0.0.1" || opts.Port != "53535" {
+		t.Fatalf("helper opts = %+v", opts)
+	}
+}
+
+func TestEdgeDNSResolverFile(t *testing.T) {
+	got := edgeDNSResolverFile("local.dev", "127.0.0.1", "53535")
+	for _, want := range []string{
+		"Managed by onlava edge dns",
+		"domain local.dev",
+		"nameserver 127.0.0.1",
+		"port 53535",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("resolver file missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestResolveCaddyBinaryDoesNotUseSystemPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake executable shell fixture is Unix-only")

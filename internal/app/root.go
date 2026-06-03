@@ -33,12 +33,13 @@ func (c Config) AppID() string {
 }
 
 type ProxyConfig struct {
-	Workspace    string                    `json:"workspace"`
-	APIHost      string                    `json:"api_host"`
-	ConsoleHost  string                    `json:"console_host"`
-	TemporalHost string                    `json:"temporal_host"`
-	GrafanaHost  string                    `json:"grafana_host"`
-	Frontends    map[string]FrontendConfig `json:"frontends"`
+	Workspace       string                    `json:"workspace"`
+	RouteBaseDomain string                    `json:"route_base_domain"`
+	APIHost         string                    `json:"api_host"`
+	ConsoleHost     string                    `json:"console_host"`
+	TemporalHost    string                    `json:"temporal_host"`
+	GrafanaHost     string                    `json:"grafana_host"`
+	Frontends       map[string]FrontendConfig `json:"frontends"`
 }
 
 type FrontendConfig struct {

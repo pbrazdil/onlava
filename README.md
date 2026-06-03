@@ -149,6 +149,7 @@ Common options:
 onlava dev --port 4000 --listen 127.0.0.1
 onlava dev --json
 onlava dev --detach
+onlava edge dns install
 onlava edge privileged install
 onlava edge install
 onlava edge trust
@@ -159,7 +160,7 @@ onlava console
 
 `--detach` starts an agent-backed dev session in the background and returns after the session is registered. `onlava attach` follows the current session logs from VictoriaLogs. `onlava attach --tui` or `onlava console` opens a source-aware terminal console when attached to a real TTY. `onlava down` stops the current or selected session.
 
-`onlava dev` uses canonical agent-routed session URLs from `.onlava.json` proxy config. Configured hosts such as `api.myteam.localhost` are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `onlava dev --claim-aliases` only when intentionally transferring live aliases to this session. Use `onlava edge privileged install`, `onlava edge install`, and `onlava edge trust` when you want trusted local HTTPS routes on the default HTTPS port; edge syncs managed Caddy when needed and keeps Caddy user-owned.
+`onlava dev` uses canonical agent-routed session URLs from `.onlava.json` proxy config. Generated local routes default to `https://api.<session>.local.dev`, `https://console.<session>.local.dev`, and frontend routes under the same `local.dev` base. Configured hosts are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `onlava dev --claim-aliases` only when intentionally transferring live aliases to this session. Use `onlava edge dns install`, `onlava edge privileged install`, `onlava edge install`, and `onlava edge trust` when you want trusted wildcard local HTTPS routes on the default HTTPS port; edge syncs managed dnsmasq and Caddy when needed and keeps Caddy user-owned.
 
 Example proxy config:
 
@@ -168,15 +169,12 @@ Example proxy config:
   "name": "myapp",
   "proxy": {
     "workspace": "myteam",
-    "api_host": "api.myteam.localhost",
-    "console_host": "console.myteam.localhost",
+    "route_base_domain": "local.dev",
     "frontends": {
       "web": {
-        "host": "web.myteam.localhost",
         "root": "apps/web"
       },
       "blog": {
-        "host": "blog.myteam.localhost",
         "root": "apps/blog",
         "upstream": "127.0.0.1:5174"
       }
@@ -194,7 +192,7 @@ onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stre
 onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
 onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-onlava edge install|trust|status|restart|uninstall|privileged [--json]
+onlava edge install|trust|status|restart|uninstall|dns|privileged [--json]
 onlava status --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava prune --older-than <duration> [--app-root <path>] [--json]
