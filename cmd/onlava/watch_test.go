@@ -519,7 +519,35 @@ func TestRejectLiveDuplicateDevSessionUsesEffectiveOwnerPID(t *testing.T) {
 	}
 }
 
-func TestFindLiveDevOwnerConflictDetectsDuplicateSameSessionOwner(t *testing.T) {
+func TestRejectLiveDuplicateDevSessionHandlesSpaceyAppRoots(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "app root with spaces")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	owner := exec.Command("sleep", "30")
+	if err := owner.Start(); err != nil {
+		t.Fatalf("start owner fixture: %v", err)
+	}
+	defer func() {
+		_ = owner.Process.Kill()
+		_ = owner.Wait()
+	}()
+	sessionID := "review-a"
+	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+		{
+			SessionID: sessionID,
+			AppRoot:   root,
+			Status:    "running",
+			OwnerPID:  owner.Process.Pid,
+			Owner:     localagent.CaptureOwner(owner.Process.Pid, "test"),
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("duplicate error = %v, want already running", err)
+	}
+}
+
+func TestRejectLiveDuplicateDevSessionIgnoresWrapperCommandText(t *testing.T) {
 	root := t.TempDir()
 	sessionID := "review-a"
 	binDir := t.TempDir()
@@ -527,57 +555,66 @@ func TestFindLiveDevOwnerConflictDetectsDuplicateSameSessionOwner(t *testing.T) 
 	if err := os.WriteFile(fakeOnlava, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	owner := exec.Command(fakeOnlava, "dev", "--app-root", root, "--session", sessionID)
-	if err := owner.Start(); err != nil {
-		t.Fatalf("start fake onlava dev owner: %v", err)
+	wrapperStyle := exec.Command("sh", fakeOnlava, "dev", "--app-root", root, "--session", sessionID)
+	if err := wrapperStyle.Start(); err != nil {
+		t.Fatalf("start wrapper-style owner fixture: %v", err)
 	}
 	defer func() {
-		_ = owner.Process.Kill()
-		_ = owner.Wait()
+		_ = wrapperStyle.Process.Kill()
+		_ = wrapperStyle.Wait()
 	}()
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if pid, ok := findLiveDevOwnerConflict(root, sessionID, 0); ok {
-			if pid != owner.Process.Pid {
-				t.Fatalf("conflict pid = %d, want %d", pid, owner.Process.Pid)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for duplicate dev owner conflict")
-		}
-		time.Sleep(25 * time.Millisecond)
+	reorderedStyle := exec.Command("sh", fakeOnlava, "--session", sessionID, "--app-root", root, "dev")
+	if err := reorderedStyle.Start(); err != nil {
+		t.Fatalf("start reordered-style owner fixture: %v", err)
 	}
-	if pid, ok := findLiveDevOwnerConflict(root, sessionID, owner.Process.Pid); ok {
-		t.Fatalf("owner pid %d should be ignored, got conflict %d", owner.Process.Pid, pid)
+	defer func() {
+		_ = reorderedStyle.Process.Kill()
+		_ = reorderedStyle.Wait()
+	}()
+	if err := rejectLiveDuplicateDevSession(root, sessionID, nil); err != nil {
+		t.Fatalf("duplicate error = %v, want nil for unregistered command text", err)
 	}
 }
 
-func TestDevCommandMatchesSession(t *testing.T) {
-	if !devCommandMatchesSession("onlava dev --app-root /tmp/app", "main-abc123") {
-		t.Fatal("default dev command should match default session")
-	}
-	if !devCommandMatchesSession("onlava dev --app-root /tmp/app --session main-abc123", "main-abc123") {
-		t.Fatal("explicit matching session did not match")
-	}
-	if devCommandMatchesSession("onlava dev --app-root /tmp/app --session review-a", "main-abc123") {
-		t.Fatal("different explicit session should not match")
-	}
-	if devCommandMatchesSession("onlava dev --app-root /tmp/app --new-session", "main-abc123") {
-		t.Fatal("new session command should not match existing session")
-	}
-	if devCommandMatchesSession("onlava dev --app-root /tmp/app --detach", "main-abc123") {
-		t.Fatal("detach launcher command should not match existing session")
+func TestRejectLiveDuplicateDevSessionAllowsCurrentOwner(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "review-a"
+	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+		{
+			SessionID: sessionID,
+			AppRoot:   root,
+			Status:    "running",
+			OwnerPID:  os.Getpid(),
+			Owner:     localagent.CaptureOwner(os.Getpid(), "test"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("duplicate error = %v, want nil for current owner", err)
 	}
 }
 
-func TestExcludeCurrentProcessAncestry(t *testing.T) {
-	excluded := excludeCurrentProcessAncestry(map[int]bool{})
-	if !excluded[os.Getpid()] {
-		t.Fatal("current pid was not excluded")
+func TestRejectLiveDuplicateDevSessionBlocksVerifiedAncestorOwner(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "review-a"
+	ancestorPID := os.Getppid()
+	if ancestorPID <= 1 {
+		t.Skip("no inspectable parent process")
 	}
-	if ppid := os.Getppid(); ppid > 1 && !excluded[ppid] {
-		t.Fatalf("parent pid %d was not excluded", ppid)
+	ancestorOwner := localagent.CaptureOwner(ancestorPID, "test")
+	if err := localagent.VerifyOwner(ancestorOwner); err != nil {
+		t.Skipf("parent process is not inspectable: %v", err)
+	}
+	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+		{
+			SessionID: sessionID,
+			AppRoot:   root,
+			Status:    "running",
+			OwnerPID:  ancestorPID,
+			Owner:     ancestorOwner,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("duplicate error = %v, want already running for verified ancestor owner", err)
 	}
 }
 

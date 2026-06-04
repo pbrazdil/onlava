@@ -28,10 +28,11 @@ const typeScriptWorkerStaleGrace = 750 * time.Millisecond
 const typeScriptWorkerDevRegistryFile = "dev-worker.json"
 
 type runningTypeScriptWorker struct {
-	cmd    *exec.Cmd
-	done   chan error
-	pid    string
-	output *safeLineTail
+	process *devManagedProcess
+	cmd     *exec.Cmd
+	done    chan error
+	pid     string
+	output  *safeLineTail
 }
 
 type typeScriptWorkerDevRegistry struct {
@@ -95,8 +96,6 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 			return nil, err
 		}
 	}
-	cmd := commandTreeContext(s.ctx, runtimeName, runtimeArgs...)
-	cmd.Dir = outputDir
 	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), s.root, ".env", ".env.local")
 	if err != nil {
 		return nil, err
@@ -105,46 +104,58 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 	if err != nil {
 		return nil, err
 	}
-	cmd.Env = s.typeScriptWorkerEnv(baseEnv, managedEnv)
-	cmd.Stdin = nil
-
-	stdout, err := cmd.StdoutPipe()
+	var worker *runningTypeScriptWorker
+	process, err := startDevManagedProcess(s.ctx, devProcessStartRequest{
+		Name:    "typescript",
+		Kind:    "worker",
+		Role:    "temporal-activity-worker",
+		Dir:     outputDir,
+		Command: runtimeName,
+		Args:    runtimeArgs,
+		Env:     s.typeScriptWorkerEnv(baseEnv, managedEnv),
+		Stdout:  s.processOutputWriter(os.Stdout),
+		Stderr:  s.processOutputWriter(os.Stderr),
+		OnOutput: func(pid int, stream string, data []byte) {
+			if worker == nil {
+				return
+			}
+			source := devdash.DevSource{
+				ID:     "worker:typescript",
+				Kind:   "worker",
+				Name:   "typescript",
+				Role:   "temporal-activity-worker",
+				PID:    fmt.Sprintf("%d", pid),
+				Stream: stream,
+				Status: "running",
+			}
+			s.eventSink().Output(ctx, source, data)
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
+	worker = &runningTypeScriptWorker{
+		process: process,
+		cmd:     process.Cmd,
+		pid:     fmt.Sprintf("%d", process.PID),
+		output:  process.Tail,
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	worker := &runningTypeScriptWorker{
-		cmd:    cmd,
-		done:   make(chan error, 1),
-		pid:    fmt.Sprintf("%d", cmd.Process.Pid),
-		output: &safeLineTail{limit: 80},
-	}
-	go s.captureTypeScriptWorkerOutput(ctx, worker, "stdout", stdout, os.Stdout)
-	go s.captureTypeScriptWorkerOutput(ctx, worker, "stderr", stderr, os.Stderr)
 	go func() {
-		worker.done <- cmd.Wait()
-		close(worker.done)
+		<-process.done
 		s.handleTypeScriptWorkerExit(context.Background(), worker)
 	}()
 	s.mu.Lock()
 	s.typescript = worker
 	s.mu.Unlock()
 	if detachedDevChildMode() {
-		if err := s.writeTypeScriptWorkerDevRegistry(ctx, worker, cmd.Dir, runtimeName, runtimeArgs); err != nil {
+		if err := s.writeTypeScriptWorkerDevRegistry(ctx, worker, outputDir, runtimeName, runtimeArgs); err != nil {
 			_ = worker.stop()
 			s.clearTypeScriptWorker(worker)
 			return nil, err
 		}
 	}
 	if err := waitForTypeScriptWorkerStartup(ctx, worker); err != nil {
-		_ = removeMatchingTypeScriptWorkerDevRegistry(cmd.Dir, workerPIDInt(worker.pid))
+		_ = removeMatchingTypeScriptWorkerDevRegistry(outputDir, workerPIDInt(worker.pid))
 		s.clearTypeScriptWorker(worker)
 		return nil, err
 	}
@@ -152,7 +163,7 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 		s.console.Event("typescript-worker.start", map[string]any{
 			"pid":        worker.pid,
 			"runtime":    filepath.Base(runtimeName),
-			"output_dir": cmd.Dir,
+			"output_dir": outputDir,
 			"queues":     typeScriptWorkerQueues(result.Activities),
 		})
 	}
@@ -218,6 +229,11 @@ func (s *devSupervisor) captureTypeScriptWorkerOutput(ctx context.Context, worke
 }
 
 func waitForTypeScriptWorkerStartup(ctx context.Context, worker *runningTypeScriptWorker) error {
+	if worker != nil && worker.process != nil {
+		return worker.process.WaitReady(ctx, devProcessReadyRequest{
+			Timeout: typeScriptWorkerStartupProbe,
+		})
+	}
 	timer := time.NewTimer(typeScriptWorkerStartupProbe)
 	defer timer.Stop()
 	select {
@@ -448,7 +464,13 @@ func stopStaleTypeScriptWorkerProcess(pid int, grace time.Duration) error {
 }
 
 func workerOutputDir(worker *runningTypeScriptWorker) string {
-	if worker == nil || worker.cmd == nil {
+	if worker == nil {
+		return ""
+	}
+	if worker.process != nil && worker.process.Cmd != nil {
+		return worker.process.Cmd.Dir
+	}
+	if worker.cmd == nil {
 		return ""
 	}
 	return worker.cmd.Dir
@@ -474,6 +496,9 @@ func cleanAbsPath(path string) string {
 }
 
 func (w *runningTypeScriptWorker) interrupt() error {
+	if w != nil && w.process != nil {
+		return w.process.Interrupt()
+	}
 	if w == nil || w.cmd == nil || w.cmd.Process == nil {
 		return nil
 	}
@@ -481,6 +506,12 @@ func (w *runningTypeScriptWorker) interrupt() error {
 }
 
 func (w *runningTypeScriptWorker) kill() error {
+	if w != nil && w.process != nil {
+		if w.process.Cmd != nil {
+			return killProcessTree(w.process.Cmd)
+		}
+		return nil
+	}
 	if w == nil || w.cmd == nil || w.cmd.Process == nil {
 		return nil
 	}
@@ -490,6 +521,9 @@ func (w *runningTypeScriptWorker) kill() error {
 func (w *runningTypeScriptWorker) waitOrKill(grace time.Duration) error {
 	if w == nil {
 		return nil
+	}
+	if w.process != nil {
+		return w.process.WaitOrKill(grace)
 	}
 	select {
 	case err := <-w.done:
@@ -512,6 +546,9 @@ func (w *runningTypeScriptWorker) waitOrKill(grace time.Duration) error {
 }
 
 func (w *runningTypeScriptWorker) stop() error {
+	if w != nil && w.process != nil {
+		return w.process.Stop(stopTimeout)
+	}
 	if err := w.interrupt(); err != nil {
 		return err
 	}

@@ -13,6 +13,7 @@ import (
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
+	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/envpolicy"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
@@ -319,6 +320,20 @@ func (s *temporalDevServer) MarkExternal() {
 	}
 }
 
+func (s *temporalDevServer) Components() []managedSubstrateComponent {
+	if s == nil || s.done == nil {
+		return nil
+	}
+	return []managedSubstrateComponent{{
+		Name:        "server",
+		DisplayName: "Temporal dev server",
+		Role:        "workflow-server",
+		URL:         s.URL(),
+		Done:        s.done,
+		ExitRecord:  s.ExitRecord,
+	}}
+}
+
 func (s *temporalDevServer) Reachable(ctx context.Context, appName string, cfg app.TemporalConfig) bool {
 	if s == nil || !s.info.Enabled {
 		return false
@@ -436,5 +451,67 @@ func warnTemporal(console *runConsole, format string, args ...any) {
 		if !console.json {
 			fmt.Fprintf(os.Stderr, "onlava: Temporal %s\n", msg)
 		}
+	}
+}
+
+type temporalSubstrateAdapter struct {
+	cfg     app.Config
+	console *runConsole
+}
+
+func (a temporalSubstrateAdapter) Kind() string       { return localagent.SubstrateTemporal }
+func (a temporalSubstrateAdapter) SourceID() string   { return "temporal" }
+func (a temporalSubstrateAdapter) SourceName() string { return "Temporal" }
+func (a temporalSubstrateAdapter) Role() string       { return "workflow-server" }
+
+func (a temporalSubstrateAdapter) Start(_ context.Context, root string) (managedSubstrateHandle, error) {
+	return startTemporalDevServer(context.Background(), root, a.cfg, a.console)
+}
+
+func (a temporalSubstrateAdapter) FromSubstrate(ctx context.Context, substrate localagent.Substrate) (managedSubstrateHandle, bool) {
+	temporal := temporalDevServerFromSubstrate(substrate, a.cfg.Name, a.cfg.Temporal)
+	if temporal == nil || !temporal.Reachable(ctx, a.cfg.Name, a.cfg.Temporal) {
+		return nil, false
+	}
+	return temporal, true
+}
+
+func (a temporalSubstrateAdapter) ReadyFields(handle managedSubstrateHandle) map[string]any {
+	temporal, _ := handle.(*temporalDevServer)
+	if temporal == nil {
+		return nil
+	}
+	return map[string]any{
+		"owner":     "agent",
+		"address":   temporal.info.Address,
+		"namespace": temporal.info.Namespace,
+		"ui_url":    temporal.URL(),
+	}
+}
+
+func (a temporalSubstrateAdapter) ReuseFields(handle managedSubstrateHandle, _ localagent.Substrate) map[string]any {
+	return a.ReadyFields(handle)
+}
+
+func (a temporalSubstrateAdapter) ExitStatus(managedSubstrateComponent) string {
+	return "exited"
+}
+
+func (a temporalSubstrateAdapter) ExitMessage(managedSubstrateComponent) string {
+	return "Temporal dev server exited"
+}
+
+func (a temporalSubstrateAdapter) EventSource(handle managedSubstrateHandle, component managedSubstrateComponent, status string) devdash.DevSource {
+	url := component.URL
+	if temporal, _ := handle.(*temporalDevServer); temporal != nil {
+		url = temporal.URL()
+	}
+	return devdash.DevSource{
+		ID:     "temporal",
+		Kind:   "substrate",
+		Name:   "temporal",
+		Role:   "workflow-server",
+		Status: status,
+		URL:    url,
 	}
 }

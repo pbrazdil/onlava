@@ -81,11 +81,12 @@ type grafanaConfig struct {
 }
 
 type grafanaComponent struct {
-	cfg      grafanaConfig
-	cmd      *exec.Cmd
-	done     chan error
-	external bool
-	state    devdash.GrafanaState
+	cfg       grafanaConfig
+	cmd       *exec.Cmd
+	done      chan error
+	external  bool
+	state     devdash.GrafanaState
+	startedAt time.Time
 }
 
 func startGrafanaForDev(ctx context.Context, appRoot string, victoria *victoriaStack, publicURL string, console *runConsole) (*grafanaComponent, error) {
@@ -211,6 +212,7 @@ func startGrafanaForDevWithRoot(ctx context.Context, root string, victoria *vict
 	}
 	component.cmd = cmd
 	component.done = make(chan error, 1)
+	component.startedAt = time.Now().UTC()
 	go func() {
 		component.done <- cmd.Wait()
 		close(component.done)
@@ -988,6 +990,35 @@ func (g *grafanaComponent) MarkExternal() {
 	}
 }
 
+func (g *grafanaComponent) Components() []managedSubstrateComponent {
+	if g == nil || g.done == nil {
+		return nil
+	}
+	return []managedSubstrateComponent{{
+		Name:        "server",
+		DisplayName: "Grafana",
+		Role:        "observability-ui",
+		URL:         g.URL(),
+		Done:        g.done,
+		ExitRecord:  g.ExitRecord,
+	}}
+}
+
+func (g *grafanaComponent) ExitRecord(err error) localagent.SubstrateExit {
+	if g == nil {
+		return localagent.SubstrateExit{}
+	}
+	pid := 0
+	var state *os.ProcessState
+	if g.cmd != nil {
+		state = g.cmd.ProcessState
+		if g.cmd.Process != nil {
+			pid = g.cmd.Process.Pid
+		}
+	}
+	return substrateExitRecord("server", pid, g.startedAt, "", "", err, state)
+}
+
 func (g *grafanaComponent) Reachable(ctx context.Context) bool {
 	if g == nil || g.cfg.URL == "" || !urlAcceptsTCP(g.cfg.URL) {
 		return false
@@ -1052,5 +1083,76 @@ func warnGrafana(console *runConsole, format string, args ...any) {
 		if console.verbose && !console.json {
 			fmt.Fprintf(os.Stderr, "onlava: Grafana %s\n", msg)
 		}
+	}
+}
+
+type grafanaSubstrateAdapter struct {
+	victoria  *victoriaStack
+	console   *runConsole
+	publicURL string
+}
+
+func (a grafanaSubstrateAdapter) Kind() string       { return localagent.SubstrateGrafana }
+func (a grafanaSubstrateAdapter) SourceID() string   { return "grafana" }
+func (a grafanaSubstrateAdapter) SourceName() string { return "Grafana" }
+func (a grafanaSubstrateAdapter) Role() string       { return "observability-ui" }
+
+func (a grafanaSubstrateAdapter) Start(_ context.Context, root string) (managedSubstrateHandle, error) {
+	grafana, err := startGrafanaForDevWithRoot(context.Background(), root, a.victoria, a.publicURL, a.console)
+	if grafana == nil || !grafana.State().Available {
+		return grafana, err
+	}
+	return grafana, err
+}
+
+func (a grafanaSubstrateAdapter) FromSubstrate(ctx context.Context, substrate localagent.Substrate) (managedSubstrateHandle, bool) {
+	grafana := grafanaComponentFromSubstrate(substrate, a.victoria, a.publicURL)
+	if grafana == nil {
+		return nil, false
+	}
+	if grafana.cfg.MetricsURL == "" && grafana.cfg.LogsURL == "" && grafana.cfg.TracesURL == "" {
+		return nil, false
+	}
+	if !grafana.Reachable(ctx) {
+		return nil, false
+	}
+	return grafana, true
+}
+
+func (a grafanaSubstrateAdapter) ReadyFields(handle managedSubstrateHandle) map[string]any {
+	grafana, _ := handle.(*grafanaComponent)
+	if grafana == nil {
+		return nil
+	}
+	return map[string]any{
+		"owner": "agent",
+		"url":   grafana.URL(),
+	}
+}
+
+func (a grafanaSubstrateAdapter) ReuseFields(handle managedSubstrateHandle, _ localagent.Substrate) map[string]any {
+	return a.ReadyFields(handle)
+}
+
+func (a grafanaSubstrateAdapter) ExitStatus(managedSubstrateComponent) string {
+	return "degraded"
+}
+
+func (a grafanaSubstrateAdapter) ExitMessage(managedSubstrateComponent) string {
+	return "Grafana exited"
+}
+
+func (a grafanaSubstrateAdapter) EventSource(handle managedSubstrateHandle, component managedSubstrateComponent, status string) devdash.DevSource {
+	url := component.URL
+	if grafana, _ := handle.(*grafanaComponent); grafana != nil {
+		url = grafana.URL()
+	}
+	return devdash.DevSource{
+		ID:     "grafana",
+		Kind:   "substrate",
+		Name:   "grafana",
+		Role:   "observability-ui",
+		Status: status,
+		URL:    url,
 	}
 }

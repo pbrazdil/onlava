@@ -23,6 +23,7 @@ import (
 	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
+	"github.com/pbrazdil/onlava/internal/devdash"
 	"github.com/pbrazdil/onlava/internal/devtools"
 	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
@@ -186,6 +187,28 @@ func (s *victoriaStack) MarkExternal() {
 			component.external = true
 		}
 	}
+}
+
+func (s *victoriaStack) Components() []managedSubstrateComponent {
+	if s == nil {
+		return nil
+	}
+	var components []managedSubstrateComponent
+	for _, component := range s.components {
+		if component == nil || component.done == nil {
+			continue
+		}
+		component := component
+		components = append(components, managedSubstrateComponent{
+			Name:        component.spec.Name,
+			DisplayName: component.spec.DisplayName,
+			Role:        "observability",
+			URL:         component.baseURL,
+			Done:        component.done,
+			ExitRecord:  component.ExitRecord,
+		})
+	}
+	return components
 }
 
 func (c *victoriaComponent) ExitRecord(err error) localagent.SubstrateExit {
@@ -727,6 +750,66 @@ func warnVictoria(console *runConsole, format string, args ...any) {
 		if !console.json {
 			fmt.Fprintf(os.Stderr, "onlava: %s\n", msg)
 		}
+	}
+}
+
+type victoriaSubstrateAdapter struct {
+	console *runConsole
+}
+
+func (a victoriaSubstrateAdapter) Kind() string       { return localagent.SubstrateVictoria }
+func (a victoriaSubstrateAdapter) SourceID() string   { return "victoria" }
+func (a victoriaSubstrateAdapter) SourceName() string { return "Victoria stack" }
+func (a victoriaSubstrateAdapter) Role() string       { return "observability" }
+
+func (a victoriaSubstrateAdapter) Start(_ context.Context, root string) (managedSubstrateHandle, error) {
+	return startVictoriaStackWithRoot(context.Background(), root, a.console), nil
+}
+
+func (a victoriaSubstrateAdapter) FromSubstrate(_ context.Context, substrate localagent.Substrate) (managedSubstrateHandle, bool) {
+	stack := victoriaStackFromSubstrate(substrate)
+	if stack == nil || !stack.Reachable() {
+		return nil, false
+	}
+	return stack, true
+}
+
+func (a victoriaSubstrateAdapter) ReadyFields(handle managedSubstrateHandle) map[string]any {
+	stack, _ := handle.(*victoriaStack)
+	if stack == nil {
+		return nil
+	}
+	return map[string]any{
+		"owner":     "agent",
+		"endpoints": stack.SubstrateRequest(os.Getpid()).Endpoints,
+	}
+}
+
+func (a victoriaSubstrateAdapter) ReuseFields(handle managedSubstrateHandle, substrate localagent.Substrate) map[string]any {
+	fields := a.ReadyFields(handle)
+	if fields == nil {
+		fields = map[string]any{}
+	}
+	fields["endpoints"] = substrate.Endpoints
+	return fields
+}
+
+func (a victoriaSubstrateAdapter) ExitStatus(managedSubstrateComponent) string {
+	return "degraded"
+}
+
+func (a victoriaSubstrateAdapter) ExitMessage(component managedSubstrateComponent) string {
+	return component.DisplayName + " exited"
+}
+
+func (a victoriaSubstrateAdapter) EventSource(_ managedSubstrateHandle, component managedSubstrateComponent, status string) devdash.DevSource {
+	return devdash.DevSource{
+		ID:     "victoria." + component.Name,
+		Kind:   "substrate",
+		Name:   component.DisplayName,
+		Role:   "observability",
+		Status: status,
+		URL:    component.URL,
 	}
 }
 

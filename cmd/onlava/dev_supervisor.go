@@ -28,17 +28,15 @@ import (
 	"github.com/pbrazdil/onlava/internal/build"
 	"github.com/pbrazdil/onlava/internal/codegen"
 	"github.com/pbrazdil/onlava/internal/devdash"
-	"github.com/pbrazdil/onlava/internal/devmeta"
 	"github.com/pbrazdil/onlava/internal/envfile"
 	"github.com/pbrazdil/onlava/internal/envpolicy"
 	"github.com/pbrazdil/onlava/internal/localproxy"
 	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/parse"
-	"github.com/pbrazdil/onlava/internal/workers"
 	onlavaruntime "github.com/pbrazdil/onlava/runtime"
 )
 
 type runningApp struct {
+	process  *devManagedProcess
 	cmd      *exec.Cmd
 	done     chan error
 	buildDir string
@@ -65,6 +63,7 @@ type devSupervisor struct {
 	console      *runConsole
 	agent        *localagent.Client
 	agentSession *localagent.Session
+	events       *devEventSink
 
 	closeOnce          sync.Once
 	mu                 sync.RWMutex
@@ -125,7 +124,18 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, backend 
 		return nil, err
 	}
 	s.dashboard = newDashboardServer(s, uiDir)
+	s.events = newDevEventSink(s)
 	return s, nil
+}
+
+func (s *devSupervisor) eventSink() *devEventSink {
+	if s == nil {
+		return nil
+	}
+	if s.events == nil {
+		s.events = newDevEventSink(s)
+	}
+	return s.events
 }
 
 func (s *devSupervisor) Close() error {
@@ -258,7 +268,7 @@ func (s *devSupervisor) Close() error {
 func (s *devSupervisor) Start(ctx context.Context) error {
 	s.setSessionIdentity(s.agentSession)
 	s.updateAgentSession(ctx, "starting", "")
-	s.emitDevEvent(ctx, devdash.DevSource{ID: "supervisor", Kind: "supervisor", Name: "supervisor", Status: "starting"}, "info", "dev supervisor starting", map[string]any{
+	s.eventSink().Emit(ctx, devdash.DevSource{ID: "supervisor", Kind: "supervisor", Name: "supervisor", Status: "starting"}, "info", "dev supervisor starting", map[string]any{
 		"listen_addr":    s.addr,
 		"listen_network": s.backend.Network,
 	})
@@ -294,9 +304,9 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 	s.mu.Unlock()
 	if s.victoria != nil {
 		for _, event := range pendingDevEvents {
-			s.exportVictoriaDevEvent(event)
+			s.eventSink().ExportVictoriaDevEvent(event)
 		}
-		s.emitDevEvent(ctx, devdash.DevSource{ID: "victoria", Kind: "substrate", Name: "victoria", Role: "observability", Status: "running"}, "info", "Victoria stack ready", map[string]any{
+		s.eventSink().Emit(ctx, devdash.DevSource{ID: "victoria", Kind: "substrate", Name: "victoria", Role: "observability", Status: "running"}, "info", "Victoria stack ready", map[string]any{
 			"urls": s.victoria.URLs(),
 		})
 	}
@@ -313,28 +323,22 @@ func (s *devSupervisor) startVictoriaStack(ctx context.Context) *victoriaStack {
 	if s == nil || s.agent == nil {
 		return startVictoriaStack(s.ctx, s.root, s.console)
 	}
-	if stack := s.agentVictoriaStack(ctx); stack != nil {
-		return stack
-	}
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
 		warnVictoria(s.console, "agent Victoria state path unavailable: %v", err)
 		return startVictoriaStack(s.ctx, s.root, s.console)
 	}
-	stack := startVictoriaStackWithRoot(context.Background(), filepath.Join(paths.AgentDir, "victoria"), s.console)
+	adapter := victoriaSubstrateAdapter{console: s.console}
+	handle, _, err := s.substrateManager().Ensure(ctx, filepath.Join(paths.AgentDir, "victoria"), adapter)
+	stack, _ := handle.(*victoriaStack)
+	if err != nil {
+		warnVictoria(s.console, "failed to prepare shared Victoria substrate with agent: %v", err)
+		return stack
+	}
 	if stack == nil {
 		return nil
 	}
-	if _, err := s.agent.UpsertSubstrate(ctx, stack.SubstrateRequest(os.Getpid())); err != nil {
-		warnVictoria(s.console, "failed to register shared Victoria substrate with agent: %v", err)
-		return stack
-	}
-	stack.MarkExternal()
-	s.monitorSharedVictoriaStack(stack)
-	s.emitDevEvent(ctx, devdash.DevSource{ID: "victoria", Kind: "substrate", Name: "victoria", Role: "observability", Status: "running"}, "info", "shared Victoria stack ready", map[string]any{
-		"owner":     "agent",
-		"endpoints": stack.SubstrateRequest(os.Getpid()).Endpoints,
-	})
+	s.substrateManager().Monitor(stack, adapter)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("victoria.shared", map[string]any{
 			"owner":     "agent",
@@ -342,6 +346,13 @@ func (s *devSupervisor) startVictoriaStack(ctx context.Context) *victoriaStack {
 		})
 	}
 	return stack
+}
+
+func (s *devSupervisor) substrateManager() managedSubstrateManager {
+	if s == nil {
+		return managedSubstrateManager{}
+	}
+	return managedSubstrateManager{agent: s.agent, events: s.eventSink()}
 }
 
 func (s *devSupervisor) agentVictoriaStack(ctx context.Context) *victoriaStack {
@@ -352,18 +363,12 @@ func (s *devSupervisor) agentVictoriaStack(ctx context.Context) *victoriaStack {
 	if err != nil {
 		return nil
 	}
-	if strings.TrimSpace(substrate.Status) != "" && substrate.Status != "ready" {
-		return nil
-	}
-	if err := verifySubstrateOwner(substrate); err != nil {
+	handle, reusable := s.substrateManager().reusable(ctx, victoriaSubstrateAdapter{console: s.console}, substrate)
+	if !reusable {
 		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateVictoria)
 		return nil
 	}
-	stack := victoriaStackFromSubstrate(substrate)
-	if stack == nil || !stack.Reachable() {
-		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateVictoria)
-		return nil
-	}
+	stack, _ := handle.(*victoriaStack)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("victoria.reuse", map[string]any{
 			"owner":     "agent",
@@ -374,46 +379,7 @@ func (s *devSupervisor) agentVictoriaStack(ctx context.Context) *victoriaStack {
 }
 
 func (s *devSupervisor) monitorSharedVictoriaStack(stack *victoriaStack) <-chan struct{} {
-	done := make(chan struct{})
-	if s == nil || s.agent == nil || stack == nil {
-		close(done)
-		return done
-	}
-	var wg sync.WaitGroup
-	for _, component := range stack.components {
-		component := component
-		if component == nil || component.done == nil {
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err, ok := <-component.done
-			if !ok {
-				return
-			}
-			exit := component.ExitRecord(err)
-			req := stack.SubstrateRequest(os.Getpid())
-			req.Status = "degraded"
-			req.LastExit = &exit
-			req.ComponentExits = map[string]localagent.SubstrateExit{component.spec.Name: exit}
-			_, _ = s.agent.UpsertSubstrate(context.Background(), req)
-			s.emitDevEvent(context.Background(), devdash.DevSource{
-				ID:     "victoria." + component.spec.Name,
-				Kind:   "substrate",
-				Name:   component.spec.DisplayName,
-				Role:   "observability",
-				PID:    fmt.Sprint(exit.PID),
-				Status: "degraded",
-				URL:    component.baseURL,
-			}, "error", component.spec.DisplayName+" exited", substrateExitEventFields(exit))
-		}()
-	}
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-	return done
+	return s.substrateManager().Monitor(stack, victoriaSubstrateAdapter{console: s.console})
 }
 
 func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, snapshot fileSnapshot, changedPaths []string) error {
@@ -427,7 +393,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	if err := s.persistStatus(ctx); err != nil {
 		return err
 	}
-	s.emitDevEvent(ctx, devdash.DevSource{ID: "build", Kind: "build", Name: "build", Status: "running"}, "info", "build started", map[string]any{
+	s.eventSink().Emit(ctx, devdash.DevSource{ID: "build", Kind: "build", Name: "build", Status: "running"}, "info", "build started", map[string]any{
 		"initial": initial,
 	})
 	s.dashboard.notify(&devdash.Notification{
@@ -441,159 +407,10 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		})
 	}
 
-	var (
-		model       *model.App
-		metadata    json.RawMessage
-		apiEncoding json.RawMessage
-		result      *build.Result
-		tsModel     workers.TypeScriptWorkerModel
-		tsWorker    *workers.TypeScriptWorkerResult
-		cached      *build.CachedGraph
-		err         error
-	)
-	graphFingerprint := snapshotFingerprint(snapshot)
-	if err := s.console.Phase("Building onlava application graph", func() error {
-		cached, _, err = build.LoadCachedGraph(s.root, s.cfg.Name, graphFingerprint)
-		if err != nil {
-			return err
-		}
-		if cached != nil {
-			metadata = append(json.RawMessage(nil), cached.Metadata...)
-			apiEncoding = append(json.RawMessage(nil), cached.APIEncoding...)
-			result = cached.Result
-			if !s.cfg.Temporal.Enabled {
-				return nil
-			}
-		}
-		model, err = parse.App(s.root, s.cfg.Name)
-		return err
-	}); err != nil {
-		return s.handleCompileError(ctx, nil, nil, err)
-	}
-	if err := s.console.Phase("Analyzing service topology", func() error {
-		if cached != nil {
-			return nil
-		}
-		metadata, err = devmeta.BuildMetadataSnapshot(model)
-		if err != nil {
-			return err
-		}
-		apiEncoding, err = devmeta.BuildAPIEncoding(model)
-		return err
-	}); err != nil {
-		return s.handleCompileError(ctx, nil, nil, err)
-	}
-	if err := validateLocalSecretsFiles(s.root); err != nil {
-		return s.handleCompileError(ctx, metadata, apiEncoding, err)
-	}
-	if s.cfg.Temporal.Enabled {
-		if err := s.console.Phase("Validating TypeScript Temporal workers", func() error {
-			tsModel = workers.DiscoverTypeScriptActivities(s.root)
-			if diagnostics := workers.ValidateTypeScriptContracts(tsModel, temporalExternalActivityDeclarations(s.root, model), nativeGoTemporalDeclarations(s.root, model)); len(diagnostics) > 0 {
-				return workers.DiagnosticsError(diagnostics)
-			}
-			return nil
-		}); err != nil {
-			return s.handleCompileError(ctx, metadata, apiEncoding, err)
-		}
-	}
-	if model != nil {
-		s.cfg = effectiveDevConfigForModel(s.cfg, model)
-	}
-	s.cfg = effectiveDevConfigForTypeScriptWorker(s.cfg, tsModel)
-	if err := s.ensureManagedElectric(ctx); err != nil {
-		return s.handleCompileError(ctx, metadata, apiEncoding, err)
-	}
-	if err := s.ensureTemporalDevServer(ctx); err != nil {
-		return s.handleCompileError(ctx, metadata, apiEncoding, err)
-	}
-	if err := s.console.Phase("Generating boilerplate code", func() error {
-		if cached != nil {
-			reused, refreshErr := build.RefreshCachedWorkspaceWithOptions(s.root, result, build.RefreshOptions{ChangedPaths: changedPaths})
-			if refreshErr != nil {
-				return refreshErr
-			}
-			if reused {
-				return nil
-			}
-			model, err = parse.App(s.root, s.cfg.Name)
-			if err != nil {
-				return err
-			}
-			metadata, err = devmeta.BuildMetadataSnapshot(model)
-			if err != nil {
-				return err
-			}
-			apiEncoding, err = devmeta.BuildAPIEncoding(model)
-			if err != nil {
-				return err
-			}
-		}
-		result, err = build.Prepare(s.root, model, s.cfg, build.PrepareOptions{ChangedPaths: changedPaths})
-		if err == nil && result != nil {
-			result.GraphFingerprint = graphFingerprint
-			result.Metadata = append(json.RawMessage(nil), metadata...)
-			result.APIEncoding = append(json.RawMessage(nil), apiEncoding...)
-		}
-		return err
-	}); err != nil {
-		return s.handleCompileError(ctx, metadata, apiEncoding, err)
-	}
-	if err := s.console.Phase("Compiling application source code", func() error {
-		if result != nil && result.GraphFingerprint == "" {
-			result.GraphFingerprint = graphFingerprint
-			result.Metadata = append(json.RawMessage(nil), metadata...)
-			result.APIEncoding = append(json.RawMessage(nil), apiEncoding...)
-		}
-		return build.CompileContext(ctx, result)
-	}); err != nil {
-		return s.handleCompileError(ctx, metadata, apiEncoding, err)
-	}
-	s.setMetadata(metadata, apiEncoding)
-	if err := s.persistStatus(ctx); err != nil {
-		return err
-	}
-	dbSetup, shouldRunDBSetup, err := s.nextDevDatabaseSetup(initial)
+	plan, err := s.prepareDevRuntimePlan(ctx, initial, snapshot, changedPaths)
 	if err != nil {
+		metadata, apiEncoding := devBuildErrorPayload(err)
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
-	}
-	if shouldRunDBSetup {
-		if err := s.console.Phase("Running database setup", func() error {
-			return s.runDevDatabaseSetup(ctx, dbSetup)
-		}); err != nil {
-			return s.handleCompileError(ctx, metadata, apiEncoding, err)
-		}
-	}
-	if len(s.cfg.Dev.Setup) > 0 {
-		if err := s.console.Phase("Running development setup", func() error {
-			return s.runDevSetup(ctx)
-		}); err != nil {
-			return s.handleCompileError(ctx, metadata, apiEncoding, err)
-		}
-	}
-	if typeScriptWorkerAutoStartEnabled(s.cfg, tsModel) {
-		if err := s.console.Phase("Generating TypeScript Temporal worker", func() error {
-			generated, generateErr := s.generateTypeScriptTemporalWorker()
-			if generateErr != nil {
-				return generateErr
-			}
-			tsWorker = generated
-			return nil
-		}); err != nil {
-			return s.handleCompileError(ctx, metadata, apiEncoding, err)
-		}
-		if err := s.console.Phase("Installing app TypeScript dependencies", func() error {
-			_, installErr := ensureTypeScriptWorkerAppDependencies(ctx, s.root, tsWorker.OutputDir)
-			return installErr
-		}); err != nil {
-			return s.handleCompileError(ctx, metadata, apiEncoding, err)
-		}
-		if err := s.console.Phase("Installing TypeScript worker dependencies", func() error {
-			_, installErr := ensureTypeScriptWorkerDependencies(ctx, tsWorker.OutputDir)
-			return installErr
-		}); err != nil {
-			return s.handleCompileError(ctx, metadata, apiEncoding, err)
-		}
 	}
 
 	previous := s.currentApp()
@@ -611,12 +428,12 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 				return err
 			}
 		}
-		current, err = s.startApp(ctx, result, metadata, apiEncoding)
+		current, err = s.startApp(ctx, plan.Result, plan.Metadata, plan.APIEncoding)
 		if err != nil {
 			return err
 		}
-		if tsWorker != nil {
-			currentTS, err = s.startTypeScriptWorker(ctx, *tsWorker)
+		if plan.TypeScript != nil {
+			currentTS, err = s.startTypeScriptWorker(ctx, *plan.TypeScript)
 			if err != nil {
 				_ = current.stop()
 				return err
@@ -624,7 +441,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		}
 		return nil
 	}); err != nil {
-		return s.handleCompileError(ctx, metadata, apiEncoding, err)
+		return s.handleCompileError(ctx, plan.Metadata, plan.APIEncoding, err)
 	}
 
 	s.mu.Lock()
@@ -635,11 +452,11 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 	s.mu.Unlock()
 
 	s.setCompiling(false, "")
-	s.setRunning(current.pid, metadata, apiEncoding)
+	s.setRunning(current.pid, plan.Metadata, plan.APIEncoding)
 	if err := s.persistStatus(ctx); err != nil {
 		return err
 	}
-	s.emitDevEvent(ctx, devdash.DevSource{ID: "build", Kind: "build", Name: "build", Status: "ready"}, "info", "build succeeded", map[string]any{
+	s.eventSink().Emit(ctx, devdash.DevSource{ID: "build", Kind: "build", Name: "build", Status: "ready"}, "info", "build succeeded", map[string]any{
 		"initial": initial,
 		"pid":     current.pid,
 	})
@@ -696,16 +513,12 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	} else if sessionBinary != "" {
 		binary = sessionBinary
 	}
-	cmd := exec.Command(binary)
-	configureChildProcess(cmd)
-	cmd.WaitDelay = stopTimeout + time.Second
-	cmd.Dir = s.root
 	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), s.root, ".env", ".env.local")
 	if err != nil {
 		return nil, err
 	}
 	appBaseEnv := s.appDatabaseAuthorityEnv(baseEnv)
-	cmd.Env = appChildEnv(
+	env := appChildEnv(
 		appBaseEnv,
 		s.console != nil && s.console.palette.Enabled(),
 		"ONLAVA_LISTEN_NETWORK="+s.backend.Network,
@@ -719,59 +532,71 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		"ONLAVA_DEV_REPORT_URL="+s.devReportURL(),
 		"ONLAVA_DEV_REPORT_TOKEN="+s.reportToken,
 	)
-	cmd.Env = append(cmd.Env, s.victoria.Env()...)
-	cmd.Env = append(cmd.Env, s.temporal.Env()...)
-	cmd.Env = append(cmd.Env, s.sessionTemporalEnv()...)
-	cmd.Env = append(cmd.Env, s.sessionIdentityEnv()...)
+	env = append(env, s.victoria.Env()...)
+	env = append(env, s.temporal.Env()...)
+	env = append(env, s.sessionTemporalEnv()...)
+	env = append(env, s.sessionIdentityEnv()...)
 	managedEnv, err := s.managedAppEnv(ctx, baseEnv)
 	if err != nil {
 		return nil, err
 	}
-	cmd.Env = append(cmd.Env, managedEnv...)
-	electricEnv, err := managedElectricEnv(s.cfg, s.agentSession, cmd.Env)
+	env = append(env, managedEnv...)
+	electricEnv, err := managedElectricEnv(s.cfg, s.agentSession, env)
 	if err != nil {
 		return nil, err
 	}
-	cmd.Env = append(cmd.Env, electricEnv...)
+	env = append(env, electricEnv...)
 	if s.proxy != nil {
-		cmd.Env = append(cmd.Env, "ONLAVA_PUBLIC_BASE_URL="+s.proxy.Routes().APIURL)
+		env = append(env, "ONLAVA_PUBLIC_BASE_URL="+s.proxy.Routes().APIURL)
 	} else if s.agentSession != nil && s.agentSession.Routes[localagent.RouteAPI] != "" {
-		cmd.Env = append(cmd.Env, "ONLAVA_PUBLIC_BASE_URL="+s.agentSession.Routes[localagent.RouteAPI])
+		env = append(env, "ONLAVA_PUBLIC_BASE_URL="+s.agentSession.Routes[localagent.RouteAPI])
 	}
-	cmd.Env = append(cmd.Env, s.sessionAuthEnv()...)
-	cmd.Stdin = nil
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
+	env = append(env, s.sessionAuthEnv()...)
 	if err := backendAvailableBeforeStartup(s.backend); err != nil {
 		return nil, fmt.Errorf("app listen address %s is unavailable before startup: %w", s.addr, err)
 	}
-	if err := cmd.Start(); err != nil {
+	var app *runningApp
+	process, err := startDevManagedProcess(ctx, devProcessStartRequest{
+		Name:    "api",
+		Kind:    "app",
+		Role:    "onlava-api",
+		Dir:     s.root,
+		Command: binary,
+		Env:     env,
+		Stdout:  s.processOutputWriter(os.Stdout),
+		Stderr:  s.processOutputWriter(os.Stderr),
+		OnOutput: func(pid int, stream string, data []byte) {
+			if app == nil {
+				return
+			}
+			source := devdash.DevSource{
+				ID:     "api",
+				Kind:   "app",
+				Name:   "api",
+				Role:   "onlava-api",
+				PID:    fmt.Sprintf("%d", pid),
+				Stream: stream,
+				Status: "running",
+			}
+			s.eventSink().Output(ctx, source, data)
+		},
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	app := &runningApp{
-		cmd:      cmd,
-		done:     make(chan error, 1),
+	app = &runningApp{
+		process:  process,
+		cmd:      process.Cmd,
 		buildDir: result.Dir,
-		pid:      fmt.Sprintf("%d", cmd.Process.Pid),
-		output:   &safeLineTail{limit: 80},
+		pid:      fmt.Sprintf("%d", process.PID),
+		output:   process.Tail,
 	}
-
-	go s.captureOutput(ctx, app, "stdout", stdout, os.Stdout)
-	go s.captureOutput(ctx, app, "stderr", stderr, os.Stderr)
 	go func() {
-		app.done <- cmd.Wait()
-		close(app.done)
+		<-process.done
 		s.handleExit(context.Background(), app)
 	}()
 	if err := s.waitForAppStartup(ctx, app); err != nil {
+		_ = app.stop()
 		return nil, err
 	}
 	return app, nil
@@ -944,12 +769,12 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 	)
 	env = append(env, managedEnv...)
 	source := devdash.DevSource{ID: "database-setup", Kind: "setup", Name: "database setup", Role: "database", Status: "running"}
-	s.emitDevEvent(ctx, source, "info", "database setup started", map[string]any{
+	s.eventSink().Emit(ctx, source, "info", "database setup started", map[string]any{
 		"seed_count": len(setup.Seeds),
 	})
 	if err := runDatabaseApplyProviderWithEnv(ctx, s.root, s.cfg.Database.Apply, env); err != nil {
 		source.Status = "error"
-		s.emitDevEvent(ctx, source, "error", "database apply failed", map[string]any{
+		s.eventSink().Emit(ctx, source, "error", "database apply failed", map[string]any{
 			"error": err.Error(),
 		})
 		return err
@@ -957,13 +782,13 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 	seedResult, err := buildDBSeedResultWithEnv(ctx, s.root, s.cfg, dbSeedOptions{}, env, false)
 	if err != nil {
 		source.Status = "error"
-		s.emitDevEvent(ctx, source, "error", "database seed failed", map[string]any{
+		s.eventSink().Emit(ctx, source, "error", "database seed failed", map[string]any{
 			"error": err.Error(),
 		})
 		return err
 	}
 	source.Status = "ready"
-	s.emitDevEvent(ctx, source, "info", "database setup completed", map[string]any{
+	s.eventSink().Emit(ctx, source, "info", "database setup completed", map[string]any{
 		"seeds": seedResult.Summary,
 	})
 	s.dbSetupFingerprint = setup.Fingerprint
@@ -976,7 +801,7 @@ func (s *devSupervisor) managedAppEnv(ctx context.Context, baseEnv []string) ([]
 		return nil, err
 	}
 	if dbName := envValueFromList(env, "ONLAVA_MANAGED_DATABASE_NAME"); dbName != "" {
-		s.emitDevEvent(ctx, devdash.DevSource{ID: "postgres", Kind: "substrate", Name: "postgres", Role: "database", Status: "running"}, "info", "managed Postgres ready", map[string]any{
+		s.eventSink().Emit(ctx, devdash.DevSource{ID: "postgres", Kind: "substrate", Name: "postgres", Role: "database", Status: "running"}, "info", "managed Postgres ready", map[string]any{
 			"database": dbName,
 		})
 	}
@@ -1127,29 +952,41 @@ func authEnvName(value, fallback string) string {
 }
 
 func (s *devSupervisor) waitForAppStartup(ctx context.Context, app *runningApp) error {
-	deadline := time.NewTimer(appStartupTimeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(appStartupPollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			_ = app.stop()
-			return ctx.Err()
-		case err, ok := <-app.done:
-			if !ok {
-				return appStartupExitError(app, nil)
+	if app == nil || app.process == nil {
+		deadline := time.NewTimer(appStartupTimeout)
+		defer deadline.Stop()
+		ticker := time.NewTicker(appStartupPollInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				_ = app.stop()
+				return ctx.Err()
+			case err, ok := <-app.done:
+				if !ok {
+					return appStartupExitError(app, nil)
+				}
+				return appStartupExitError(app, err)
+			case <-ticker.C:
+				if backendAcceptsConnections(s.backend) {
+					return nil
+				}
+			case <-deadline.C:
+				_ = app.stop()
+				return fmt.Errorf("onlava app did not listen on %s address %s within %s", s.backend.Network, s.addr, appStartupTimeout)
 			}
-			return appStartupExitError(app, err)
-		case <-ticker.C:
+		}
+	}
+	return app.process.WaitReady(ctx, devProcessReadyRequest{
+		Timeout:  appStartupTimeout,
+		Interval: appStartupPollInterval,
+		Probe: func(context.Context) error {
 			if backendAcceptsConnections(s.backend) {
 				return nil
 			}
-		case <-deadline.C:
-			_ = app.stop()
-			return fmt.Errorf("onlava app did not listen on %s address %s within %s", s.backend.Network, s.addr, appStartupTimeout)
-		}
-	}
+			return fmt.Errorf("onlava app is not accepting %s connections on %s", s.backend.Network, s.addr)
+		},
+	})
 }
 
 func appStartupExitError(app *runningApp, err error) error {
@@ -1250,36 +1087,7 @@ func (s *devSupervisor) captureServiceOutput(ctx context.Context, source devdash
 			if tail != nil {
 				tail.Add(strings.TrimRight(string(plain), "\n"))
 			}
-			output := devdash.ProcessOutput{
-				AppID:     s.activeAppID(),
-				SessionID: s.currentSessionID(),
-				PID:       source.PID,
-				Stream:    source.Stream,
-				Output:    plain,
-				CreatedAt: time.Now().UTC(),
-			}
-			event := assignDevEventID(devdash.DevEventFromOutput(s.activeAppID(), s.currentSessionID(), source, plain, output.CreatedAt))
-			s.exportVictoriaDevEvent(event)
-			s.dashboard.notify(&devdash.Notification{
-				Method: "process/output",
-				Params: map[string]any{
-					"appID":      s.activeAppID(),
-					"pid":        source.PID,
-					"stream":     source.Stream,
-					"source":     source,
-					"output":     output.Output,
-					"created_at": output.CreatedAt.Format(time.RFC3339Nano),
-				},
-			})
-			if s.console != nil {
-				s.console.Event("process.output", map[string]any{
-					"pid":        source.PID,
-					"stream":     source.Stream,
-					"source":     source.ID,
-					"output":     string(output.Output),
-					"created_at": output.CreatedAt.Format(time.RFC3339Nano),
-				})
-			}
+			s.eventSink().Output(ctx, source, plain)
 		}
 		if err != nil {
 			if !isExpectedOutputReadError(err) {
@@ -1290,38 +1098,11 @@ func (s *devSupervisor) captureServiceOutput(ctx context.Context, source devdash
 	}
 }
 
-func (s *devSupervisor) emitDevEvent(ctx context.Context, source devdash.DevSource, level, message string, fields map[string]any) {
-	if s == nil {
-		return
+func (s *devSupervisor) processOutputWriter(dst io.Writer) io.Writer {
+	if s == nil || s.console == nil || !s.console.json {
+		return dst
 	}
-	event := assignDevEventID(devdash.NewDevEvent(s.activeAppID(), s.currentSessionID(), source, level, message, fields, time.Now().UTC()))
-	s.exportVictoriaDevEvent(event)
-}
-
-func (s *devSupervisor) exportVictoriaDevEvent(event devdash.DevEvent) {
-	if s == nil {
-		return
-	}
-	s.mu.RLock()
-	victoria := s.victoria
-	s.mu.RUnlock()
-	if victoria == nil {
-		s.mu.Lock()
-		if s.victoria == nil {
-			if !s.victoriaStarted {
-				s.pendingDevEvents = append(s.pendingDevEvents, event)
-			}
-			s.mu.Unlock()
-			return
-		}
-		victoria = s.victoria
-		s.mu.Unlock()
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = victoria.ExportDevEvent(ctx, event)
-	}()
+	return nil
 }
 
 func isExpectedOutputReadError(err error) bool {
@@ -1414,6 +1195,9 @@ func (s *devSupervisor) handleExit(ctx context.Context, app *runningApp) {
 }
 
 func (a *runningApp) interrupt() error {
+	if a != nil && a.process != nil {
+		return a.process.Interrupt()
+	}
 	if a == nil || a.cmd == nil || a.cmd.Process == nil {
 		return nil
 	}
@@ -1421,6 +1205,12 @@ func (a *runningApp) interrupt() error {
 }
 
 func (a *runningApp) kill() error {
+	if a != nil && a.process != nil {
+		if a.process.Cmd != nil {
+			return killProcessTree(a.process.Cmd)
+		}
+		return nil
+	}
 	if a == nil || a.cmd == nil || a.cmd.Process == nil {
 		return nil
 	}
@@ -1430,6 +1220,9 @@ func (a *runningApp) kill() error {
 func (a *runningApp) waitOrKill(grace time.Duration) error {
 	if a == nil {
 		return nil
+	}
+	if a.process != nil {
+		return a.process.WaitOrKill(grace)
 	}
 	select {
 	case err := <-a.done:
@@ -1452,6 +1245,9 @@ func (a *runningApp) waitOrKill(grace time.Duration) error {
 }
 
 func (a *runningApp) stop() error {
+	if a != nil && a.process != nil {
+		return a.process.Stop(stopTimeout)
+	}
 	if err := a.interrupt(); err != nil {
 		return err
 	}
@@ -1678,7 +1474,7 @@ func (s *devSupervisor) ensureTemporalDevServer(ctx context.Context) error {
 	s.temporal = temporal
 	if temporal != nil {
 		s.registerAgentSessionBackend(ctx, localagent.RouteTemporal, backendFromHTTPURL(temporal.URL()))
-		s.emitDevEvent(ctx, devdash.DevSource{ID: "temporal", Kind: "substrate", Name: "temporal", Role: "workflow-server", Status: "running", URL: temporal.URL()}, "info", "Temporal dev server ready", map[string]any{
+		s.eventSink().Emit(ctx, devdash.DevSource{ID: "temporal", Kind: "substrate", Name: "temporal", Role: "workflow-server", Status: "running", URL: temporal.URL()}, "info", "Temporal dev server ready", map[string]any{
 			"address":   temporal.info.Address,
 			"namespace": temporal.info.Namespace,
 			"ui_url":    temporal.URL(),
@@ -1691,24 +1487,22 @@ func (s *devSupervisor) ensureAgentTemporalDevServer(ctx context.Context) (*temp
 	if s == nil || s.agent == nil {
 		return startTemporalDevServer(ctx, s.root, s.cfg, s.console)
 	}
-	if temporal := s.agentTemporalDevServer(ctx); temporal != nil {
-		return temporal, nil
-	}
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
 		warnTemporal(s.console, "agent Temporal state path unavailable: %v", err)
 		return startTemporalDevServer(ctx, s.root, s.cfg, s.console)
 	}
-	temporal, err := startTemporalDevServer(context.Background(), filepath.Join(paths.AgentDir, "temporal"), s.cfg, s.console)
-	if temporal == nil {
-		return nil, err
-	}
-	if _, registerErr := s.agent.UpsertSubstrate(ctx, temporal.SubstrateRequest(os.Getpid())); registerErr != nil {
-		warnTemporal(s.console, "failed to register shared Temporal substrate with agent: %v", registerErr)
+	adapter := temporalSubstrateAdapter{cfg: s.cfg, console: s.console}
+	handle, _, err := s.substrateManager().Ensure(ctx, filepath.Join(paths.AgentDir, "temporal"), adapter)
+	temporal, _ := handle.(*temporalDevServer)
+	if err != nil {
+		warnTemporal(s.console, "failed to prepare shared Temporal substrate with agent: %v", err)
 		return temporal, err
 	}
-	temporal.MarkExternal()
-	s.monitorSharedTemporalDevServer(temporal)
+	if temporal == nil {
+		return nil, nil
+	}
+	s.substrateManager().Monitor(temporal, adapter)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("temporal.shared", map[string]any{
 			"owner":     "agent",
@@ -1728,22 +1522,12 @@ func (s *devSupervisor) agentTemporalDevServer(ctx context.Context) *temporalDev
 	if err != nil {
 		return nil
 	}
-	if strings.TrimSpace(substrate.Status) != "" && substrate.Status != "ready" {
-		return nil
-	}
-	if err := verifySubstrateOwner(substrate); err != nil {
+	handle, reusable := s.substrateManager().reusable(ctx, temporalSubstrateAdapter{cfg: s.cfg, console: s.console}, substrate)
+	if !reusable {
 		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateTemporal)
 		return nil
 	}
-	temporal := temporalDevServerFromSubstrate(substrate, s.cfg.Name, s.cfg.Temporal)
-	if temporal == nil {
-		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateTemporal)
-		return nil
-	}
-	if !temporal.Reachable(ctx, s.cfg.Name, s.cfg.Temporal) {
-		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateTemporal)
-		return nil
-	}
+	temporal, _ := handle.(*temporalDevServer)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("temporal.reuse", map[string]any{
 			"owner":     "agent",
@@ -1756,34 +1540,7 @@ func (s *devSupervisor) agentTemporalDevServer(ctx context.Context) *temporalDev
 }
 
 func (s *devSupervisor) monitorSharedTemporalDevServer(temporal *temporalDevServer) <-chan struct{} {
-	done := make(chan struct{})
-	if s == nil || s.agent == nil || temporal == nil || temporal.done == nil {
-		close(done)
-		return done
-	}
-	go func() {
-		defer close(done)
-		err, ok := <-temporal.done
-		if !ok {
-			return
-		}
-		exit := temporal.ExitRecord(err)
-		req := temporal.SubstrateRequest(os.Getpid())
-		req.Status = "exited"
-		req.LastExit = &exit
-		req.ComponentExits = map[string]localagent.SubstrateExit{"server": exit}
-		_, _ = s.agent.UpsertSubstrate(context.Background(), req)
-		s.emitDevEvent(context.Background(), devdash.DevSource{
-			ID:     "temporal",
-			Kind:   "substrate",
-			Name:   "temporal",
-			Role:   "workflow-server",
-			PID:    fmt.Sprint(exit.PID),
-			Status: "exited",
-			URL:    temporal.URL(),
-		}, "error", "Temporal dev server exited", substrateExitEventFields(exit))
-	}()
-	return done
+	return s.substrateManager().Monitor(temporal, temporalSubstrateAdapter{cfg: s.cfg, console: s.console})
 }
 
 func substrateExitEventFields(exit localagent.SubstrateExit) map[string]any {
@@ -1835,7 +1592,7 @@ func (s *devSupervisor) startGrafana(ctx context.Context) error {
 				Params: state,
 			})
 		}
-		s.emitDevEvent(ctx, devdash.DevSource{ID: "grafana", Kind: "substrate", Name: "grafana", Role: "observability-ui", Status: state.Status, URL: state.URL}, "info", "Grafana status updated", map[string]any{
+		s.eventSink().Emit(ctx, devdash.DevSource{ID: "grafana", Kind: "substrate", Name: "grafana", Role: "observability-ui", Status: state.Status, URL: state.URL}, "info", "Grafana status updated", map[string]any{
 			"available": state.Available,
 			"status":    state.Status,
 			"url":       state.URL,
@@ -1888,23 +1645,21 @@ func (s *devSupervisor) startAgentGrafana(ctx context.Context) (*grafanaComponen
 	if s == nil || s.agent == nil {
 		return startGrafanaForDev(ctx, s.root, s.victoria, s.plannedGrafanaPublicURL(), s.console)
 	}
-	if grafana := s.agentGrafana(ctx); grafana != nil {
-		return grafana, nil
-	}
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
 		warnGrafana(s.console, "agent Grafana state path unavailable: %v", err)
 		return startGrafanaForDev(ctx, s.root, s.victoria, s.plannedGrafanaPublicURL(), s.console)
 	}
-	grafana, err := startGrafanaForDevWithRoot(context.Background(), filepath.Join(paths.AgentDir, "grafana"), s.victoria, "", s.console)
-	if grafana == nil || !grafana.State().Available {
+	adapter := grafanaSubstrateAdapter{victoria: s.victoria, console: s.console}
+	handle, _, err := s.substrateManager().Ensure(ctx, filepath.Join(paths.AgentDir, "grafana"), adapter)
+	grafana, _ := handle.(*grafanaComponent)
+	if grafana == nil {
 		return grafana, err
 	}
-	if _, registerErr := s.agent.UpsertSubstrate(ctx, grafana.SubstrateRequest(os.Getpid())); registerErr != nil {
-		warnGrafana(s.console, "failed to register shared Grafana substrate with agent: %v", registerErr)
+	if !grafana.State().Available {
 		return grafana, err
 	}
-	grafana.MarkExternal()
+	s.substrateManager().Monitor(grafana, adapter)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("grafana.shared", map[string]any{
 			"owner": "agent",
@@ -1922,22 +1677,12 @@ func (s *devSupervisor) agentGrafana(ctx context.Context) *grafanaComponent {
 	if err != nil {
 		return nil
 	}
-	if err := verifySubstrateOwner(substrate); err != nil {
+	handle, reusable := s.substrateManager().reusable(ctx, grafanaSubstrateAdapter{victoria: s.victoria, console: s.console}, substrate)
+	if !reusable {
 		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateGrafana)
 		return nil
 	}
-	grafana := grafanaComponentFromSubstrate(substrate, s.victoria, "")
-	if grafana == nil {
-		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateGrafana)
-		return nil
-	}
-	if grafana.cfg.MetricsURL == "" && grafana.cfg.LogsURL == "" && grafana.cfg.TracesURL == "" {
-		return nil
-	}
-	if !grafana.Reachable(ctx) {
-		_, _ = s.agent.DeleteSubstrate(ctx, localagent.SubstrateGrafana)
-		return nil
-	}
+	grafana, _ := handle.(*grafanaComponent)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("grafana.reuse", map[string]any{
 			"owner": "agent",
@@ -2178,7 +1923,7 @@ func (s *devSupervisor) handleCompileError(ctx context.Context, metadata, apiEnc
 		Params: s.appStatus(),
 	})
 	_ = s.store.WriteProcessEvent(ctx, s.activeAppID(), "compile-error", map[string]any{"error": err.Error()})
-	s.emitDevEvent(ctx, devdash.DevSource{ID: "build", Kind: "build", Name: "build", Status: "error", Reason: err.Error()}, "error", "build failed", map[string]any{
+	s.eventSink().Emit(ctx, devdash.DevSource{ID: "build", Kind: "build", Name: "build", Status: "error", Reason: err.Error()}, "error", "build failed", map[string]any{
 		"error": err.Error(),
 	})
 	if s.console != nil {

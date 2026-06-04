@@ -149,8 +149,13 @@ func TestExternalPostgresDatabaseURLRequiresDatabaseURL(t *testing.T) {
 
 func TestManagedPostgresAdminURLCanComeFromAgentSubstrate(t *testing.T) {
 	prevReachable := managedPostgresAdminReachableFn
+	prevVersionMatches := postgresAdminVersionMatchesFn
 	managedPostgresAdminReachableFn = func(context.Context, string) bool { return true }
-	defer func() { managedPostgresAdminReachableFn = prevReachable }()
+	postgresAdminVersionMatchesFn = func(context.Context, string, string) bool { return true }
+	defer func() {
+		managedPostgresAdminReachableFn = prevReachable
+		postgresAdminVersionMatchesFn = prevVersionMatches
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -178,8 +183,13 @@ func TestManagedPostgresAdminURLCanComeFromAgentSubstrate(t *testing.T) {
 
 func TestManagedPostgresAgentAdminURLRejectsUnreachableSubstrate(t *testing.T) {
 	prevReachable := managedPostgresAdminReachableFn
+	prevVersionMatches := postgresAdminVersionMatchesFn
 	managedPostgresAdminReachableFn = func(context.Context, string) bool { return false }
-	defer func() { managedPostgresAdminReachableFn = prevReachable }()
+	postgresAdminVersionMatchesFn = func(context.Context, string, string) bool { return true }
+	defer func() {
+		managedPostgresAdminReachableFn = prevReachable
+		postgresAdminVersionMatchesFn = prevVersionMatches
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -205,6 +215,71 @@ func TestManagedPostgresAgentAdminURLRejectsUnreachableSubstrate(t *testing.T) {
 	}
 	if _, err := client.GetSubstrate(ctx, localagent.SubstratePostgres); !localagent.IsNotFound(err) {
 		t.Fatalf("postgres substrate after stale rejection err=%v", err)
+	}
+}
+
+func TestManagedPostgresEnvDoesNotWriteSessionKeysToGlobalSubstrate(t *testing.T) {
+	prevReachable := managedPostgresAdminReachableFn
+	prevVersionMatches := postgresAdminVersionMatchesFn
+	prevEnsure := ensureManagedPostgresDatabaseFn
+	managedPostgresAdminReachableFn = func(context.Context, string) bool { return true }
+	postgresAdminVersionMatchesFn = func(context.Context, string, string) bool { return true }
+	ensureManagedPostgresDatabaseFn = func(context.Context, string, string) error { return nil }
+	defer func() {
+		managedPostgresAdminReachableFn = prevReachable
+		postgresAdminVersionMatchesFn = prevVersionMatches
+		ensureManagedPostgresDatabaseFn = prevEnsure
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	agentDone := startTestAgentServer(t, ctx)
+	defer func() {
+		cancel()
+		waitForTestAgentServer(t, agentDone)
+	}()
+	client, err := localagent.DefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.UpsertSubstrate(ctx, localagent.UpsertSubstrateRequest{
+		Kind:     localagent.SubstratePostgres,
+		Status:   "ready",
+		OwnerPID: os.Getpid(),
+		URLs:     map[string]string{"admin": "postgres://localhost/postgres"},
+		Endpoints: map[string]string{
+			"version":   devPostgresDefaultVersion,
+			"isolation": devPostgresDefaultIsolation,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := app.Config{
+		Name: "demo",
+		Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+			"postgres": {Kind: "postgres"},
+		}},
+	}
+	env, err := managedPostgresEnv(ctx, cfg, &localagent.Session{SessionID: "review-a", BaseAppID: "demo"}, []string{"A=1"}, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(env, "ONLAVA_MANAGED_DATABASE_NAME=demo_review_a") {
+		t.Fatalf("managed env = %+v", env)
+	}
+	substrate, err := client.GetSubstrate(ctx, localagent.SubstratePostgres)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key := range substrate.URLs {
+		if strings.HasPrefix(key, "session.") {
+			t.Fatalf("postgres substrate URL contains session key %q: %+v", key, substrate.URLs)
+		}
+	}
+	for key := range substrate.Endpoints {
+		if strings.HasPrefix(key, "session.") {
+			t.Fatalf("postgres substrate endpoint contains session key %q: %+v", key, substrate.Endpoints)
+		}
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
@@ -172,6 +173,39 @@ func TestManagedFrontendBackendsAllowsExplicitSharedUpstream(t *testing.T) {
 	}
 }
 
+func TestManagedFrontendFailsFastWhenChildExitsBeforeReady(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	appRoot := filepath.Join(root, "app")
+	frontendRoot := filepath.Join(appRoot, "apps", "web")
+	writeFrontendPackage(t, frontendRoot, `{"scripts":{"dev":"vite"}}`)
+	writeFrontendBinWithScript(t, frontendRoot, "vite", "echo frontend-boom\nexit 7\n")
+
+	start := time.Now()
+	_, _, err := managedFrontendBackendsForSession(context.Background(), appRoot, app.Config{
+		Name: "demo",
+		Proxy: app.ProxyConfig{
+			Frontends: map[string]app.FrontendConfig{
+				"web": {Root: "apps/web"},
+			},
+		},
+	}, nil, localagent.Session{
+		SessionID: "main-test",
+		StateRoot: filepath.Join(root, "state"),
+	})
+	if err == nil {
+		t.Fatal("managedFrontendBackendsForSession returned nil error, want early exit")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("managed frontend failure took %s, want early exit before timeout", elapsed)
+	}
+	got := err.Error()
+	if !strings.Contains(got, "frontend web exited before becoming ready") || !strings.Contains(got, "frontend-boom") {
+		t.Fatalf("error = %q, want early exit with output tail", got)
+	}
+}
+
 func writeFrontendPackage(t *testing.T, root, data string) {
 	t.Helper()
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -184,12 +218,17 @@ func writeFrontendPackage(t *testing.T, root, data string) {
 
 func writeFrontendBin(t *testing.T, root, name string) string {
 	t.Helper()
+	return writeFrontendBinWithScript(t, root, name, "exit 0\n")
+}
+
+func writeFrontendBinWithScript(t *testing.T, root, name, script string) string {
+	t.Helper()
 	dir := filepath.Join(root, "node_modules", ".bin")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, name)
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return bin

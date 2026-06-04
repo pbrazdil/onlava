@@ -1,15 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,7 +25,7 @@ type managedFrontendProcess struct {
 	Name     string
 	Root     string
 	Addr     string
-	Command  *exec.Cmd
+	Process  *devManagedProcess
 	LogFile  *os.File
 	Store    *devdash.Store
 	Victoria *victoriaStack
@@ -121,9 +118,6 @@ func startManagedFrontendProcess(ctx context.Context, appRoot, appID string, fro
 	if err != nil {
 		return nil, err
 	}
-	cmd := commandTreeContext(ctx, cmdName, args...)
-	cmd.Dir = root
-	cmd.Env = frontendDevEnv(baseEnv, appRoot, addr, session, frontend.Name)
 	logFile, err := managedFrontendLogFile(session, frontend.Name)
 	if err != nil {
 		return nil, err
@@ -133,34 +127,34 @@ func startManagedFrontendProcess(ctx context.Context, appRoot, appID string, fro
 		_ = logFile.Close()
 		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = store.Close()
-		_ = logFile.Close()
-		return nil, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		_ = store.Close()
-		_ = logFile.Close()
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		_ = store.Close()
-		_ = logFile.Close()
-		return nil, err
-	}
 	process := &managedFrontendProcess{
 		Name:     frontend.Name,
 		Root:     root,
 		Addr:     addr,
-		Command:  cmd,
 		LogFile:  logFile,
 		Store:    store,
 		Victoria: resolveLogsVictoriaStackFunc(ctx, false),
 	}
-	go captureManagedFrontendOutput(ctx, store, appID, session.SessionID, process, "stdout", stdout, logFile)
-	go captureManagedFrontendOutput(ctx, store, appID, session.SessionID, process, "stderr", stderr, logFile)
+	runner, err := startDevManagedProcess(ctx, devProcessStartRequest{
+		Name:    frontend.Name,
+		Kind:    "frontend",
+		Role:    "web-frontend",
+		Dir:     root,
+		Command: cmdName,
+		Args:    args,
+		Env:     frontendDevEnv(baseEnv, appRoot, addr, session, frontend.Name),
+		Stdout:  logFile,
+		Stderr:  logFile,
+		OnOutput: func(pid int, stream string, data []byte) {
+			captureManagedFrontendOutput(ctx, store, appID, session.SessionID, process, pid, stream, data)
+		},
+	})
+	if err != nil {
+		_ = store.Close()
+		_ = logFile.Close()
+		return nil, err
+	}
+	process.Process = runner
 	if err := waitForManagedFrontend(ctx, process); err != nil {
 		_ = process.Stop()
 		return nil, err
@@ -168,14 +162,13 @@ func startManagedFrontendProcess(ctx context.Context, appRoot, appID string, fro
 	return process, nil
 }
 
-func captureManagedFrontendOutput(ctx context.Context, store *devdash.Store, appID, sessionID string, process *managedFrontendProcess, stream string, src io.Reader, dst io.Writer) {
-	if process == nil || store == nil || src == nil {
+func captureManagedFrontendOutput(ctx context.Context, store *devdash.Store, appID, sessionID string, process *managedFrontendProcess, pidValue int, stream string, plain []byte) {
+	if process == nil || store == nil || len(plain) == 0 {
 		return
 	}
-	reader := bufio.NewReader(src)
 	pid := ""
-	if process.Command != nil && process.Command.Process != nil {
-		pid = fmt.Sprintf("%d", process.Command.Process.Pid)
+	if pidValue > 0 {
+		pid = fmt.Sprintf("%d", pidValue)
 	}
 	source := devdash.DevSource{
 		ID:     "frontend:" + process.Name,
@@ -187,28 +180,18 @@ func captureManagedFrontendOutput(ctx context.Context, store *devdash.Store, app
 		Status: "running",
 		URL:    "http://" + process.Addr,
 	}
-	for {
-		chunk, err := reader.ReadBytes('\n')
-		if len(chunk) > 0 {
-			_, _ = dst.Write(chunk)
-			plain := stripANSI(chunk)
-			now := time.Now().UTC()
-			event := assignDevEventID(devdash.DevEventFromOutput(appID, sessionID, source, plain, now))
-			victoria := process.Victoria
-			if victoria == nil {
-				victoria = resolveLogsVictoriaStackFunc(ctx, false)
-			}
-			if victoria != nil {
-				go func(event devdash.DevEvent) {
-					ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-					defer cancel()
-					_ = victoria.ExportDevEvent(ctx, event)
-				}(event)
-			}
-		}
-		if err != nil {
-			return
-		}
+	now := time.Now().UTC()
+	event := assignDevEventID(devdash.DevEventFromOutput(appID, sessionID, source, plain, now))
+	victoria := process.Victoria
+	if victoria == nil {
+		victoria = resolveLogsVictoriaStackFunc(ctx, false)
+	}
+	if victoria != nil {
+		go func(event devdash.DevEvent) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			_ = victoria.ExportDevEvent(ctx, event)
+		}(event)
 	}
 }
 
@@ -419,25 +402,19 @@ func managedFrontendLogFile(session localagent.Session, name string) (*os.File, 
 }
 
 func waitForManagedFrontend(ctx context.Context, process *managedFrontendProcess) error {
-	deadline := time.NewTimer(managedFrontendStartupTimeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
+	if process == nil || process.Process == nil {
+		return fmt.Errorf("managed frontend did not start")
+	}
+	return process.Process.WaitReady(ctx, devProcessReadyRequest{
+		Timeout:  managedFrontendStartupTimeout,
+		Interval: 100 * time.Millisecond,
+		Probe: func(context.Context) error {
 			if tcpAddrAcceptsConnections(process.Addr) {
 				return nil
 			}
-			if process.Command.ProcessState != nil && process.Command.ProcessState.Exited() {
-				return fmt.Errorf("frontend %s exited before becoming ready", process.Name)
-			}
-		case <-deadline.C:
-			return fmt.Errorf("frontend %s did not listen on %s within %s", process.Name, process.Addr, managedFrontendStartupTimeout)
-		}
-	}
+			return fmt.Errorf("frontend %s is not accepting TCP connections on %s", process.Name, process.Addr)
+		},
+	})
 }
 
 func stopManagedFrontendProcesses(processes []*managedFrontendProcess) {
@@ -452,14 +429,14 @@ func frontendSessionProcesses(processes []*managedFrontendProcess) map[string]lo
 	}
 	out := map[string]localagent.Process{}
 	for _, process := range processes {
-		if process == nil || process.Command == nil || process.Command.Process == nil {
+		if process == nil || process.Process == nil || process.Process.PID <= 0 {
 			continue
 		}
 		name := localagentLabel(process.Name)
 		if name == "" {
 			continue
 		}
-		out["frontend-"+name] = localagent.Process{PID: process.Command.Process.Pid}
+		out["frontend-"+name] = localagent.Process{PID: process.Process.PID}
 	}
 	if len(out) == 0 {
 		return nil
@@ -471,16 +448,8 @@ func (p *managedFrontendProcess) Stop() error {
 	if p == nil {
 		return nil
 	}
-	if p.Command != nil && p.Command.Process != nil && p.Command.ProcessState == nil {
-		_ = interruptProcessTree(p.Command)
-		done := make(chan error, 1)
-		go func() { done <- p.Command.Wait() }()
-		select {
-		case <-done:
-		case <-time.After(stopTimeout):
-			_ = killProcessTree(p.Command)
-			<-done
-		}
+	if p.Process != nil {
+		_ = p.Process.Stop(stopTimeout)
 	}
 	if p.LogFile != nil {
 		err := p.LogFile.Close()

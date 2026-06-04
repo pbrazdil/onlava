@@ -432,10 +432,6 @@ func classifySessionStatus(session localagent.Session) (string, string) {
 			return "degraded", fmt.Sprintf("app process %d is not running", pid)
 		}
 	}
-	ownerPID := firstPositiveInt(session.OwnerPID, session.Owner.PID)
-	if pid, ok := findLiveDevOwnerConflict(session.AppRoot, session.SessionID, ownerPID); ok {
-		return "degraded", fmt.Sprintf("another onlava dev owner process %d matches this app root and session", pid)
-	}
 	return "", ""
 }
 

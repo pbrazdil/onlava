@@ -72,6 +72,7 @@ type managedPostgresServer struct {
 	Port      int
 	Source    string
 	Version   string
+	LogPath   string
 	ownerPID  int
 	cmd       *exec.Cmd
 	done      chan error
@@ -82,6 +83,7 @@ type managedElectricService struct {
 	Addr     string
 	Source   string
 	LogPath  string
+	process  *devManagedProcess
 	cmd      *exec.Cmd
 	done     chan error
 	external bool
@@ -191,31 +193,6 @@ func managedPostgresEnv(ctx context.Context, cfg app.Config, session *localagent
 	}
 	if err := ensureManagedPostgresDatabaseFn(ctx, plan.AdminURL, plan.DatabaseName); err != nil {
 		return nil, err
-	}
-	if agent != nil {
-		req := localagent.UpsertSubstrateRequest{
-			Kind:     localagent.SubstratePostgres,
-			Status:   "ready",
-			OwnerPID: os.Getpid(),
-			URLs: map[string]string{
-				"admin":                        plan.AdminURL,
-				"session." + session.SessionID: plan.DatabaseURL,
-			},
-			Endpoints: map[string]string{
-				"version":                      plan.Version,
-				"isolation":                    plan.Isolation,
-				"session." + session.SessionID: plan.DatabaseName,
-			},
-		}
-		if current, err := agent.GetSubstrate(ctx, localagent.SubstratePostgres); err == nil {
-			req.PIDs = current.PIDs
-			if current.OwnerPID > 0 {
-				req.OwnerPID = current.OwnerPID
-			}
-			req.URLs = mergeManagedStrings(current.URLs, req.URLs)
-			req.Endpoints = mergeManagedStrings(current.Endpoints, req.Endpoints)
-		}
-		_, _ = agent.UpsertSubstrate(ctx, req)
 	}
 	return []string{
 		appDatabaseURLEnv + "=" + plan.DatabaseURL,
@@ -335,7 +312,7 @@ func (s *devSupervisor) ensureManagedElectric(ctx context.Context) error {
 			"source": service.Source,
 		})
 	}
-	s.emitDevEvent(ctx, devdash.DevSource{ID: "electric", Kind: "substrate", Name: "electric", Role: "sync-service", Status: "running", URL: "http://" + service.Addr}, "info", "managed Electric ready", map[string]any{
+	s.eventSink().Emit(ctx, devdash.DevSource{ID: "electric", Kind: "substrate", Name: "electric", Role: "sync-service", Status: "running", URL: "http://" + service.Addr}, "info", "managed Electric ready", map[string]any{
 		"route":  plan.Route,
 		"addr":   service.Addr,
 		"source": service.Source,
@@ -423,25 +400,11 @@ func startManagedElectricBinary(ctx context.Context, root string, session *local
 	if !isExecutableFile(bin) {
 		return nil, localagent.Backend{}, fmt.Errorf("%s points to a non-executable file: %s", devElectricBinEnv, bin)
 	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	env := managedElectricProcessEnv(plan, baseEnv, dbURL, port, streamID, managedElectricSessionEnv(root, session)...)
+	service, err := startManagedElectricProcess(ctx, root, plan.Route, addr, "binary", logPath, bin, nil, env)
 	if err != nil {
 		return nil, localagent.Backend{}, err
 	}
-	cmd := commandTreeContext(ctx, bin)
-	cmd.Dir = root
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.Env = managedElectricProcessEnv(plan, baseEnv, dbURL, port, streamID, managedElectricSessionEnv(root, session)...)
-	service := &managedElectricService{Route: plan.Route, Addr: addr, Source: "binary", LogPath: logPath, cmd: cmd, done: make(chan error, 1)}
-	if err := cmd.Start(); err != nil {
-		_ = logFile.Close()
-		return nil, localagent.Backend{}, err
-	}
-	go func() {
-		service.done <- cmd.Wait()
-		close(service.done)
-		_ = logFile.Close()
-	}()
 	if err := waitForManagedElectric(ctx, service); err != nil {
 		_ = service.Interrupt()
 		return nil, localagent.Backend{}, err
@@ -450,36 +413,63 @@ func startManagedElectricBinary(ctx context.Context, root string, session *local
 }
 
 func startManagedElectricContainer(ctx context.Context, root string, session *localagent.Session, plan *managedElectricPlan, baseEnv []string, dbURL string, port int, addr, logPath, docker, streamID string) (*managedElectricService, localagent.Backend, error) {
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return nil, localagent.Backend{}, err
-	}
 	containerEnv := managedElectricContainerEnv(plan, baseEnv, dbURL, streamID, managedElectricSessionEnv(root, session)...)
 	args := []string{"run", "--rm", "--pull", "missing", "--add-host", "host.docker.internal:host-gateway", "-p", fmt.Sprintf("127.0.0.1:%d:%d", port, devElectricContainerPort)}
 	for _, item := range containerEnv {
 		args = append(args, "-e", item)
 	}
 	args = append(args, plan.Image)
-	cmd := commandTreeContext(ctx, docker, args...)
-	cmd.Dir = root
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.Env = baseEnv
-	service := &managedElectricService{Route: plan.Route, Addr: addr, Source: "container", LogPath: logPath, cmd: cmd, done: make(chan error, 1)}
-	if err := cmd.Start(); err != nil {
-		_ = logFile.Close()
+	service, err := startManagedElectricProcess(ctx, root, plan.Route, addr, "container", logPath, docker, args, baseEnv)
+	if err != nil {
 		return nil, localagent.Backend{}, err
 	}
-	go func() {
-		service.done <- cmd.Wait()
-		close(service.done)
-		_ = logFile.Close()
-	}()
 	if err := waitForManagedElectric(ctx, service); err != nil {
 		_ = service.Interrupt()
 		return nil, localagent.Backend{}, err
 	}
 	return service, localagent.Backend{Network: "tcp", Addr: addr}, nil
+}
+
+func startManagedElectricProcess(ctx context.Context, root, route, addr, source, logPath, command string, args, env []string) (*managedElectricService, error) {
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	process, err := startDevManagedProcess(ctx, devProcessStartRequest{
+		Name:    "managed Electric",
+		Kind:    "substrate",
+		Role:    "sync-service",
+		Dir:     root,
+		Command: command,
+		Args:    args,
+		Env:     env,
+		Stdout:  logFile,
+		Stderr:  logFile,
+	})
+	if err != nil {
+		_ = logFile.Close()
+		return nil, err
+	}
+	service := &managedElectricService{
+		Route:   route,
+		Addr:    addr,
+		Source:  source,
+		LogPath: logPath,
+		process: process,
+		cmd:     process.Cmd,
+		done:    make(chan error, 1),
+	}
+	go func() {
+		<-process.done
+		process.mu.Lock()
+		waitErr := process.waitErr
+		process.mu.Unlock()
+		service.done <- waitErr
+		close(service.done)
+		<-process.outputDone
+		_ = logFile.Close()
+	}()
+	return service, nil
 }
 
 func managedElectricProcessEnv(plan *managedElectricPlan, baseEnv []string, dbURL string, port int, streamID string, extra ...string) []string {
@@ -996,6 +986,19 @@ func describeElectricPostgresLocks(locks []electricPostgresLock) string {
 }
 
 func waitForManagedElectric(ctx context.Context, service *managedElectricService) error {
+	if service != nil && service.process != nil {
+		return service.process.WaitReady(ctx, devProcessReadyRequest{
+			Timeout:  30 * time.Second,
+			Interval: 200 * time.Millisecond,
+			Probe: func(context.Context) error {
+				conn, err := net.DialTimeout("tcp", service.Addr, 200*time.Millisecond)
+				if err != nil {
+					return err
+				}
+				return conn.Close()
+			},
+		})
+	}
 	timer := time.NewTimer(30 * time.Second)
 	defer timer.Stop()
 	ticker := time.NewTicker(200 * time.Millisecond)
@@ -1025,6 +1028,9 @@ func (s *managedElectricService) Interrupt() error {
 	if s == nil || s.external || s.cmd == nil {
 		return nil
 	}
+	if s.process != nil {
+		return s.process.Stop(5 * time.Second)
+	}
 	if err := interruptProcessTree(s.cmd); err != nil {
 		return err
 	}
@@ -1037,7 +1043,13 @@ func (s *managedElectricService) Interrupt() error {
 }
 
 func (s *managedElectricService) PID() int {
-	if s == nil || s.external || s.cmd == nil || s.cmd.Process == nil {
+	if s == nil || s.external {
+		return 0
+	}
+	if s.process != nil {
+		return s.process.PID
+	}
+	if s.cmd == nil || s.cmd.Process == nil {
 		return 0
 	}
 	return s.cmd.Process.Pid
@@ -1095,60 +1107,37 @@ func envWithManagedPostgresAgentAdminURL(ctx context.Context, env []string, agen
 	if err != nil {
 		return env
 	}
-	if err := verifySubstrateOwner(substrate); err != nil {
+	handle, reusable := (managedSubstrateManager{agent: agent}).reusable(ctx, postgresSubstrateAdapter{}, substrate)
+	if !reusable {
 		_, _ = agent.DeleteSubstrate(ctx, localagent.SubstratePostgres)
 		return env
 	}
-	if adminURL := strings.TrimSpace(substrate.URLs["admin"]); adminURL != "" {
-		if !managedPostgresAdminReachableFn(ctx, adminURL) {
-			_, _ = agent.DeleteSubstrate(ctx, localagent.SubstratePostgres)
-			return env
-		}
-		return append(append([]string(nil), env...), devPostgresAdminURLEnv+"="+adminURL)
+	server, _ := handle.(*managedPostgresServer)
+	if server == nil || strings.TrimSpace(server.AdminURL) == "" {
+		return env
 	}
-	return env
+	return append(append([]string(nil), env...), devPostgresAdminURLEnv+"="+server.AdminURL)
 }
 
 func ensureLocalManagedPostgresSubstrate(ctx context.Context, cfg app.Config, agent *localagent.Client) (string, error) {
 	if agent == nil {
 		return "", nil
 	}
-	if substrate, err := agent.GetSubstrate(ctx, localagent.SubstratePostgres); err == nil {
-		if adminURL := strings.TrimSpace(substrate.URLs["admin"]); adminURL != "" {
-			if verifySubstrateOwner(substrate) == nil && managedPostgresAdminReachableFn(ctx, adminURL) && postgresAdminVersionMatchesFn(ctx, adminURL, postgresServiceVersion(cfg)) {
-				return adminURL, nil
-			}
-			_, _ = agent.DeleteSubstrate(ctx, localagent.SubstratePostgres)
-		}
-	}
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
 		return "", err
 	}
 	root := filepath.Join(paths.AgentDir, "postgres")
-	requestedVersion := firstNonEmpty(strings.TrimSpace(postgresServiceVersion(cfg)), devPostgresDefaultVersion)
-	server, err := startLocalManagedPostgres(ctx, root, requestedVersion)
+	adapter := postgresSubstrateAdapter{cfg: cfg}
+	handle, _, err := (managedSubstrateManager{agent: agent}).Ensure(ctx, root, adapter)
 	if err != nil {
 		return "", err
 	}
-	if _, err := agent.UpsertSubstrate(ctx, localagent.UpsertSubstrateRequest{
-		Kind:     localagent.SubstratePostgres,
-		Status:   "ready",
-		OwnerPID: serverPID(server),
-		PIDs:     map[string]int{"server": serverPID(server)},
-		URLs:     map[string]string{"admin": server.AdminURL},
-		Endpoints: map[string]string{
-			"version":    firstNonEmpty(server.Version, requestedVersion),
-			"isolation":  devPostgresDefaultIsolation,
-			"data-dir":   server.DataDir,
-			"socket-dir": server.SocketDir,
-			"port":       fmt.Sprintf("%d", server.Port),
-			"source":     firstNonEmpty(server.Source, "local-binary"),
-		},
-	}); err != nil {
-		_ = interruptManagedPostgresServer(server)
-		return "", err
+	server, _ := handle.(*managedPostgresServer)
+	if server == nil {
+		return "", nil
 	}
+	(managedSubstrateManager{agent: agent}).Monitor(server, adapter)
 	return server.AdminURL, nil
 }
 
@@ -1242,7 +1231,8 @@ func startLocalManagedPostgresBinary(ctx context.Context, root, version string, 
 		}
 		adminURL = localPostgresAdminURL(socketDir, port)
 	}
-	logFile, err := os.OpenFile(filepath.Join(root, "postgres.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logPath := filepath.Join(root, "postgres.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -1265,6 +1255,7 @@ func startLocalManagedPostgresBinary(ctx context.Context, root, version string, 
 		Port:      port,
 		Source:    "local-binary",
 		Version:   version,
+		LogPath:   logPath,
 		ownerPID:  cmd.Process.Pid,
 		cmd:       cmd,
 		done:      make(chan error, 1),
@@ -1305,7 +1296,8 @@ func startLocalManagedPostgresContainer(ctx context.Context, root, version, dock
 		}
 		adminURL = localPostgresTCPAdminURL(port)
 	}
-	logFile, err := os.OpenFile(filepath.Join(root, "postgres-docker.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logPath := filepath.Join(root, "postgres-docker.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -1342,6 +1334,7 @@ func startLocalManagedPostgresContainer(ctx context.Context, root, version, dock
 		Port:     port,
 		Source:   "docker",
 		Version:  version,
+		LogPath:  logPath,
 		ownerPID: cmd.Process.Pid,
 		cmd:      cmd,
 		done:     make(chan error, 1),
@@ -1607,6 +1600,142 @@ func serverPID(server *managedPostgresServer) int {
 		return 0
 	}
 	return server.cmd.Process.Pid
+}
+
+func (server *managedPostgresServer) SubstrateRequest(ownerPID int) localagent.UpsertSubstrateRequest {
+	if server == nil || strings.TrimSpace(server.AdminURL) == "" {
+		return localagent.UpsertSubstrateRequest{}
+	}
+	if pid := serverPID(server); pid > 0 {
+		ownerPID = pid
+	}
+	pids := map[string]int{}
+	if ownerPID > 0 {
+		pids["server"] = ownerPID
+	}
+	endpoints := map[string]string{
+		"version":   firstNonEmpty(server.Version, devPostgresDefaultVersion),
+		"isolation": devPostgresDefaultIsolation,
+		"source":    firstNonEmpty(server.Source, "local-binary"),
+	}
+	if server.DataDir != "" {
+		endpoints["data-dir"] = server.DataDir
+	}
+	if server.SocketDir != "" {
+		endpoints["socket-dir"] = server.SocketDir
+	}
+	if server.Port > 0 {
+		endpoints["port"] = fmt.Sprintf("%d", server.Port)
+	}
+	if server.LogPath != "" {
+		endpoints["log"] = server.LogPath
+	}
+	return localagent.UpsertSubstrateRequest{
+		Kind:      localagent.SubstratePostgres,
+		Status:    "ready",
+		OwnerPID:  ownerPID,
+		PIDs:      pids,
+		URLs:      map[string]string{"admin": server.AdminURL},
+		Endpoints: endpoints,
+	}
+}
+
+func (server *managedPostgresServer) MarkExternal() {}
+
+func (server *managedPostgresServer) Components() []managedSubstrateComponent {
+	if server == nil || server.done == nil {
+		return nil
+	}
+	return []managedSubstrateComponent{{
+		Name:        "server",
+		DisplayName: "Postgres",
+		Role:        "database",
+		Done:        server.done,
+		ExitRecord:  server.ExitRecord,
+	}}
+}
+
+func (server *managedPostgresServer) ExitRecord(err error) localagent.SubstrateExit {
+	if server == nil {
+		return localagent.SubstrateExit{}
+	}
+	var state *os.ProcessState
+	if server.cmd != nil {
+		state = server.cmd.ProcessState
+	}
+	return substrateExitRecord("server", serverPID(server), time.Time{}, server.LogPath, server.LogPath, err, state)
+}
+
+type postgresSubstrateAdapter struct {
+	cfg app.Config
+}
+
+func (a postgresSubstrateAdapter) Kind() string       { return localagent.SubstratePostgres }
+func (a postgresSubstrateAdapter) SourceID() string   { return "postgres" }
+func (a postgresSubstrateAdapter) SourceName() string { return "Postgres" }
+func (a postgresSubstrateAdapter) Role() string       { return "database" }
+
+func (a postgresSubstrateAdapter) Start(ctx context.Context, root string) (managedSubstrateHandle, error) {
+	version := firstNonEmpty(strings.TrimSpace(postgresServiceVersion(a.cfg)), devPostgresDefaultVersion)
+	return startLocalManagedPostgres(ctx, root, version)
+}
+
+func (a postgresSubstrateAdapter) FromSubstrate(ctx context.Context, substrate localagent.Substrate) (managedSubstrateHandle, bool) {
+	adminURL := strings.TrimSpace(substrate.URLs["admin"])
+	if adminURL == "" || !managedPostgresAdminReachableFn(ctx, adminURL) {
+		return nil, false
+	}
+	version := firstNonEmpty(strings.TrimSpace(substrate.Endpoints["version"]), devPostgresDefaultVersion)
+	requestedVersion := firstNonEmpty(strings.TrimSpace(postgresServiceVersion(a.cfg)), devPostgresDefaultVersion)
+	if version != requestedVersion || !postgresAdminVersionMatchesFn(ctx, adminURL, requestedVersion) {
+		return nil, false
+	}
+	port, _ := strconv.Atoi(strings.TrimSpace(substrate.Endpoints["port"]))
+	return &managedPostgresServer{
+		AdminURL:  adminURL,
+		DataDir:   strings.TrimSpace(substrate.Endpoints["data-dir"]),
+		SocketDir: strings.TrimSpace(substrate.Endpoints["socket-dir"]),
+		Port:      port,
+		Source:    strings.TrimSpace(substrate.Endpoints["source"]),
+		Version:   version,
+		LogPath:   strings.TrimSpace(substrate.Endpoints["log"]),
+		ownerPID:  firstPositiveInt(substrate.OwnerPID, substrate.Owner.PID),
+	}, true
+}
+
+func (a postgresSubstrateAdapter) ReadyFields(handle managedSubstrateHandle) map[string]any {
+	server, _ := handle.(*managedPostgresServer)
+	if server == nil {
+		return nil
+	}
+	return map[string]any{
+		"admin_url": server.AdminURL,
+		"version":   server.Version,
+		"source":    server.Source,
+	}
+}
+
+func (a postgresSubstrateAdapter) ReuseFields(handle managedSubstrateHandle, _ localagent.Substrate) map[string]any {
+	return a.ReadyFields(handle)
+}
+
+func (a postgresSubstrateAdapter) ExitStatus(managedSubstrateComponent) string {
+	return "exited"
+}
+
+func (a postgresSubstrateAdapter) ExitMessage(managedSubstrateComponent) string {
+	return "managed Postgres exited"
+}
+
+func (a postgresSubstrateAdapter) EventSource(_ managedSubstrateHandle, component managedSubstrateComponent, status string) devdash.DevSource {
+	return devdash.DevSource{
+		ID:     "postgres",
+		Kind:   "substrate",
+		Name:   "postgres",
+		Role:   "database",
+		Status: status,
+		URL:    component.URL,
+	}
 }
 
 func localPostgresAdminURL(socketDir string, port int) string {
