@@ -14,15 +14,15 @@ This file tracks known project debt that should be visible to agents before they
 
 The editable dashboard source exists, but parity should continue to be verified visually for complex pages such as traces, API Explorer, Cron, and DB Explorer.
 
-### Browser Harness
+### Browser Harness Route-Specific Journey Depth
 
 - Area: harness
 - Severity: medium
 - Owner: onlava runtime
-- Created: 2026-04-27
-- Review after: 2026-05-27
+- Created: 2026-06-07
+- Review after: 2026-07-07
 
-The self harness validates CLI, schemas, docs, and builds, but it does not yet run browser journeys or screenshot assertions against the dashboard.
+The browser UI harness exists and captures route status, screenshots, console events, and failed network requests. Remaining debt is deeper route-specific journey coverage for flows such as API Explorer requests, trace drilldowns, DB/Data Explorer interactions, Cron inspection, and docs/help routes.
 
 ### Deeper Architecture Checks
 

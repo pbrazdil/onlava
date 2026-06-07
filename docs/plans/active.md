@@ -7,6 +7,11 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
+- [0064 Agent-First Development Control Plane](0064-agent-first-development-control-plane.md)
+  - Status: active
+  - Owner: onlava maintainers / agent DX
+  - Created: 2026-06-07
+  - Focus: keep repo knowledge, active ExecPlans, review-due signals, tech debt, and doc-drift handling aligned so agents can rely on repo-local instructions before implementation.
 - [0035 Temporal Worker Production Hardening](0035-temporal-worker-production-hardening.md)
   - Status: active
   - Owner: onlava runtime / ONLV integration

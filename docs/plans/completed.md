@@ -276,6 +276,7 @@ Shipped:
 - Browser route checks for dashboard home, API Explorer, service catalog, traces, Data Explorer, and DB Explorer.
 - Screenshot artifacts plus console and network JSONL artifacts under `.onlava/harness/ui/`.
 - Focused command tests using a fake browser runner so normal Go tests do not require Chrome.
+- Current follow-up debt is route-specific journey depth; the browser harness itself is implemented.
 
 ## Dashboard Slot-Layout Migration
 

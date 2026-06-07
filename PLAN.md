@@ -18,34 +18,32 @@ onlava should optimize for agent legibility and fast feedback loops:
 
 Already implemented:
 
-- Stable inspect surfaces: `onlava inspect app|routes|services|endpoints|wire|build|paths|traces|metrics|docs --json`.
+- Stable inspect surfaces: `onlava inspect app|routes|services|endpoints|wire|build|paths|docs --json`.
+- Queryable diagnostics through `onlava traces list --json`, `onlava metrics list --json`, and `onlava logs --jsonl`.
 - App harness: `onlava harness --json --write`.
 - Repo self-harness: `onlava harness self --json --write`.
-- Queryable local observability over traces, logs, and metrics rollups.
+- Browser UI harness: `onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]`.
 - Indexed docs knowledge base through [docs/knowledge.json](docs/knowledge.json).
 - Docs entrypoint through [docs/index.md](docs/index.md).
 - Active/completed plans and tech-debt tracker under [docs/plans/](docs/plans/) and [docs/tech-debt.md](docs/tech-debt.md).
 - Architecture checks inside the self-harness.
 
-## Priority 1: Browser And UI Harness
+## Priority 1: Browser And UI Harness Baseline
 
-Goal: make dashboard and UI behavior directly legible to agents, not only humans.
+Goal: keep dashboard and UI behavior directly legible to agents, not only humans.
 
-Deliverables:
+Implemented baseline:
 
-- Add `onlava harness ui --json [--repo-root <path>] [--app-root <path>] [--headed]`.
-- Start or reuse a local onlava app fixture.
-- Visit core dashboard routes: home, API Explorer, traces, trace details, DB Explorer, Data Explorer, Cron, and docs/help surfaces if present.
-- Assert stable DOM markers rather than brittle visual-only selectors.
-- Capture screenshots into `.onlava/harness/ui/`.
-- Capture browser console errors, failed network requests, and route timing.
-- Return a versioned JSON result with route status, artifacts, and remediation text.
+- `onlava harness ui --json` starts or reuses a local dashboard target.
+- It visits core dashboard routes and asserts stable `data-onlava-ui` markers.
+- It captures screenshots plus console and network artifacts under `.onlava/harness/ui/`.
+- It returns a versioned JSON result with per-route status and remediation text.
 
-Acceptance:
+Current debt:
 
-- A broken dashboard route causes `onlava harness ui --json` to fail with a specific route and screenshot path.
-- The command can run headless by default and headed for local debugging.
-- `onlava harness self --json --write` can optionally include UI harness output later without making the fast path heavy.
+- Add deeper route-specific journeys for API Explorer, traces, DB/Data Explorer, Cron, and docs/help surfaces.
+- Keep `onlava harness ui --json` explicit rather than making the fast self-harness path depend on a browser.
+- Expand route assertions only where they represent stable product behavior, not visual noise.
 
 ## Priority 2: Failure Evidence Artifacts
 
@@ -104,7 +102,9 @@ Goal: keep the repo from accumulating stale docs, large files, unused paths, and
 Deliverables:
 
 - Add `onlava inspect debt --json` or extend `onlava inspect docs --json` with debt rollups.
-- Track stale docs, review-due docs, large files, direct dependencies, repeated warnings, and slow tests.
+- Continue exposing stale docs and review-due docs through `onlava inspect docs --json` summary counts and per-document fields.
+- Keep self-harness summaries surfacing docs review-due state alongside missing and stale docs.
+- Track large files, direct dependencies, repeated warnings, and slow tests.
 - Add a recommended periodic command sequence for cleanup agents.
 - Keep [docs/tech-debt.md](docs/tech-debt.md) as the human-readable debt tracker and `docs/knowledge.json` as the metadata source.
 
@@ -138,13 +138,12 @@ Acceptance:
 
 ## Next Concrete Step
 
-Implement `onlava harness ui --json` as the next major harness capability. Keep the first version small:
+Execute [0064 Agent-First Development Control Plane](docs/plans/0064-agent-first-development-control-plane.md) as the next repo-knowledge step. Keep the first PR knowledge-only:
 
-- one fixture app
-- five dashboard routes
-- DOM marker checks
-- screenshots
-- console/network error capture
-- versioned JSON result
+- mark the browser UI harness as implemented everywhere agents look
+- reframe browser harness debt as route-specific journey depth
+- index all active ExecPlans in `docs/knowledge.json`
+- document `review_due` visibility in docs inspection and self-harness summaries
+- add a doc-gardening loop and a hard docs/behavior drift rule
 
-After that lands, wire it as an optional self-harness mode rather than forcing it into every fast validation run.
+After that lands, implement any remaining mechanical enforcement in focused follow-up PRs.

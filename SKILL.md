@@ -34,6 +34,8 @@ Prefer JSON output for agent decisions. Prefer `onlava up` for local development
 
 Run `onlava doctor --json` before deep app debugging when local readiness is in doubt. It is read-only and reports host resources, Go version, optional tools, and app-sensitive dependency hints without building or starting services.
 
+`onlava inspect docs --json` exposes `summary.review_due_count` plus document-level `review_due` and `stale` fields. For onlava repo changes, `onlava harness self --json --write` surfaces those docs knowledge signals in validation summaries. When docs and behavior disagree, the same PR must either fix the affected docs or open/update an ExecPlan that records the drift.
+
 ## Mental Model
 
 - `.onlava.json` marks the app root.
@@ -139,6 +141,7 @@ For Electric-backed frontend writes, generated TypeScript `WithMeta` methods inc
 ## UI Work
 
 Read `docs/ui-agent-contract.md` before dashboard or app UI work. Use onlava-owned primitives and the @onlava registry; add registry components with commands such as `bun run shadcn:add @onlava/button`.
+The browser UI harness is implemented; use it for dashboard route validation when UI behavior changes.
 
 ```sh
 cd ui
