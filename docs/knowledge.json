@@ -242,6 +242,18 @@
       "tags": ["plans", "execplans", "agents", "docs", "harness"]
     },
     {
+      "path": "docs/plans/0065-onlava-managed-neon-dev-cell.md",
+      "title": "Onlava-Managed Neon Dev Cell and Branch Isolation",
+      "owner": "onlava runtime / agent DX",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-07",
+      "review_after": "2026-07-07",
+      "summary": "Active ExecPlan for an Onlava-owned local Neon dev cell, branch-isolated managed Postgres provider, worktree/session branch pins, and agent-safe branch/worktree workflows.",
+      "tags": ["plans", "execplans", "database", "neon", "agents"]
+    },
+    {
       "path": "docs/plans/0035-temporal-worker-production-hardening.md",
       "title": "Temporal Worker Production Hardening",
       "owner": "onlava runtime / ONLV integration",

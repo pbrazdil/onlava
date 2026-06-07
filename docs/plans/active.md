@@ -12,6 +12,11 @@ reuse IDs; this list can still be ordered by current priority.
   - Owner: onlava maintainers / agent DX
   - Created: 2026-06-07
   - Focus: keep repo knowledge, active ExecPlans, review-due signals, tech debt, and doc-drift handling aligned so agents can rely on repo-local instructions before implementation.
+- [0065 Onlava-Managed Neon Dev Cell and Branch Isolation](0065-onlava-managed-neon-dev-cell.md)
+  - Status: active
+  - Owner: onlava runtime / agent DX
+  - Created: 2026-06-07
+  - Focus: add an Onlava-owned local Neon dev cell, branch-isolated managed Postgres provider, worktree/session DB branch pins, and agent-safe branch/worktree commands.
 - [0035 Temporal Worker Production Hardening](0035-temporal-worker-production-hardening.md)
   - Status: active
   - Owner: onlava runtime / ONLV integration
