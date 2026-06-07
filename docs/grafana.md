@@ -1,6 +1,6 @@
 # Grafana Dev Integration
 
-`onlava dev` can supervise a local Grafana process alongside the local Victoria observability sidecars. When the local agent is active, the first dev session registers Grafana as a shared agent substrate and later sessions reuse it after verifying the expected datasource and dashboard UIDs. Grafana is dev-only: `onlava serve` does not start it.
+`onlava up` can supervise a local Grafana process alongside the local Victoria observability sidecars. When the local agent is active, the first dev session registers Grafana as a shared agent substrate and later sessions reuse it after verifying the expected datasource and dashboard UIDs. Grafana is dev-only: `onlava serve` does not start it.
 
 Generated files live under `.onlava/grafana/` by default when the agent is disabled. Shared agent Grafana state lives under the agent directory:
 
@@ -46,7 +46,7 @@ ONLAVA_GRAFANA_DOWNLOAD_SHA256=<hex>
 ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1
 ```
 
-`auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `ONLAVA_DEV_GRAFANA=1` makes Grafana required for `onlava dev` startup.
+`auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `ONLAVA_DEV_GRAFANA=1` makes Grafana required for `onlava up` startup.
 
 When the local HTTPS proxy is enabled without the agent, onlava computes the Grafana browser URL before writing `grafana.ini` and uses that URL as Grafana's `root_url`. Shared agent Grafana uses its direct loopback URL for provisioning, then each dev session advertises the matching proxy route after the proxy starts. `ONLAVA_GRAFANA_PUBLIC_URL` can override the advertised browser URL.
 
@@ -56,9 +56,9 @@ The Grafana child process does not inherit ambient `GF_*` variables by default b
 
 When automatic downloads are enabled, the manifest-pinned Grafana archive is extracted under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. onlava prefers `ONLAVA_GRAFANA_BIN`, then the managed toolchain store, then a manifest-driven download. It does not use ambient `PATH` Grafana binaries. Custom download URLs are explicit local-testing escape hatches and can set `ONLAVA_GRAFANA_DOWNLOAD_SHA256`.
 
-`onlava dev` also writes local ignore markers so downloaded binaries and local state stay out of git.
+`onlava up` also writes local ignore markers so downloaded binaries and local state stay out of git.
 
-Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `onlava.toolchain.json`. Use `onlava toolchain list --json`, `onlava toolchain sync --tool grafana --json`, and `onlava toolchain verify --json` to inspect or repair the managed store.
+Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `onlava.toolchain.json`. Use `onlava system toolchain list --json`, `onlava system toolchain sync --tool grafana --json`, and `onlava system toolchain verify --json` to inspect or repair the managed store.
 
 The starter dashboards query onlava's emitted OTLP request-duration metric, `onlava_request_duration_seconds`, with labels such as `onlava_app`, `onlava_session_id`, `onlava_service`, `onlava_endpoint`, `onlava_trace_type`, and `onlava_is_error`. Generated dashboards include a `Session` variable populated from `onlava_session_id`.
 

@@ -367,7 +367,7 @@ func TestRegistryReclaimsStaleAliasLease(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}
@@ -730,7 +730,7 @@ func TestRegistryCapturesSessionOwnerFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Owner.PID != os.Getpid() || session.Owner.CmdlineHash == "" || session.Owner.CreatedBy != "onlava dev" {
+	if session.Owner.PID != os.Getpid() || session.Owner.CmdlineHash == "" || session.Owner.CreatedBy != "onlava up" {
 		t.Fatalf("owner = %+v", session.Owner)
 	}
 	if err := VerifyOwner(session.Owner); err != nil {
@@ -853,7 +853,7 @@ func TestRegistryClaimsDeadSessionOwner(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}
@@ -895,7 +895,7 @@ func TestRegistryOwnedDeleteDoesNotRemoveReplacedOwnerSession(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}
@@ -984,7 +984,7 @@ func TestRegistryRequiresClaimForDeadSessionOwner(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava dev")
+	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}

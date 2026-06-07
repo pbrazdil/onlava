@@ -48,7 +48,7 @@ type edgeOptions struct {
 
 func edgeCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava edge install|trust|status|restart|uninstall|dns|privileged [--json]")
+		return fmt.Errorf("usage: onlava system edge install|trust|status|restart|uninstall|dns|privileged [--json]")
 	}
 	cmd := args[0]
 	if cmd == "dns" {
@@ -105,7 +105,7 @@ func parseEdgeArgs(args []string) (edgeOptions, error) {
 
 func edgeDNSCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava edge dns install|status|restart|uninstall [--domain <domain>] [--json]")
+		return fmt.Errorf("usage: onlava system edge dns install|status|restart|uninstall [--domain <domain>] [--json]")
 	}
 	cmd := args[0]
 	opts, err := parseEdgeArgs(args[1:])
@@ -132,7 +132,7 @@ func edgeRestart(opts edgeOptions) error {
 	publicAddr := defaultEdgePublicAddr
 	targetAddr := defaultEdgeTargetAddr
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("do not run `sudo onlava edge install`; run `onlava edge privileged install` for the privileged listener")
+		return fmt.Errorf("do not run `sudo onlava system edge install`; run `onlava system edge privileged install` for the privileged listener")
 	}
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
@@ -209,21 +209,21 @@ func edgeRestart(opts edgeOptions) error {
 	}
 	status := edgeStatusForState(paths, state)
 	if status.Ready {
-		fmt.Fprintf(os.Stdout, "onlava edge running at https://%s\n", state.PublicAddr)
+		fmt.Fprintf(os.Stdout, "onlava system edge running at https://%s\n", state.PublicAddr)
 		return nil
 	}
 	if !status.DNS.Ready {
-		fmt.Fprintln(os.Stdout, "onlava edge Caddy is prepared, but wildcard local DNS is not installed or healthy.")
+		fmt.Fprintln(os.Stdout, "onlava system edge Caddy is prepared, but wildcard local DNS is not installed or healthy.")
 		fmt.Fprintln(os.Stdout, "Run:")
-		fmt.Fprintln(os.Stdout, "  onlava edge dns install")
-		return fmt.Errorf("onlava edge dns is required for browser HTTPS routes under %s", defaultEdgeDNSDomain)
+		fmt.Fprintln(os.Stdout, "  onlava system edge dns install")
+		return fmt.Errorf("onlava system edge dns is required for browser HTTPS routes under %s", defaultEdgeDNSDomain)
 	}
-	fmt.Fprintln(os.Stdout, "onlava edge Caddy is prepared, but the privileged port 443 listener is not installed or healthy.")
+	fmt.Fprintln(os.Stdout, "onlava system edge Caddy is prepared, but the privileged port 443 listener is not installed or healthy.")
 	fmt.Fprintln(os.Stdout, "Run:")
-	fmt.Fprintln(os.Stdout, "  onlava edge privileged install")
+	fmt.Fprintln(os.Stdout, "  onlava system edge privileged install")
 	fmt.Fprintln(os.Stdout, "Do not run:")
-	fmt.Fprintln(os.Stdout, "  sudo onlava edge install")
-	return fmt.Errorf("onlava edge privileged listener is required for browser HTTPS on 127.0.0.1:443")
+	fmt.Fprintln(os.Stdout, "  sudo onlava system edge install")
+	return fmt.Errorf("onlava system edge privileged listener is required for browser HTTPS on 127.0.0.1:443")
 }
 
 func edgeStatus(opts edgeOptions) error {
@@ -253,16 +253,16 @@ func edgeStatus(opts edgeOptions) error {
 	if opts.JSON {
 		return writeEdgeStatusJSON(status)
 	}
-	fmt.Fprintf(os.Stdout, "onlava edge %s", state.Status)
+	fmt.Fprintf(os.Stdout, "onlava system edge %s", state.Status)
 	if state.PublicAddr != "" {
 		fmt.Fprintf(os.Stdout, " https://%s", state.PublicAddr)
 	}
 	if !status.PrivilegedListener.Installed {
-		fmt.Fprintf(os.Stdout, " (privileged listener missing; run `onlava edge privileged install`)")
+		fmt.Fprintf(os.Stdout, " (privileged listener missing; run `onlava system edge privileged install`)")
 	} else if status.PrivilegedListener.State != "running" {
 		fmt.Fprintf(os.Stdout, " (privileged listener %s)", status.PrivilegedListener.State)
 	} else if !status.DNS.Ready {
-		fmt.Fprintf(os.Stdout, " (dns %s; run `onlava edge dns install`)", status.DNS.DNSMasq.State)
+		fmt.Fprintf(os.Stdout, " (dns %s; run `onlava system edge dns install`)", status.DNS.DNSMasq.State)
 	}
 	fmt.Fprintln(os.Stdout)
 	return nil
@@ -315,10 +315,10 @@ func edgeUninstall(opts edgeOptions) error {
 	if opts.JSON {
 		return writeEdgeStatusJSON(edgeStatusForState(paths, state))
 	}
-	fmt.Fprintln(os.Stdout, "stopped onlava edge")
+	fmt.Fprintln(os.Stdout, "stopped onlava system edge")
 	fmt.Fprintln(os.Stdout, "privileged listener is still installed if previously configured")
 	fmt.Fprintln(os.Stdout, "To remove port 443 listener:")
-	fmt.Fprintln(os.Stdout, "  onlava edge privileged uninstall")
+	fmt.Fprintln(os.Stdout, "  onlava system edge privileged uninstall")
 	return nil
 }
 
@@ -369,7 +369,7 @@ type edgeDNSResolverState struct {
 
 func edgeDNSInstall(opts edgeOptions) error {
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("do not run `sudo onlava edge dns install`; run it as your normal user")
+		return fmt.Errorf("do not run `sudo onlava system edge dns install`; run it as your normal user")
 	}
 	ctx := context.Background()
 	paths, err := localagent.DefaultPaths()
@@ -417,7 +417,7 @@ func edgeDNSInstall(opts edgeOptions) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(status)
 	}
-	fmt.Fprintf(os.Stdout, "onlava edge dns running for %s at %s\n", opts.Domain, defaultEdgeDNSListen)
+	fmt.Fprintf(os.Stdout, "onlava system edge dns running for %s at %s\n", opts.Domain, defaultEdgeDNSListen)
 	return nil
 }
 
@@ -432,7 +432,7 @@ func edgeDNSStatus(opts edgeOptions) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(status)
 	}
-	fmt.Fprintf(os.Stdout, "onlava edge dns %s for %s", status.DNSMasq.State, status.Domain)
+	fmt.Fprintf(os.Stdout, "onlava system edge dns %s for %s", status.DNSMasq.State, status.Domain)
 	if status.DNSMasq.Listen != "" {
 		fmt.Fprintf(os.Stdout, " at %s", status.DNSMasq.Listen)
 	}
@@ -445,7 +445,7 @@ func edgeDNSStatus(opts edgeOptions) error {
 
 func edgeDNSUninstall(opts edgeOptions) error {
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("do not run `sudo onlava edge dns uninstall`; run it as your normal user")
+		return fmt.Errorf("do not run `sudo onlava system edge dns uninstall`; run it as your normal user")
 	}
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
@@ -464,7 +464,7 @@ func edgeDNSUninstall(opts edgeOptions) error {
 	if opts.JSON {
 		return edgeDNSStatus(edgeOptions{JSON: true, Domain: opts.Domain})
 	}
-	fmt.Fprintf(os.Stdout, "stopped onlava edge dns for %s\n", opts.Domain)
+	fmt.Fprintf(os.Stdout, "stopped onlava system edge dns for %s\n", opts.Domain)
 	return nil
 }
 
@@ -474,14 +474,14 @@ func resolveDNSMasqBinary(ctx context.Context, paths localagent.Paths, download 
 		return status.ManagedPath, nil
 	}
 	if !download {
-		return "", fmt.Errorf("managed dnsmasq is not installed in %s; run `onlava edge dns install` with downloads enabled", storeDir)
+		return "", fmt.Errorf("managed dnsmasq is not installed in %s; run `onlava system edge dns install` with downloads enabled", storeDir)
 	}
 	status, err := syncManagedToolchainArtifactInDir(ctx, storeDir, "dnsmasq")
 	if err != nil {
 		return "", fmt.Errorf("managed dnsmasq is not installed and could not be synced: %w", err)
 	}
 	if status.ManagedPath == "" || !isExecutableFile(status.ManagedPath) {
-		return "", fmt.Errorf("managed dnsmasq is not installed in %s; run `onlava edge dns install` with downloads enabled", storeDir)
+		return "", fmt.Errorf("managed dnsmasq is not installed in %s; run `onlava system edge dns install` with downloads enabled", storeDir)
 	}
 	return status.ManagedPath, nil
 }
@@ -721,9 +721,9 @@ func edgeDNSConfigServesDomain(path, domain string) bool {
 
 func edgeDNSInstallCommand(domain string) string {
 	if domain == "" || domain == defaultEdgeDNSDomain {
-		return "onlava edge dns install"
+		return "onlava system edge dns install"
 	}
-	return "onlava edge dns install --domain " + domain
+	return "onlava system edge dns install --domain " + domain
 }
 
 func writeEdgeDNSState(paths localagent.Paths, state edgeDNSState) error {
@@ -770,7 +770,7 @@ func edgeDNSInstallResolver(domain, listen string) error {
 		return nil
 	}
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("do not run `sudo onlava edge dns install`; run it as your normal user")
+		return fmt.Errorf("do not run `sudo onlava system edge dns install`; run it as your normal user")
 	}
 	host, port := splitHostPort(listen)
 	if host == "" {
@@ -798,7 +798,7 @@ func edgeDNSUninstallResolver(domain string) error {
 		return nil
 	}
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("do not run `sudo onlava edge dns uninstall`; run it as your normal user")
+		return fmt.Errorf("do not run `sudo onlava system edge dns uninstall`; run it as your normal user")
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -833,7 +833,7 @@ func edgeDNSResolverStatus(domain, listen string) edgeDNSResolverState {
 	data, err := os.ReadFile(status.Path)
 	if err != nil {
 		status.State = "missing"
-		status.Message = "run `onlava edge dns install`"
+		status.Message = "run `onlava system edge dns install`"
 		return status
 	}
 	fields := parseResolverFile(string(data))
@@ -843,7 +843,7 @@ func edgeDNSResolverStatus(domain, listen string) edgeDNSResolverState {
 		return status
 	}
 	status.State = "mismatch"
-	status.Message = "resolver file exists but does not match onlava edge dns"
+	status.Message = "resolver file exists but does not match onlava system edge dns"
 	return status
 }
 
@@ -878,7 +878,7 @@ type edgeDNSHelperOptions struct {
 
 func edgeDNSHelperCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava edge dns-helper install|uninstall --domain <domain> [--nameserver <ip>] [--port <port>]")
+		return fmt.Errorf("usage: onlava system edge dns-helper install|uninstall --domain <domain> [--nameserver <ip>] [--port <port>]")
 	}
 	cmd := args[0]
 	opts, err := parseEdgeDNSHelperArgs(args[1:])
@@ -942,10 +942,10 @@ func parseEdgeDNSHelperArgs(args []string) (edgeDNSHelperOptions, error) {
 
 func edgeDNSHelperInstall(opts edgeDNSHelperOptions) error {
 	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("onlava edge dns-helper install is currently supported on macOS")
+		return fmt.Errorf("onlava system edge dns-helper install is currently supported on macOS")
 	}
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("onlava edge dns-helper install must run as root; use `onlava edge dns install`")
+		return fmt.Errorf("onlava system edge dns-helper install must run as root; use `onlava system edge dns install`")
 	}
 	if err := os.MkdirAll("/etc/resolver", 0o755); err != nil {
 		return err
@@ -960,10 +960,10 @@ func edgeDNSHelperInstall(opts edgeDNSHelperOptions) error {
 
 func edgeDNSHelperUninstall(opts edgeDNSHelperOptions) error {
 	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("onlava edge dns-helper uninstall is currently supported on macOS")
+		return fmt.Errorf("onlava system edge dns-helper uninstall is currently supported on macOS")
 	}
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("onlava edge dns-helper uninstall must run as root; use `onlava edge dns uninstall`")
+		return fmt.Errorf("onlava system edge dns-helper uninstall must run as root; use `onlava system edge dns uninstall`")
 	}
 	path := edgeDNSResolverPath(opts.Domain)
 	data, err := os.ReadFile(path)
@@ -1101,14 +1101,14 @@ func resolveCaddyBinary(ctx context.Context, paths localagent.Paths, download bo
 		return status.ManagedPath, nil
 	}
 	if !download {
-		return "", fmt.Errorf("managed Caddy is not installed in %s; system PATH binaries are not used for managed toolchain artifacts; run `onlava edge install` with downloads enabled", storeDir)
+		return "", fmt.Errorf("managed Caddy is not installed in %s; system PATH binaries are not used for managed toolchain artifacts; run `onlava system edge install` with downloads enabled", storeDir)
 	}
 	status, err := syncManagedToolchainArtifactInDir(ctx, storeDir, "caddy")
 	if err != nil {
 		return "", fmt.Errorf("managed Caddy is not installed and could not be synced: %w", err)
 	}
 	if status.ManagedPath == "" || !isExecutableFile(status.ManagedPath) {
-		return "", fmt.Errorf("managed Caddy is not installed in %s; run `onlava edge install` with downloads enabled", storeDir)
+		return "", fmt.Errorf("managed Caddy is not installed in %s; run `onlava system edge install` with downloads enabled", storeDir)
 	}
 	return status.ManagedPath, nil
 }
@@ -1287,7 +1287,7 @@ func ensureEdgeAgent(routerAddr string, force bool) error {
 
 func validateEdgeAgentHealth(health localagent.HealthResponse, routerAddr string) error {
 	if health.RouterAddr != routerAddr {
-		return fmt.Errorf("restarted onlava agent listened on %s, want %s for edge upstream; free %s and rerun `onlava edge install`", health.RouterAddr, routerAddr, routerAddr)
+		return fmt.Errorf("restarted onlava agent listened on %s, want %s for edge upstream; free %s and rerun `onlava system edge install`", health.RouterAddr, routerAddr, routerAddr)
 	}
 	return nil
 }
@@ -1319,7 +1319,7 @@ func stopStaleEdgeAgentProcesses(socketPath, routerAddr string, skipPID int, tim
 	}
 	for _, pid := range pids {
 		if err := signalPID(pid, syscall.SIGTERM); err != nil {
-			return fmt.Errorf("stop stale onlava edge agent pid %d: %w", pid, err)
+			return fmt.Errorf("stop stale onlava system edge agent pid %d: %w", pid, err)
 		}
 	}
 	deadline := time.Now().Add(timeout)
@@ -1329,7 +1329,7 @@ func stopStaleEdgeAgentProcesses(socketPath, routerAddr string, skipPID int, tim
 		}
 		if processAliveForEdge(pid) {
 			if err := signalPID(pid, syscall.SIGKILL); err != nil {
-				return fmt.Errorf("kill stale onlava edge agent pid %d: %w", pid, err)
+				return fmt.Errorf("kill stale onlava system edge agent pid %d: %w", pid, err)
 			}
 		}
 	}
@@ -1337,7 +1337,7 @@ func stopStaleEdgeAgentProcesses(socketPath, routerAddr string, skipPID int, tim
 }
 
 func edgeAgentCommandMatches(command, socketPath, routerAddr string) bool {
-	return strings.Contains(command, "onlava agent") &&
+	return strings.Contains(command, "onlava system agent") &&
 		strings.Contains(command, "--socket "+socketPath) &&
 		strings.Contains(command, "--router-listen "+routerAddr)
 }
@@ -1475,7 +1475,7 @@ func startCaddyEdge(caddyBin string, paths localagent.Paths, publicAddr, targetA
 
 func edgePrivilegedCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava edge privileged install|status|uninstall [--json]")
+		return fmt.Errorf("usage: onlava system edge privileged install|status|uninstall [--json]")
 	}
 	cmd := args[0]
 	opts, err := parseEdgeArgs(args[1:])
@@ -1496,10 +1496,10 @@ func edgePrivilegedCommand(args []string) error {
 
 func edgePrivilegedInstall() error {
 	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("onlava edge privileged install is currently supported on macOS")
+		return fmt.Errorf("onlava system edge privileged install is currently supported on macOS")
 	}
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("do not run `sudo onlava edge privileged install`; run it as your normal user so Onlava can record the expected owner")
+		return fmt.Errorf("do not run `sudo onlava system edge privileged install`; run it as your normal user so Onlava can record the expected owner")
 	}
 	paths, err := localagent.DefaultPaths()
 	if err != nil {
@@ -1537,12 +1537,12 @@ func edgePrivilegedStatus(opts edgeOptions) error {
 	if opts.JSON {
 		return json.NewEncoder(os.Stdout).Encode(status)
 	}
-	fmt.Fprintf(os.Stdout, "onlava edge privileged listener %s", status.State)
+	fmt.Fprintf(os.Stdout, "onlava system edge privileged listener %s", status.State)
 	if status.Target != "" {
 		fmt.Fprintf(os.Stdout, " -> %s", status.Target)
 	}
 	if !status.Installed {
-		fmt.Fprintf(os.Stdout, " (run `onlava edge privileged install`)")
+		fmt.Fprintf(os.Stdout, " (run `onlava system edge privileged install`)")
 	}
 	fmt.Fprintln(os.Stdout)
 	return nil
@@ -1550,10 +1550,10 @@ func edgePrivilegedStatus(opts edgeOptions) error {
 
 func edgePrivilegedUninstall() error {
 	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("onlava edge privileged uninstall is currently supported on macOS")
+		return fmt.Errorf("onlava system edge privileged uninstall is currently supported on macOS")
 	}
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("do not run `sudo onlava edge privileged uninstall`; run it as your normal user")
+		return fmt.Errorf("do not run `sudo onlava system edge privileged uninstall`; run it as your normal user")
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -1576,7 +1576,7 @@ type edgeHelperOptions struct {
 
 func edgePrivilegedHelperCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava edge privileged-helper install|run|uninstall")
+		return fmt.Errorf("usage: onlava system edge privileged-helper install|run|uninstall")
 	}
 	cmd := args[0]
 	opts, err := parseEdgeHelperArgs(args[1:])
@@ -1669,10 +1669,10 @@ func requireEdgeHelperOwnerOptions(opts edgeHelperOptions) error {
 
 func edgePrivilegedHelperInstall(opts edgeHelperOptions) error {
 	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("onlava edge privileged helper install is currently supported on macOS")
+		return fmt.Errorf("onlava system edge privileged helper install is currently supported on macOS")
 	}
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("onlava edge privileged-helper install must run as root; use `onlava edge privileged install`")
+		return fmt.Errorf("onlava system edge privileged-helper install must run as root; use `onlava system edge privileged install`")
 	}
 	if err := requireEdgeHelperOwnerOptions(opts); err != nil {
 		return err
@@ -1712,10 +1712,10 @@ func edgePrivilegedHelperInstall(opts edgeHelperOptions) error {
 
 func edgePrivilegedHelperUninstall() error {
 	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("onlava edge privileged helper uninstall is currently supported on macOS")
+		return fmt.Errorf("onlava system edge privileged helper uninstall is currently supported on macOS")
 	}
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("onlava edge privileged-helper uninstall must run as root; use `onlava edge privileged uninstall`")
+		return fmt.Errorf("onlava system edge privileged-helper uninstall must run as root; use `onlava system edge privileged uninstall`")
 	}
 	_ = exec.Command("launchctl", "bootout", "system/"+edgeHelperLabel).Run()
 	_ = os.Remove(edgeHelperPlistPath)
@@ -1726,7 +1726,7 @@ func edgePrivilegedHelperUninstall() error {
 
 func edgePrivilegedHelperRun(opts edgeHelperOptions) error {
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("onlava edge privileged-helper run must run as root")
+		return fmt.Errorf("onlava system edge privileged-helper run must run as root")
 	}
 	if err := requireEdgeHelperOwnerOptions(opts); err != nil {
 		return err
@@ -1932,7 +1932,7 @@ func privilegedListenerStatus(paths localagent.Paths) edgeStatusPrivilegedListen
 		State:                    "missing",
 		Listen:                   []string{"127.0.0.1:443", "[::1]:443"},
 		RequiredForPortlessHTTPS: true,
-		InstallCommand:           "onlava edge privileged install",
+		InstallCommand:           "onlava system edge privileged install",
 	}
 	if runtime.GOOS == "darwin" {
 		if _, err := os.Stat(edgeHelperPlistPath); err == nil {
@@ -2070,7 +2070,7 @@ func stopStaleRootOnlavaEdgeAgent(ownerHome, routerAddr string, timeout time.Dur
 			continue
 		}
 		if err := signalPID(pid, syscall.SIGTERM); err != nil {
-			return fmt.Errorf("stop stale root onlava edge agent pid %d: %w", pid, err)
+			return fmt.Errorf("stop stale root onlava system edge agent pid %d: %w", pid, err)
 		}
 		deadline := time.Now().Add(timeout)
 		for processAliveForEdge(pid) && time.Now().Before(deadline) {
@@ -2078,7 +2078,7 @@ func stopStaleRootOnlavaEdgeAgent(ownerHome, routerAddr string, timeout time.Dur
 		}
 		if processAliveForEdge(pid) {
 			if err := signalPID(pid, syscall.SIGKILL); err != nil {
-				return fmt.Errorf("kill stale root onlava edge agent pid %d: %w", pid, err)
+				return fmt.Errorf("kill stale root onlava system edge agent pid %d: %w", pid, err)
 			}
 		}
 	}

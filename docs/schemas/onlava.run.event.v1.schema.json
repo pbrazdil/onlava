@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://onlava.com/schemas/onlava.run.event.v1.schema.json",
   "title": "onlava.run.event.v1",
-  "description": "JSONL event schema emitted by `onlava dev --json`.",
+  "description": "JSONL event schema emitted by `onlava up --json`.",
   "type": "object",
   "required": ["schema_version", "type", "time"],
   "properties": {

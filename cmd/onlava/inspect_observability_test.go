@@ -55,16 +55,15 @@ func TestRunOnlavaInspectTracesWithFilters(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runOnlavaInspect([]string{
-		"traces",
+	if err := runObservabilityList(context.Background(), &out, "traces", []string{
 		"--app-root", root,
 		"--json",
 		"--session", "session-a",
 		"--endpoint", "SyncGet",
 		"--min-duration-ms", "2000",
 		"--slowest",
-	}, &out); err != nil {
-		t.Fatalf("inspect traces: %v\n%s", err, out.String())
+	}); err != nil {
+		t.Fatalf("traces list: %v\n%s", err, out.String())
 	}
 
 	var payload inspectTracesResponse
@@ -164,15 +163,14 @@ func TestRunOnlavaInspectMetricsAggregatesTracesAndLogs(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runOnlavaInspect([]string{
-		"metrics",
+	if err := runObservabilityList(context.Background(), &out, "metrics", []string{
 		"--app-root", root,
 		"--json",
 		"--session", "session-a",
 		"--service", "tenants",
 		"--since", "1h",
-	}, &out); err != nil {
-		t.Fatalf("inspect metrics: %v\n%s", err, out.String())
+	}); err != nil {
+		t.Fatalf("metrics list: %v\n%s", err, out.String())
 	}
 
 	var payload inspectMetricsResponse
@@ -237,13 +235,12 @@ func TestRunOnlavaInspectUsesSessionAppRecordWhenLatestAppRootDiffers(t *testing
 	}
 
 	var out bytes.Buffer
-	if err := runOnlavaInspect([]string{
-		"traces",
+	if err := runObservabilityList(context.Background(), &out, "traces", []string{
 		"--app-root", root,
 		"--json",
 		"--session", "session-a",
-	}, &out); err != nil {
-		t.Fatalf("inspect traces: %v\n%s", err, out.String())
+	}); err != nil {
+		t.Fatalf("traces list: %v\n%s", err, out.String())
 	}
 
 	var payload inspectTracesResponse

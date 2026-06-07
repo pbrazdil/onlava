@@ -17,11 +17,11 @@ Implemented now. This list describes what the CLI can do today; it is not the
 same as the stable v0 support surface.
 
 - `.onlava.json`
-- `onlava dev --json`
+- `onlava up --json`
 - `onlava serve`
 - `onlava worker`
 - `onlava version --json`
-- `onlava toolchain list|sync|verify|path`
+- `onlava system toolchain list|sync|verify|path`
 - `onlava doctor --json`
 - `onlava check --json`
 - `onlava generate`
@@ -31,18 +31,16 @@ same as the stable v0 support surface.
 - `onlava db apply`
 - `onlava db seed`
 - `onlava db setup`
-- `onlava db sync`
 - `onlava db reset`
 - `onlava db drop`
 - `onlava db snapshot create|restore`
-- `onlava task list|run|graph`
-- `onlava run list|inspect`
-- `onlava run <domain>:<script>`
-- `onlava psql`
+- `onlava task list|inspect|run|graph`
+- `onlava task run <name>`
+- `onlava task run <domain>:<name>`
 - `onlava harness --json`
 - `onlava harness self --json`
 - `onlava harness ui --json`
-- `onlava admin traces clear --json`
+- `onlava traces clear --json`
 - `onlava inspect app --json`
 - `onlava inspect routes --json`
 - `onlava inspect services --json`
@@ -52,13 +50,12 @@ same as the stable v0 support surface.
 - `onlava inspect paths --json`
 - `onlava inspect generators --json`
 - `onlava inspect temporal --json`
-- `onlava inspect traces --json`
-- `onlava inspect metrics --json`
+- `onlava traces list --json`
+- `onlava metrics list --json`
 - `onlava inspect docs --json`
 - `onlava logs --jsonl`
 
 Reserved by contract, implementation pending:
-- other `onlava admin ... --json` commands beyond `traces clear`
 - repo-local runtime and state manifests beyond the command JSON surfaces above
 
 Stable v0 surface:
@@ -70,7 +67,7 @@ Stable v0 surface:
 - `onlava inspect app|routes|services|endpoints|wire|build|paths|docs --json`
 - `onlava logs --jsonl`
 - `onlava test`
-- `onlava gen client`
+- `onlava generate client`
 - typed/raw HTTP endpoints
 - auth handler
 - service struct initialization and shutdown
@@ -79,28 +76,26 @@ Stable v0 surface:
 - basic runtime logs and trace emission
 
 Dev-only or beta surface:
-- `onlava dev`
+- `onlava up`
 - `onlava db psql`
 - `onlava db apply`
 - `onlava db seed`
 - `onlava db setup`
-- `onlava db sync`
 - `onlava db reset`
 - `onlava db drop`
 - `onlava db snapshot create|restore`
 - `onlava generate`
-- `onlava task list|run|graph`
-- `onlava run list|inspect`
-- `onlava run <domain>:<script>`
-- `onlava psql`
-- `onlava inspect traces|metrics --json`
+- `onlava task list|inspect|run|graph`
+- `onlava task run <name>`
+- `onlava task run <domain>:<name>`
+- `onlava traces list|metrics --json`
 - `onlava inspect generators --json`
 - `onlava inspect temporal --json`
-- `onlava toolchain list|sync|verify|path`
+- `onlava system toolchain list|sync|verify|path`
 - `onlava doctor --json`
-- `onlava edge install|trust|status|restart|uninstall|dns|privileged --json`
+- `onlava system edge install|trust|status|restart|uninstall|dns|privileged --json`
 - `onlava worker`
-- `onlava admin traces clear --json`
+- `onlava traces clear --json`
 - `onlava harness ui --json`
 - dashboard and API Explorer
 - local HTTPS edge and frontend routing
@@ -237,17 +232,17 @@ Rules:
 - Unknown fields are rejected. Runtime diagnostics include the config file path and JSON field path, for example `/repo/app/.onlava.json: unknown .onlava.json field "proxy.extra"`.
 - The removed legacy proxy host key has no compatibility behavior. Remove it from app config; use dev session routes or `proxy.api_host`, `proxy.console_host`, and `proxy.frontends` for local routing.
 - Agent session manifests include `route_namespace`, the app-derived local browser namespace used by routed session URLs. `route_namespace.workspace` comes from `proxy.workspace` when present and otherwise falls back to app identity only when no explicit route hosts are configured. `route_namespace.base_domain` defaults to `local.dev` and may be overridden with `proxy.route_base_domain`. `route_namespace.hosts` preserves explicit configured route hosts such as `api`, `console`, `temporal`, `grafana`, and configured frontend names; those hosts become session-scoped route aliases for that route rather than changing the generated base for every route.
-- `proxy.frontends` is a map keyed by frontend name. Each frontend requires `host`; `root` defaults to `apps/<name>`; `upstream` is optional but ignored by agent dev unless that frontend also sets `allow_shared_upstream: true`. With an active agent, `onlava dev` prefers to start supported Vite/Astro frontends on hidden loopback ports, inject routed API/Electric URLs and the session route host into their process environment, register those hidden ports as session backends, and expose `https://<frontend>.<session>.<route_namespace.base_domain>:<agent-router-port>/` by default. Managed Vite/Astro frontends receive the route host through Vite/Astro allowed-host controls so app configs do not need to hard-code session hosts. Managed frontend session routes serve the frontend shell for HTML SPA deep links, while `/__onlava/*`, `/api/*`, `/sync/*`, and concrete asset paths are not history-fallback routes. `ONLAVA_FRONTEND_<NAME>_ADDR` still overrides onlava-owned frontend startup for manual debugging.
+- `proxy.frontends` is a map keyed by frontend name. Each frontend requires `host`; `root` defaults to `apps/<name>`; `upstream` is optional but ignored by agent dev unless that frontend also sets `allow_shared_upstream: true`. With an active agent, `onlava up` prefers to start supported Vite/Astro frontends on hidden loopback ports, inject routed API/Electric URLs and the session route host into their process environment, register those hidden ports as session backends, and expose `https://<frontend>.<session>.<route_namespace.base_domain>:<agent-router-port>/` by default. Managed Vite/Astro frontends receive the route host through Vite/Astro allowed-host controls so app configs do not need to hard-code session hosts. Managed frontend session routes serve the frontend shell for HTML SPA deep links, while `/__onlava/*`, `/api/*`, `/sync/*`, and concrete asset paths are not history-fallback routes. `ONLAVA_FRONTEND_<NAME>_ADDR` still overrides onlava-owned frontend startup for manual debugging.
 - `dev.services` is a beta local-development config surface for onlava-owned substrates. Phase 5 accepts `postgres` and `electric` service declarations with `kind`, `version`, `isolation`, `image`, `database`, `route`, and string `env` values. The agent currently owns managed Postgres and Electric for this surface, while unsupported service kinds or isolation modes are rejected instead of silently falling back to target-app port orchestration.
-- `onlava dev` prepares declared local DB setup before the app process starts. When `.onlava.json` declares `database.apply` or service-local seed files are discovered, the supervisor runs the same split lifecycle as `onlava db setup`: apply first, then seed. It passes the same managed Postgres `DatabaseURL` env value that the app child receives, so setup targets the session database. Successful setup is fingerprinted from `database.apply` config and seed file hashes; ordinary rebuilds skip setup until those inputs change.
-- `dev.setup` is an optional beta list of shell commands that `onlava dev` runs from the app root after managed dev services and the DB setup lifecycle are prepared, but before the app process starts. Setup commands receive the same managed Postgres `DatabaseURL` env value as the app child, so target apps can keep existing app-local setup during migration.
+- `onlava up` prepares declared local DB setup before the app process starts. When `.onlava.json` declares `database.apply` or service-local seed files are discovered, the supervisor runs the same split lifecycle as `onlava db setup`: apply first, then seed. It passes the same managed Postgres `DatabaseURL` env value that the app child receives, so setup targets the session database. Successful setup is fingerprinted from `database.apply` config and seed file hashes; ordinary rebuilds skip setup until those inputs change.
+- `dev.setup` is an optional beta list of shell commands that `onlava up` runs from the app root after managed dev services and the DB setup lifecycle are prepared, but before the app process starts. Setup commands receive the same managed Postgres `DatabaseURL` env value as the app child, so target apps can keep existing app-local setup during migration.
 - `generators.clients` is a beta lifecycle config for generated TypeScript clients. `kind` defaults to `typescript-client`, `lang` defaults to TypeScript, and `output` is required. `onlava generate client` uses these entries when no explicit `--output` is passed.
 - Generated TypeScript clients expose `WithMeta` methods that include response headers, status, `Response`, and parsed `txid` metadata from `X-Txid`/`X-TXID`. Electric-backed write flows should treat the API response and later Electric observation as separate phases: an HTTP success with `X-Txid` means the mutation committed, while `observeAPIResponseTxid(...)` reports later observer failures as `SyncObservationError` with `kind: "sync_observation_failure"`, `mutation_committed: true`, app/session/API/Electric context, txid, and observer error details.
 - `generators.sqlc` is a beta lifecycle config for SQLC generation. `provider` may be empty or `sqlc`; `config` defaults to `sqlc.yaml`; `dev_url` defaults to `docker://postgres/18/dev`. When a SQLC schema path follows `<pkg>/db/gen/schema.sql` and `<pkg>/db/schema.hcl` exists, `onlava generate sqlc` refreshes the generated schema SQL with `atlas schema inspect` before running `sqlc generate`. SQLC generation is a generated-source lifecycle and must not apply database schema or seed data.
-- `database.apply` is a beta DB lifecycle escape hatch. Phase 1 supports only `provider: "exec"` with an explicit shell `command`, optional `cwd`, and string `env` overlay. `onlava db sync` currently runs this provider and then refreshes configured SQLC artifacts. The accepted split lifecycle moves database mutation to `onlava db apply` and treats `onlava db sync` as a deprecated beta mixed command. New work should not add behavior to `db sync`.
+- `database.apply` is a beta DB lifecycle escape hatch. Phase 1 supports only `provider: "exec"` with an explicit shell `command`, optional `cwd`, and string `env` overlay. The accepted split lifecycle moves database mutation to `onlava db apply`; SQLC refresh stays under `onlava generate sqlc`.
 - Service-local `SERVICE/db/seed.sql` is initial data. It is not Atlas schema input, not SQLC input, and not a generated-source input. The accepted lifecycle applies seed data through `onlava db seed`; the first implementation fails closed on changed previously-applied seed files and obviously destructive seed SQL rather than adding force or reseed escape hatches.
-- `tasks` is a beta thin repo-task layer. Each task can define either `run` or `steps`, plus optional `cwd` and string `env`. `run` uses the platform shell from the app root or task cwd. `steps` currently accepts `task:<name>`, `check`, `test:go`, `generate`, `generate:client`, `generate:sqlc`, and `db:sync`.
-- Operational scripts are beta app-local script targets under `<domain>/scripts/`. Targets use `<domain>:<script>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`. `onlava run list`, `onlava run inspect`, and `onlava run <domain>:<script> [script args...]` discover and execute them without requiring the app model to parse cleanly.
+- `tasks` is a beta thin repo-task layer. Each configured task can define either `run` or `steps`, plus optional `cwd` and string `env`. `run` uses the platform shell from the app root or task cwd. `steps` currently accepts `task:<name>`, `task:<domain>:<name>`, `check`, `test`, `test:go`, `generate`, `generate:client`, `generate:sqlc`, `db:apply`, `db:seed`, and `db:setup`.
+- Code tasks are beta app-local targets under `<domain>/tasks/`. Targets use `<domain>:<name>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`. `onlava task list`, `onlava task inspect`, and `onlava task run <domain>:<name> [-- task args...]` discover and execute them without requiring the app model to parse cleanly.
 - `dev.services.postgres` currently defaults to version `18` and `isolation: "database"`. Other isolation modes are rejected until implemented. With an active agent session, onlava creates or reuses a physical Postgres server substrate, verifies the recorded owner/reachability/version before reuse, and separately allocates a deterministic per-session database. The global Postgres substrate record contains physical-server metadata only: admin URL, version, isolation, data/socket directories, port, source, process owners, and exit metadata. It must not contain `session.<id>` database URLs or names. The session database lease is exposed through session/app env as `DatabaseURL`, `ONLAVA_MANAGED_DATABASE_URL`, and `ONLAVA_MANAGED_DATABASE_NAME`, even when local env files already contain stale database URLs. Managed app, setup, DB setup, and worker environments do not receive Onlava-injected `DATABASE_URL`; `ONLAVA_MANAGED_DATABASE_URL` remains available as tooling/debug metadata. The admin cluster comes from `ONLAVA_DEV_POSTGRES_ADMIN_URL`, a reusable agent Postgres substrate, Docker when available for the requested version, or local `initdb`/`postgres` binaries under the agent state directory. Managed local Postgres starts with logical replication settings so `dev.services.electric` can attach. `ONLAVA_DEV_POSTGRES_INITDB` and `ONLAVA_DEV_POSTGRES_BIN` can point at explicit local binaries. Set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` to keep an explicit external `DatabaseURL` instead of using the managed session database; external mode requires `DatabaseURL` and ignores `DATABASE_URL` as an app database authority. Old substrate records with legacy `session.<id>` keys remain readable during adoption, but new writes omit those keys.
 - `dev.services.electric` supports explicit upstream routing with `ONLAVA_DEV_ELECTRIC_UPSTREAM`; when set, onlava registers the upstream as a hidden session backend and injects `ELECTRIC_URL`/`ONLAVA_ELECTRIC_URL` using the agent route. Without an explicit upstream, onlava starts a hidden per-session Electric process from `ONLAVA_DEV_ELECTRIC_BIN` or, when `dev.services.electric.image` is set and Docker is available, from that image. Electric uses the common managed process readiness and early-exit lifecycle, but remains session-scoped: it is registered as an agent session backend/process, not as a global Electric substrate row. Electric receives the managed Postgres session database URL when `dev.services.postgres` is declared. When declared Postgres is in `ONLAVA_DEV_POSTGRES_EXTERNAL=1` mode, Electric derives its private adapter URL from `DatabaseURL`; without declared Postgres it can still receive explicit `DatabaseURL`/`DATABASE_URL`. onlava also sets a deterministic session-scoped `ELECTRIC_REPLICATION_STREAM_ID` by default so multiple sessions can share one Postgres cluster without colliding on Electric publication or replication-slot names. Configured `dev.services.electric.env` values stay on the Electric process/container and are not injected into the app process; an explicit `ELECTRIC_REPLICATION_STREAM_ID` there overrides the onlava default.
 - Standard auth uses the `github.com/pbrazdil/onlava/auth` top surface and stores DB-backed auth state in PostgreSQL schema `onlava_auth`.
@@ -257,7 +252,7 @@ Rules:
 - `auth.auto_bootstrap_database` applies the first standard-auth schema bootstrap at runtime. It is useful for local fixtures; production deployments should manage schema changes deliberately.
 - `temporal.address_env` defaults to `TEMPORAL_ADDRESS`; when that env var is unset, runtime defaults to `127.0.0.1:7233`.
 - `temporal.namespace` defaults to `TEMPORAL_NAMESPACE` when that env var is set, otherwise `default`.
-- `temporal.task_queue_prefix` defaults to `onlava.<app-name>` with unsafe task-queue characters normalized to dots. `ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX` overrides the effective runtime prefix; `onlava dev` sets it to a session-scoped value when an agent session is active.
+- `temporal.task_queue_prefix` defaults to `onlava.<app-name>` with unsafe task-queue characters normalized to dots. `ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX` overrides the effective runtime prefix; `onlava up` sets it to a session-scoped value when an agent session is active.
 - `temporal.payload_codec` defaults to `onlava-json-v1` and is validated at runtime. This is the only supported payload profile for onlava-managed Go and external workers in this milestone.
 - `temporal.api_key_env` defaults to `TEMPORAL_API_KEY`. When set, the runtime uses Temporal API-key credentials.
 - `temporal.tls.enabled` enables TLS without requiring an API key. `temporal.tls.server_name_env`, `ca_cert_file_env`, `client_cert_file_env`, and `client_key_file_env` default to `TEMPORAL_TLS_SERVER_NAME`, `TEMPORAL_TLS_CA_CERT_FILE`, `TEMPORAL_TLS_CERT_FILE`, and `TEMPORAL_TLS_KEY_FILE`. Client certificate and key env vars must be set as a pair for mTLS.
@@ -267,10 +262,10 @@ Rules:
 - Local onlava-managed worker processes set their `worker_build_id` as the current Temporal Worker Deployment version on startup so schedules and new workflow executions have a versioned routing target. Non-local workers do not self-promote; operators must promote deployment versions explicitly.
 - `temporal.local.auto_start` and `temporal.local.db_filename` are local development settings for supervised Temporal dev server work and are only active when `temporal.enabled` is true. With an active agent, the Temporal dev server is registered as a shared agent substrate and its local database state is stored under the agent directory; each dev session also registers a `temporal` route for the shared UI, while app workers receive session-scoped task queue prefixes. Explicit workflow/activity task queues are prefixed in active dev sessions too, so parallel worktrees do not poll or schedule onto each other's queues. Reuse of an agent-recorded Temporal substrate requires a verified owner fingerprint and a reachable Temporal listener before app workers start; stale ready records are discarded and replaced. Temporal stdout and stderr are always written to stable substrate log files and the agent registry records exit metadata when the managed process exits.
 - `ONLAVA_TEMPORAL_TASK_QUEUE` overrides the generated Temporal task queue for worker processes. `onlava worker --task-queue <name>` and `onlava worker typescript --task-queue <name>` set it.
-- TypeScript Temporal activity support is activity-only. onlava discovers `*.worker.ts` files, plus ordinary `.ts` files with `//onlava:worker`, and generates `.onlava/generated/temporal/typescript/{onlava.ts,registry.ts,worker.ts,manifest.json,tsconfig.json,package.json}`. Source files import `activity` from `onlava/worker` or `@onlava/temporal`; the generated `tsconfig.json` maps both names to the generated local API. Before launching the generated worker, `onlava dev` and `onlava worker typescript` install the app-root `package.json` dependencies and the generated worker package dependencies with `bun install`, falling back to `npm install` when Bun is unavailable.
+- TypeScript Temporal activity support is activity-only. onlava discovers `*.worker.ts` files, plus ordinary `.ts` files with `//onlava:worker`, and generates `.onlava/generated/temporal/typescript/{onlava.ts,registry.ts,worker.ts,manifest.json,tsconfig.json,package.json}`. Source files import `activity` from `onlava/worker` or `@onlava/temporal`; the generated `tsconfig.json` maps both names to the generated local API. Before launching the generated worker, `onlava up` and `onlava worker typescript` install the app-root `package.json` dependencies and the generated worker package dependencies with `bun install`, falling back to `npm install` when Bun is unavailable.
 - Go workflows declare TypeScript activities with `temporal.NewExternalActivity` using matching input/output type parameters and call them through `temporal.ExecuteActivity`. `onlava check --json` validates matching TypeScript activity names, task queues, and type names before build/runtime.
-- `temporal.typescript.enabled`, `runtime`, and `auto_start` configure the TypeScript worker path. `onlava worker typescript` generates and runs the hidden worker directly. When `temporal.enabled`, `temporal.typescript.enabled`, and `auto_start` are all true, `onlava dev` validates Go-to-TypeScript contracts, regenerates the hidden worker runtime, and supervises the TypeScript worker alongside the Go app. The worker receives the supervised Temporal address/namespace, session-scoped task queue prefix, deployment name, build ID, and agent session identity environment. `runtime` accepts `bun` or `node`; when empty, onlava prefers `bun` and falls back to `node --import tsx`.
-- Generated binaries accept `ONLAVA_ROLE=all|api|worker`. `onlava dev` uses the default combined role. `onlava serve` uses `api`. `onlava worker` uses `worker`.
+- `temporal.typescript.enabled`, `runtime`, and `auto_start` configure the TypeScript worker path. `onlava worker typescript` generates and runs the hidden worker directly. When `temporal.enabled`, `temporal.typescript.enabled`, and `auto_start` are all true, `onlava up` validates Go-to-TypeScript contracts, regenerates the hidden worker runtime, and supervises the TypeScript worker alongside the Go app. The worker receives the supervised Temporal address/namespace, session-scoped task queue prefix, deployment name, build ID, and agent session identity environment. `runtime` accepts `bun` or `node`; when empty, onlava prefers `bun` and falls back to `node --import tsx`.
+- Generated binaries accept `ONLAVA_ROLE=all|api|worker`. `onlava up` uses the default combined role. `onlava serve` uses `api`. `onlava worker` uses `worker`.
 - Packages that declare `github.com/pbrazdil/onlava/temporal` workflows or activities with `temporal.NewWorkflow`, `temporal.NewActivity`, or `temporal.NewExternalActivity` are imported into the generated main so their declarations register at startup.
 - `temporal.ActivityConfig.MaxConcurrency` maps to the Temporal worker's per-task-queue maximum concurrent activity executions. Use a dedicated task queue when different activities need different limits. `temporal.WithHeartbeatTimeout(duration)` sets the workflow activity heartbeat timeout without changing the stable `ActivityConfig` struct shape.
 - Cron jobs can set `cron.JobConfig.OverlapPolicy`, `CatchupWindow`, `PauseOnFailure`, `ActivityStartToClose`, and `ActivityRetryPolicy`. When Temporal is enabled these map to Temporal Schedule overlap/catchup/pause policy and to the generated cron activity options. Defaults are overlap `skip`, catchup window `1m`, pause-on-failure `false`, and activity start-to-close `1h`.
@@ -281,28 +276,27 @@ Rules:
 Current implemented grammar:
 
 ```text
-onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
-onlava dev --trust [--json]
-onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json] [--tui]
+onlava up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
+onlava logs --follow [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json]
 onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
-onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-onlava edge install|trust|status|restart|uninstall|dns|privileged [--json]
-onlava status --json [--app-root <path>] [--session <id>] [--watch]
+onlava system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+onlava system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+onlava system edge install|trust|status|restart|uninstall|dns|privileged [--json]
+onlava ps --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava prune --older-than <duration> [--app-root <path>] [--json]
 onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
 onlava worker typescript [--task-queue <name>[,<name>...]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
-onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--ignore-missing-task-queues] [--allow-no-pollers] [--app-root <path>] [--json]
-onlava temporal deployment ramp --build-id <id> --percentage <0-100> [--deployment <name>] [--ignore-missing-task-queues] [--allow-no-pollers] [--app-root <path>] [--json]
-onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
+onlava worker deployment set-current --build-id <id> [--deployment <name>] [--ignore-missing-task-queues] [--allow-no-pollers] [--app-root <path>] [--json]
+onlava worker deployment ramp --build-id <id> --percentage <0-100> [--deployment <name>] [--ignore-missing-task-queues] [--allow-no-pollers] [--app-root <path>] [--json]
+onlava worker deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
 onlava version [--json]
-onlava toolchain list [--json] [--include-source-locks] [--images]
-onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
-onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
-onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
+onlava system toolchain list [--json] [--include-source-locks] [--images]
+onlava system toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
+onlava system toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
+onlava system toolchain path [--json] --tool <name> [--platform <goos/goarch>]
 onlava doctor [--app-root <path>] [--json]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
@@ -310,7 +304,6 @@ onlava db psql [--app-root <path>] [psql args...]
 onlava db apply [--app-root <path>] [--json]
 onlava db seed [--app-root <path>] [--dry-run] [--json]
 onlava db setup [--app-root <path>] [--json]
-onlava db sync [--app-root <path>]
 onlava db reset [--app-root <path>]
 onlava db drop [--app-root <path>]
 onlava db snapshot create|restore <name> [--app-root <path>]
@@ -318,38 +311,37 @@ onlava generate [--app-root <path>] [--dry-run] [--json]
 onlava generate client [<app-id>] [--lang typescript] [--output <path>] [--app-root <path>] [--dry-run] [--json]
 onlava generate sqlc [--app-root <path>] [--dry-run] [--json]
 onlava task list [--app-root <path>] [--json]
+onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
 onlava task run <name> [--app-root <path>]
+onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
 onlava task graph --json [--app-root <path>]
-onlava run list [--app-root <path>] [--json]
-onlava run inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
-onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 onlava harness [--app-root <path>] [--json] [--write]
 onlava harness self [--repo-root <path>] [--json] [--write]
 onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
-onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|traces|metrics --json [--app-root <path>]
+onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
-onlava inspect traces --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
-onlava inspect metrics --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
-onlava admin traces clear --json [--app-root <path>]
+onlava traces list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
+onlava metrics list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
+onlava traces clear --json [--app-root <path>]
 onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
 onlava test [--app-root <path>] [go test flags/packages...]
-onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+onlava generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 ```
 
 Implemented beta/dev helper grammar:
 
 ```text
-onlava psql [--app-root <path>] [psql args...]
+onlava db psql [--app-root <path>] [psql args...]
 ```
 
-`onlava db psql` is the PRD-facing spelling. When `dev.services.postgres` is configured and an agent session is active, it connects to the managed session database; otherwise it falls back to the older beta `onlava psql` behavior. `onlava db reset`, `onlava db drop`, and `onlava db snapshot create|restore` are only available for managed session databases. `onlava db apply` runs only an explicit `database.apply` provider and does not run seed files or SQLC generation. `onlava db sync` is beta and currently runs only an explicit `database.apply` provider before dependent SQLC generation; it is deprecated by the accepted `db apply` / `db seed` / `db setup` split.
+`onlava db psql` connects to the managed session database when `dev.services.postgres` is configured and an agent session is active; otherwise it uses explicit local database configuration. `onlava db reset`, `onlava db drop`, and `onlava db snapshot create|restore` are only available for managed session databases. `onlava db apply` runs only an explicit `database.apply` provider and does not run seed files or SQLC generation.
 
 DB lifecycle split:
 - `onlava db apply` mutates schema or app-owned database setup only. It does not run seed files or SQLC generation.
 - `onlava db seed` applies service-local initial data such as `SERVICE/db/seed.sql` only. It runs after schema exists and does not participate in Atlas or SQLC generation. It records successful runs in `onlava_internal.seed_runs` keyed by app ID and seed path. Unchanged seeds are skipped; changed previously-applied seeds fail closed with status `changed`. Seed validation also fails closed before opening the database when SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, `DELETE FROM ...` without `WHERE`, `WHERE true`, or `WHERE 1 = 1`; diagnostics include the seed path, line, message, and statement context.
 - `onlava db setup` runs `db apply`, then `db seed`. It reports both phases in JSON mode and stops before seed if apply fails.
 - `onlava generate sqlc` remains the SQLC generated-source command. It may refresh generated schema SQL from schema definitions and run `sqlc generate`; it must not mutate a database or consume seed files.
-- `onlava dev` runs the setup lifecycle before starting the app when DB setup inputs exist, and reruns it on rebuild only when the `database.apply` config or discovered seed file hashes change. Setup failures are reported through the existing compile/setup failure path and dev event stream, and the previous successful fingerprint is not advanced so the next rebuild can retry.
+- `onlava up` runs the setup lifecycle before starting the app when DB setup inputs exist, and reruns it on rebuild only when the `database.apply` config or discovered seed file hashes change. Setup failures are reported through the existing compile/setup failure path and dev event stream, and the previous successful fingerprint is not advanced so the next rebuild can retry.
 
 Doctor rules:
 - `onlava doctor` is a fast, read-only local environment diagnostic. It does not install tools, download managed artifacts, start services, run builds, connect to databases, or mutate `.onlava/`.
@@ -374,69 +366,68 @@ Inspect rules:
 
 Toolchain rules:
 - `onlava.toolchain.json` is the root checked-in manifest for Onlava-owned development executables, Docker images, plugins, and source lock references.
-- The manifest uses `onlava.toolchain.v1`; `onlava toolchain ... --json` emits `onlava.toolchain.status.v1`.
+- The manifest uses `onlava.toolchain.v1`; `onlava system toolchain ... --json` emits `onlava.toolchain.status.v1`.
 - `onlava version --json` includes `toolchain_manifest.schema_version`, `sha256`, `artifact_count`, and `source_lock_count` for the bundled manifest.
 - The default local store is `.onlava/toolchain/` under the app/repo root. Machine-level edge tools use `~/.onlava/toolchain/` under the local agent home. `ONLAVA_TOOLCHAIN_DIR` overrides both store roots.
 - `ONLAVA_TOOLCHAIN_DOWNLOAD=0` disables automatic managed binary downloads. Per-tool download disable variables such as `ONLAVA_DEV_GRAFANA_DOWNLOAD=0` and `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` still apply to their startup paths.
 - Managed Caddy resolves from the managed store or manifest-driven download. Managed Grafana, Victoria, and Temporal CLI binaries resolve from explicit env overrides, the managed store, or manifest-driven download. They do not use implicit system `PATH` binaries.
-- `onlava toolchain verify --strict --images` fails for tag-only image refs. Tag-only image refs marked `stability: "unstable"` are accepted only outside strict verification during the migration to digest-pinned images.
+- `onlava system toolchain verify --strict --images` fails for tag-only image refs. Tag-only image refs marked `stability: "unstable"` are accepted only outside strict verification during the migration to digest-pinned images.
 - Go modules and UI package-manager files are source locks. Commands such as `go`, `bun`, `npm`, `node`, and `tsx` used to run source/package-manager workflows are not hidden Onlava-managed toolchain downloads.
 
 Command split:
 
-- `onlava dev` starts the app session: app process, file watching, and rebuild/restart supervision.
-- `onlava dev --trust` is a legacy-compatible spelling for `onlava edge trust`; it runs Caddy edge trust setup and exits instead of starting a dev session or enabling any local proxy.
-- `onlava dev --session <id>` registers the dev process under an explicit session ID. `onlava dev --new-session` creates a fresh session ID for this run, even when the app root and branch already have a deterministic default session. These flags are mutually exclusive.
-- `onlava dev --detach` requires the local agent, starts the same dev supervisor in a background child process, waits for that child PID to register as the app root's agent session owner, prints the session URLs plus attach/stop commands, and returns. Detached child stdout/stderr from the supervisor is written under the agent directory; app process output continues to flow through the session-scoped dashboard log store.
-- `onlava attach` follows the current agent session's logs by default. It is equivalent to `onlava logs --session current --follow` with the same app-root, limit, stream, source, kind, level, grep, since, backend, and JSONL options, and it does not mutate session state.
-- `onlava logs`, plain `onlava attach`, `onlava attach --tui`, and `onlava console` read structured dev events for the selected session. `--backend auto` and `--backend victoria` currently select the same Victoria-backed substrate path; use backend selection only when intentionally debugging that substrate. `ONLAVA_LOGS_BACKEND` accepts the same values and applies to the TUI as well.
+- `onlava up` starts the app session: app process, file watching, and rebuild/restart supervision.
+- `onlava up --session <id>` registers the dev process under an explicit session ID. `onlava up --new-session` creates a fresh session ID for this run, even when the app root and branch already have a deterministic default session. These flags are mutually exclusive.
+- `onlava up --detach` requires the local agent, starts the same dev supervisor in a background child process, waits for that child PID to register as the app root's agent session owner, prints the session URLs plus attach/stop commands, and returns. Detached child stdout/stderr from the supervisor is written under the agent directory; app process output continues to flow through the session-scoped dashboard log store.
+- `onlava logs --follow` follows the current agent session's logs by default. It is equivalent to `onlava logs --session current --follow` with the same app-root, limit, stream, source, kind, level, grep, since, backend, and JSONL options, and it does not mutate session state.
+- `onlava logs`, plain `onlava logs --follow`, and `onlava console` read structured dev events for the selected session. `--backend auto` and `--backend victoria` currently select the same Victoria-backed substrate path; use backend selection only when intentionally debugging that substrate. `ONLAVA_LOGS_BACKEND` accepts the same values and applies to the console as well.
 - If the backing dev-event substrate is unavailable, structured dev-event read commands fail loudly instead of falling back to the deprecated local process-output cache.
-- `onlava attach --tui` and `onlava console` open the source-aware terminal console when stdin/stdout are real TTYs. In CI, dumb terminals, or redirected output they fall back to normal log following with the same backend option.
+- `onlava console` opens the source-aware terminal console when stdin/stdout are real TTYs. In CI, dumb terminals, or redirected output it falls back to normal log following with the same backend option.
 - Structured dev logs carry source identity. Current source ids include `api`, `worker:typescript`, `build`, `supervisor`, `temporal`, `electric`, `grafana`, `victoria`, and `frontend:<name>`.
-- `onlava agent restart` stops the currently reachable local agent process, starts a new background agent, waits until the control socket is reachable, and returns. The same `--socket`, `--router-listen`, `--router-tls`, `--trust`, and `--json` options apply to the restarted agent.
-- `onlava edge dns install` resolves the managed `dnsmasq` toolchain artifact, syncing/building it automatically unless managed downloads are disabled, starts user-owned dnsmasq for the configured wildcard dev domain plus other Onlava-managed resolver domains already present on the machine, and on macOS invokes a privileged helper only when `/etc/resolver/<domain>` is missing or mismatched. `onlava edge privileged install` installs the macOS root-owned loopback helper that listens on `127.0.0.1:443` and `[::1]:443` and forwards raw TCP only to a validated user-owned Caddy target recorded under the agent run directory. Run it as the normal user; it invokes `sudo` only for the minimal helper install. `onlava edge privileged uninstall` removes that helper. `onlava edge install` and `onlava edge restart` refuse root, start user-owned Caddy on an unprivileged high loopback port, ensure the local agent router is running as an unprivileged HTTP upstream on its internal loopback address, disable Caddy response buffering for streaming routes such as Electric SSE while preserving upstream cache headers, and write both edge state and helper target metadata under the agent run directory. If wildcard DNS or the privileged helper is missing or unhealthy, install prepares Caddy but fails with the actionable setup command because browser-ready default-port HTTPS requires both. They resolve Caddy from the managed `caddy` toolchain artifact, syncing it automatically unless managed downloads are disabled. `onlava edge trust` resolves the same managed Caddy artifact, starts a temporary admin-only Caddy process with `local_certs`, runs Caddy's trust flow against that temporary admin endpoint, and does not require the port-443 edge to be running. `onlava edge status --json` reports `onlava.edge.status.v1`. `onlava edge uninstall` stops user-owned Caddy, leaves DNS and the privileged helper alone, and reports `onlava edge privileged uninstall` as the helper removal command.
+- `onlava system agent restart` stops the currently reachable local agent process, starts a new background agent, waits until the control socket is reachable, and returns. The same `--socket`, `--router-listen`, `--router-tls`, `--trust`, and `--json` options apply to the restarted agent.
+- `onlava system edge dns install` resolves the managed `dnsmasq` toolchain artifact, syncing/building it automatically unless managed downloads are disabled, starts user-owned dnsmasq for the configured wildcard dev domain plus other Onlava-managed resolver domains already present on the machine, and on macOS invokes a privileged helper only when `/etc/resolver/<domain>` is missing or mismatched. `onlava system edge privileged install` installs the macOS root-owned loopback helper that listens on `127.0.0.1:443` and `[::1]:443` and forwards raw TCP only to a validated user-owned Caddy target recorded under the agent run directory. Run it as the normal user; it invokes `sudo` only for the minimal helper install. `onlava system edge privileged uninstall` removes that helper. `onlava system edge install` and `onlava system edge restart` refuse root, start user-owned Caddy on an unprivileged high loopback port, ensure the local agent router is running as an unprivileged HTTP upstream on its internal loopback address, disable Caddy response buffering for streaming routes such as Electric SSE while preserving upstream cache headers, and write both edge state and helper target metadata under the agent run directory. If wildcard DNS or the privileged helper is missing or unhealthy, install prepares Caddy but fails with the actionable setup command because browser-ready default-port HTTPS requires both. They resolve Caddy from the managed `caddy` toolchain artifact, syncing it automatically unless managed downloads are disabled. `onlava system edge trust` resolves the same managed Caddy artifact, starts a temporary admin-only Caddy process with `local_certs`, runs Caddy's trust flow against that temporary admin endpoint, and does not require the port-443 edge to be running. `onlava system edge status --json` reports `onlava.edge.status.v1`. `onlava system edge uninstall` stops user-owned Caddy, leaves DNS and the privileged helper alone, and reports `onlava system edge privileged uninstall` as the helper removal command.
 - `onlava down` stops and unregisters the selected session but is non-destructive by default. `--db` drops that session's managed Postgres database, `--state` removes that session's `.onlava/sessions/<id>` state root, and `--all` enables both.
 - `onlava prune --older-than <duration>` prunes old agent sessions whose recorded owner is gone or mismatched and removes their `.onlava/sessions/<id>` state roots. It accepts Go durations such as `336h` plus day shorthand such as `14d`. It does not drop managed databases or delete VictoriaLogs storage; use `onlava down --db` or `onlava db drop` for destructive database cleanup.
-- Starting `onlava dev` for an app-root/session requires exclusive ownership of that exact session id. If another live owner already controls the same app-root/session, startup fails with an "already running" error instead of superseding it; use a different `--session`, `--new-session`, or stop the existing session first. If the recorded owner is dead or its fingerprint no longer matches, the new owner may claim the session and clean recorded app, worker, Electric, and managed frontend child processes from the stale owner, plus Onlava-owned session processes whose injected app root/session environment matches. It must not clean other sessions, other app roots, or unrelated user processes.
+- Starting `onlava up` for an app-root/session requires exclusive ownership of that exact session id. If another live owner already controls the same app-root/session, startup fails with an "already running" error instead of superseding it; use a different `--session`, `--new-session`, or stop the existing session first. If the recorded owner is dead or its fingerprint no longer matches, the new owner may claim the session and clean recorded app, worker, Electric, and managed frontend child processes from the stale owner, plus Onlava-owned session processes whose injected app root/session environment matches. It must not clean other sessions, other app roots, or unrelated user processes.
 - Session owner checks treat `owner_pid` as the effective owner. `owner.pid` is the fingerprint for that same PID, not an independent owner field. If the stored owner fingerprint object points at a different stale PID, Onlava refreshes it on the next registration and must not delete or prune the session while the effective `owner_pid` is still live. Dev supervisors unregister sessions with an owner-conditional delete that includes the recorded owner fingerprint; if an older owner exits after ownership moved, or if the same PID now has a different recorded fingerprint, the delete is ignored and the newer session record remains registered.
-- `onlava status --json` treats a `starting` or `running` session with a missing or dead effective owner as `stale`, and a live but fingerprint-mismatched owner or dead app PID as `degraded`. Duplicate `onlava dev` startup prevention uses the recorded session owner and owner fingerprint, not shell command text. Status JSON includes `status_reason` when onlava rewrites the session status. Status JSON also includes the agent substrate registry as `substrates`; failed shared substrates expose `status`, `last_exit`, and `component_exits` with component, PID, started/exited timestamps, exit code or signal, error text, and stdout/stderr log paths.
+- `onlava ps --json` treats a `starting` or `running` session with a missing or dead effective owner as `stale`, and a live but fingerprint-mismatched owner or dead app PID as `degraded`. Duplicate `onlava up` startup prevention uses the recorded session owner and owner fingerprint, not shell command text. Status JSON includes `status_reason` when onlava rewrites the session status. Status JSON also includes the agent substrate registry as `substrates`; failed shared substrates expose `status`, `last_exit`, and `component_exits` with component, PID, started/exited timestamps, exit code or signal, error text, and stdout/stderr log paths.
 - When the local agent is active, the agent starts the visible dashboard backend and exposes the dashboard through the session-scoped console route from `route_namespace`, for example `https://console.<session_id>.<route_namespace.base_domain>/`. The old path-shaped `console.../s/<session_id>` form is not the canonical dashboard URL. The Unix-socket control API remains protected by filesystem permissions.
-- The agent router serves HTTPS by default when used directly, but the preferred default-port HTTPS path is `onlava edge`: browser DNS for `local.dev` is provided by `onlava edge dns install` through managed dnsmasq and a macOS scoped resolver, browser HTTPS reaches the privileged loopback helper on `127.0.0.1:443`, the helper forwards raw TCP to user-owned Caddy on an unprivileged loopback port, and Caddy proxies to the agent router on internal HTTP. API and console session routes are generated from the app-derived `route_namespace`, and router requests resolve by exact registered route-host lookup instead of parsing a fixed localhost suffix. Session-scoped entries in `routes` are canonical. Friendly app-derived hosts are optional alias leases exposed in a separate `aliases` map only for the live session that owns the free alias; a second live session keeps its canonical routes, does not steal the alias, and reports the held aliases in `alias_conflicts`. Stale alias leases are reclaimed only after owner fingerprint verification proves the old owner is gone or mismatched. Live alias leases transfer only through `onlava dev --claim-aliases`. Alias routing, router TLS host validation, and the Caddy on-demand TLS ask endpoint use the same exact registry lookup as canonical routes. The edge ask endpoint is `GET /v1/tls/allow?domain=<host>` and returns success only for a registered route or alias whose session owner fingerprint still verifies. Caddy forwards `X-Onlava-Edge-Token`; the agent trusts incoming forwarded proto/port headers only when that token matches and the request comes from loopback. Agent health and state distinguish the internal `router_addr`, browser-facing `public_router_addr`, public `router_scheme`, `edge`, and edge DNS state. `onlava edge status --json` reports dnsmasq and resolver readiness. `onlava agent --router-http` or `ONLAVA_AGENT_ROUTER_TLS=0` explicitly keeps the direct router on HTTP for local debugging. `onlava agent --router-tls` and `ONLAVA_AGENT_ROUTER_TLS=1` force direct HTTPS when an explicit setting is needed. `onlava agent --trust` and `ONLAVA_AGENT_TRUST=1` also enable direct router TLS and attempt to trust the existing onlava local CA. Trust installation failures are logged; the router still starts. Direct router TLS certificates are issued for `localhost` and registered route or alias hosts, not for arbitrary local names. Public HTTPS route URLs omit the port when the active public edge is on port `443`; non-default router ports stay explicit, and explicit occupied direct router addresses fail instead of silently falling back.
+- The agent router serves HTTPS by default when used directly, but the preferred default-port HTTPS path is `onlava system edge`: browser DNS for `local.dev` is provided by `onlava system edge dns install` through managed dnsmasq and a macOS scoped resolver, browser HTTPS reaches the privileged loopback helper on `127.0.0.1:443`, the helper forwards raw TCP to user-owned Caddy on an unprivileged loopback port, and Caddy proxies to the agent router on internal HTTP. API and console session routes are generated from the app-derived `route_namespace`, and router requests resolve by exact registered route-host lookup instead of parsing a fixed localhost suffix. Session-scoped entries in `routes` are canonical. Friendly app-derived hosts are optional alias leases exposed in a separate `aliases` map only for the live session that owns the free alias; a second live session keeps its canonical routes, does not steal the alias, and reports the held aliases in `alias_conflicts`. Stale alias leases are reclaimed only after owner fingerprint verification proves the old owner is gone or mismatched. Live alias leases transfer only through `onlava up --claim-aliases`. Alias routing, router TLS host validation, and the Caddy on-demand TLS ask endpoint use the same exact registry lookup as canonical routes. The edge ask endpoint is `GET /v1/tls/allow?domain=<host>` and returns success only for a registered route or alias whose session owner fingerprint still verifies. Caddy forwards `X-Onlava-Edge-Token`; the agent trusts incoming forwarded proto/port headers only when that token matches and the request comes from loopback. Agent health and state distinguish the internal `router_addr`, browser-facing `public_router_addr`, public `router_scheme`, `edge`, and edge DNS state. `onlava system edge status --json` reports dnsmasq and resolver readiness. `onlava system agent --router-http` or `ONLAVA_AGENT_ROUTER_TLS=0` explicitly keeps the direct router on HTTP for local debugging. `onlava system agent --router-tls` and `ONLAVA_AGENT_ROUTER_TLS=1` force direct HTTPS when an explicit setting is needed. `onlava system agent --trust` and `ONLAVA_AGENT_TRUST=1` also enable direct router TLS and attempt to trust the existing onlava local CA. Trust installation failures are logged; the router still starts. Direct router TLS certificates are issued for `localhost` and registered route or alias hosts, not for arbitrary local names. Public HTTPS route URLs omit the port when the active public edge is on port `443`; non-default router ports stay explicit, and explicit occupied direct router addresses fail instead of silently falling back.
 - Agent session manifests always include a `dashboard` route for the global agent-owned dashboard. With the agent dashboard active, the manifest does not need a matching per-session `dashboard` backend; direct/per-session dashboard endpoints are kept for agent-disabled, unavailable-agent, or explicit local-proxy fallback paths.
-- `onlava dev` exposes local observability and Grafana capabilities for the session. The current substrate may start local VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana when their managed toolchain binaries are installed or can be downloaded. When the local agent is active, shared substrates are registered through one managed substrate lifecycle: owner fingerprint verification before reuse, service-specific reachability probing, stale-record deletion, ready/degraded/exited upserts, component exit monitoring, and structured dev events. Grafana is also registered as the session `grafana` backend, so manifests expose `https://grafana.<session_id>.<route_namespace.base_domain>:<agent-router-port>/` by default, or HTTP when the agent router is explicitly started with `--router-http` or `ONLAVA_AGENT_ROUTER_TLS=0`. Dashboard session metadata is stored as compact, bounded JSON under the agent directory when the agent is active and `ONLAVA_DEV_CACHE_DIR` is unset, so multiple worktrees for the same base app can appear in the global dashboard without report writes growing unbounded. These details are documented for intentional substrate debugging and are not the stable app-facing API.
+- `onlava up` exposes local observability and Grafana capabilities for the session. The current substrate may start local VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana when their managed toolchain binaries are installed or can be downloaded. When the local agent is active, shared substrates are registered through one managed substrate lifecycle: owner fingerprint verification before reuse, service-specific reachability probing, stale-record deletion, ready/degraded/exited upserts, component exit monitoring, and structured dev events. Grafana is also registered as the session `grafana` backend, so manifests expose `https://grafana.<session_id>.<route_namespace.base_domain>:<agent-router-port>/` by default, or HTTP when the agent router is explicitly started with `--router-http` or `ONLAVA_AGENT_ROUTER_TLS=0`. Dashboard session metadata is stored as compact, bounded JSON under the agent directory when the agent is active and `ONLAVA_DEV_CACHE_DIR` is unset, so multiple worktrees for the same base app can appear in the global dashboard without report writes growing unbounded. These details are documented for intentional substrate debugging and are not the stable app-facing API.
 - The local agent home defaults to `~/.onlava` unless `ONLAVA_AGENT_HOME` is set. `ONLAVA_DEV_CACHE_DIR` controls build and dashboard cache locations, not machine-wide agent identity.
 - Managed frontend services start on session-private hidden loopback ports. A manual `ONLAVA_FRONTEND_<NAME>_ADDR` override is accepted, but configured frontend upstreams are ignored unless that frontend sets `"allow_shared_upstream": true`.
 - Dev app children are launched through a session-local executable path under `.onlava/sessions/<session_id>/run/app/` so stale same-session app processes can be identified without broad process-name matching.
 - Managed Electric processes are session-owned children. They receive Onlava app-root, session, and runtime app identity in their environment and are recorded in the agent session process map so a later owner can clean stale Electric processes for the same app-root/session/runtime without touching other sessions. Before starting Electric, onlava checks live process command lines for the exact `ELECTRIC_REPLICATION_STREAM_ID=<session-stream-id>` stream. It terminates Onlava-owned same app-root/session/runtime Electric processes and fails fast with PID/state/stream/command diagnostics for any remaining process using that stream. Before starting Electric against managed Postgres, onlava tags Electric database connections with a deterministic Onlava `application_name`, checks advisory-lock or replication-slot backends for the exact `electric_slot_<session-stream-id>` slot, terminates only exact same-session Onlava-owned backends, and reports remaining contender PID/state/query/application/client/slot details.
-- `onlava dev --proxy` and `ONLAVA_LOCAL_PROXY=1 onlava dev` are rejected from the normal dev path. Use default agent-routed session URLs, and run `onlava edge dns install`, `onlava edge privileged install`, `onlava edge install`, and `onlava edge trust` when trusted local HTTPS on the default port is needed. `onlava dev --trust` is accepted only as the Caddy edge trust setup alias and never enables the legacy local proxy. The legacy local proxy path remains blocked outside explicit legacy/debug code.
-- `onlava dev --port <n>` and `onlava dev --listen <addr>` force a manual TCP app backend. The default agent path uses a session-private Unix socket and should be preferred for worktree-safe development.
+- `onlava up --proxy`, `onlava up --trust`, and `ONLAVA_LOCAL_PROXY=1 onlava up` are rejected from the normal dev path. Use default agent-routed session URLs, and run `onlava system edge dns install`, `onlava system edge privileged install`, `onlava system edge install`, and `onlava system edge trust` when trusted local HTTPS on the default port is needed. The legacy local proxy path remains blocked outside explicit legacy/debug code.
+- `onlava up --port <n>` and `onlava up --listen <addr>` force a manual TCP app backend. The default agent path uses a session-private Unix socket and should be preferred for worktree-safe development.
 - `onlava serve` builds once and starts the app runtime headlessly. It does not start the dashboard, local proxy, frontend proxy, or file watcher.
 - `onlava serve` starts the generated binary with `ONLAVA_ROLE=api`, so it serves HTTP APIs without registering worker-only workflow or activity handlers.
-- `onlava run list|inspect` and `onlava run <domain>:<script> [script args...]` are the canonical local operational script surface. Script discovery is filesystem-first and does not parse or type-check the onlava app model. Targets use `<domain>:<script>` and map to `<app-root>/<domain>/scripts/<script>...`; the domain is a top-level path segment, not an onlava service name. Both target segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
-- Onlava script flags must appear before the target, such as `onlava run --env production billing:reconcile --dry-run`. Arguments after the target belong to the script; `--` is accepted but not required. `onlava run` no longer starts the API server; use `onlava serve` for headless API execution.
-- Supported script layouts are `<domain>/scripts/<name>.script.go`, `<domain>/scripts/<name>.script.ts`, `<domain>/scripts/<name>/main.go`, and `<domain>/scripts/<name>/index.ts`. Single-file Go scripts must start with `//go:build ignore` so normal app package loading cannot accidentally include them. If multiple candidates match a target, onlava fails unless `--lang go|typescript` selects a single language.
-- Scripts execute with cwd set to the app root. Go scripts use `go run`; TypeScript scripts prefer `bun` and fall back to `node --import tsx`. Script processes receive `ONLAVA_APP_ID`, `ONLAVA_APP_ROOT`, and `ONLAVA_ENV`/`ONLAVA_RUNTIME_ENV` when `--env` is set, with `.env` and `.env.local` loaded when present.
+- `onlava task list|inspect|run|graph` is the canonical task surface. Plain targets resolve only to configured tasks from `.onlava.json`; `<domain>:<name>` targets resolve only to code tasks under `<app-root>/<domain>/tasks/...`. Configured task names containing `:` are rejected. Code task target segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
+- Onlava task flags must appear before the target. Code task arguments must appear after `--`, for example `onlava task run --env production billing:reconcile -- --dry-run`. Configured tasks do not accept `--env`, `--lang`, or extra runtime arguments.
+- Supported code task layouts are `<domain>/tasks/<name>.task.go`, `<domain>/tasks/<name>.task.ts`, `<domain>/tasks/<name>/main.go`, and `<domain>/tasks/<name>/index.ts`. Single-file Go tasks must start with `//go:build ignore` so normal app package loading cannot accidentally include them. If multiple candidates match a target, onlava fails unless `--lang go|typescript` selects a single language.
+- Code tasks execute with cwd set to the app root. Go tasks use `go run`; TypeScript tasks prefer `bun` and fall back to `node --import tsx`. Task processes receive `ONLAVA_APP_ID`, `ONLAVA_APP_ROOT`, and `ONLAVA_ENV`/`ONLAVA_RUNTIME_ENV` when `--env` is set, with `.env` and `.env.local` loaded when present.
 - Cron declarations use Temporal Schedules when Temporal is enabled. `onlava serve` reconciles schedules from the API role, while `onlava worker` runs the cron workflow/activity worker on `onlava.<app>.cron.go`. Temporal cron executions derive their onlava request start/idempotency metadata from the workflow scheduled start time.
 - `onlava worker` builds once and starts the app runtime in worker-only mode with no public HTTP server. In this beta implementation it runs cron and native Temporal workers; generated binaries use `ONLAVA_ROLE=worker`.
 - `onlava worker bindings` validates `.onlava/workers/*.json` manifests and writes language-specific activity starter files. Python manifests produce `onlava_worker.py`; TypeScript/JavaScript manifests produce `onlava_worker.ts`; unknown languages receive a normalized JSON binding file.
-- `onlava temporal deployment set-current`, `ramp`, and `drain` are the explicit operator commands for Temporal Worker Deployment routing changes in non-local environments. They use the app's Temporal connection settings, including TLS/API-key env vars.
+- `onlava worker deployment set-current`, `ramp`, and `drain` are the explicit operator commands for Temporal Worker Deployment routing changes in non-local environments. They use the app's Temporal connection settings, including TLS/API-key env vars.
 - `onlava build` produces the deployable binary and remains the preferred deployment artifact path.
-- `onlava harness ui --json` is an optional browser-backed dashboard check. It starts a temporary `onlava dev` process unless `--dashboard-url` points at an existing dashboard, visits core dashboard routes, checks stable `data-onlava-ui` markers, captures screenshots, and writes console/network artifacts under `.onlava/harness/ui/`.
+- `onlava harness ui --json` is an optional browser-backed dashboard check. It starts a temporary `onlava up` process unless `--dashboard-url` points at an existing dashboard, visits core dashboard routes, checks stable `data-onlava-ui` markers, captures screenshots, and writes console/network artifacts under `.onlava/harness/ui/`.
 
 Runtime safety:
 
 - `onlava serve` and generated binaries do not expose dev/admin endpoints by default.
-- Dev/admin endpoints such as `/__onlava/config`, `/platform.Stats`, and `/debug/pprof/*` are enabled only for the development child process launched by `onlava dev` or when `ONLAVA_DEV_ENDPOINTS=1` is set explicitly.
+- Dev/admin endpoints such as `/__onlava/config`, `/platform.Stats`, and `/debug/pprof/*` are enabled only for the development child process launched by `onlava up` or when `ONLAVA_DEV_ENDPOINTS=1` is set explicitly.
 - Runtime CORS reflection is enabled in dev endpoint mode. Outside dev mode, CORS origins must be explicitly allowlisted with `ONLAVA_CORS_ALLOW_ORIGINS`.
 - Build workspaces skip local secret and machine artifacts such as `.env`, `.env.*`, `.git`, `.onlava`, `node_modules`, `.DS_Store`, `__MACOSX`, and `coverage`.
 
 Local observability:
 
-- The user-facing observability surface is `onlava logs`, `onlava inspect traces --json`, `onlava inspect metrics --json`, the dashboard, and Grafana routes. The current backing substrate exports local observability to Victoria sidecars:
+- The user-facing observability surface is `onlava logs`, `onlava traces list --json`, `onlava metrics list --json`, the dashboard, and Grafana routes. The current backing substrate exports local observability to Victoria sidecars:
   - VictoriaMetrics: `/opentelemetry/v1/metrics`
   - VictoriaLogs: `/insert/opentelemetry/v1/logs`
   - VictoriaTraces: `/insert/opentelemetry/v1/traces`
-- Dashboard trace reads and `onlava inspect traces|metrics --json` use onlava-managed observability data. Victoria is the current substrate when local sidecars are available.
+- Dashboard trace reads and `onlava traces list|metrics --json` use onlava-managed observability data. Victoria is the current substrate when local sidecars are available.
 - Victoria sidecars store data under `.onlava/victoria/` by default when running without the agent. With an active agent, shared Victoria state is stored under the agent directory and registered in the agent substrate registry; the dev supervisor reuses registered endpoints instead of owning per-worktree Victoria processes. Reuse requires verified owner fingerprints and reachable metrics/logs/traces listeners. Managed Victoria stdout and stderr are always written to stable substrate log files, and component exits update the substrate to `degraded` with `last_exit` and per-component exit metadata. Substrate exit events are exported to the structured dev log stream with component name, PID, exit code or signal, and log paths.
 - `ONLAVA_DEV_VICTORIA=0` disables Victoria sidecars. `ONLAVA_DEV_VICTORIA_DOWNLOAD=0` disables automatic Victoria binary downloads. When enabled, missing Victoria binaries are downloaded into `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`.
 - Victoria binary names, versions, ports, storage layout, download behavior, and Victoria query semantics are beta substrate details. They are documented so local development is debuggable, but they are hidden during ordinary app work and are not part of the stable v0 runtime contract.
@@ -449,7 +440,7 @@ Local observability:
 - Dev report endpoints reject missing-session, stale-session, and invalid-token reports before trace/store work. Rejections are recorded as structured warning log events with `kind=dev-report-rejected`, and app-side report clients back off after repeated deadline/unauthorized/stale-report failures so old processes cannot hot-loop the dashboard.
 - The emitted VictoriaMetrics request duration contract is `onlava_request_duration_seconds` with labels `onlava_app`, `onlava_trace_type`, `onlava_is_root`, `onlava_is_error`, `onlava_service`, optional `onlava_session_id`, optional `onlava_app_root_hash`, optional `onlava_branch`, optional `onlava_worktree`, optional `onlava_endpoint`, and optional `onlava_message_id`.
 - The emitted VictoriaTraces and VictoriaLogs attribute contract includes `onlava.application_id`, optional `onlava.session_id`, optional `onlava.app_root_hash`, optional `onlava.branch`, and optional `onlava.worktree`.
-- `onlava dev` writes local ignore markers under `.onlava/` and the Grafana/Victoria state roots so downloaded binaries, local databases, logs, generated build outputs, and other machine-local state are not accidentally committed by target apps.
+- `onlava up` writes local ignore markers under `.onlava/` and the Grafana/Victoria state roots so downloaded binaries, local databases, logs, generated build outputs, and other machine-local state are not accidentally committed by target apps.
 
 Secrets and environment:
 
@@ -457,9 +448,9 @@ Secrets and environment:
 - Do not add a new onlava-owned production env var as a convenience escape hatch. Prefer `.onlava.json`, explicit CLI flags, or checked-in manifests; if env is truly required, add a registry entry with rationale, docs, and tests in the same change.
 - Process environment always wins over values loaded from local files.
 - The stable runtime path reads `.env` from the app root for local secret population when a value is not already present in the process environment.
-- Local startup requires `.env` to exist in the app root. If `.env` is missing, `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker` fail before serving or running with a clear error. `.env.local` is optional.
-- `onlava dev` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
-- `onlava dev` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
+- Local startup requires `.env` to exist in the app root. If `.env` is missing, `onlava up`, local `onlava serve`, local `onlava task run`, and local `onlava worker` fail before serving or running with a clear error. `.env.local` is optional.
+- `onlava up` passes local file values into the child process before Go package initialization so package-level declarations can read them through `os.Getenv`.
+- `onlava up` loads `.env` first and `.env.local` second. `.env.local` overrides `.env` only for keys that are not already present in the parent process environment.
 - Missing declared secrets warn in local development mode.
 - `onlava serve --env production` can use process environment without a `.env` file, and fails before serving if any declared secret is missing.
 - `.env`, `.env.*`, and secret-bearing local files are not copied into build workspaces.
@@ -475,10 +466,10 @@ Standard auth:
 - `/users/dev-bootstrap` is local-only and can mint a development token without opening PostgreSQL.
 - DB-backed auth endpoints require a database URL from `auth.database_url_env`, `DATABASE_URL`, or `ONLAVA_AUTH_DATABASE_URL`.
 
-Implemented `dev --json` rules:
+Implemented `up --json` rules:
 
 ```text
-onlava dev --json
+onlava up --json
 ```
 
 - output is JSONL
@@ -541,7 +532,7 @@ scripts/release-gate.sh
 - it runs documentation/architecture checks, a parallel dev-session safety check, a real ONLV two-worktree smoke when an ONLV checkout is available, focused Go tests, dashboard UI typecheck/build, installed-binary freshness checks, and artifact hygiene checks
 - `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` may point at a read-only onlava app for the optional external app smoke
 - `ONLAVA_RELEASE_GATE_LOG_DIR` may override the log directory; otherwise logs are written under `.onlava/release-gate/`
-- `ONLAVA_ONLV_SMOKE_ROOT` may point at the ONLV checkout used by `scripts/onlv-two-worktree-smoke.sh`; otherwise the release gate uses `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` when set, then `/Users/petrbrazdil/Repos/onlv` when present. The smoke starts two temporary ONLV git worktrees with the current `ONLAVA_BIN`, expects edge DNS and the privileged edge helper to be installed, runs `onlava edge install` for trusted HTTPS `127.0.0.1:443` routing, asserts session-scoped `local.dev` API, Pulse, Blog, Electric, Grafana, Temporal, and Console routes without `.onlava.localhost`, `:9440`, or explicit HTTPS ports, checks managed database, Electric stream, Temporal queue, and alias exclusivity, then tears the sessions, edge, and worktrees down. The smoke uses managed dnsmasq and Caddy.
+- `ONLAVA_ONLV_SMOKE_ROOT` may point at the ONLV checkout used by `scripts/onlv-two-worktree-smoke.sh`; otherwise the release gate uses `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` when set, then `/Users/petrbrazdil/Repos/onlv` when present. The smoke starts two temporary ONLV git worktrees with the current `ONLAVA_BIN`, expects edge DNS and the privileged edge helper to be installed, runs `onlava system edge install` for trusted HTTPS `127.0.0.1:443` routing, asserts session-scoped `local.dev` API, Pulse, Blog, Electric, Grafana, Temporal, and Console routes without `.onlava.localhost`, `:9440`, or explicit HTTPS ports, checks managed database, Electric stream, Temporal queue, and alias exclusivity, then tears the sessions, edge, and worktrees down. The smoke uses managed dnsmasq and Caddy.
 - artifact hygiene is intentionally strict and fails on local release artifacts such as `.DS_Store` and `__MACOSX`
 
 Implemented `logs --jsonl` rules:
@@ -559,18 +550,9 @@ onlava logs --json
 - structured dev events are assigned a stable integer ID before export to VictoriaLogs
 - human-readable raw output remains the default when neither flag is used
 
-Reserved grammar:
-
-```text
-onlava admin <subcommand> --json ...
-```
-
-Implemented `admin --json` rules:
-- current supported command is `traces clear`
-- output conforms to `onlava.admin.result.v1`
-- admin commands are dev/admin beta for v0; their existence does not make cron, trace clearing, or queue deletion semantics stable
-
-Any additional admin subcommands are reserved contract surfaces and should produce versioned JSON when implemented.
+Implemented `traces clear --json` rules:
+- output conforms to `onlava.traces.clear.v1`
+- trace clearing is dev/admin beta for v0; its existence does not make cron, trace clearing, or queue deletion semantics stable
 
 ## Artifact Locations
 
@@ -617,7 +599,7 @@ Reserved for upcoming work:
 ```
 
 Rules:
-- Use `onlava inspect ... --json` for app, route, service, endpoint, wire, build, path, docs, trace, and metric metadata.
+- Use `onlava inspect ... --json` for app, route, service, endpoint, wire, build, path, docs, generator, and Temporal metadata. Use `onlava traces list --json` and `onlava metrics list --json` for local observability metadata.
 - Do not read `.onlava/gen/*` directly unless debugging onlava generation. These files are internal cache artifacts that may mirror inspect output today, but they are not the supported API.
 - `wire/capabilities.json` is an internal cache for `onlava inspect wire --json` and the runtime `GET /_wire/capabilities` response.
 - `manifest.json` ties generated cache artifacts to schema versions, artifact paths, and deterministic content hashes for debugging generation.
@@ -644,7 +626,10 @@ Implemented now:
 - [onlava.db.apply.result.v1.schema.json](schemas/onlava.db.apply.result.v1.schema.json)
 - [onlava.db.seed.result.v1.schema.json](schemas/onlava.db.seed.result.v1.schema.json)
 - [onlava.db.setup.result.v1.schema.json](schemas/onlava.db.setup.result.v1.schema.json)
+- [onlava.task.list.v1.schema.json](schemas/onlava.task.list.v1.schema.json)
+- [onlava.task.inspect.v1.schema.json](schemas/onlava.task.inspect.v1.schema.json)
 - [onlava.task.graph.v1.schema.json](schemas/onlava.task.graph.v1.schema.json)
+- [onlava.traces.clear.v1.schema.json](schemas/onlava.traces.clear.v1.schema.json)
 - [onlava.worker.manifest.v1.schema.json](schemas/onlava.worker.manifest.v1.schema.json)
 - [onlava.worker.manifest.v2.schema.json](schemas/onlava.worker.manifest.v2.schema.json)
 - [onlava.gen.manifest.v1.schema.json](schemas/onlava.gen.manifest.v1.schema.json)
@@ -655,14 +640,10 @@ Implemented now:
 - [onlava.harness.self.v1.schema.json](schemas/onlava.harness.self.v1.schema.json)
 - [onlava.dev.event.v1.schema.json](schemas/onlava.dev.event.v1.schema.json)
 - [onlava.logs.event.v1.schema.json](schemas/onlava.logs.event.v1.schema.json)
-- [onlava.admin.result.v1.schema.json](schemas/onlava.admin.result.v1.schema.json)
 - [onlava.version.v1.schema.json](schemas/onlava.version.v1.schema.json)
 - [onlava.doctor.result.v1.schema.json](schemas/onlava.doctor.result.v1.schema.json)
 - [onlava.toolchain.v1.schema.json](schemas/onlava.toolchain.v1.schema.json)
 - [onlava.toolchain.status.v1.schema.json](schemas/onlava.toolchain.status.v1.schema.json)
-
-Reserved now:
-- future command-specific admin schemas if `onlava.admin.result.v1` becomes too generic
 
 Schema rules:
 - top-level schema field is `schema_version`
@@ -795,7 +776,7 @@ Schema rules:
 
 `onlava inspect wire --json` returns the same hidden generated-client capability document served at `GET /_wire/capabilities`. It is intended for generated clients and agents that need to know whether the JSON transport or binary transport will be used for each logical endpoint.
 
-### `onlava inspect traces --json`
+### `onlava traces list --json`
 
 Beta diagnostic subject. Use this when an agent needs concrete local traces
 without scraping the dashboard UI. The JSON shape is versioned, but retention,
@@ -805,7 +786,7 @@ this is promoted to stable v0.
 Example:
 
 ```text
-onlava inspect traces --json --session current --endpoint SyncGet --min-duration-ms 2000 --since 1h --slowest
+onlava traces list --json --session current --endpoint SyncGet --min-duration-ms 2000 --since 1h --slowest
 ```
 
 Example output:
@@ -845,7 +826,7 @@ Example output:
 }
 ```
 
-### `onlava inspect metrics --json`
+### `onlava metrics list --json`
 
 Beta diagnostic subject. Use this when an agent needs a metrics-style rollup
 over locally captured traces and logs. The JSON shape is versioned, but rollup
@@ -855,7 +836,7 @@ selection may change before this is promoted to stable v0.
 Example:
 
 ```text
-onlava inspect metrics --json --session current --service sync --since 15m
+onlava metrics list --json --session current --service sync --since 15m
 ```
 
 Example output:

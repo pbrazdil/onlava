@@ -90,7 +90,7 @@ func parseServeArgs(args []string) (serveOptions, error) {
 				return serveOptions{}, fmt.Errorf("invalid --log-format %q", args[i])
 			}
 		case "--verbose", "-v", "--json", "--dashboard", "--watch", "--proxy":
-			return serveOptions{}, fmt.Errorf("%s is a development flag; use `onlava dev`", args[i])
+			return serveOptions{}, fmt.Errorf("%s is a development flag; use `onlava up`", args[i])
 		default:
 			return serveOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}

@@ -20,7 +20,7 @@ import (
 const (
 	scriptLangGo         = "go"
 	scriptLangTypeScript = "typescript"
-	scriptRunUsage       = "usage: onlava run list|inspect ... OR onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]"
+	scriptRunUsage       = "usage: onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]"
 )
 
 type scriptTarget struct {
@@ -138,7 +138,7 @@ func parseScriptInspectArgs(args []string) (scriptOptions, error) {
 		}
 	}
 	if opts.Target == "" {
-		return scriptOptions{}, fmt.Errorf("usage: onlava run inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]")
+		return scriptOptions{}, fmt.Errorf("usage: onlava task inspect <domain>:<name> [--app-root <path>] [--lang go|typescript] [--json]")
 	}
 	if _, err := parseScriptTarget(opts.Target); err != nil {
 		return scriptOptions{}, err
@@ -210,11 +210,11 @@ func parseScriptTarget(value string) (scriptTarget, error) {
 	value = strings.TrimSpace(value)
 	domain, name, ok := strings.Cut(value, ":")
 	if !ok || strings.Contains(name, ":") {
-		return scriptTarget{}, fmt.Errorf("invalid script target %q; expected <domain>:<script>", value)
+		return scriptTarget{}, fmt.Errorf("invalid code task target %q; expected <domain>:<name>", value)
 	}
 	target := scriptTarget{Domain: strings.TrimSpace(domain), Name: strings.TrimSpace(name)}
 	if !validScriptSegment(target.Domain) || !validScriptSegment(target.Name) {
-		return scriptTarget{}, fmt.Errorf("invalid script target %q; domain and script must match [A-Za-z0-9_][A-Za-z0-9_-]*", value)
+		return scriptTarget{}, fmt.Errorf("invalid code task target %q; domain and name must match [A-Za-z0-9_][A-Za-z0-9_-]*", value)
 	}
 	return target, nil
 }
@@ -315,10 +315,10 @@ func discoverScriptApp(appRootFlag string) (string, app.Config, error) {
 }
 
 func scriptCandidateSearch(root string, target scriptTarget) []scriptCandidate {
-	base := filepath.Join(target.Domain, "scripts")
+	base := filepath.Join(target.Domain, "tasks")
 	return []scriptCandidate{
-		{Target: target, Lang: scriptLangGo, Layout: "go-file", Path: filepath.ToSlash(filepath.Join(base, target.Name+".script.go"))},
-		{Target: target, Lang: scriptLangTypeScript, Layout: "typescript-file", Path: filepath.ToSlash(filepath.Join(base, target.Name+".script.ts"))},
+		{Target: target, Lang: scriptLangGo, Layout: "go-file", Path: filepath.ToSlash(filepath.Join(base, target.Name+".task.go"))},
+		{Target: target, Lang: scriptLangTypeScript, Layout: "typescript-file", Path: filepath.ToSlash(filepath.Join(base, target.Name+".task.ts"))},
 		{Target: target, Lang: scriptLangGo, Layout: "go-dir", Path: filepath.ToSlash(filepath.Join(base, target.Name, "main.go"))},
 		{Target: target, Lang: scriptLangTypeScript, Layout: "typescript-dir", Path: filepath.ToSlash(filepath.Join(base, target.Name, "index.ts"))},
 	}
@@ -347,7 +347,7 @@ func resolveScriptCandidate(root string, target scriptTarget, lang string) (scri
 
 func missingScriptError(target scriptTarget, searched []scriptCandidate, lang string) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "script %q not found", target.Domain+":"+target.Name)
+	fmt.Fprintf(&b, "code task %q not found", scriptTargetString(target))
 	if lang != "" {
 		fmt.Fprintf(&b, " for language %s", lang)
 	}
@@ -362,11 +362,11 @@ func missingScriptError(target scriptTarget, searched []scriptCandidate, lang st
 
 func ambiguousScriptError(target scriptTarget, matches []scriptCandidate) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "script %q is ambiguous:\n", target.Domain+":"+target.Name)
+	fmt.Fprintf(&b, "code task %q is ambiguous:\n", scriptTargetString(target))
 	for _, candidate := range matches {
 		fmt.Fprintf(&b, "  %s\n", candidate.Path)
 	}
-	b.WriteString("\nUse --lang go or --lang typescript when language is ambiguous, or remove duplicate script layouts.")
+	b.WriteString("\nUse --lang go or --lang typescript when language is ambiguous, or remove duplicate task layouts.")
 	return errors.New(b.String())
 }
 
@@ -380,8 +380,8 @@ func listScriptCandidates(root string) ([]scriptCandidate, error) {
 		if !entry.IsDir() || !validScriptSegment(entry.Name()) {
 			continue
 		}
-		scriptsDir := filepath.Join(root, entry.Name(), "scripts")
-		if info, err := os.Stat(scriptsDir); err != nil || !info.IsDir() {
+		tasksDir := filepath.Join(root, entry.Name(), "tasks")
+		if info, err := os.Stat(tasksDir); err != nil || !info.IsDir() {
 			continue
 		}
 		candidates, err := listDomainScriptCandidates(root, entry.Name())
@@ -399,8 +399,8 @@ func listScriptCandidates(root string) ([]scriptCandidate, error) {
 }
 
 func listDomainScriptCandidates(root, domain string) ([]scriptCandidate, error) {
-	scriptsDir := filepath.Join(root, domain, "scripts")
-	entries, err := os.ReadDir(scriptsDir)
+	tasksDir := filepath.Join(root, domain, "tasks")
+	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
 		return nil, err
 	}
@@ -409,18 +409,18 @@ func listDomainScriptCandidates(root, domain string) ([]scriptCandidate, error) 
 	for _, entry := range entries {
 		name := entry.Name()
 		switch {
-		case entry.Type().IsRegular() && strings.HasSuffix(name, ".script.go"):
-			scriptName := strings.TrimSuffix(name, ".script.go")
+		case entry.Type().IsRegular() && strings.HasSuffix(name, ".task.go"):
+			scriptName := strings.TrimSuffix(name, ".task.go")
 			target := scriptTarget{Domain: domain, Name: scriptName}
 			if validScriptSegment(scriptName) && !seen[domain+":"+scriptName+":go-file"] {
-				out = append(out, scriptCandidate{Target: target, Lang: scriptLangGo, Layout: "go-file", Path: filepath.ToSlash(filepath.Join(domain, "scripts", name))})
+				out = append(out, scriptCandidate{Target: target, Lang: scriptLangGo, Layout: "go-file", Path: filepath.ToSlash(filepath.Join(domain, "tasks", name))})
 				seen[domain+":"+scriptName+":go-file"] = true
 			}
-		case entry.Type().IsRegular() && strings.HasSuffix(name, ".script.ts"):
-			scriptName := strings.TrimSuffix(name, ".script.ts")
+		case entry.Type().IsRegular() && strings.HasSuffix(name, ".task.ts"):
+			scriptName := strings.TrimSuffix(name, ".task.ts")
 			target := scriptTarget{Domain: domain, Name: scriptName}
 			if validScriptSegment(scriptName) && !seen[domain+":"+scriptName+":typescript-file"] {
-				out = append(out, scriptCandidate{Target: target, Lang: scriptLangTypeScript, Layout: "typescript-file", Path: filepath.ToSlash(filepath.Join(domain, "scripts", name))})
+				out = append(out, scriptCandidate{Target: target, Lang: scriptLangTypeScript, Layout: "typescript-file", Path: filepath.ToSlash(filepath.Join(domain, "tasks", name))})
 				seen[domain+":"+scriptName+":typescript-file"] = true
 			}
 		case entry.IsDir() && validScriptSegment(name):
@@ -468,7 +468,7 @@ func typeScriptScriptCommand(path string) (string, []string, error) {
 	if node, err := execLookPath("node"); err == nil {
 		return node, []string{"--import", "tsx", filepath.ToSlash(path)}, nil
 	}
-	return "", nil, fmt.Errorf("onlava run requires bun or node in PATH for TypeScript scripts")
+	return "", nil, fmt.Errorf("onlava task run requires bun or node in PATH for TypeScript code tasks")
 }
 
 func validateGoScriptBuildTag(path string) error {
@@ -478,7 +478,7 @@ func validateGoScriptBuildTag(path string) error {
 	}
 	first, _, _ := strings.Cut(string(data), "\n")
 	if strings.TrimSpace(strings.TrimPrefix(first, "\ufeff")) != "//go:build ignore" {
-		return fmt.Errorf("single-file Go script %s must start with //go:build ignore", filepath.ToSlash(path))
+		return fmt.Errorf("single-file Go code task %s must start with //go:build ignore", filepath.ToSlash(path))
 	}
 	return nil
 }
@@ -511,7 +511,11 @@ func runScriptProcess(ctx context.Context, root string, cfg app.Config, program 
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("onlava run exited: %w", err)
+		return fmt.Errorf("onlava task run exited: %w", err)
 	}
 	return nil
+}
+
+func scriptTargetString(target scriptTarget) string {
+	return target.Domain + ":" + target.Name
 }

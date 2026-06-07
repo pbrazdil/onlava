@@ -12,7 +12,7 @@ onlava is used in production. The stable v0 surface is intentionally small and G
 
 - **Go source is the app model.** Services, APIs, auth handlers, middleware, Temporal workflows and activities, and cron jobs are discovered from Go code.
 - **One local app server.** `onlava serve` builds once and starts a headless, production-like HTTP server.
-- **Full local dev loop.** `onlava dev` runs the app session with file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
+- **Full local dev loop.** `onlava up` runs the app session with file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
 - **Typed HTTP by default.** onlava decodes path params, query params, headers, cookies, and JSON bodies into Go structs, then encodes typed responses.
 - **Generated internal calls.** Endpoint-to-endpoint calls are rewritten to generated helpers so private access, auth context, and routing semantics are preserved.
 - **Inspectable by tools and agents.** `onlava inspect`, `onlava check`, `onlava logs`, and `onlava harness` expose machine-readable JSON contracts.
@@ -23,7 +23,7 @@ onlava is used in production. The stable v0 surface is intentionally small and G
 Available now:
 
 - `.onlava.json` root discovery
-- `onlava dev`, `onlava serve`, `onlava run`, `onlava build`, `onlava check`
+- `onlava up`, `onlava serve`, `onlava task`, `onlava build`, `onlava check`
 - typed and raw HTTP endpoints
 - public, auth, and private endpoints
 - auth handlers and request auth helpers
@@ -36,8 +36,8 @@ Available now:
 - Temporal workflow/activity and cron local runtime support
 - local HTTPS edge and frontend routing with optional trust-store installation
 - dashboard and API explorer
-- configured generators, SQLC refresh, database sync, and repo task commands
-- app-local operational scripts
+- configured generators, SQLC refresh, database lifecycle commands, and repo task commands
+- app-local code tasks
 - TypeScript client generation
 - JSON/wire benchmark fixture
 
@@ -137,30 +137,29 @@ curl http://127.0.0.1:4000/hello/world
 
 ## Local Development
 
-Use `onlava dev` for the full development platform:
+Use `onlava up` for the full development platform:
 
 ```sh
-onlava dev
+onlava up
 ```
 
 Common options:
 
 ```sh
-onlava dev --port 4000 --listen 127.0.0.1
-onlava dev --json
-onlava dev --detach
-onlava edge dns install
-onlava edge privileged install
-onlava edge install
-onlava edge trust
-onlava attach
-onlava attach --tui
+onlava up --port 4000 --listen 127.0.0.1
+onlava up --json
+onlava up --detach
+onlava system edge dns install
+onlava system edge privileged install
+onlava system edge install
+onlava system edge trust
+onlava logs --follow
 onlava console
 ```
 
-`--detach` starts an agent-backed dev session in the background and returns after the session is registered. `onlava attach` follows the current session logs from VictoriaLogs. `onlava attach --tui` or `onlava console` opens a source-aware terminal console when attached to a real TTY. `onlava down` stops the current or selected session.
+`--detach` starts an agent-backed dev session in the background and returns after the session is registered. `onlava logs --follow` follows the current session logs from VictoriaLogs. `onlava console` opens a source-aware terminal console when attached to a real TTY. `onlava down` stops the current or selected session.
 
-`onlava dev` uses canonical agent-routed session URLs from `.onlava.json` proxy config. Generated local routes default to `https://api.<session>.local.dev`, `https://console.<session>.local.dev`, and frontend routes under the same `local.dev` base. Configured hosts are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `onlava dev --claim-aliases` only when intentionally transferring live aliases to this session. Use `onlava edge dns install`, `onlava edge privileged install`, `onlava edge install`, and `onlava edge trust` when you want trusted wildcard local HTTPS routes on the default HTTPS port; edge syncs managed dnsmasq and Caddy when needed and keeps Caddy user-owned.
+`onlava up` uses canonical agent-routed session URLs from `.onlava.json` proxy config. Generated local routes default to `https://api.<session>.local.dev`, `https://console.<session>.local.dev`, and frontend routes under the same `local.dev` base. Configured hosts are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `onlava up --claim-aliases` only when intentionally transferring live aliases to this session. Use `onlava system edge dns install`, `onlava system edge privileged install`, `onlava system edge install`, and `onlava system edge trust` when you want trusted wildcard local HTTPS routes on the default HTTPS port; edge syncs managed dnsmasq and Caddy when needed and keeps Caddy user-owned.
 
 Example proxy config:
 
@@ -186,29 +185,27 @@ Example proxy config:
 ## CLI Overview
 
 ```text
-onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
-onlava dev --trust [--json]
-onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json] [--tui]
+onlava up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
+onlava logs --follow [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json]
 onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
-onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-onlava edge install|trust|status|restart|uninstall|dns|privileged [--json]
-onlava status --json [--app-root <path>] [--session <id>] [--watch]
+onlava system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+onlava system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+onlava system edge install|trust|status|restart|uninstall|dns|privileged [--json]
+onlava ps --json [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava prune --older-than <duration> [--app-root <path>] [--json]
 onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
 onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
 onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
 onlava worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
-onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
-onlava temporal deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
-onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
+onlava worker deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
+onlava worker deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
+onlava worker deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
 onlava version [--json]
-onlava toolchain list [--json] [--include-source-locks] [--images]
-onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
-onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
-onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
+onlava system toolchain list [--json] [--include-source-locks] [--images]
+onlava system toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
+onlava system toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
+onlava system toolchain path [--json] --tool <name> [--platform <goos/goarch>]
 onlava doctor [--app-root <path>] [--json]
 onlava build [--app-root <path>] [-o <path>]
 onlava check [--app-root <path>] [--json]
@@ -216,28 +213,28 @@ onlava generate [--app-root <path>] [--dry-run] [--json]
 onlava generate client [<app-id>] [--lang typescript] [--output <path>] [--app-root <path>] [--dry-run] [--json]
 onlava generate sqlc [--app-root <path>] [--dry-run] [--json]
 onlava task list [--app-root <path>] [--json]
+onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
 onlava task run <name> [--app-root <path>]
+onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
 onlava task graph --json [--app-root <path>]
-onlava run list [--app-root <path>] [--json]
-onlava run inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
 onlava harness [--app-root <path>] [--json] [--write]
 onlava harness self [--repo-root <path>] [--json] [--write] [--quick|--race|--release]
 onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
-onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|traces|metrics --json [--app-root <path>]
+onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
-onlava admin traces clear --json [--app-root <path>]
+onlava traces list --json [--app-root <path>]
+onlava metrics list --json [--app-root <path>]
+onlava traces clear --json [--app-root <path>]
 onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
 onlava test [--app-root <path>] [go test flags/packages...]
-onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+onlava generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 onlava db psql [--app-root <path>] [psql args...]
 onlava db apply [--app-root <path>] [--json]
 onlava db seed [--app-root <path>] [--dry-run] [--json]
 onlava db setup [--app-root <path>] [--json]
-onlava db sync [--app-root <path>]
 onlava db reset [--app-root <path>]
 onlava db drop [--app-root <path>]
 onlava db snapshot create|restore <name> [--app-root <path>]
-onlava psql [--app-root <path>] [psql args...]
 ```
 
 See [docs/local-contract.md](docs/local-contract.md) for the full command contract and JSON schema list.
@@ -259,7 +256,7 @@ See [docs/local-contract.md](docs/local-contract.md) for the full command contra
 ```sh
 onlava inspect endpoints --json
 onlava inspect wire --json
-onlava gen client --lang typescript --output ./src/onlava-client.ts
+onlava generate client --lang typescript --output ./src/onlava-client.ts
 ```
 
 The generated client understands the app's route model and local wire capabilities. The benchmark fixture in [benchmarks/json-wire](benchmarks/json-wire) compares JSON, wire JSON, binary wire, and automatic wire modes.
@@ -268,21 +265,21 @@ The generated client understands the app's route model and local wire capabiliti
 
 Apps can also configure `generators.clients` and use `onlava generate client` or `onlava generate --dry-run --json` to inspect and run configured generators. `onlava generate sqlc` is for generated source artifacts; it must not apply database schema or seed data.
 
-The DB lifecycle split uses `onlava db apply` for schema/app database mutation, `onlava db seed` for initial data such as `SERVICE/db/seed.sql`, and `onlava db setup` for apply then seed. Seed files fail closed when previously-applied content changes or destructive SQL is detected. `onlava db sync` is the existing deprecated beta mixed command.
+The DB lifecycle split uses `onlava db apply` for schema/app database mutation, `onlava db seed` for initial data such as `SERVICE/db/seed.sql`, and `onlava db setup` for apply then seed. Seed files fail closed when previously-applied content changes or destructive SQL is detected.
 
-`onlava dev` runs the setup lifecycle before app startup when DB setup inputs exist, using the same managed `DatabaseURL` that the app receives. Rebuilds skip setup until the apply config or seed file hashes change.
+`onlava up` runs the setup lifecycle before app startup when DB setup inputs exist, using the same managed `DatabaseURL` that the app receives. Rebuilds skip setup until the apply config or seed file hashes change.
 
 ## Managed Toolchain
 
 The root `onlava.toolchain.json` freezes Onlava-owned local tools, images, plugins, and source lock references for this source version. Managed binaries install under `.onlava/toolchain/` by default, while machine-level edge tools install under `~/.onlava/toolchain/`; set `ONLAVA_TOOLCHAIN_DIR` to use a controlled cache elsewhere.
 
 ```sh
-onlava toolchain list --json
-onlava toolchain sync --json
-onlava toolchain verify --json
+onlava system toolchain list --json
+onlava system toolchain sync --json
+onlava system toolchain verify --json
 ```
 
-Caddy edge, Grafana, Victoria sidecars, and the local Temporal CLI are backing substrate for local capabilities. Caddy edge is managed-toolchain only; for the other tools, use documented env overrides, the managed store, `onlava status --json` substrate records, and the recorded stdout/stderr log paths when intentionally debugging them. They do not silently fall back to system `PATH` binaries.
+Caddy edge, Grafana, Victoria sidecars, and the local Temporal CLI are backing substrate for local capabilities. Caddy edge is managed-toolchain only; for the other tools, use documented env overrides, the managed store, `onlava ps --json` substrate records, and the recorded stdout/stderr log paths when intentionally debugging them. They do not silently fall back to system `PATH` binaries.
 
 ## Observability And Inspection
 
@@ -292,18 +289,18 @@ Useful commands:
 
 ```sh
 onlava logs --session current --limit 200
-onlava attach
-onlava attach --tui
+onlava logs --follow
+onlava console
 onlava logs --session current --source api --level error --jsonl --limit 200
 onlava inspect routes --json
 onlava inspect endpoints --json
-onlava inspect traces --json --session current --since 15m --slowest
-onlava inspect metrics --json --session current --since 1h
-onlava status --json
+onlava traces list --json --session current --since 15m --slowest
+onlava metrics list --json --session current --since 1h
+onlava ps --json
 onlava harness --json --write
 ```
 
-Grafana substrate files are generated under `.onlava/grafana/` when you need to debug them. Shared Temporal and Victoria substrate failures are exposed in `onlava status --json` as `last_exit` / `component_exits` and emit structured dev log events with component, PID, exit code or signal, and log paths. Set `ONLAVA_DEV_GRAFANA=0` to disable Grafana or `ONLAVA_DEV_GRAFANA=1` to require it during `onlava dev` startup.
+Grafana substrate files are generated under `.onlava/grafana/` when you need to debug them. Shared Temporal and Victoria substrate failures are exposed in `onlava ps --json` as `last_exit` / `component_exits` and emit structured dev log events with component, PID, exit code or signal, and log paths. Set `ONLAVA_DEV_GRAFANA=0` to disable Grafana or `ONLAVA_DEV_GRAFANA=1` to require it during `onlava up` startup.
 
 ## Development
 

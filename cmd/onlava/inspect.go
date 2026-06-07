@@ -280,28 +280,23 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 			return err
 		}
 		return writeInspectJSON(stdout, resp)
-	case "traces":
-		resp, err := buildInspectTracesResponse(context.Background(), appRoot, cfg, opts.Trace)
-		if err != nil {
-			return err
-		}
-		return writeInspectJSON(stdout, resp)
-	case "metrics":
-		resp, err := buildInspectMetricsResponse(context.Background(), appRoot, cfg, opts.Trace)
-		if err != nil {
-			return err
-		}
-		return writeInspectJSON(stdout, resp)
 	default:
 		return fmt.Errorf("unknown inspect subject %q", opts.Subject)
 	}
 }
 
 func parseInspectArgs(args []string) (inspectOptions, error) {
+	return parseInspectArgsInternal(args, false)
+}
+
+func parseInspectArgsInternal(args []string, allowObservability bool) (inspectOptions, error) {
 	if len(args) == 0 {
 		return inspectOptions{}, fmt.Errorf("missing inspect subject")
 	}
 	opts := inspectOptions{Subject: args[0]}
+	if !allowObservability && (opts.Subject == "traces" || opts.Subject == "metrics") {
+		return inspectOptions{}, fmt.Errorf("unknown inspect subject %q; use `onlava %s list`", opts.Subject, opts.Subject)
+	}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--json":
@@ -327,14 +322,14 @@ func parseInspectArgs(args []string) (inspectOptions, error) {
 				return inspectOptions{}, fmt.Errorf("missing value for %s", args[i-1])
 			}
 			if opts.Subject != "traces" && opts.Subject != "metrics" {
-				return inspectOptions{}, fmt.Errorf("%s is only supported for inspect traces and metrics", args[i-1])
+				return inspectOptions{}, fmt.Errorf("%s is only supported for traces list and metrics list", args[i-1])
 			}
 			if err := parseInspectTraceFlags(&opts, args[i-1], args[i]); err != nil {
 				return inspectOptions{}, err
 			}
 		case "--slowest":
 			if opts.Subject != "traces" && opts.Subject != "metrics" {
-				return inspectOptions{}, fmt.Errorf("%s is only supported for inspect traces and metrics", args[i])
+				return inspectOptions{}, fmt.Errorf("%s is only supported for traces list and metrics list", args[i])
 			}
 			opts.Trace.Slowest = true
 		default:

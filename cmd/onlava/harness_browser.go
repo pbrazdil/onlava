@@ -135,7 +135,7 @@ func runOnlavaHarnessUI(ctx context.Context, stdout io.Writer, args []string) er
 				Stage:           "browser ui harness",
 				Severity:        "error",
 				Message:         err.Error(),
-				SuggestedAction: "Run `onlava dev --json` for the app or pass --dashboard-url to an existing dashboard.",
+				SuggestedAction: "Run `onlava up --json` for the app or pass --dashboard-url to an existing dashboard.",
 			})
 			return finishHarnessUI(stdout, appRoot, opts, resp)
 		}
@@ -252,7 +252,7 @@ func startHarnessUIDevProcess(ctx context.Context, appRoot string) (*harnessUIDe
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, exe, "dev", "--app-root", appRoot, "--listen", appAddr, "--json")
+	cmd := exec.CommandContext(ctx, exe, "up", "--app-root", appRoot, "--listen", appAddr, "--json")
 	cmd.Dir = appRoot
 	cmd.Env = append(envpolicy.Environ(),
 		"ONLAVA_DEV_DASHBOARD_ADDR="+dashboardAddr,
@@ -315,7 +315,7 @@ func (p *harnessUIDevProcess) scanDevOutput(r io.Reader, ready chan<- harnessUID
 			}
 		case "run.failed", "build.error", "process.compile-error":
 			select {
-			case ready <- harnessUIDevSignal{err: fmt.Errorf("onlava dev failed before dashboard was ready: %s", runEventError(event))}:
+			case ready <- harnessUIDevSignal{err: fmt.Errorf("onlava up failed before dashboard was ready: %s", runEventError(event))}:
 			default:
 			}
 		}
@@ -330,7 +330,7 @@ func (p *harnessUIDevProcess) waitReady(ctx context.Context, ready <-chan harnes
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-p.done:
-			return fmt.Errorf("onlava dev exited before dashboard was ready: %v\n%s", err, p.output.String())
+			return fmt.Errorf("onlava up exited before dashboard was ready: %v\n%s", err, p.output.String())
 		case signal := <-ready:
 			if signal.err != nil {
 				return fmt.Errorf("%w\n%s", signal.err, p.output.String())
@@ -340,7 +340,7 @@ func (p *harnessUIDevProcess) waitReady(ctx context.Context, ready <-chan harnes
 			}
 			return nil
 		case <-timer.C:
-			return fmt.Errorf("timed out waiting for onlava dev readiness\n%s", p.output.String())
+			return fmt.Errorf("timed out waiting for onlava up readiness\n%s", p.output.String())
 		}
 	}
 }

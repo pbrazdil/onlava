@@ -821,7 +821,7 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	agentCmd := exec.CommandContext(ctx, binary, "agent", "--router-listen", "127.0.0.1:0")
+	agentCmd := exec.CommandContext(ctx, binary, "system", "agent", "--router-listen", "127.0.0.1:0")
 	agentCmd.Env = onlavaDevAgentEnv(repo, dashAddr, cacheDir, agentHome, "")
 	agentCmd.Stdout = io.Discard
 	agentCmd.Stderr = io.Discard
@@ -840,7 +840,7 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.CommandContext(ctx, binary, "dev", "--listen", addr)
+	cmd := exec.CommandContext(ctx, binary, "up", "--listen", addr)
 	cmd.Env = onlavaDevAgentEnv(repo, dashAddr, cacheDir, agentHome, frontendAddr)
 	var devOutput strings.Builder
 	cmd.Stdout = &devOutput
@@ -849,7 +849,7 @@ func TestOnlavaDevDashboardNotificationsAndRoutes(t *testing.T) {
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start onlava dev: %v", err)
+		t.Fatalf("start onlava up: %v", err)
 	}
 	defer killOnlavaProcess(t, cancel, cmd)
 

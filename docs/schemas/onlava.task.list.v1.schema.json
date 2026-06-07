@@ -1,23 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://onlava.com/schemas/onlava.task.graph.v1.schema.json",
-  "title": "onlava.task.graph.v1",
+  "$id": "https://onlava.com/schemas/onlava.task.list.v1.schema.json",
+  "title": "onlava.task.list.v1",
   "type": "object",
-  "required": ["schema_version", "app", "nodes", "edges"],
+  "required": ["schema_version", "app", "tasks"],
   "properties": {
-    "schema_version": { "const": "onlava.task.graph.v1" },
+    "schema_version": { "const": "onlava.task.list.v1" },
     "app": { "$ref": "#/$defs/appRef" },
     "tasks": {
       "type": "array",
       "items": { "$ref": "#/$defs/task" }
-    },
-    "nodes": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/node" }
-    },
-    "edges": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/edge" }
     }
   },
   "additionalProperties": false,
@@ -36,8 +28,11 @@
     },
     "task": {
       "type": "object",
-      "required": ["name"],
+      "required": ["target", "kind", "source", "args_accepted"],
       "properties": {
+        "target": { "type": "string" },
+        "kind": { "enum": ["configured", "code"] },
+        "source": { "type": "string" },
         "name": { "type": "string" },
         "cwd": { "type": "string" },
         "run": { "type": "string" },
@@ -48,29 +43,10 @@
         "env_keys": {
           "type": "array",
           "items": { "type": "string" }
-        }
-      },
-      "additionalProperties": false
-    },
-    "node": {
-      "type": "object",
-      "required": ["target", "kind"],
-      "properties": {
-        "target": { "type": "string" },
-        "kind": { "enum": ["configured", "code", "builtin"] },
-        "source": { "type": "string" },
+        },
         "language": { "type": "string" },
+        "layout": { "type": "string" },
         "args_accepted": { "type": "boolean" }
-      },
-      "additionalProperties": false
-    },
-    "edge": {
-      "type": "object",
-      "required": ["from", "to", "kind"],
-      "properties": {
-        "from": { "type": "string" },
-        "to": { "type": "string" },
-        "kind": { "type": "string" }
       },
       "additionalProperties": false
     }

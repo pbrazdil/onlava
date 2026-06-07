@@ -239,7 +239,7 @@ func renderDevConsole(snapshot devConsoleSnapshot) string {
 	if selected == "" {
 		selected = "all"
 	}
-	fmt.Fprintf(&b, "onlava dev session: %s / %s\n", firstNonEmpty(snapshot.AppName, snapshot.AppRoot), firstNonEmpty(snapshot.SessionID, "current"))
+	fmt.Fprintf(&b, "onlava up session: %s / %s\n", firstNonEmpty(snapshot.AppName, snapshot.AppRoot), firstNonEmpty(snapshot.SessionID, "current"))
 	fmt.Fprintf(&b, "[%s]", tabLabel("all", selected == "all"))
 	for i, source := range snapshot.Sources {
 		label := source.Source.ID

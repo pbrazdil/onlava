@@ -121,7 +121,7 @@ func StartProcess(paths Paths, opts StartOptions) error {
 		routerAddr = RouterAddrFromEnv()
 	}
 	routerTLS := opts.RouterTLS || (!opts.RouterHTTP && RouterTLSDefault())
-	args := []string{"agent", "--socket", paths.SocketPath, "--router-listen", routerAddr}
+	args := []string{"system", "agent", "--socket", paths.SocketPath, "--router-listen", routerAddr}
 	if opts.Trust {
 		args = append(args, "--trust")
 	} else if routerTLS {

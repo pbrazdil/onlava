@@ -87,7 +87,7 @@ func runToolchain(ctx context.Context, stdout io.Writer, args []string) error {
 		return renderToolchainStatus(stdout, opts.JSON, opts.All, status)
 	case "path":
 		if opts.Tool == "" {
-			return fmt.Errorf("onlava toolchain path requires --tool <name>")
+			return fmt.Errorf("onlava system toolchain path requires --tool <name>")
 		}
 		status, err := store.Path(ctx, opts.Tool, opts.Platform)
 		if err != nil && !opts.JSON {
@@ -110,7 +110,7 @@ func runToolchain(ctx context.Context, stdout io.Writer, args []string) error {
 
 func parseToolchainArgs(args []string) (toolchainOptions, error) {
 	if len(args) == 0 {
-		return toolchainOptions{}, fmt.Errorf("usage: onlava toolchain list|sync|verify|path [--json]")
+		return toolchainOptions{}, fmt.Errorf("usage: onlava system toolchain list|sync|verify|path [--json]")
 	}
 	opts := toolchainOptions{Command: args[0]}
 	for i := 1; i < len(args); i++ {
@@ -151,7 +151,7 @@ func parseToolchainArgs(args []string) (toolchainOptions, error) {
 		return toolchainOptions{}, fmt.Errorf("unknown toolchain command %q", opts.Command)
 	}
 	if opts.Command == "path" && opts.Tool == "" {
-		return toolchainOptions{}, fmt.Errorf("onlava toolchain path requires --tool <name>")
+		return toolchainOptions{}, fmt.Errorf("onlava system toolchain path requires --tool <name>")
 	}
 	return opts, nil
 }

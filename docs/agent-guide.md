@@ -29,16 +29,16 @@ onlava inspect app --json
 onlava inspect routes --json
 onlava inspect endpoints --json
 onlava inspect wire --json
-onlava toolchain verify --json
+onlava system toolchain verify --json
 ```
 
 During local debugging:
 
 ```sh
-onlava dev
+onlava up
 onlava logs --session current --jsonl --limit 200
-onlava inspect traces --json --session current --since 15m --slowest
-onlava inspect metrics --json --session current --since 1h
+onlava traces list --json --session current --since 15m --slowest
+onlava metrics list --json --session current --since 1h
 ```
 
 Before finishing app work:
@@ -54,7 +54,7 @@ Before finishing onlava repo work:
 ```sh
 go test ./...
 go install ./cmd/onlava
-onlava toolchain verify --json
+onlava system toolchain verify --json
 onlava harness self --json --write
 ```
 
@@ -101,8 +101,8 @@ Use the onlava skill for shared onlava behavior.
 
 ## Local Loop
 ```sh
-onlava dev --detach
-onlava attach
+onlava up --detach
+onlava logs --follow
 ```
 
 ## Validation
@@ -151,40 +151,39 @@ Prefer JSON when output will feed another tool or decision.
 | Inspect build/cache paths | `onlava inspect build --json`, `onlava inspect paths --json` |
 | Inspect generator graph | `onlava inspect generators --json` |
 | Inspect docs knowledge base | `onlava inspect docs --json` |
-| Inspect managed local tools | `onlava toolchain list --json`, `onlava toolchain verify --json` |
-| Install managed local tools | `onlava toolchain sync --json` or `onlava toolchain sync --tool <name> --json` |
-| Inspect local HTTPS edge | `onlava edge status --json` |
+| Inspect managed local tools | `onlava system toolchain list --json`, `onlava system toolchain verify --json` |
+| Install managed local tools | `onlava system toolchain sync --json` or `onlava system toolchain sync --tool <name> --json` |
+| Inspect local HTTPS edge | `onlava system edge status --json` |
 | Run app validation snapshot | `onlava harness --json --write` |
 | Run repo validation snapshot | `onlava harness self --json --write` |
 | Follow logs | `onlava logs --jsonl --session current --limit 200` |
-| Inspect traces/metrics | `onlava inspect traces --json --session current`, `onlava inspect metrics --json --session current` |
-| Generate TypeScript client | `onlava gen client --lang typescript --output <path>` |
+| Inspect traces/metrics | `onlava traces list --json --session current`, `onlava metrics list --json --session current` |
+| Generate TypeScript client | `onlava generate client --lang typescript --output <path>` |
 | Run configured generation | `onlava generate --dry-run --json`, then `onlava generate` |
 | Apply configured DB lifecycle | `onlava db apply --json` |
 | Apply service seed data | `onlava db seed --json` |
 | Setup local DB lifecycle | `onlava db setup --json` |
-| Sync configured dev DB | `onlava db sync` |
 | Connect to managed Postgres | `onlava db psql` |
 | Run repo-local task | `onlava task list`, `onlava task run <name>` |
-| Run app-local operational script | `onlava run list --json`, `onlava run <domain>:<script>` |
+| Run app-local code task | `onlava task list --json`, `onlava task run <domain>:<name> -- [args...]` |
 
-When local dev fails because the host may be missing Go, disk space, memory, or optional tools, run `onlava doctor --json` first. Stay on onlava command surfaces for ordinary app work. Inspect managed dnsmasq, Caddy, Grafana, Victoria, Temporal CLI, Postgres, or Electric details only when intentionally debugging the substrate. Shared substrate failures are visible in `onlava status --json` under `substrates`, including exit metadata and stdout/stderr log paths. Managed Postgres substrate rows describe the reusable physical server only; per-session database URL/name values are exposed through session env. Electric remains session-scoped and is published as a session backend, not a global substrate. Do not install global binaries as a hidden fix; use `onlava edge dns install` for wildcard local DNS, `onlava edge install` for Caddy, `onlava toolchain sync --json` for managed app-root tools, set documented per-tool env overrides for tools that have them, or document the configured external service.
+When local dev fails because the host may be missing Go, disk space, memory, or optional tools, run `onlava doctor --json` first. Stay on onlava command surfaces for ordinary app work. Inspect managed dnsmasq, Caddy, Grafana, Victoria, Temporal CLI, Postgres, or Electric details only when intentionally debugging the substrate. Shared substrate failures are visible in `onlava ps --json` under `substrates`, including exit metadata and stdout/stderr log paths. Managed Postgres substrate rows describe the reusable physical server only; per-session database URL/name values are exposed through session env. Electric remains session-scoped and is published as a session backend, not a global substrate. Do not install global binaries as a hidden fix; use `onlava system edge dns install` for wildcard local DNS, `onlava system edge install` for Caddy, `onlava system toolchain sync --json` for managed app-root tools, set documented per-tool env overrides for tools that have them, or document the configured external service.
 
 Use non-JSON output only for human inspection.
 
 ## Runtime Command Choice
 
-- Use `onlava dev` to run the app session and expose capabilities for local development, debugging, agents, dashboard, logs, traces, metrics, managed dev services, and frontend routing.
-- Use `onlava dev --detach` when the local agent should keep the dev session running.
-- Use `onlava edge dns install`, `onlava edge privileged install`, `onlava edge install`, and `onlava edge trust` when the browser needs trusted wildcard local HTTPS on `127.0.0.1:443`; dnsmasq owns wildcard local DNS, the privileged helper owns that port, forwards raw TCP to user-owned Caddy, and the edge syncs managed dnsmasq/Caddy as needed.
-- Use `onlava attach` to follow a current detached or agent session.
+- Use `onlava up` to run the app session and expose capabilities for local development, debugging, agents, dashboard, logs, traces, metrics, managed dev services, and frontend routing.
+- Use `onlava up --detach` when the local agent should keep the dev session running.
+- Use `onlava system edge dns install`, `onlava system edge privileged install`, `onlava system edge install`, and `onlava system edge trust` when the browser needs trusted wildcard local HTTPS on `127.0.0.1:443`; dnsmasq owns wildcard local DNS, the privileged helper owns that port, forwards raw TCP to user-owned Caddy, and the edge syncs managed dnsmasq/Caddy as needed.
+- Use `onlava logs --follow` to follow a current detached or agent session.
 - Use `onlava down` to stop a session; add `--db`, `--state`, or `--all` only when destructive cleanup is intended.
 - Use `onlava serve` for headless API-role execution. Do not expect dashboard, proxy, watch mode, or dev/admin endpoints.
 - Use `onlava worker` for worker-role execution of native Temporal workers and cron.
 - Use `onlava build` for a deployable binary artifact.
 - Use `onlava generate` for configured file-producing generators. `onlava generate sqlc` is generated-source work only; it must not apply schema or seed data.
-- Use `onlava db apply` to mutate schema/app database setup only. Use `onlava db seed` to apply service-local initial data only; changed previously-applied seeds and destructive seed SQL fail closed with path/line diagnostics. Use `onlava db setup` for the one-command local setup path: apply then seed. `onlava dev` runs that setup lifecycle before app startup when DB setup inputs exist, and skips it on ordinary rebuilds until `database.apply` config or seed file hashes change. Treat `onlava db sync` as the existing deprecated beta mixed command.
-- Use `onlava run list`, `onlava run inspect <domain>:<script>`, and `onlava run <domain>:<script>` for app-local operational scripts. Script flags appear before the target.
+- Use `onlava db apply` to mutate schema/app database setup only. Use `onlava db seed` to apply service-local initial data only; changed previously-applied seeds and destructive seed SQL fail closed with path/line diagnostics. Use `onlava db setup` for the one-command local setup path: apply then seed. `onlava up` runs that setup lifecycle before app startup when DB setup inputs exist, and skips it on ordinary rebuilds until `database.apply` config or seed file hashes change.
+- Use `onlava task list`, `onlava task inspect <target>`, and `onlava task run <target>` for configured repo tasks and app-local code tasks. Configured tasks use plain names; code tasks use `<domain>:<name>`, and task arguments must appear after `--`.
 - Use `onlava task run <name>` only for repo-local workflows that are not core onlava lifecycle commands.
 
 ## Generated And Cache Artifacts
@@ -230,7 +229,7 @@ Recommended workflow:
 ```sh
 onlava inspect endpoints --json
 onlava inspect wire --json
-onlava gen client --lang typescript --output <frontend-or-package-path>/onlava-client.ts
+onlava generate client --lang typescript --output <frontend-or-package-path>/onlava-client.ts
 ```
 
 Client apps should commit generated clients only if that is their established workflow. If committed, app-local `AGENTS.md` must state the output path and require regeneration after endpoint or wire changes.
@@ -246,11 +245,11 @@ cd /Users/petrbrazdil/Repos/onlv
 onlava inspect app --json
 onlava inspect routes --json
 onlava inspect services --json
-onlava edge dns install
-onlava edge privileged install
-onlava edge install
-onlava edge trust
-onlava dev --detach
+onlava system edge dns install
+onlava system edge privileged install
+onlava system edge install
+onlava system edge trust
+onlava up --detach
 onlava logs --session current --jsonl --limit 200
 ```
 
@@ -268,7 +267,7 @@ Generated clients are the application-code integration surface. Agents should us
 - List required environment names in docs; never include values.
 - Do not add new onlava-owned production env vars unless the user explicitly asks for one or an active ExecPlan records the exception. Prefer `.onlava.json`, CLI flags, or checked-in manifests, and update `docs/environment.registry.json` when env is truly required.
 - Process environment wins over local files.
-- Local startup expects app-root `.env` for `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker`.
+- Local startup expects app-root `.env` for `onlava up`, local `onlava serve`, local `onlava task run`, and local `onlava worker`.
 - `.env.local` is optional and overrides `.env` only when the parent process did not already define a key.
 - `onlava serve --env production` can use process environment without a `.env` file.
 - Secret-bearing files are not copied into build workspaces.
@@ -300,8 +299,8 @@ onlava logs --jsonl --limit 200
 Slow or failing request:
 
 ```sh
-onlava inspect traces --json --session current --since 15m --slowest
-onlava inspect metrics --json --session current --since 1h
+onlava traces list --json --session current --since 15m --slowest
+onlava metrics list --json --session current --since 1h
 ```
 
 Generated client mismatch:
@@ -309,7 +308,7 @@ Generated client mismatch:
 ```sh
 onlava inspect endpoints --json
 onlava inspect wire --json
-onlava gen client --lang typescript --output <expected-output>
+onlava generate client --lang typescript --output <expected-output>
 ```
 
 Dashboard UI change:

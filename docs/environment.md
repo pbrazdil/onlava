@@ -4,7 +4,7 @@ This page is the human reference for onlava-owned environment variables. The mac
 
 Prefer `.onlava.json` for stable app configuration. Use environment variables for local overrides, secrets, process identity, or explicit escape hatches. New production env names must be added to the registry with rationale, docs, and tests; otherwise self-harness fails.
 
-Process environment wins over values loaded from `.env` and `.env.local`. `onlava dev`, local `onlava serve`, local `onlava run`, and local `onlava worker` require an app-root `.env`; `.env.local` is optional.
+Process environment wins over values loaded from `.env` and `.env.local`. `onlava up`, local `onlava serve`, local `onlava task run`, and local `onlava worker` require an app-root `.env`; `.env.local` is optional.
 
 ## Agent And Dev Routing
 
@@ -15,16 +15,16 @@ Process environment wins over values loaded from `.env` and `.env.local`. `onlav
 | `ONLAVA_AGENT_ROUTER_ADDR` | user input | Overrides the agent router listen address. Default is `127.0.0.1:9440`. |
 | `ONLAVA_AGENT_ROUTER_TLS` | user input | `0` disables HTTPS routing; `1` forces HTTPS. Default is HTTPS. |
 | `ONLAVA_AGENT_TRUST` | user input | `1` asks the agent to trust the existing local onlava CA when starting HTTPS routing. |
-| `ONLAVA_AGENT_DISABLE` | user input | `1` disables local agent usage. `onlava dev --detach` requires this to be unset. |
+| `ONLAVA_AGENT_DISABLE` | user input | `1` disables local agent usage. `onlava up --detach` requires this to be unset. |
 | `ONLAVA_DEV_CACHE_DIR` | user input | Overrides build/dashboard cache root. This does not change agent home. |
 | `ONLAVA_DEV_DASHBOARD_ADDR` | internal/user input | Overrides the dashboard backend address used by dev sessions. Normally allocated automatically. |
 | `ONLAVA_DEV_DASHBOARD_UI_DIR` | user input | Overrides the built dashboard UI directory used by the dashboard backend. |
-| `ONLAVA_LOCAL_PROXY` | legacy/internal | `1` is rejected by normal `onlava dev`; the legacy local proxy variable remains only for internal proxy code and tests. |
-| `ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL` | legacy/internal | Legacy local proxy trust-install control; normal `onlava dev` uses the agent trust path instead. |
-| `ONLAVA_LOCAL_PROXY_HTTP_PORT` | legacy/internal | Legacy local proxy HTTP port override, not used by normal `onlava dev`. |
-| `ONLAVA_LOCAL_PROXY_HTTPS_PORT` | legacy/internal | Legacy local proxy HTTPS port override, not used by normal `onlava dev`. |
+| `ONLAVA_LOCAL_PROXY` | legacy/internal | `1` is rejected by normal `onlava up`; the legacy local proxy variable remains only for internal proxy code and tests. |
+| `ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL` | legacy/internal | Legacy local proxy trust-install control; normal `onlava up` uses the agent trust path instead. |
+| `ONLAVA_LOCAL_PROXY_HTTP_PORT` | legacy/internal | Legacy local proxy HTTP port override, not used by normal `onlava up`. |
+| `ONLAVA_LOCAL_PROXY_HTTPS_PORT` | legacy/internal | Legacy local proxy HTTPS port override, not used by normal `onlava up`. |
 | `ONLAVA_FRONTEND_<NAME>_ADDR` | user input | Manual frontend upstream override, for example `ONLAVA_FRONTEND_PULSE_ADDR=127.0.0.1:4321`. |
-| `ONLAVA_DISABLE_FRONTEND_PROXY` | legacy/internal | Disables frontend proxy/upstream discovery in the legacy local proxy; normal `onlava dev` uses agent-routed frontend sessions. |
+| `ONLAVA_DISABLE_FRONTEND_PROXY` | legacy/internal | Disables frontend proxy/upstream discovery in the legacy local proxy; normal `onlava up` uses agent-routed frontend sessions. |
 
 ## App Child Identity
 
@@ -46,7 +46,7 @@ These are injected by onlava into generated app processes. App code may read the
 | `ONLAVA_APP_ROOT_HASH` | injected | Stable hash of the app root path. |
 | `ONLAVA_BRANCH` | injected | Git branch captured for the dev session. |
 | `ONLAVA_WORKTREE` | injected | Worktree directory name captured for the dev session. |
-| `ONLAVA_DEV_SUPERVISOR` | injected | Marks a child process launched by `onlava dev`. |
+| `ONLAVA_DEV_SUPERVISOR` | injected | Marks a child process launched by `onlava up`. |
 | `ONLAVA_DEV_SUPERVISOR_PID` | injected | Parent dev supervisor PID. |
 | `ONLAVA_PARENT_MONITOR` | injected/user input | Enables runtime parent monitoring. |
 | `ONLAVA_PARENT_MONITOR_PID` | injected | Parent PID watched by runtime parent monitoring. |
@@ -54,7 +54,7 @@ These are injected by onlava into generated app processes. App code may read the
 | `ONLAVA_CORS_ALLOW_ORIGINS` | user input | Comma-separated production CORS allowlist outside dev endpoint mode. |
 | `ONLAVA_DEV_REPORT_URL` | injected | Dev dashboard report endpoint. |
 | `ONLAVA_DEV_REPORT_TOKEN` | injected | Token used by the app child to report logs/traces to the dev dashboard. |
-| `ONLAVA_DEV_DETACHED_CHILD` | internal | Marks the background child used by `onlava dev --detach`. |
+| `ONLAVA_DEV_DETACHED_CHILD` | internal | Marks the background child used by `onlava up --detach`. |
 | `ONLAVA_PUBLIC_BASE_URL` | injected | Public API base URL advertised to app code. |
 | `ONLAVA_STANDALONE_DEV` | internal | Marks a generated runtime process started in standalone dev mode. |
 
@@ -185,9 +185,9 @@ onlava also injects standard OpenTelemetry endpoint variables when Victoria side
 | `ONLAVA_ONLV_SMOKE_ROOT` | user input | ONLV checkout root for the two-worktree release-gate smoke. |
 | `ONLAVA_ONLV_SMOKE_LOG_DIR` | user input | Log directory override for the ONLV two-worktree release-gate smoke. |
 | `ONLAVA_TEST_DATABASE_URL` | test input | PostgreSQL admin URL for integration tests that need a real database; tests create package-scoped databases from it. |
-| `ONLAVA_TEST_WATCH_BACKUP_POLL_MS` | test escape hatch | Overrides `onlava dev` file-watch backup poll interval in integration tests so missed fsnotify events do not wait on the production fallback delay. |
-| `ONLAVA_TEST_WATCH_POLL_MS` | test escape hatch | Overrides `onlava dev` file-watch polling interval in integration tests that intentionally exercise polling paths. |
-| `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS` | test escape hatch | Overrides `onlava dev` file-watch settle delay in integration tests so reload assertions do not wait on production debounce timing. This is intentionally registry-approved because the process under test is production dev code. |
+| `ONLAVA_TEST_WATCH_BACKUP_POLL_MS` | test escape hatch | Overrides `onlava up` file-watch backup poll interval in integration tests so missed fsnotify events do not wait on the production fallback delay. |
+| `ONLAVA_TEST_WATCH_POLL_MS` | test escape hatch | Overrides `onlava up` file-watch polling interval in integration tests that intentionally exercise polling paths. |
+| `ONLAVA_TEST_WATCH_SETTLE_DELAY_MS` | test escape hatch | Overrides `onlava up` file-watch settle delay in integration tests so reload assertions do not wait on production debounce timing. This is intentionally registry-approved because the process under test is production dev code. |
 | `ONLAVA_SHADCN_REGISTRY_ROOT` | user input | UI registry root override for the dashboard shadcn wrapper. |
 | `ONLAVA_SHADCN_VERSION` | user input | shadcn CLI version override for the dashboard wrapper. |
 | `ONLAVA_SHADCN_OVERWRITE` | user input | `1` permits overwrite operations in the dashboard shadcn wrapper. |

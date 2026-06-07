@@ -126,7 +126,7 @@ func (c *runConsole) InitialBuildFailed(err error, urls runURLs) {
 	if urls.Dashboard != "" {
 		c.printf(c.err, "  Development Dashboard URL: %s\n", urls.Dashboard)
 	}
-	c.printf(c.err, "  onlava dev is still running and will rebuild after file changes.\n\n")
+	c.printf(c.err, "  onlava up is still running and will rebuild after file changes.\n\n")
 }
 
 func (c *runConsole) RebuildFailed(err error) {

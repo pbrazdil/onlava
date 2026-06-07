@@ -70,7 +70,7 @@ Goal: schemas should not just be valid JSON; CLI outputs should conform to them.
 
 Deliverables:
 
-- Validate representative command outputs for `onlava inspect ... --json`, `onlava check --json`, `onlava harness --json`, `onlava harness self --json`, `onlava logs --jsonl`, and `onlava admin ... --json`.
+- Validate representative command outputs for `onlava inspect ... --json`, `onlava check --json`, `onlava harness --json`, `onlava harness self --json`, `onlava logs --jsonl`, and `onlava traces clear --json`.
 - Prefer a small internal validator for the subset of JSON Schema used by onlava before adding a new dependency.
 - If a dependency becomes necessary, document the concrete payoff in the architecture allowlist.
 

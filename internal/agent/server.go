@@ -578,9 +578,9 @@ func (s *Server) handleSession(w http.ResponseWriter, req *http.Request) {
 		if ok && req.URL.Query().Get("signal") == "1" && (session.OwnerPID > 0 || session.Owner.PID > 0) {
 			owner, err := ownerForSignal(session.OwnerPID, session.Owner)
 			if err != nil {
-				slog.Warn("skipping onlava dev owner interrupt because owner fingerprint did not verify", "pid", firstPositive(session.Owner.PID, session.OwnerPID), "err", err)
+				slog.Warn("skipping onlava up owner interrupt because owner fingerprint did not verify", "pid", firstPositive(session.Owner.PID, session.OwnerPID), "err", err)
 			} else if err := interruptProcess(owner.PID); err != nil {
-				slog.Warn("failed to interrupt onlava dev owner", "pid", owner.PID, "err", err)
+				slog.Warn("failed to interrupt onlava up owner", "pid", owner.PID, "err", err)
 			}
 		}
 		writeJSON(w, http.StatusOK, RegisterResponse{Session: session, Deleted: ok})

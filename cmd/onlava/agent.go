@@ -442,7 +442,7 @@ func classifySessionOwnerStatus(session localagent.Session) (string, string) {
 	}
 	owner := session.Owner
 	if owner.PID != ownerPID {
-		owner = localagent.CaptureOwner(ownerPID, "onlava dev")
+		owner = localagent.CaptureOwner(ownerPID, "onlava up")
 	}
 	if owner.PID <= 0 {
 		owner.PID = ownerPID
@@ -469,7 +469,7 @@ func sessionOwnerLive(session localagent.Session) bool {
 	}
 	owner := session.Owner
 	if owner.PID != ownerPID {
-		owner = localagent.CaptureOwner(ownerPID, "onlava dev")
+		owner = localagent.CaptureOwner(ownerPID, "onlava up")
 	} else if owner.PID <= 0 {
 		owner.PID = ownerPID
 	}

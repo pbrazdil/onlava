@@ -43,7 +43,7 @@ type temporalDeploymentResult struct {
 
 func temporalCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava temporal deployment set-current|ramp|drain [flags]")
+		return fmt.Errorf("usage: onlava worker deployment set-current|ramp|drain [flags]")
 	}
 	switch args[0] {
 	case "deployment":
@@ -55,7 +55,7 @@ func temporalCommand(args []string) error {
 
 func temporalDeploymentCommand(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava temporal deployment set-current|ramp|drain [flags]")
+		return fmt.Errorf("usage: onlava worker deployment set-current|ramp|drain [flags]")
 	}
 	action := args[0]
 	switch action {
@@ -201,7 +201,7 @@ func runTemporalDeployment(ctx context.Context, action string, opts temporalDepl
 		enc.SetIndent("", "  ")
 		return enc.Encode(result)
 	}
-	if _, err := fmt.Fprintf(stdout, "temporal deployment %s applied to %s build %s\n", action, result.Deployment, result.BuildID); err != nil {
+	if _, err := fmt.Fprintf(stdout, "worker deployment %s applied to %s build %s\n", action, result.Deployment, result.BuildID); err != nil {
 		return err
 	}
 	return nil

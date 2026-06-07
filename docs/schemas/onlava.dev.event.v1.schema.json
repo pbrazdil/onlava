@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://onlava.com/schemas/onlava.dev.event.v1.schema.json",
   "title": "onlava.dev.event.v1",
-  "description": "Schema for structured `onlava dev`, `onlava logs --jsonl`, and `onlava attach --jsonl` event lines.",
+  "description": "Schema for structured `onlava up` and `onlava logs --jsonl` event lines.",
   "type": "object",
   "required": ["schema_version", "app", "id", "time", "source", "level", "message", "parse"],
   "properties": {

@@ -241,7 +241,7 @@ func rejectLiveDuplicateDevSession(root, sessionID string, existing []localagent
 		if sessionOwnerLive(session) {
 			pid := firstPositiveInt(session.OwnerPID, session.Owner.PID)
 			if pid > 0 && pid != os.Getpid() {
-				return fmt.Errorf("onlava dev session %q is already running for app root %s under owner PID %d", sessionID, root, pid)
+				return fmt.Errorf("onlava up session %q is already running for app root %s under owner PID %d", sessionID, root, pid)
 			}
 		}
 	}

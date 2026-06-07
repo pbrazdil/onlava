@@ -61,15 +61,11 @@ func TestParseDevArgsRejectsLegacyProxyFlags(t *testing.T) {
 	t.Parallel()
 
 	_, err := parseDevArgs([]string{"--proxy"})
-	if err == nil || !strings.Contains(err.Error(), "onlava edge install") {
+	if err == nil || !strings.Contains(err.Error(), "onlava system edge install") {
 		t.Fatalf("parseDevArgs(--proxy) error = %v, want trusted edge replacement hint", err)
 	}
-	opts, err := parseDevArgs([]string{"--trust", "--json"})
-	if err != nil {
-		t.Fatalf("parseDevArgs(--trust) returned error: %v", err)
-	}
-	if !opts.Trust || !opts.JSON {
-		t.Fatalf("opts = %+v, want trust JSON setup", opts)
+	if _, err := parseDevArgs([]string{"--trust", "--json"}); err == nil || !strings.Contains(err.Error(), "onlava system trust") {
+		t.Fatalf("parseDevArgs(--trust) error = %v, want system trust migration hint", err)
 	}
 }
 
@@ -253,7 +249,7 @@ func TestDevCommandPreservesTrustSkipEnv(t *testing.T) {
 	}
 }
 
-func TestDevCommandTrustRunsEdgeTrust(t *testing.T) {
+func TestSystemTrustRunsEdgeTrust(t *testing.T) {
 	prev := runWithWatchFunc
 	defer func() { runWithWatchFunc = prev }()
 	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
@@ -274,13 +270,13 @@ func TestDevCommandTrustRunsEdgeTrust(t *testing.T) {
 	}
 
 	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
-		t.Fatal("watcher should not run when --trust performs edge trust setup")
+		t.Fatal("watcher should not run when system trust performs edge trust setup")
 		return nil
 	}
 
-	err = devCommand([]string{"--trust"})
+	err = systemCommand([]string{"trust"})
 	if err != nil {
-		t.Fatalf("devCommand --trust returned error: %v", err)
+		t.Fatalf("system trust returned error: %v", err)
 	}
 }
 
@@ -297,10 +293,6 @@ func TestDevCommandRejectsLegacyProxyEnv(t *testing.T) {
 	err := devCommand([]string{})
 	if err == nil || !strings.Contains(err.Error(), "ONLAVA_LOCAL_PROXY") {
 		t.Fatalf("devCommand with ONLAVA_LOCAL_PROXY=1 error = %v, want env rejection", err)
-	}
-	err = devCommand([]string{"--trust"})
-	if err == nil || !strings.Contains(err.Error(), "ONLAVA_LOCAL_PROXY") {
-		t.Fatalf("devCommand --trust with ONLAVA_LOCAL_PROXY=1 error = %v, want env rejection", err)
 	}
 }
 

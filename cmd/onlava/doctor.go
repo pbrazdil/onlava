@@ -130,7 +130,7 @@ type doctorAppFeatures struct {
 	AtlasRelevant        bool
 	FrontendConfigured   bool
 	TypeScriptTemporal   bool
-	TypeScriptScripts    bool
+	TypeScriptTasks      bool
 	DockerRelevant       bool
 	DatabaseApplyCommand bool
 }
@@ -510,7 +510,7 @@ func doctorFeatures(cfg appcfg.Config, app *doctorAppInfo) doctorAppFeatures {
 	features.AtlasRelevant = sqlcUsesAtlas(cfg.Generators.SQLC)
 	features.DatabaseApplyCommand = strings.TrimSpace(cfg.Database.Apply.Command) != ""
 	features.DockerRelevant = appUsesDocker(cfg)
-	features.TypeScriptScripts = appHasTypeScriptScripts(app.Root)
+	features.TypeScriptTasks = appHasTypeScriptTasks(app.Root)
 	return features
 }
 
@@ -547,7 +547,7 @@ func appUsesDocker(cfg appcfg.Config) bool {
 	return false
 }
 
-func appHasTypeScriptScripts(root string) bool {
+func appHasTypeScriptTasks(root string) bool {
 	found := false
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || found {
@@ -561,7 +561,7 @@ func appHasTypeScriptScripts(root string) bool {
 			return nil
 		}
 		name := d.Name()
-		if strings.HasSuffix(name, ".script.ts") || name == "index.ts" && strings.Contains(filepath.ToSlash(path), "/scripts/") {
+		if strings.HasSuffix(name, ".task.ts") || name == "index.ts" && strings.Contains(filepath.ToSlash(path), "/tasks/") {
 			found = true
 		}
 		return nil
@@ -608,7 +608,7 @@ func doctorDependencyChecks(ctx context.Context, deps doctorProbeDeps, features 
 			Command:         "psql",
 			VersionArgs:     []string{"--version"},
 			Relevant:        true,
-			MissingMessage:  "psql not found; only needed for `onlava db psql`, `onlava psql`, and manual database shell workflows",
+			MissingMessage:  "psql not found; only needed for `onlava db psql` and manual database shell workflows",
 			SuggestedAction: "Install PostgreSQL client tools if you need database shell access.",
 		},
 		{
@@ -645,7 +645,7 @@ func doctorDependencyChecks(ctx context.Context, deps doctorProbeDeps, features 
 			VersionArgs:     []string{"version"},
 			Relevant:        appFound && features.SQLCConfigured,
 			MissingMessage:  "sqlc not found; configured SQLC generation requires it",
-			SuggestedAction: "Install sqlc if you need `onlava generate sqlc` or `onlava db sync` with SQLC generation.",
+			SuggestedAction: "Install sqlc if you need `onlava generate sqlc`.",
 		},
 		{
 			ID:              "tool.git",
@@ -675,14 +675,14 @@ func bunMissingMessage(features doctorAppFeatures, appFound bool) string {
 	if features.TypeScriptTemporal {
 		uses = append(uses, "TypeScript Temporal workers")
 	}
-	if features.TypeScriptScripts {
-		uses = append(uses, "TypeScript operational scripts")
+	if features.TypeScriptTasks {
+		uses = append(uses, "TypeScript code tasks")
 	}
 	if len(uses) == 0 {
 		if appFound {
-			return "bun not found; only needed for dashboard UI, benchmarks, TypeScript workers, or TypeScript scripts"
+			return "bun not found; only needed for dashboard UI, benchmarks, TypeScript workers, or TypeScript code tasks"
 		}
-		return "bun not found; optional unless you work on dashboard UI, benchmarks, TypeScript workers, or TypeScript scripts"
+		return "bun not found; optional unless you work on dashboard UI, benchmarks, TypeScript workers, or TypeScript code tasks"
 	}
 	return "bun not found; this app may need it for " + strings.Join(uses, ", ")
 }

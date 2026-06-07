@@ -36,11 +36,11 @@ The command runs:
 - `onlava inspect wire --json`
 - `onlava inspect build --json`
 - `onlava inspect paths --json`
-- `onlava inspect traces --json`
-- `onlava inspect metrics --json`
+- `onlava traces list --json`
+- `onlava metrics list --json`
 - `onlava inspect docs --json`
 
-`onlava inspect traces --json` and `onlava inspect metrics --json` are included
+`onlava traces list --json` and `onlava metrics list --json` are included
 as beta diagnostic inputs for agents. Their schema versions are useful for
 automation, but their rollup and backend-selection semantics are not stable v0
 API yet; see [local-contract.md](local-contract.md).

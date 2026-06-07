@@ -21,7 +21,7 @@ onlava harness self --json
 - [Local Contract](local-contract.md): CLI grammar, stable JSON schemas, generated artifacts, and local runtime contracts.
 - [Environment Reference](environment.md): onlava-owned env vars, app-injected env, and local override escape hatches.
 - [App Development Cookbook](app-development-cookbook.md): practical recipes for building onlava apps.
-- [Grafana Dev Integration](grafana.md): local Grafana provisioning and environment controls for `onlava dev`.
+- [Grafana Dev Integration](grafana.md): local Grafana provisioning and environment controls for `onlava up`.
 - [Harness Engineering](harness-engineering.md): agent validation loop, harness outputs, and self-harness expectations.
 - [Execution Plan Standard](../PLANS.md): required structure for long-running agent-executable implementation plans.
 
@@ -42,7 +42,7 @@ Historical PRDs may describe shipped design intent rather than the current contr
 
 - [Proto/Wire PRD](PRD-2-proto.md): binary wire and generated transport plan.
 - [Release Readiness PRD](PRD-3-release.md): audit and recommendations for freezing a smaller production-ready v0.
-- [Dev/Run Command Split PRD](PRD-4-devrun.md): historical product direction for `onlava dev`, the headless runtime command now spelled `onlava serve`, and `onlava build`.
+- [Dev/Run Command Split PRD](PRD-4-devrun.md): historical product direction for the local/headless command split, the headless runtime command now spelled `onlava serve`, and `onlava build`.
 
 ## Schemas
 

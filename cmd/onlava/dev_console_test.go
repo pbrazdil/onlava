@@ -41,7 +41,7 @@ func TestRenderDevConsoleShowsSourcesLogsAndExpandedJSON(t *testing.T) {
 
 	out := renderDevConsole(snapshot)
 	for _, want := range []string{
-		"onlava dev session: billing / feature-x",
+		"onlava up session: billing / feature-x",
 		"worker:typescript",
 		"activity failed",
 		"activity=SyncUser",

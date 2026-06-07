@@ -183,7 +183,7 @@ func grafanaDashboardFiles(cfg grafanaConfig) map[string][]byte {
 func grafanaOverviewDashboard(cfg grafanaConfig) map[string]any {
 	requestDuration := grafanaMetricSelector(grafanaRequestDurationMetricName, `onlava_session_id=~"$session"`)
 	errorDuration := grafanaMetricSelector(grafanaRequestDurationMetricName, `onlava_session_id=~"$session"`, `onlava_is_error="true"`)
-	dashboard := baseGrafanaDashboard(grafanaOverviewUID, "onlava dev overview", []any{
+	dashboard := baseGrafanaDashboard(grafanaOverviewUID, "onlava up overview", []any{
 		statPanel(1, "Requests observed", metricTarget(fmt.Sprintf("count_over_time(%s[15m])", requestDuration)), 0, 0, 6, 4),
 		statPanel(2, "Latest latency", metricTarget(requestDuration), 6, 0, 6, 4),
 		timeSeriesPanel(3, "Request duration", []any{metricTarget(requestDuration)}, 0, 4, 12, 8),
@@ -201,7 +201,7 @@ func grafanaOverviewDashboard(cfg grafanaConfig) map[string]any {
 }
 
 func grafanaLogsDashboard(cfg grafanaConfig) map[string]any {
-	dashboard := baseGrafanaDashboard(grafanaLogsDashboardUID, "onlava dev logs", []any{
+	dashboard := baseGrafanaDashboard(grafanaLogsDashboardUID, "onlava up logs", []any{
 		logsPanel(1, "Log stream", "*", 0, 0, 24, 10),
 		logsPanel(2, "Errors", `{level=~"error|fatal"}`, 0, 10, 24, 8),
 	})
@@ -213,7 +213,7 @@ func grafanaEndpointDashboard(cfg grafanaConfig) map[string]any {
 	requestDuration := grafanaRequestDurationMetricName
 	endpointDuration := grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`, `onlava_service="$service"`, `onlava_endpoint="$endpoint"`)
 	endpointErrors := grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`, `onlava_service="$service"`, `onlava_endpoint="$endpoint"`, `onlava_is_error="true"`)
-	dashboard := baseGrafanaDashboard(grafanaEndpointUID, "onlava dev endpoint", []any{
+	dashboard := baseGrafanaDashboard(grafanaEndpointUID, "onlava up endpoint", []any{
 		timeSeriesPanel(1, "Endpoint latency", []any{metricTarget(endpointDuration)}, 0, 0, 12, 8),
 		timeSeriesPanel(2, "Endpoint errors", []any{metricTarget(fmt.Sprintf(`count_over_time(%s[5m])`, endpointErrors))}, 12, 0, 12, 8),
 		logsPanel(3, "Recent logs", "*", 0, 8, 24, 8),
@@ -232,7 +232,7 @@ func grafanaTemporalDashboard(cfg grafanaConfig) map[string]any {
 	requestDuration := grafanaRequestDurationMetricName
 	temporalDuration := grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`, `onlava_temporal="true"`)
 	temporalErrors := grafanaMetricSelector(requestDuration, `onlava_session_id=~"$session"`, `onlava_temporal="true"`, `onlava_is_error="true"`)
-	dashboard := baseGrafanaDashboard(grafanaTemporalUID, "onlava dev temporal", []any{
+	dashboard := baseGrafanaDashboard(grafanaTemporalUID, "onlava up temporal", []any{
 		statPanel(1, "Temporal spans", metricTarget(fmt.Sprintf("count_over_time(%s[15m])", temporalDuration)), 0, 0, 6, 4),
 		statPanel(2, "Latest duration", metricTarget(temporalDuration), 6, 0, 6, 4),
 		timeSeriesPanel(3, "Temporal duration", []any{metricTarget(temporalDuration)}, 0, 4, 12, 8),

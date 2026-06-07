@@ -48,7 +48,7 @@ func runDetachedDev(args []string, opts devOptions) error {
 	}
 
 	if localagent.DisabledByEnv() {
-		return fmt.Errorf("onlava dev --detach requires the local onlava agent; unset ONLAVA_AGENT_DISABLE")
+		return fmt.Errorf("onlava up --detach requires the local onlava agent; unset ONLAVA_AGENT_DISABLE")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), detachedDevStartupTimeout)
 	defer cancel()
@@ -57,7 +57,7 @@ func runDetachedDev(args []string, opts devOptions) error {
 		return err
 	}
 	if client == nil {
-		return fmt.Errorf("onlava dev --detach requires the local onlava agent")
+		return fmt.Errorf("onlava up --detach requires the local onlava agent")
 	}
 	if err := rejectDetachedDuplicateDevSession(ctx, client, root, opts); err != nil {
 		return err
@@ -84,7 +84,7 @@ func runDetachedDev(args []string, opts devOptions) error {
 	if err != nil {
 		return err
 	}
-	childArgs := append([]string{"dev"}, devArgsForDetachedChild(args, root)...)
+	childArgs := append([]string{"up"}, devArgsForDetachedChild(args, root)...)
 	cmd := exec.Command(exe, childArgs...)
 	cmd.Dir = root
 	cmd.Env = append(envpolicy.Environ(), detachedDevChildEnv+"=1")
@@ -100,7 +100,7 @@ func runDetachedDev(args []string, opts devOptions) error {
 	if err != nil {
 		_ = interruptProcessTree(cmd)
 		_ = cmd.Process.Release()
-		return fmt.Errorf("detached onlava dev process %d did not register an agent session before timeout: %w; see %s", cmd.Process.Pid, err, logPath)
+		return fmt.Errorf("detached onlava up process %d did not register an agent session before timeout: %w; see %s", cmd.Process.Pid, err, logPath)
 	}
 	if err := cmd.Process.Release(); err != nil {
 		return err
@@ -109,7 +109,7 @@ func runDetachedDev(args []string, opts devOptions) error {
 		SchemaVersion: "onlava.dev.detach.v1",
 		PID:           session.OwnerPID,
 		LogPath:       logPath,
-		AttachCommand: fmt.Sprintf("onlava attach --app-root %q --session %s", root, session.SessionID),
+		AttachCommand: fmt.Sprintf("onlava logs --follow --app-root %q --session %s", root, session.SessionID),
 		DownCommand:   fmt.Sprintf("onlava down --session %s", session.SessionID),
 		Session:       session,
 	})

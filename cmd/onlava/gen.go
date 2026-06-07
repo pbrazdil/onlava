@@ -20,7 +20,7 @@ type genClientOptions struct {
 
 func genCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage:\n  onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
+		return fmt.Errorf("usage:\n  onlava generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]")
 	}
 	switch args[0] {
 	case "client":

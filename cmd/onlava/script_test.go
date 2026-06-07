@@ -44,10 +44,10 @@ func TestScriptResolverFindsLayoutsAndAmbiguity(t *testing.T) {
 	t.Parallel()
 
 	root := scriptFixtureRoot(t)
-	writeTestAppFile(t, root, "billing/scripts/reconcile.script.go", "//go:build ignore\n\npackage main\n")
-	writeTestAppFile(t, root, "billing/scripts/reconcile.script.ts", "console.log('ts')\n")
-	writeTestAppFile(t, root, "billing/scripts/backfill/main.go", "package main\nfunc main() {}\n")
-	writeTestAppFile(t, root, "billing/scripts/import/index.ts", "console.log('import')\n")
+	writeTestAppFile(t, root, "billing/tasks/reconcile.task.go", "//go:build ignore\n\npackage main\n")
+	writeTestAppFile(t, root, "billing/tasks/reconcile.task.ts", "console.log('ts')\n")
+	writeTestAppFile(t, root, "billing/tasks/backfill/main.go", "package main\nfunc main() {}\n")
+	writeTestAppFile(t, root, "billing/tasks/import/index.ts", "console.log('import')\n")
 
 	scripts, err := listScriptCandidates(root)
 	if err != nil {
@@ -58,7 +58,7 @@ func TestScriptResolverFindsLayoutsAndAmbiguity(t *testing.T) {
 	}
 
 	target, _ := parseScriptTarget("billing:reconcile")
-	if _, _, err := resolveScriptCandidate(root, target, ""); err == nil || !strings.Contains(err.Error(), "ambiguous") || !strings.Contains(err.Error(), "reconcile.script.go") || !strings.Contains(err.Error(), "reconcile.script.ts") {
+	if _, _, err := resolveScriptCandidate(root, target, ""); err == nil || !strings.Contains(err.Error(), "ambiguous") || !strings.Contains(err.Error(), "reconcile.task.go") || !strings.Contains(err.Error(), "reconcile.task.ts") {
 		t.Fatalf("ambiguity error = %v", err)
 	}
 	goCandidate, _, err := resolveScriptCandidate(root, target, scriptLangGo)
@@ -70,7 +70,7 @@ func TestScriptResolverFindsLayoutsAndAmbiguity(t *testing.T) {
 	}
 
 	missing, _ := parseScriptTarget("billing:missing")
-	if _, searched, err := resolveScriptCandidate(root, missing, ""); err == nil || len(searched) != 4 || !strings.Contains(err.Error(), "billing/scripts/missing.script.go") {
+	if _, searched, err := resolveScriptCandidate(root, missing, ""); err == nil || len(searched) != 4 || !strings.Contains(err.Error(), "billing/tasks/missing.task.go") {
 		t.Fatalf("missing err = %v searched=%+v", err, searched)
 	}
 }
@@ -79,7 +79,7 @@ func TestScriptInspectJSON(t *testing.T) {
 	t.Parallel()
 
 	root := scriptFixtureRoot(t)
-	writeTestAppFile(t, root, "billing/scripts/reconcile/main.go", "package main\nfunc main() {}\n")
+	writeTestAppFile(t, root, "billing/tasks/reconcile/main.go", "package main\nfunc main() {}\n")
 
 	var out bytes.Buffer
 	if err := runOnlavaScriptInspect(context.Background(), &out, scriptOptions{AppRoot: root, Target: "billing:reconcile", JSON: true}); err != nil {
@@ -89,7 +89,7 @@ func TestScriptInspectJSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		t.Fatalf("json.Unmarshal: %v\n%s", err, out.String())
 	}
-	if payload.Target.Domain != "billing" || payload.Candidate.Layout != "go-dir" || payload.Candidate.Path != "billing/scripts/reconcile/main.go" {
+	if payload.Target.Domain != "billing" || payload.Candidate.Layout != "go-dir" || payload.Candidate.Path != "billing/tasks/reconcile/main.go" {
 		t.Fatalf("payload = %+v", payload)
 	}
 }
@@ -134,9 +134,9 @@ func TestRunScriptArgsSplitAfterTarget(t *testing.T) {
 	}
 }
 
-func TestTopLevelRunDispatchesToScriptRunner(t *testing.T) {
+func TestTaskRunDispatchesToCodeTaskRunner(t *testing.T) {
 	root := scriptFixtureRoot(t)
-	writeTestAppFile(t, root, "billing/scripts/reconcile.script.go", "//go:build ignore\n\npackage main\nfunc main() {}\n")
+	writeTestAppFile(t, root, "billing/tasks/reconcile.task.go", "//go:build ignore\n\npackage main\nfunc main() {}\n")
 
 	prev := scriptCommandContext
 	defer func() { scriptCommandContext = prev }()
@@ -149,34 +149,37 @@ func TestTopLevelRunDispatchesToScriptRunner(t *testing.T) {
 		return exec.CommandContext(ctx, "true")
 	}
 
-	if err := run([]string{"run", "--app-root", root, "--env", "production", "--lang", "go", "billing:reconcile", "--dry-run"}); err != nil {
+	if err := run([]string{"task", "run", "billing:reconcile", "--app-root", root, "--env", "production", "--lang", "go", "--", "--dry-run"}); err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
-	if gotProgram != "go" || strings.Join(gotArgs, " ") != "run ./billing/scripts/reconcile.script.go --dry-run" {
+	if gotProgram != "go" || strings.Join(gotArgs, " ") != "run ./billing/tasks/reconcile.task.go --dry-run" {
 		t.Fatalf("script command = %q %+v", gotProgram, gotArgs)
 	}
 }
 
-func TestTopLevelRunListAndInspectSubcommands(t *testing.T) {
+func TestTaskListAndInspectCodeTasks(t *testing.T) {
 	root := scriptFixtureRoot(t)
-	writeTestAppFile(t, root, "billing/scripts/reconcile/main.go", "package main\nfunc main() {}\n")
+	writeTestAppFile(t, root, "billing/tasks/reconcile/main.go", "package main\nfunc main() {}\n")
 
 	out := captureStdout(t, func() error {
-		return run([]string{"run", "list", "--app-root", root, "--json"})
+		return run([]string{"task", "list", "--app-root", root, "--json"})
 	})
-	if !strings.Contains(out, `"domain": "billing"`) || !strings.Contains(out, `"name": "reconcile"`) {
+	if !strings.Contains(out, `"target": "billing:reconcile"`) || !strings.Contains(out, `"kind": "code"`) {
 		t.Fatalf("list output = %s", out)
 	}
 
 	out = captureStdout(t, func() error {
-		return run([]string{"run", "inspect", "billing:reconcile", "--app-root", root, "--json"})
+		return run([]string{"task", "inspect", "billing:reconcile", "--app-root", root, "--json"})
 	})
 	if !strings.Contains(out, `"layout": "go-dir"`) {
 		t.Fatalf("inspect output = %s", out)
 	}
 }
 
-func TestScriptCommandIsRemoved(t *testing.T) {
+func TestRunAndScriptCommandsAreRemoved(t *testing.T) {
+	if err := run([]string{"run", "list"}); err == nil || !strings.Contains(err.Error(), `unknown command "run"`) {
+		t.Fatalf("run command error = %v", err)
+	}
 	if err := run([]string{"script", "list"}); err == nil || !strings.Contains(err.Error(), `unknown command "script"`) {
 		t.Fatalf("run script error = %v", err)
 	}
@@ -186,13 +189,13 @@ func TestGoScriptBuildTagValidation(t *testing.T) {
 	t.Parallel()
 
 	root := scriptFixtureRoot(t)
-	writeTestAppFile(t, root, "billing/scripts/good.script.go", "//go:build ignore\n\npackage main\nfunc main() {}\n")
-	writeTestAppFile(t, root, "billing/scripts/bad.script.go", "package main\nfunc main() {}\n")
+	writeTestAppFile(t, root, "billing/tasks/good.task.go", "//go:build ignore\n\npackage main\nfunc main() {}\n")
+	writeTestAppFile(t, root, "billing/tasks/bad.task.go", "package main\nfunc main() {}\n")
 
-	if err := validateGoScriptBuildTag(filepath.Join(root, "billing/scripts/good.script.go")); err != nil {
+	if err := validateGoScriptBuildTag(filepath.Join(root, "billing/tasks/good.task.go")); err != nil {
 		t.Fatalf("good build tag: %v", err)
 	}
-	if err := validateGoScriptBuildTag(filepath.Join(root, "billing/scripts/bad.script.go")); err == nil || !strings.Contains(err.Error(), "must start with //go:build ignore") {
+	if err := validateGoScriptBuildTag(filepath.Join(root, "billing/tasks/bad.task.go")); err == nil || !strings.Contains(err.Error(), "must start with //go:build ignore") {
 		t.Fatalf("bad build tag err = %v", err)
 	}
 }
@@ -208,11 +211,11 @@ func TestTypeScriptScriptCommandPrefersBunThenNode(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 	}
-	program, args, err := typeScriptScriptCommand("billing/scripts/reconcile.script.ts")
+	program, args, err := typeScriptScriptCommand("billing/tasks/reconcile.task.ts")
 	if err != nil {
 		t.Fatalf("typeScriptScriptCommand bun: %v", err)
 	}
-	if program != "/bin/bun" || strings.Join(args, " ") != "billing/scripts/reconcile.script.ts" {
+	if program != "/bin/bun" || strings.Join(args, " ") != "billing/tasks/reconcile.task.ts" {
 		t.Fatalf("bun command = %s %+v", program, args)
 	}
 
@@ -224,11 +227,11 @@ func TestTypeScriptScriptCommandPrefersBunThenNode(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 	}
-	program, args, err = typeScriptScriptCommand("billing/scripts/reconcile.script.ts")
+	program, args, err = typeScriptScriptCommand("billing/tasks/reconcile.task.ts")
 	if err != nil {
 		t.Fatalf("typeScriptScriptCommand node: %v", err)
 	}
-	if program != "/bin/node" || strings.Join(args, " ") != "--import tsx billing/scripts/reconcile.script.ts" {
+	if program != "/bin/node" || strings.Join(args, " ") != "--import tsx billing/tasks/reconcile.task.ts" {
 		t.Fatalf("node command = %s %+v", program, args)
 	}
 }
@@ -236,7 +239,7 @@ func TestTypeScriptScriptCommandPrefersBunThenNode(t *testing.T) {
 func TestRunOnlavaScriptRunsGoFileFromAppRoot(t *testing.T) {
 	root := scriptFixtureRoot(t)
 	writeTestAppFile(t, root, "fixtures/input.txt", "fixture-ok\n")
-	writeTestAppFile(t, root, "billing/scripts/reconcile.script.go", `//go:build ignore
+	writeTestAppFile(t, root, "billing/tasks/reconcile.task.go", `//go:build ignore
 
 package main
 

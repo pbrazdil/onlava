@@ -153,7 +153,7 @@ func TestWriteDetachedDevResultJSON(t *testing.T) {
 		SchemaVersion: "onlava.dev.detach.v1",
 		PID:           123,
 		LogPath:       "/tmp/dev.log",
-		AttachCommand: `onlava attach --app-root "/tmp/app" --session app-abc`,
+		AttachCommand: `onlava logs --follow --app-root "/tmp/app" --session app-abc`,
 		DownCommand:   "onlava down --session app-abc",
 		Session: localagent.Session{
 			SessionID: "app-abc",
@@ -182,7 +182,7 @@ func TestWriteDetachedDevResultTextSeparatesAliases(t *testing.T) {
 	result := detachedDevResult{
 		PID:           123,
 		LogPath:       "/tmp/dev.log",
-		AttachCommand: `onlava attach --app-root "/tmp/app" --session app-abc`,
+		AttachCommand: `onlava logs --follow --app-root "/tmp/app" --session app-abc`,
 		DownCommand:   "onlava down --session app-abc",
 		Session: localagent.Session{
 			SessionID: "app-abc",

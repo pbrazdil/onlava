@@ -114,7 +114,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-01",
       "review_after": "2026-07-01",
-      "summary": "Frozen local developer and agent-facing contract for onlava CLI, JSON schemas, app-session capabilities, cache artifacts, toolchain store, generators, tasks, scripts, and local runtime surfaces.",
+      "summary": "Frozen local developer and agent-facing contract for onlava CLI, JSON schemas, app-session capabilities, cache artifacts, toolchain store, generators, configured tasks, code tasks, and local runtime surfaces.",
       "tags": ["contract", "cli", "agents", "schemas", "toolchain"],
       "schema_refs": ["docs/schemas/onlava.toolchain.v1.schema.json", "docs/schemas/onlava.toolchain.status.v1.schema.json"]
     },
@@ -177,7 +177,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-01",
       "review_after": "2026-07-01",
-      "summary": "Practical recipes for building onlava apps, endpoints, auth, middleware, Temporal workers, cron, configured generators, operational scripts, generated clients, proxy config, and validation workflows.",
+      "summary": "Practical recipes for building onlava apps, endpoints, auth, middleware, Temporal workers, cron, configured generators, code tasks, generated clients, proxy config, and validation workflows.",
       "tags": ["cookbook", "apps", "agents", "runtime"]
     },
     {
@@ -230,14 +230,14 @@
     },
     {
       "path": "docs/plans/0001-devrun-command-split.md",
-      "title": "Split onlava dev From Headless onlava run",
+      "title": "Split Local Development From Headless Runtime",
       "owner": "onlava runtime",
       "status": "completed",
       "quality": "A",
       "freshness": "current",
       "last_reviewed": "2026-04-27",
       "review_after": "2026-05-27",
-      "summary": "Completed ExecPlan for moving the development supervisor behavior to onlava dev; current headless runtime execution is spelled onlava serve.",
+      "summary": "Completed ExecPlan for splitting development supervisor behavior from headless runtime execution; current local startup is onlava up and headless runtime execution is onlava serve.",
       "tags": ["plans", "execplans", "cli", "runtime"]
     },
     {

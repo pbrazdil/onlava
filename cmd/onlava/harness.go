@@ -110,8 +110,15 @@ func runOnlavaHarness(ctx context.Context, stdout io.Writer, args []string) erro
 		resp.OK = false
 	}
 
-	for _, subject := range []string{"app", "routes", "services", "endpoints", "wire", "build", "paths", "traces", "metrics"} {
+	for _, subject := range []string{"app", "routes", "services", "endpoints", "wire", "build", "paths"} {
 		step := runHarnessInspect(subject, appRoot)
+		resp.Steps = append(resp.Steps, step)
+		if !step.OK {
+			resp.OK = false
+		}
+	}
+	for _, subject := range []string{"traces", "metrics"} {
+		step := runHarnessObservability(subject, appRoot)
 		resp.Steps = append(resp.Steps, step)
 		if !step.OK {
 			resp.OK = false
@@ -216,6 +223,39 @@ func runHarnessInspect(subject, appRoot string) harnessStep {
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		step.OK = false
 		step.Error = "invalid inspect JSON: " + err.Error()
+		return step
+	}
+	step.Summary = summarizeHarnessInspect(subject, payload)
+	return step
+}
+
+func runHarnessObservability(subject, appRoot string) harnessStep {
+	started := time.Now()
+	var out bytes.Buffer
+	var err error
+	command := []string{"onlava", subject, "list", "--app-root", appRoot, "--json"}
+	switch subject {
+	case "traces":
+		err = runObservabilityList(context.Background(), &out, "traces", []string{"--app-root", appRoot, "--json"})
+	case "metrics":
+		err = runObservabilityList(context.Background(), &out, "metrics", []string{"--app-root", appRoot, "--json"})
+	default:
+		err = fmt.Errorf("unknown observability subject %q", subject)
+	}
+	step := harnessStep{
+		Name:       subject + " list",
+		Command:    command,
+		OK:         err == nil,
+		DurationMS: time.Since(started).Milliseconds(),
+	}
+	if err != nil {
+		step.Error = strings.TrimSpace(err.Error())
+		return step
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		step.OK = false
+		step.Error = "invalid observability JSON: " + err.Error()
 		return step
 	}
 	step.Summary = summarizeHarnessInspect(subject, payload)

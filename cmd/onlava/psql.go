@@ -22,7 +22,7 @@ type psqlOptions struct {
 
 func dbCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava db psql|apply|seed|setup|sync|reset|drop|snapshot [--app-root <path>]")
+		return fmt.Errorf("usage: onlava db psql|apply|seed|setup|reset|drop|snapshot [--app-root <path>]")
 	}
 	switch args[0] {
 	case "psql":
@@ -33,8 +33,6 @@ func dbCommand(args []string) error {
 		return dbSeedCommand(args[1:])
 	case "setup":
 		return dbSetupCommand(args[1:])
-	case "sync":
-		return dbSyncCommand(args[1:])
 	case "reset":
 		return dbResetCommand(args[1:])
 	case "drop":

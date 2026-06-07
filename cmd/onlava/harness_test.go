@@ -944,7 +944,6 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 	writeTestAppFile(t, root, "docs/plans/completed.md", "Completed.\n")
 	writeTestAppFile(t, root, "docs/tech-debt.md", "Debt.\n")
 	for _, path := range []string{
-		"docs/schemas/onlava.admin.result.v1.schema.json",
 		"docs/schemas/onlava.config.v1.schema.json",
 		"docs/schemas/onlava.build.latest.v1.schema.json",
 		"docs/schemas/onlava.docs.index.v1.schema.json",
@@ -972,6 +971,10 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 		"docs/schemas/onlava.inspect.routes.v1.schema.json",
 		"docs/schemas/onlava.inspect.services.v1.schema.json",
 		"docs/schemas/onlava.inspect.traces.v1.schema.json",
+		"docs/schemas/onlava.task.inspect.v1.schema.json",
+		"docs/schemas/onlava.task.list.v1.schema.json",
+		"docs/schemas/onlava.task.graph.v1.schema.json",
+		"docs/schemas/onlava.traces.clear.v1.schema.json",
 		"docs/schemas/onlava.dev.event.v1.schema.json",
 		"docs/schemas/onlava.logs.event.v1.schema.json",
 		"docs/schemas/onlava.run.event.v1.schema.json",

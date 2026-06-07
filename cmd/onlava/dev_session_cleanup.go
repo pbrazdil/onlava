@@ -96,7 +96,7 @@ func stopSessionOwnerPID(ctx context.Context, pid int) error {
 	if waitForPIDExit(ctx, pid, time.Second) {
 		return nil
 	}
-	return fmt.Errorf("stale onlava dev owner process %d did not exit after SIGKILL", pid)
+	return fmt.Errorf("stale onlava up owner process %d did not exit after SIGKILL", pid)
 }
 
 func stopStaleSessionChildPID(ctx context.Context, pid int) error {

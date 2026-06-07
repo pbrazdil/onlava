@@ -45,9 +45,9 @@ onlava is a Go-native service runtime and local development platform. Think in a
 - App roots are marked by `.onlava.json`.
 - Go source is the app model: services, endpoints, auth handlers, middleware, Temporal declarations, cron jobs, and generated clients are discovered from code.
 - `onlava serve` builds once and starts a headless API-role runtime.
-- `onlava run <domain>:<script>` runs an app-local operational script.
+- `onlava task run <domain>:<name> -- [args...]` runs an app-local code task.
 - `onlava worker` builds once and starts a worker-role runtime for cron and native Temporal workers.
-- `onlava dev` starts the app session: supervised app process, file watching, dashboard, API explorer, logs, traces, metrics, managed dev services, and optional frontend routing.
+- `onlava up` starts the app session: supervised app process, file watching, dashboard, API explorer, logs, traces, metrics, managed dev services, and optional frontend routing.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and must be called through generated helpers.
 - Typed endpoints decode path/query/header/cookie/body inputs into Go values and encode typed responses.
 - Generated internal calls preserve route, private access, auth context, tracing, and error semantics.
@@ -95,7 +95,9 @@ onlava version --json
 onlava doctor --json
 onlava check --json
 onlava inspect app|routes|services|endpoints|wire|build|paths|docs --json
-onlava inspect temporal|traces|metrics --json
+onlava inspect temporal --json
+onlava traces list --json
+onlava metrics list --json
 onlava logs --jsonl --limit 200
 onlava harness --json --write
 onlava harness self --json --write
@@ -106,21 +108,22 @@ Use `onlava doctor --json` before expensive troubleshooting when the failure may
 Use runtime commands according to intent:
 
 ```text
-onlava dev [--app-root <path>] [--session <id>|--new-session] [--json] [--detach]
-onlava attach [--app-root <path>] [--session current|<id>] [--jsonl]
+onlava up [--app-root <path>] [--session <id>|--new-session] [--json] [--detach]
+onlava logs --follow [--app-root <path>] [--session current|<id>] [--jsonl]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava serve [--app-root <path>] [--env <name>] [--log-format text|json]
-onlava run list [--app-root <path>] [--json]
-onlava run inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
-onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
+onlava task list [--app-root <path>] [--json]
+onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
+onlava task run <name> [--app-root <path>]
+onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
 onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
 onlava build [--app-root <path>] [-o <path>]
 onlava test [--app-root <path>] [go test flags/packages...]
-onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+onlava generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 onlava db psql|apply|seed|setup|reset|drop|snapshot [--app-root <path>]
 ```
 
-`onlava dev` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, session routing, and managed dev services. `onlava serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `onlava run` is for operational scripts.
+`onlava up` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, session routing, and managed dev services. `onlava serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `onlava task` is for configured tasks and app-local code tasks.
 
 ## Documentation Update Rules
 
@@ -165,7 +168,7 @@ For generated TypeScript client changes:
 ```sh
 onlava inspect endpoints --json
 onlava inspect wire --json
-onlava gen client --lang typescript --output <expected-output>
+onlava generate client --lang typescript --output <expected-output>
 ```
 
 For dashboard UI changes:
@@ -197,7 +200,7 @@ Client apps should keep a small app-local `AGENTS.md` that records only app-spec
 - frontend roots and generated client output paths
 - required local environment names without values
 - standard validation commands for that app
-- whether agents should use `onlava dev --detach`, generated TypeScript client, or direct CLI JSON
+- whether agents should use `onlava up --detach`, generated TypeScript client, or direct CLI JSON
 - product/domain invariants that onlava cannot know
 
 Do not copy the whole onlava skill into the client app. Keep the shared onlava behavior in `SKILL.md` and the app-specific policy in the client's `AGENTS.md`.

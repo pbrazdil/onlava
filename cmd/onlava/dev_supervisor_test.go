@@ -1157,13 +1157,13 @@ func TestLooksLikeOnlavaDashboardProcess(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "onlava dev process",
-			info: procInfo{pid: 100, ppid: 1, cmd: "/usr/local/bin/onlava dev"},
+			name: "onlava up process",
+			info: procInfo{pid: 100, ppid: 1, cmd: "/usr/local/bin/onlava up"},
 			want: true,
 		},
 		{
-			name: "non orphaned onlava dev process",
-			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/onlava dev"},
+			name: "non orphaned onlava up process",
+			info: procInfo{pid: 100, ppid: 42, cmd: "/usr/local/bin/onlava up"},
 			want: true,
 		},
 		{

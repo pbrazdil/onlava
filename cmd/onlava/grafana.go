@@ -537,12 +537,12 @@ func resolveGrafanaBinary(ctx context.Context, cfg grafanaConfig) (binaryPath, h
 		}
 	}
 	if !cfg.Download {
-		return "", "", fmt.Errorf("managed Grafana is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava toolchain sync --tool grafana` or set ONLAVA_GRAFANA_BIN explicitly")
+		return "", "", fmt.Errorf("managed Grafana is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava system toolchain sync --tool grafana` or set ONLAVA_GRAFANA_BIN explicitly")
 	}
 	if err != nil {
 		return "", "", fmt.Errorf("managed Grafana is not installed and could not be synced: %w", err)
 	}
-	return "", "", fmt.Errorf("managed Grafana is not installed; run `onlava toolchain sync --tool grafana` or set ONLAVA_GRAFANA_BIN explicitly")
+	return "", "", fmt.Errorf("managed Grafana is not installed; run `onlava system toolchain sync --tool grafana` or set ONLAVA_GRAFANA_BIN explicitly")
 }
 
 func grafanaHomeForBinary(path, root string) string {
@@ -861,10 +861,10 @@ func grafanaState(cfg grafanaConfig, status, message string) devdash.GrafanaStat
 		baseURL = firstNonEmpty(cfg.PublicURL, cfg.URL)
 	}
 	dashboards := []devdash.GrafanaDashboard{
-		{UID: grafanaOverviewUID, Title: "onlava dev overview", URL: grafanaDashboardURL(baseURL, grafanaOverviewUID)},
-		{UID: grafanaLogsDashboardUID, Title: "onlava dev logs", URL: grafanaDashboardURL(baseURL, grafanaLogsDashboardUID)},
-		{UID: grafanaEndpointUID, Title: "onlava dev endpoint", URL: grafanaDashboardURL(baseURL, grafanaEndpointUID)},
-		{UID: grafanaTemporalUID, Title: "onlava dev temporal", URL: grafanaDashboardURL(baseURL, grafanaTemporalUID)},
+		{UID: grafanaOverviewUID, Title: "onlava up overview", URL: grafanaDashboardURL(baseURL, grafanaOverviewUID)},
+		{UID: grafanaLogsDashboardUID, Title: "onlava up logs", URL: grafanaDashboardURL(baseURL, grafanaLogsDashboardUID)},
+		{UID: grafanaEndpointUID, Title: "onlava up endpoint", URL: grafanaDashboardURL(baseURL, grafanaEndpointUID)},
+		{UID: grafanaTemporalUID, Title: "onlava up temporal", URL: grafanaDashboardURL(baseURL, grafanaTemporalUID)},
 	}
 	datasources := map[string]string{}
 	datasourceStatus := map[string]string{}

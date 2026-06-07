@@ -144,14 +144,14 @@ func resolveTemporalCLI(ctx context.Context, storeDir string, download bool) (st
 		return status.ManagedPath, nil
 	}
 	if !download {
-		return "", fmt.Errorf("managed Temporal CLI is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava toolchain sync --tool temporal-cli` or set ONLAVA_TEMPORAL_BIN explicitly")
+		return "", fmt.Errorf("managed Temporal CLI is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava system toolchain sync --tool temporal-cli` or set ONLAVA_TEMPORAL_BIN explicitly")
 	}
 	status, err := syncManagedToolchainArtifactInDir(ctx, storeDir, "temporal-cli")
 	if err != nil {
 		return "", fmt.Errorf("managed Temporal CLI is not installed and could not be synced: %w", err)
 	}
 	if status.ManagedPath == "" || !isExecutableFile(status.ManagedPath) {
-		return "", fmt.Errorf("managed Temporal CLI is not installed; run `onlava toolchain sync --tool temporal-cli` or set ONLAVA_TEMPORAL_BIN explicitly")
+		return "", fmt.Errorf("managed Temporal CLI is not installed; run `onlava system toolchain sync --tool temporal-cli` or set ONLAVA_TEMPORAL_BIN explicitly")
 	}
 	return status.ManagedPath, nil
 }

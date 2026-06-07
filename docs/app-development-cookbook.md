@@ -253,7 +253,7 @@ Common failure: relying on globals outside request handling. Pass context or act
 
 ## Temporal Workflow Or Activity
 
-Use `github.com/pbrazdil/onlava/temporal` for beta workflow and activity declarations. Packages that call `temporal.NewWorkflow` or `temporal.NewActivity` are imported by generated main so worker processes can register them. Set `temporal.enabled: true` in `.onlava.json` to opt in; Temporal remains off when the field is omitted, even if declarations or TypeScript worker settings are present. Use `onlava dev` for local combined API/worker execution, and use `onlava worker` for worker-only processes. Set `ActivityConfig.MaxConcurrency` when a dedicated task queue should cap concurrent activity executions for resource-heavy work, and pass `temporal.WithHeartbeatTimeout(...)` when a workflow activity needs a heartbeat timeout.
+Use `github.com/pbrazdil/onlava/temporal` for beta workflow and activity declarations. Packages that call `temporal.NewWorkflow` or `temporal.NewActivity` are imported by generated main so worker processes can register them. Set `temporal.enabled: true` in `.onlava.json` to opt in; Temporal remains off when the field is omitted, even if declarations or TypeScript worker settings are present. Use `onlava up` for local combined API/worker execution, and use `onlava worker` for worker-only processes. Set `ActivityConfig.MaxConcurrency` when a dedicated task queue should cap concurrent activity executions for resource-heavy work, and pass `temporal.WithHeartbeatTimeout(...)` when a workflow activity needs a heartbeat timeout.
 
 ## Cron Job
 
@@ -303,8 +303,8 @@ Use `github.com/pbrazdil/onlava/pgxpool` when you want PostgreSQL operations to 
 Validate:
 
 ```sh
-onlava inspect traces --json --since 15m
-onlava inspect metrics --json --since 1h
+onlava traces list --json --since 15m
+onlava metrics list --json --since 1h
 ```
 
 Common failure: using a raw pool in app code and then expecting DB spans in the dashboard.
@@ -314,7 +314,7 @@ Common failure: using a raw pool in app code and then expecting DB spans in the 
 Generate a client:
 
 ```sh
-onlava gen client --lang typescript --output ./src/onlava-client.ts
+onlava generate client --lang typescript --output ./src/onlava-client.ts
 ```
 
 If `.onlava.json` declares `generators.clients`, inspect and run the configured graph:
@@ -333,13 +333,13 @@ onlava inspect wire --json
 
 Common failure: committing generated clients without regenerating after endpoint changes.
 
-## Operational Scripts
+## Code Tasks
 
-Use `onlava run` for app-local operational scripts that should run from the app root without requiring the app model to parse cleanly.
+Use `onlava task` for app-local code tasks that should run from the app root without requiring the app model to parse cleanly.
 
-Script targets use `<domain>:<script>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
+Code task targets use `<domain>:<name>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
 
-Single-file Go scripts live under a domain's `scripts` directory and must start with `//go:build ignore`:
+Single-file Go tasks live under a domain's `tasks` directory and must start with `//go:build ignore`:
 
 ```go
 //go:build ignore
@@ -354,37 +354,37 @@ func main() {
 ```
 
 ```text
-billing/scripts/reconcile.script.go
+billing/tasks/reconcile.task.go
 ```
 
 Run it:
 
 ```sh
-onlava run billing:reconcile --dry-run
+onlava task run billing:reconcile -- --dry-run
 ```
 
-Use a directory for larger Go scripts:
+Use a directory for larger Go tasks:
 
 ```text
-billing/scripts/reconcile/main.go
-billing/scripts/reconcile/helpers.go
+billing/tasks/reconcile/main.go
+billing/tasks/reconcile/helpers.go
 ```
 
-TypeScript scripts use the same namespace:
+TypeScript tasks use the same namespace:
 
 ```text
-billing/scripts/reconcile.script.ts
-billing/scripts/reconcile/index.ts
+billing/tasks/reconcile.task.ts
+billing/tasks/reconcile/index.ts
 ```
 
-List and inspect scripts:
+List and inspect tasks:
 
 ```sh
-onlava run list --json
-onlava run inspect billing:reconcile --json
+onlava task list --json
+onlava task inspect billing:reconcile --json
 ```
 
-Common failure: putting two single-file Go scripts with `package main` in the same directory without `//go:build ignore`. Normal Go package loading may see both files before onlava can filter anything. Use the build tag for `*.script.go`, or use a per-script directory.
+Common failure: putting two single-file Go tasks with `package main` in the same directory without `//go:build ignore`. Normal Go package loading may see both files before onlava can filter anything. Use the build tag for `*.task.go`, or use a per-task directory.
 
 ## Configured SQLC And DB Lifecycle
 
@@ -402,11 +402,9 @@ onlava db setup
 
 `onlava db apply` mutates schema or app-owned database setup only. It does not run SQLC generation or seed files. `onlava db seed` applies initial data such as `SERVICE/db/seed.sql` only, records successful runs in a small internal ledger, skips unchanged seeds, and fails closed if a previously-applied seed changes or if seed SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, or broad `DELETE`. `onlava db setup` runs apply, then seed.
 
-During `onlava dev`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
+During `onlava up`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
 
 `SERVICE/db/seed.sql` is data, not Atlas schema input and not SQLC input. The first seed implementation fails closed when a previously-applied seed changes or destructive seed SQL is detected, rather than offering force or reseed escape hatches.
-
-`onlava db sync` is the existing deprecated beta mixed command. It runs only when `.onlava.json` explicitly configures `database.apply`, and it currently mutates the selected development database before regenerating dependent SQLC artifacts. New lifecycle work should use the split commands instead.
 
 ## Electric Txid Observation
 
@@ -434,16 +432,16 @@ Use `.onlava.json` proxy config:
 Run:
 
 ```sh
-onlava dev
-onlava edge dns install
-onlava edge privileged install
-onlava edge install
-onlava edge trust
+onlava up
+onlava system edge dns install
+onlava system edge privileged install
+onlava system edge install
+onlava system edge trust
 ```
 
-The session-scoped URLs in `routes` are canonical. Generated routes default to `api.<session>.local.dev`, frontend routes under `<frontend>.<session>.local.dev`, and direct browser API calls should use the generated API route. Configured hosts appear as friendly aliases only for the live session that owns the free alias. Use `onlava dev --claim-aliases` only when intentionally transferring live aliases to the current session.
+The session-scoped URLs in `routes` are canonical. Generated routes default to `api.<session>.local.dev`, frontend routes under `<frontend>.<session>.local.dev`, and direct browser API calls should use the generated API route. Configured hosts appear as friendly aliases only for the live session that owns the free alias. Use `onlava up --claim-aliases` only when intentionally transferring live aliases to the current session.
 
-Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is managed DNS plus the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `onlava edge dns install` and `onlava edge privileged install` once as the normal user, then `onlava edge install` to prepare user-owned Caddy. Do not run `sudo onlava edge install`. `onlava edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
+Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is managed DNS plus the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `onlava system edge dns install` and `onlava system edge privileged install` once as the normal user, then `onlava system edge install` to prepare user-owned Caddy. Do not run `sudo onlava system edge install`. `onlava system edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
 
 The managed edge Caddy config flushes proxied responses immediately so Electric and other SSE streams stay live. Do not disable upstream caching globally; Electric uses cache headers for request collapsing.
 
@@ -457,8 +455,8 @@ onlava inspect app --json
 onlava inspect routes --json
 onlava inspect endpoints --json
 onlava logs --limit 200
-onlava inspect traces --json --since 15m
-onlava inspect metrics --json --since 1h
+onlava traces list --json --since 15m
+onlava metrics list --json --since 1h
 ```
 
 For generated paths:
@@ -495,10 +493,10 @@ onlava harness ui --json
 ## Common Mistakes And Fixes
 
 - Missing `.onlava.json`: create it at the app root or pass `--app-root`.
-- Stale generated client: rerun `onlava gen client` or configured `onlava generate client`.
+- Stale generated client: rerun `onlava generate client` or configured `onlava generate client`.
 - Auth endpoint returns unauthorized: inspect standard auth bootstrap and bearer token.
 - `tenants` migration or runtime error: if the relation is `onlava_auth.tenants`, it is framework-owned standard auth state; an unqualified app `tenants` relation is app-domain schema drift.
 - Private endpoint exposed over HTTP: change to public/auth only when it should be externally reachable.
 - No traces: confirm the app is running under onlava and uses onlava-aware wrappers for DB/client work.
-- Proxy upstream unavailable: confirm the child app process is listening on the API URL printed by `onlava dev`.
+- Proxy upstream unavailable: confirm the child app process is listening on the API URL printed by `onlava up`.
 - Browser mutation hangs during local dev: check long-lived SSE streams and prefer local HTTPS/HTTP2 proxy paths when concurrency matters.

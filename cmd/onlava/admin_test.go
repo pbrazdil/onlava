@@ -10,28 +10,19 @@ import (
 	"github.com/pbrazdil/onlava/internal/devdash"
 )
 
-func TestParseAdminArgs(t *testing.T) {
+func TestParseTracesClearArgs(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseAdminArgs([]string{"traces", "clear", "--json", "--app-root", "/tmp/app"})
+	opts, err := parseTracesClearArgs([]string{"--json", "--app-root", "/tmp/app"})
 	if err != nil {
-		t.Fatalf("parseAdminArgs returned error: %v", err)
+		t.Fatalf("parseTracesClearArgs returned error: %v", err)
 	}
 	if opts.Domain != "traces" || opts.Action != "clear" || !opts.JSON || opts.AppRoot != "/tmp/app" {
 		t.Fatalf("opts = %+v", opts)
 	}
 }
 
-func TestRunOnlavaAdminRequiresJSON(t *testing.T) {
-	t.Parallel()
-
-	err := runOnlavaAdmin(context.Background(), []string{"traces", "clear"}, &bytes.Buffer{})
-	if err == nil || err.Error() != "onlava admin currently requires --json" {
-		t.Fatalf("runOnlavaAdmin() error = %v", err)
-	}
-}
-
-func TestRunOnlavaAdminClearTraces(t *testing.T) {
+func TestRunTracesClear(t *testing.T) {
 	root := t.TempDir()
 	cacheRoot := t.TempDir()
 	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheRoot)
@@ -62,8 +53,8 @@ func TestRunOnlavaAdminClearTraces(t *testing.T) {
 	defer restore()
 
 	var out bytes.Buffer
-	if err := runOnlavaAdmin(context.Background(), []string{"traces", "clear", "--json"}, &out); err != nil {
-		t.Fatalf("runOnlavaAdmin(traces clear) error = %v", err)
+	if err := runTracesClear(context.Background(), &out, []string{"--json"}); err != nil {
+		t.Fatalf("runTracesClear error = %v", err)
 	}
 	var payload struct {
 		SchemaVersion string `json:"schema_version"`
@@ -75,9 +66,9 @@ func TestRunOnlavaAdminClearTraces(t *testing.T) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
-		t.Fatalf("json.Unmarshal(admin traces): %v\n%s", err, out.String())
+		t.Fatalf("json.Unmarshal(traces clear): %v\n%s", err, out.String())
 	}
-	if payload.SchemaVersion != "onlava.admin.result.v1" || !payload.OK || payload.Command != "onlava admin traces clear" {
+	if payload.SchemaVersion != "onlava.traces.clear.v1" || !payload.OK || payload.Command != "onlava traces clear" {
 		t.Fatalf("payload = %+v", payload)
 	}
 	if payload.Data.AppID != "admin-id" || payload.Data.Cleared != "traces" {

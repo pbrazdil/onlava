@@ -189,7 +189,7 @@ type procInfo struct {
 
 func looksLikeOnlavaDashboardProcess(info procInfo) bool {
 	lower := strings.ToLower(info.cmd)
-	return strings.Contains(lower, "onlava") && strings.Contains(lower, " dev")
+	return strings.Contains(lower, "onlava") && strings.Contains(lower, " up")
 }
 
 func findListeningPID(addr string) (int, bool) {

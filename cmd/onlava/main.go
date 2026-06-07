@@ -37,22 +37,14 @@ func run(args []string) error {
 		return usageError()
 	}
 	switch args[0] {
-	case "agent":
-		return agentCommand(args[1:])
-	case "edge":
-		return edgeCommand(args[1:])
-	case "dev":
-		return devCommand(args[1:])
-	case "attach":
-		return attachCommand(args[1:])
+	case "up":
+		return upCommand(args[1:])
+	case "ps":
+		return statusCommand(args[1:])
 	case "console":
 		return consoleCommand(args[1:])
-	case "run":
-		return runCommand(args[1:])
 	case "serve":
 		return serveCommand(args[1:])
-	case "status":
-		return statusCommand(args[1:])
 	case "down":
 		return downCommand(args[1:])
 	case "prune":
@@ -65,32 +57,28 @@ func run(args []string) error {
 		return taskCommand(args[1:])
 	case "worker":
 		return workerCommand(args[1:])
-	case "temporal":
-		return temporalCommand(args[1:])
 	case "version":
 		return versionCommand(args[1:])
-	case "toolchain":
-		return toolchainCommand(args[1:])
 	case "doctor":
 		return doctorCommand(args[1:])
 	case "build":
 		return buildCommand(args[1:])
-	case "psql":
-		return psqlCommand(args[1:])
 	case "check":
 		return checkCommand(args[1:])
 	case "harness":
 		return harnessCommand(args[1:])
 	case "inspect":
 		return inspectCommand(args[1:])
-	case "admin":
-		return adminCommand(args[1:])
 	case "logs":
 		return logsCommand(args[1:])
 	case "test":
 		return testCommand(args[1:])
-	case "gen":
-		return genCommand(args[1:])
+	case "traces":
+		return tracesCommand(args[1:])
+	case "metrics":
+		return metricsCommand(args[1:])
+	case "system":
+		return systemCommand(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -98,22 +86,17 @@ func run(args []string) error {
 
 func usageError() error {
 	return fmt.Errorf(`usage:
-  stable/dev commands:
-    onlava dev [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
-    onlava dev --trust [--json]
-    onlava attach [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json] [--tui]
+  commands:
+    onlava up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
+    onlava ps --json [--app-root <path>] [--session <id>] [--watch]
+    onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
     onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
-    onlava agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-    onlava agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-    onlava edge install|trust|status|restart|uninstall|dns|privileged [--json]
-    onlava status --json [--app-root <path>] [--session <id>] [--watch]
     onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
     onlava prune --older-than <duration> [--app-root <path>] [--json]
     onlava db psql [--app-root <path>] [psql args...]
     onlava db apply [--app-root <path>] [--json]
     onlava db seed [--app-root <path>] [--dry-run] [--json]
     onlava db setup [--app-root <path>] [--json]
-    onlava db sync [--app-root <path>]
     onlava db reset [--app-root <path>]
     onlava db drop [--app-root <path>]
     onlava db snapshot create|restore <name> [--app-root <path>]
@@ -121,22 +104,16 @@ func usageError() error {
     onlava generate client [<app-id>] [--lang typescript] [--output <path>] [--app-root <path>] [--dry-run] [--json]
     onlava generate sqlc [--app-root <path>] [--dry-run] [--json]
     onlava task list [--app-root <path>] [--json]
-    onlava task run <name> [--app-root <path>]
+    onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
+    onlava task run <target> [--app-root <path>] [--env <name>] [--lang go|typescript] [-- script args...]
     onlava task graph --json [--app-root <path>]
-    onlava run list [--app-root <path>] [--json]
-    onlava run inspect <domain>:<script> [--app-root <path>] [--lang go|typescript] [--json]
-    onlava run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<script> [script args...]
     onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
     onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
     onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
     onlava worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
-    onlava temporal deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
-    onlava temporal deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
-    onlava temporal deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
-    onlava toolchain list [--json] [--include-source-locks] [--images]
-    onlava toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
-    onlava toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
-    onlava toolchain path [--json] --tool <name> [--platform <goos/goarch>]
+    onlava worker deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
+    onlava worker deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
+    onlava worker deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
     onlava doctor [--app-root <path>] [--json]
     onlava version [--json]
     onlava build [--app-root <path>] [-o <path>]
@@ -144,17 +121,17 @@ func usageError() error {
     onlava harness [--app-root <path>] [--json] [--write]
     onlava harness self [--repo-root <path>] [--json] [--write] [--quick|--race|--release]
     onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
-    onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|traces|metrics --json [--app-root <path>]
+    onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
     onlava inspect docs --json [--repo-root <path>]
-    onlava inspect traces --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
-    onlava inspect metrics --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
-    onlava admin traces clear --json [--app-root <path>]
-    onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
+    onlava traces list [--json] [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest] [--app-root <path>]
+    onlava traces clear --json [--app-root <path>]
+    onlava metrics list [--json] [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>] [--app-root <path>]
     onlava test [--app-root <path>] [go test flags/packages...]
-    onlava gen client [<app-id>] --lang typescript --output <path> [--app-root <path>]
-
-  beta/dev helpers:
-    onlava psql [--app-root <path>] [psql args...]`)
+    onlava system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+    onlava system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+    onlava system edge install|trust|status|restart|uninstall|dns|privileged [--json]
+    onlava system toolchain list|sync|verify|path [--json]
+    onlava system trust [--json]`)
 }
 
 type silentCLIError struct {
@@ -168,16 +145,13 @@ func (e *silentCLIError) Error() string {
 	return e.err.Error()
 }
 
-func devCommand(args []string) error {
+func upCommand(args []string) error {
 	opts, err := parseDevArgs(args)
 	if err != nil {
 		return err
 	}
 	if devProxyEnabledByEnv() {
 		return legacyDevProxyError("ONLAVA_LOCAL_PROXY")
-	}
-	if opts.Trust {
-		return edgeTrust(edgeOptions{JSON: opts.JSON})
 	}
 	restore := configureDevProcessEnv(opts)
 	defer restore()
@@ -187,6 +161,10 @@ func devCommand(args []string) error {
 	}
 	listen := resolveDevListenRequest(opts)
 	return runWithWatchFunc(listen, opts.Verbose, opts.JSON, opts.AppRoot)
+}
+
+func devCommand(args []string) error {
+	return upCommand(args)
 }
 
 type devOptions struct {
@@ -243,7 +221,7 @@ func parseDevArgs(args []string) (devOptions, error) {
 		case "--proxy":
 			return devOptions{}, legacyDevProxyError("--proxy")
 		case "--trust":
-			opts.Trust = true
+			return devOptions{}, fmt.Errorf("--trust moved to `onlava system trust`")
 		case "--detach":
 			opts.Detach = true
 		case "--app-root":
@@ -273,7 +251,7 @@ func parseDevArgs(args []string) (devOptions, error) {
 }
 
 func legacyDevProxyError(source string) error {
-	return fmt.Errorf("%s no longer enables the legacy local proxy in `onlava dev`; use the default agent-routed session URLs, or run `onlava edge dns install`, `onlava edge privileged install`, `onlava edge install`, then `onlava edge trust` to prepare trusted local HTTPS", source)
+	return fmt.Errorf("%s no longer enables the legacy local proxy in `onlava up`; use the default agent-routed session URLs, or run `onlava system edge dns install`, `onlava system edge privileged install`, `onlava system edge install`, then `onlava system edge trust` to prepare trusted local HTTPS", source)
 }
 
 func resolveDevListenRequest(opts devOptions) devListenRequest {

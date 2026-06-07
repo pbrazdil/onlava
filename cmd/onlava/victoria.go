@@ -455,7 +455,7 @@ func resolveVictoriaBinary(ctx context.Context, spec victoriaComponentSpec, binD
 		return status.ManagedPath, nil
 	}
 	if !download {
-		return "", fmt.Errorf("managed %s is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava toolchain sync --tool %s` or set %s_BIN explicitly", spec.DisplayName, artifactName, spec.EnvPrefix)
+		return "", fmt.Errorf("managed %s is not installed; system PATH binaries are not used for managed toolchain artifacts; run `onlava system toolchain sync --tool %s` or set %s_BIN explicitly", spec.DisplayName, artifactName, spec.EnvPrefix)
 	}
 	status, err := syncManagedToolchainArtifact(ctx, filepath.Dir(binDir), artifactName)
 	if err != nil {
@@ -465,7 +465,7 @@ func resolveVictoriaBinary(ctx context.Context, spec victoriaComponentSpec, binD
 		return "", fmt.Errorf("managed %s version is %s, expected %s from %s_VERSION", spec.DisplayName, status.Version, spec.Version, spec.EnvPrefix)
 	}
 	if status.ManagedPath == "" || !isExecutableFile(status.ManagedPath) {
-		return "", fmt.Errorf("managed %s is not installed; run `onlava toolchain sync --tool %s` or set %s_BIN explicitly", spec.DisplayName, artifactName, spec.EnvPrefix)
+		return "", fmt.Errorf("managed %s is not installed; run `onlava system toolchain sync --tool %s` or set %s_BIN explicitly", spec.DisplayName, artifactName, spec.EnvPrefix)
 	}
 	return status.ManagedPath, nil
 }

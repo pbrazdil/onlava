@@ -111,7 +111,7 @@ func TestValidateEdgeAgentHealthRejectsFallbackRouterAddr(t *testing.T) {
 }
 
 func TestEdgeAgentCommandMatchesSameSocketAndRouterOnly(t *testing.T) {
-	command := "/Users/petrbrazdil/go/bin/onlava agent --socket /Users/petrbrazdil/.onlava/run/agent.sock --router-listen 127.0.0.1:9440 --router-http"
+	command := "/Users/petrbrazdil/go/bin/onlava system agent --socket /Users/petrbrazdil/.onlava/run/agent.sock --router-listen 127.0.0.1:9440 --router-http"
 	if !edgeAgentCommandMatches(command, "/Users/petrbrazdil/.onlava/run/agent.sock", "127.0.0.1:9440") {
 		t.Fatal("expected exact edge agent command to match")
 	}

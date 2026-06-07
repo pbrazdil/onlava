@@ -555,7 +555,7 @@ func TestRejectLiveDuplicateDevSessionIgnoresWrapperCommandText(t *testing.T) {
 	if err := os.WriteFile(fakeOnlava, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wrapperStyle := exec.Command("sh", fakeOnlava, "dev", "--app-root", root, "--session", sessionID)
+	wrapperStyle := exec.Command("sh", fakeOnlava, "up", "--app-root", root, "--session", sessionID)
 	if err := wrapperStyle.Start(); err != nil {
 		t.Fatalf("start wrapper-style owner fixture: %v", err)
 	}
@@ -563,7 +563,7 @@ func TestRejectLiveDuplicateDevSessionIgnoresWrapperCommandText(t *testing.T) {
 		_ = wrapperStyle.Process.Kill()
 		_ = wrapperStyle.Wait()
 	}()
-	reorderedStyle := exec.Command("sh", fakeOnlava, "--session", sessionID, "--app-root", root, "dev")
+	reorderedStyle := exec.Command("sh", fakeOnlava, "--session", sessionID, "--app-root", root, "up")
 	if err := reorderedStyle.Start(); err != nil {
 		t.Fatalf("start reordered-style owner fixture: %v", err)
 	}

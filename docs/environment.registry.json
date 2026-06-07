@@ -501,7 +501,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "`1` disables local agent usage. `onlava dev --detach` requires this to be unset",
+      "rationale": "`1` disables local agent usage. `onlava up --detach` requires this to be unset",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
@@ -985,7 +985,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "Marks the background child used by `onlava dev --detach`",
+      "rationale": "Marks the background child used by `onlava up --detach`",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
@@ -1271,7 +1271,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "Marks a child process launched by `onlava dev`",
+      "rationale": "Marks a child process launched by `onlava up`",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
@@ -1381,7 +1381,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "Disables frontend proxy/upstream discovery in the legacy local proxy outside the normal onlava dev path",
+      "rationale": "Disables frontend proxy/upstream discovery in the legacy local proxy outside the normal onlava up path",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
@@ -1798,7 +1798,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "`1` is rejected by normal onlava dev; retained for legacy local proxy internals and tests",
+      "rationale": "`1` is rejected by normal onlava up; retained for legacy local proxy internals and tests",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
@@ -1820,7 +1820,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "Overrides the legacy local proxy HTTPS port outside the normal onlava dev path",
+      "rationale": "Overrides the legacy local proxy HTTPS port outside the normal onlava up path",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
@@ -1842,7 +1842,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "Overrides the legacy local proxy HTTP port outside the normal onlava dev path",
+      "rationale": "Overrides the legacy local proxy HTTP port outside the normal onlava up path",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
@@ -1864,7 +1864,7 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "`1` skips local CA trust installation for the legacy local proxy outside the normal onlava dev path",
+      "rationale": "`1` skips local CA trust installation for the legacy local proxy outside the normal onlava up path",
       "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",

@@ -20,7 +20,7 @@ const (
 )
 
 var allowedDirectGoDeps = map[string]string{
-	"github.com/fsnotify/fsnotify":       "file watching for onlava dev live rebuilds",
+	"github.com/fsnotify/fsnotify":       "file watching for onlava up live rebuilds",
 	"github.com/golang-jwt/jwt/v5":       "JWT signing and verification for standard auth",
 	"github.com/google/uuid":             "UUID generation and parsing for standard auth database records",
 	"github.com/gorilla/websocket":       "dashboard JSON-RPC websocket transport",

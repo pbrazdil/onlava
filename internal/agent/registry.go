@@ -167,7 +167,7 @@ func (r *Registry) Upsert(req RegisterRequest) (Session, error) {
 	}
 	if existing != nil && !requestMayClaimSession(req, *existing, session) {
 		existingPID := firstPositive(existing.OwnerPID, existing.Owner.PID)
-		return Session{}, fmt.Errorf("onlava dev session %q is already running for app root %s under owner PID %d", sessionID, existing.AppRoot, existingPID)
+		return Session{}, fmt.Errorf("onlava up session %q is already running for app root %s under owner PID %d", sessionID, existing.AppRoot, existingPID)
 	}
 	session.Aliases, session.AliasConflicts = r.claimAliasesLocked(session, req.ClaimAliases)
 	r.sessions[session.SessionID] = session
