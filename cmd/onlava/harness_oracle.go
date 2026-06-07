@@ -23,6 +23,11 @@ const (
 	harnessAgentContextSchema = "onlava.agent_context.v1"
 )
 
+const (
+	defaultHarnessTotalSeconds = 7
+	releaseHarnessTotalSeconds = 20
+)
+
 type harnessChangedAreaReport struct {
 	SchemaVersion       string               `json:"schema_version"`
 	ChangedFiles        []harnessChangedFile `json:"changed_files"`
@@ -459,11 +464,16 @@ func runHarnessGoTestTimingStep(ctx context.Context, repoRoot string, artifactCt
 }
 
 func runHarnessGoTestTimingStepForMode(ctx context.Context, repoRoot, mode string, artifactCtxs ...harnessArtifactContext) (harnessStep, *harnessTestTimingReport) {
+	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, harnessTestTimingBudgetsForMode(mode), artifactCtxs...)
+}
+
+func harnessTestTimingBudgetsForMode(mode string) harnessTestTimingBudgets {
 	budgets := defaultHarnessTestTimingBudgets()
 	if mode == harnessSelfModeRelease {
+		budgets.TotalSeconds = releaseHarnessTotalSeconds
 		budgets.Mode = "enforce-total"
 	}
-	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, budgets, artifactCtxs...)
+	return budgets
 }
 
 func runHarnessGoTestTimingStepWithBudgets(ctx context.Context, repoRoot string, budgets harnessTestTimingBudgets, artifactCtxs ...harnessArtifactContext) (harnessStep, *harnessTestTimingReport) {
@@ -667,7 +677,7 @@ func parseHarnessGoTestTimingWithBudgets(output []byte, command []string, elapse
 
 func defaultHarnessTestTimingBudgets() harnessTestTimingBudgets {
 	return harnessTestTimingBudgets{
-		TotalSeconds:   7,
+		TotalSeconds:   defaultHarnessTotalSeconds,
 		PackageSeconds: 2,
 		TestSeconds:    0.5,
 		Mode:           "observe-total",

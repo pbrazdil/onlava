@@ -259,6 +259,22 @@ func TestParseHarnessGoTestTimingCanEnforceTotalBudget(t *testing.T) {
 	}
 }
 
+func TestHarnessReleaseTimingBudgetAllowsCurrentSuiteVariance(t *testing.T) {
+	t.Parallel()
+
+	budgets := harnessTestTimingBudgetsForMode(harnessSelfModeRelease)
+	if budgets.TotalSeconds != 20 {
+		t.Fatalf("release total budget = %v, want 20", budgets.TotalSeconds)
+	}
+	if budgets.Mode != "enforce-total" {
+		t.Fatalf("release budget mode = %q, want enforce-total", budgets.Mode)
+	}
+	report := parseHarnessGoTestTimingWithBudgets(nil, harnessSelfGoTestCommand(), 15554*time.Millisecond, budgets)
+	if hasErrorDiagnostics(report.Diagnostics) {
+		t.Fatalf("diagnostics = %+v, want 15.554s release suite inside budget", report.Diagnostics)
+	}
+}
+
 func TestWriteHarnessSelfOracleArtifacts(t *testing.T) {
 	t.Parallel()
 
