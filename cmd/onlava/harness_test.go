@@ -369,6 +369,45 @@ func TestWriteHarnessSelfOracleArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildHarnessAgentContextEmitsEmptyExecPlanArray(t *testing.T) {
+	root := t.TempDir()
+	resp := harnessSelfResponse{
+		SchemaVersion: "onlava.harness.self.v1",
+		GeneratedAt:   "2026-06-08T00:00:00Z",
+		Repo: harnessSelfRepo{
+			Root:       root,
+			ModulePath: "github.com/pbrazdil/onlava",
+			GoModPath:  filepath.Join(root, "go.mod"),
+		},
+		Knowledge: harnessKnowledge{
+			Entrypoints: []harnessKnowledgeFile{},
+			Schemas:     []harnessKnowledgeFile{},
+		},
+		ChangedArea: &harnessChangedAreaReport{
+			SchemaVersion:       harnessChangedAreaSchema,
+			ChangedFiles:        []harnessChangedFile{},
+			AffectedPackages:    []string{},
+			RecommendedCommands: []string{},
+			RelevantDocs:        []string{},
+			RiskFlags:           []string{},
+			Diagnostics:         []checkDiagnostic{},
+		},
+		Steps:       []harnessStep{},
+		NextActions: []string{},
+	}
+
+	payload, err := json.Marshal(buildHarnessAgentContext(root, resp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), `"relevant_active_execplans":null`) {
+		t.Fatalf("relevant_active_execplans encoded as null: %s", payload)
+	}
+	if !strings.Contains(string(payload), `"relevant_active_execplans":[]`) {
+		t.Fatalf("relevant_active_execplans did not encode as empty array: %s", payload)
+	}
+}
+
 func TestValidateHarnessJSONSchemaFile(t *testing.T) {
 	t.Parallel()
 
@@ -1038,6 +1077,7 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 		"docs/schemas/onlava.inspect.docs.v1.schema.json",
 		"docs/schemas/onlava.inspect.endpoints.v1.schema.json",
 		"docs/schemas/onlava.inspect.harness.v1.schema.json",
+		"docs/schemas/onlava.inspect.observability.v1.schema.json",
 		"docs/schemas/onlava.inspect.metrics.v1.schema.json",
 		"docs/schemas/onlava.inspect.paths.v1.schema.json",
 		"docs/schemas/onlava.inspect.temporal.v1.schema.json",
@@ -1056,6 +1096,11 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 		"docs/schemas/onlava.traces.clear.v1.schema.json",
 		"docs/schemas/onlava.dev.event.v1.schema.json",
 		"docs/schemas/onlava.logs.event.v1.schema.json",
+		"docs/schemas/onlava.logs.query.v1.schema.json",
+		"docs/schemas/onlava.logs.tail.entry.v1.schema.json",
+		"docs/schemas/onlava.metrics.labels.v1.schema.json",
+		"docs/schemas/onlava.metrics.query.v1.schema.json",
+		"docs/schemas/onlava.metrics.series.v1.schema.json",
 		"docs/schemas/onlava.run.event.v1.schema.json",
 		"docs/schemas/onlava.version.v1.schema.json",
 		"docs/schemas/onlava.worker.manifest.v1.schema.json",

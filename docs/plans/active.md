@@ -7,11 +7,6 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
-- [0067 CLI Observability Query Surface](0067-cli-observability-query.md)
-  - Status: active
-  - Owner: onlava runtime / agent DX
-  - Created: 2026-06-08
-  - Focus: add scoped CLI-only LogsQL and PromQL/MetricsQL query commands under existing observability nouns, with discovery, JSON contracts, and session-isolation validation.
 - [0064 Agent-First Development Control Plane](0064-agent-first-development-control-plane.md)
   - Status: active
   - Owner: onlava maintainers / agent DX
