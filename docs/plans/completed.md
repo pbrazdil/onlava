@@ -6,6 +6,32 @@ Completed means implemented or shipped at least once. It does not imply stable
 v0 support. Use [../local-contract.md](../local-contract.md) as the source of
 truth for stable, beta, dev-only, and compatibility-mode classification.
 
+## CLI Observability Query Surface
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-08
+- Quality: B+
+- ExecPlan: [0067 CLI Observability Query Surface](0067-cli-observability-query.md)
+
+Shipped:
+
+- `onlava inspect observability --json` for backend readiness, native dialects,
+  examples, warnings, and echoed app/session scope.
+- `onlava logs query` and `onlava logs tail` for scoped VictoriaLogs LogsQL,
+  with JSON/JSONL output, bounded defaults, and explicit LogQL rejection.
+- `onlava metrics query`, `onlava metrics labels`, and `onlava metrics series`
+  for scoped PromQL/MetricsQL range, instant, and catalog queries.
+- Backend-enforced scope via VictoriaLogs `extra_filters` and VictoriaMetrics
+  repeated `extra_label` parameters, plus normalized versioned JSON envelopes.
+- Schema, contract, cookbook, skill, agent-guide, and knowledge-index updates
+  for the new query surface.
+
+Validation:
+
+- `go test ./internal/observability ./cmd/onlava` passed during implementation.
+- Full validation was run before PR creation for the implementation change.
+
 ## ENV Harness
 
 - Status: completed

@@ -33,10 +33,10 @@ the current implementation detail, not the user-facing integration API.
 ## Progress
 
 - [x] 2026-06-08: Created ExecPlan `0067-cli-observability-query.md` from the requested CLI-only observability brief.
-- [ ] Add shared observability query scope and Victoria query clients.
-- [ ] Add CLI commands for observability discovery, LogsQL query/tail, and PromQL/MetricsQL query/catalog commands.
-- [ ] Add tests and self-harness coverage for session scoping and JSON shape.
-- [ ] Update docs, schemas, and agent instructions for the new CLI surface.
+- [x] 2026-06-08: Added shared observability query scope records and VictoriaLogs/VictoriaMetrics query clients in `internal/observability`.
+- [x] 2026-06-08: Added CLI commands for `inspect observability`, LogsQL query/tail, and PromQL/MetricsQL query/catalog commands.
+- [x] 2026-06-08: Added parser and httptest coverage for required flags, LogQL rejection, backend paths, scope parameters, and normalized JSON shape.
+- [x] 2026-06-08: Updated docs, schemas, harness schema inventories, knowledge metadata, and agent instructions for the new CLI surface.
 
 ## Surprises & Discoveries
 
@@ -44,6 +44,7 @@ the current implementation detail, not the user-facing integration API.
 - 2026-06-08: `docs/local-contract.md` currently lists `onlava traces list --json`, `onlava metrics list --json`, and `onlava logs --jsonl` as observability surfaces. The new query commands must update that contract rather than living only in code or this plan.
 - 2026-06-08: The current code has `cmd/onlava/observability_commands.go` for `traces list`, `traces clear`, and `metrics list`; `cmd/onlava/logs.go` owns the existing structured dev log reader; and `cmd/onlava/victoria_query.go` already contains VictoriaTraces query helpers.
 - 2026-06-08: Current Victoria docs name the log query language LogsQL and expose `/select/logsql/query` plus `/select/logsql/tail`. VictoriaMetrics exposes PromQL/MetricsQL instant and range endpoints under `/prometheus/api/v1/query` and `/prometheus/api/v1/query_range`, and documents `extra_label` for enforced metrics scoping.
+- 2026-06-08: Existing structured dev-event exports use `onlava_app_id` and `onlava_session_id`, while OTLP log exports use dotted fields such as `onlava.application_id` and `onlava.session_id`. The LogsQL scope filter accepts both app/session spellings and uses the root-hash filter where available.
 
 ## Decision Log
 
@@ -55,7 +56,24 @@ the current implementation detail, not the user-facing integration API.
 
 ## Outcomes & Retrospective
 
-Not yet completed.
+Completed on 2026-06-08.
+
+Shipped:
+
+- `onlava inspect observability --json [--session current|<id>]` with backend readiness, dialects, examples, warnings, and echoed enforced scope.
+- `onlava logs query` and `onlava logs tail` over VictoriaLogs LogsQL, with bounded defaults, JSON/JSONL output, LogQL rejection, and backend-enforced `extra_filters`.
+- `onlava metrics query`, `metrics labels`, and `metrics series` over VictoriaMetrics PromQL/MetricsQL APIs, with bounded defaults and repeated `extra_label` scope parameters.
+- Versioned schemas for the new discovery, log query/tail, and metrics query/catalog envelopes.
+- Docs and agent guidance updates in `docs/local-contract.md`, `docs/agent-guide.md`, `SKILL.md`, and `docs/app-development-cookbook.md`.
+- Targeted tests for parser behavior, backend request shape, scope isolation parameters, catalog decoding, and result normalization.
+
+Validation:
+
+- `go test ./internal/observability ./cmd/onlava` passed during implementation.
+- `go test ./...` passed.
+- `go install ./cmd/onlava` passed.
+- `onlava inspect docs --json` passed with the expected review-due UI contract signal.
+- `onlava harness self --json --write` passed after restoring the pre-existing missing 0066 active ExecPlan file and installing existing UI dependencies.
 
 ## Context and Orientation
 

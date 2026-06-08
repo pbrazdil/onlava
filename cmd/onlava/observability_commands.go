@@ -23,11 +23,17 @@ func tracesCommand(args []string) error {
 
 func metricsCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava metrics list [--json] [--app-root <path>]")
+		return fmt.Errorf("usage: onlava metrics list|query|labels|series [--json] [--app-root <path>]")
 	}
 	switch args[0] {
 	case "list":
 		return runObservabilityList(context.Background(), os.Stdout, "metrics", args[1:])
+	case "query":
+		return runMetricsQueryCommand(context.Background(), os.Stdout, args[1:])
+	case "labels":
+		return runMetricsLabelsCommand(context.Background(), os.Stdout, args[1:])
+	case "series":
+		return runMetricsSeriesCommand(context.Background(), os.Stdout, args[1:])
 	default:
 		return fmt.Errorf("unknown metrics command %q", args[0])
 	}

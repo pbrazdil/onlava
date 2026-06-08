@@ -27,6 +27,8 @@ onlava inspect endpoints --json
 onlava inspect wire --json
 onlava system toolchain verify --json
 onlava logs --jsonl --limit 200
+onlava inspect observability --json --session current
+onlava logs query --json --session current --since 15m --query 'error OR panic'
 onlava harness --json --write
 ```
 
@@ -162,8 +164,11 @@ onlava inspect endpoints --json
 onlava inspect paths --json
 onlava logs --session current --jsonl --limit 200
 onlava logs --session current --source api --level error --jsonl --limit 200
+onlava inspect observability --json --session current
+onlava logs query --json --session current --since 15m --query 'error OR panic'
 onlava traces list --json --session current --since 15m --slowest
 onlava metrics list --json --session current --since 1h
+onlava metrics query --json --session current --since 15m --step 5s --promql 'onlava_request_duration_seconds'
 onlava system toolchain list --json
 onlava system toolchain verify --json
 ```
@@ -240,10 +245,14 @@ onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domai
 onlava task graph --json [--app-root <path>]
 onlava harness [--app-root <path>] --json --write
 onlava harness self [--repo-root <path>] --json --write
-onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
+onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|observability --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
 onlava traces list --json [--app-root <path>]
 onlava metrics list --json [--app-root <path>]
+onlava logs query [--app-root <path>] [--session current|<id>] --query <logsql> [--json]
+onlava logs tail [--app-root <path>] [--session current|<id>] --query <logsql> [--jsonl]
+onlava metrics query --json [--app-root <path>] [--session current|<id>] --promql <query>
+onlava metrics labels|series --json [--app-root <path>] [--session current|<id>]
 onlava traces clear --json [--app-root <path>]
 onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--jsonl|--json]
 onlava test [--app-root <path>] [go test flags/packages...]

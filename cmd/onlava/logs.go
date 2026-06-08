@@ -57,6 +57,14 @@ type logsEvent struct {
 }
 
 func logsCommand(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "query":
+			return runLogsQueryCommand(context.Background(), os.Stdout, args[1:])
+		case "tail":
+			return runLogsTailCommand(context.Background(), os.Stdout, args[1:])
+		}
+	}
 	return runOnlavaLogsFunc(context.Background(), os.Stdout, args)
 }
 

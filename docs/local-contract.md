@@ -278,6 +278,8 @@ Current implemented grammar:
 ```text
 onlava up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
 onlava logs --follow [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json]
+onlava logs query [--app-root <path>] [--session current|<id>] --query <logsql> [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--timeout <duration>] [--fields <csv>] [--json|--jsonl]
+onlava logs tail [--app-root <path>] [--session current|<id>] --query <logsql> [--since <duration>] [--timeout <duration>] [--fields <csv>] [--jsonl]
 onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
 onlava system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
@@ -318,11 +320,14 @@ onlava task graph --json [--app-root <path>]
 onlava harness [--app-root <path>] [--json] [--write]
 onlava harness self [--repo-root <path>] [--json] [--write]
 onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
-onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
+onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|observability --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
 onlava inspect harness --json [--app-root <path>] [--repo-root <path>]
 onlava traces list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
 onlava metrics list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
+onlava metrics query --json [--app-root <path>] [--session current|<id>] --promql <query> [--instant] [--since <duration>] [--start <time>] [--end <time>] [--step <duration>] [--timeout <duration>] [--limit <n>]
+onlava metrics labels --json [--app-root <path>] [--session current|<id>] [--since <duration>] [--start <time>] [--end <time>] [--limit <n>]
+onlava metrics series --json [--app-root <path>] [--session current|<id>] --match <selector> [--since <duration>] [--start <time>] [--end <time>] [--limit <n>]
 onlava traces clear --json [--app-root <path>]
 onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
 onlava test [--app-root <path>] [go test flags/packages...]
@@ -357,12 +362,18 @@ Inspect rules:
 - `onlava inspect` currently requires `--json`.
 - `--app-root` is optional. When omitted, onlava walks upward from the current working directory to find `.onlava.json`.
 - Stable inspect subjects for v0 are `app`, `routes`, `services`, `endpoints`, `wire`, `build`, `paths`, and `docs`.
-- `generators`, `temporal`, `traces`, and `metrics` are beta diagnostic subjects. `generators` reports configured generation graph inputs and outputs. `temporal` reports effective Temporal config and, when enabled, a short connectivity check. `traces` and `metrics` read onlava-managed local observability data. Victoria is the current backing substrate, not the integration API. If no local state exists, they return valid JSON with a warning and empty result sets.
-- The `onlava.inspect.traces.v1` and `onlava.inspect.metrics.v1` schemas are useful for agents, but their source-selection, retention, rollup, percentile, and clear/delete semantics are not stable v0 API yet.
+- `generators`, `temporal`, `traces`, `metrics`, and `observability` are beta diagnostic subjects. `generators` reports configured generation graph inputs and outputs. `temporal` reports effective Temporal config and, when enabled, a short connectivity check. `traces`, `metrics`, and `observability` read onlava-managed local observability data. Victoria is the current backing substrate, not the integration API. If no local state exists, query/discovery commands return valid JSON with warnings and empty result sets where possible.
+- `onlava inspect observability --json` emits `onlava.inspect.observability.v1` with backend readiness for logs, metrics, and traces; native dialect names; examples; and the exact enforced query scope for the selected app/session.
+- The `onlava.inspect.traces.v1`, `onlava.inspect.metrics.v1`, `onlava.inspect.observability.v1`, `onlava.logs.query.v1`, `onlava.logs.tail.v1`, `onlava.metrics.query.v1`, `onlava.metrics.labels.v1`, and `onlava.metrics.series.v1` schemas are useful for agents, but their source-selection, retention, rollup, percentile, and clear/delete semantics are not stable v0 API yet.
 - `--since` accepts Go duration strings such as `15m`, `1h`, or `24h`.
 - `--min-duration-ms` filters root traces by duration in milliseconds.
 - `--status` accepts `ok` or `error`.
 - `metrics` defaults to `--since 24h` and `--limit 10000` so agents get useful local summaries without scanning unbounded history.
+- `logs query` defaults to `--session current`, `--since 15m`, `--limit 200`, `--timeout 3s`, and JSON envelope output. It accepts native VictoriaLogs LogsQL through `--query`; `--logql` is rejected rather than silently treating Loki LogQL as LogsQL.
+- `logs tail` streams scoped JSONL log entries from the VictoriaLogs live-tail endpoint and exits through normal context cancellation or interrupt handling.
+- `metrics query` defaults to range mode with `--session current`, `--since 15m`, `--step 5s`, `--timeout 3s`, `--limit 100`, and JSON output. `--instant` switches to the instant Prometheus API endpoint.
+- `metrics labels` and `metrics series` default to `--session current`, `--since 1h`, and `--limit 1000`; `metrics series` requires `--match`.
+- Query commands are scoped by default. Onlava applies LogsQL scope through VictoriaLogs `extra_filters` and metrics scope through repeated VictoriaMetrics `extra_label` query parameters, and every JSON envelope echoes `scope.enforced=true`.
 - `docs` inspects the onlava repo knowledge base, not a target onlava app. It accepts `--repo-root` and otherwise walks upward to the `module github.com/pbrazdil/onlava` repo root.
 
 Toolchain rules:
@@ -424,7 +435,7 @@ Runtime safety:
 
 Local observability:
 
-- The user-facing observability surface is `onlava logs`, `onlava traces list --json`, `onlava metrics list --json`, the dashboard, and Grafana routes. The current backing substrate exports local observability to Victoria sidecars:
+- The user-facing observability surface is `onlava logs`, `onlava logs query`, `onlava logs tail`, `onlava traces list --json`, `onlava metrics list --json`, `onlava metrics query`, `onlava metrics labels`, `onlava metrics series`, `onlava inspect observability --json`, the dashboard, and Grafana routes. The current backing substrate exports local observability to Victoria sidecars:
   - VictoriaMetrics: `/opentelemetry/v1/metrics`
   - VictoriaLogs: `/insert/opentelemetry/v1/logs`
   - VictoriaTraces: `/insert/opentelemetry/v1/traces`
@@ -653,6 +664,12 @@ Implemented now:
 - [onlava.inspect.endpoints.v1.schema.json](schemas/onlava.inspect.endpoints.v1.schema.json)
 - [onlava.inspect.traces.v1.schema.json](schemas/onlava.inspect.traces.v1.schema.json)
 - [onlava.inspect.metrics.v1.schema.json](schemas/onlava.inspect.metrics.v1.schema.json)
+- [onlava.inspect.observability.v1.schema.json](schemas/onlava.inspect.observability.v1.schema.json)
+- [onlava.logs.query.v1.schema.json](schemas/onlava.logs.query.v1.schema.json)
+- [onlava.logs.tail.v1.schema.json](schemas/onlava.logs.tail.v1.schema.json)
+- [onlava.metrics.query.v1.schema.json](schemas/onlava.metrics.query.v1.schema.json)
+- [onlava.metrics.labels.v1.schema.json](schemas/onlava.metrics.labels.v1.schema.json)
+- [onlava.metrics.series.v1.schema.json](schemas/onlava.metrics.series.v1.schema.json)
 - [onlava.inspect.docs.v1.schema.json](schemas/onlava.inspect.docs.v1.schema.json)
 - [onlava.docs.index.v1.schema.json](schemas/onlava.docs.index.v1.schema.json)
 - [onlava.wire.capabilities.v1.schema.json](schemas/onlava.wire.capabilities.v1.schema.json)
@@ -915,6 +932,55 @@ Example output:
   }
 }
 ```
+
+### `onlava inspect observability --json`
+
+Beta diagnostic subject. Use this before ad hoc observability queries when an
+agent needs to know whether the local Victoria backends are reachable and which
+scope will be enforced.
+
+Example:
+
+```text
+onlava inspect observability --json --session current
+```
+
+The response uses `onlava.inspect.observability.v1` and includes `scope`,
+`backends.logs`, `backends.metrics`, `backends.traces`, examples, and optional
+warnings.
+
+### `onlava logs query --json`
+
+Beta query surface for scoped VictoriaLogs LogsQL. This is the preferred CLI
+path for targeted log debugging when plain `onlava logs --jsonl` is too broad.
+
+Example:
+
+```text
+onlava logs query --json --since 15m --limit 100 --query 'error OR panic'
+```
+
+The response uses `onlava.logs.query.v1`, echoes the selected scope and query
+bounds, and returns normalized entries with `time`, `level`, `source`,
+`message`, `fields`, `trace_id`, `span_id`, and `raw` where available. Passing
+`--jsonl` writes only log entries as JSON Lines.
+
+### `onlava metrics query --json`
+
+Beta query surface for scoped PromQL/MetricsQL. Range queries are the default;
+`--instant` uses the instant query endpoint.
+
+Example:
+
+```text
+onlava metrics query --json --since 15m --step 5s --promql 'max_over_time(onlava_request_duration_seconds[15m])'
+```
+
+The response uses `onlava.metrics.query.v1`, echoes scope and bounds, reports
+the backend `result_type`, and returns normalized metric series and samples.
+`onlava metrics labels --json --since 1h` emits `onlava.metrics.labels.v1`.
+`onlava metrics series --json --match 'onlava_request_duration_seconds'` emits
+`onlava.metrics.series.v1`.
 
 ### `onlava inspect docs --json`
 
