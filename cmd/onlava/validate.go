@@ -179,11 +179,34 @@ type validationArtifactContext struct {
 }
 
 var collectValidationChangedFiles = func(ctx context.Context, appRoot, base string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", base+"...HEAD")
-	cmd.Dir = appRoot
-	out, err := cmd.Output()
+	rootCmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	rootCmd.Dir = appRoot
+	rootOut, err := rootCmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git rev-parse --show-toplevel: %w: %s", err, strings.TrimSpace(string(rootOut)))
+	}
+	gitRoot := strings.TrimSpace(string(rootOut))
+	if physicalGitRoot, err := filepath.EvalSymlinks(gitRoot); err == nil {
+		gitRoot = physicalGitRoot
+	}
+	appRootForRel := appRoot
+	if physicalAppRoot, err := filepath.EvalSymlinks(appRoot); err == nil {
+		appRootForRel = physicalAppRoot
+	}
+	appRel, err := filepath.Rel(gitRoot, appRootForRel)
 	if err != nil {
 		return nil, err
+	}
+	appRel = filepath.ToSlash(appRel)
+	args := []string{"diff", "--name-only", base + "...HEAD"}
+	if appRel != "." && appRel != "" {
+		args = []string{"diff", "--name-only", "--relative=" + appRel, base + "...HEAD", "--", appRel}
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = gitRoot
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	var files []string
 	for _, line := range strings.Split(string(out), "\n") {
@@ -373,7 +396,7 @@ func buildInspectValidationResponse(appRoot string, cfg appcfg.Config) inspectVa
 		App:           taskAppRef(appRoot, cfg),
 		Default:       cfg.Validation.Default,
 		Profiles:      validationProfileRecords(cfg),
-		Diagnostics:   validateValidationConfig(appRoot, cfg),
+		Diagnostics:   nonNilValidationDiagnostics(validateValidationConfig(appRoot, cfg)),
 	}
 }
 
@@ -643,13 +666,27 @@ func validationProfileRecordFor(cfg appcfg.Config, name string) (validationProfi
 		Name:        name,
 		Description: prof.Description,
 		Cost:        prof.Cost,
-		Paths:       append([]string(nil), prof.Paths...),
-		Steps:       append([]string(nil), prof.Steps...),
+		Paths:       nonNilStrings(prof.Paths),
+		Steps:       nonNilStrings(prof.Steps),
 		EnvKeys:     sortedMapKeys(prof.Env),
-		Artifacts:   append([]string(nil), prof.Artifacts...),
+		Artifacts:   nonNilStrings(prof.Artifacts),
 		Default:     name == cfg.Validation.Default || cfg.Validation.Default == "" && name == "quick",
 		StepCount:   len(prof.Steps),
 	}, true
+}
+
+func nonNilStrings(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return append([]string(nil), values...)
+}
+
+func nonNilValidationDiagnostics(values []checkDiagnostic) []checkDiagnostic {
+	if values == nil {
+		return []checkDiagnostic{}
+	}
+	return values
 }
 
 func resolveValidationProfileName(cfg appcfg.Config, requested string) string {
@@ -671,6 +708,9 @@ func validateValidationConfig(appRoot string, cfg appcfg.Config) []checkDiagnost
 	for name, prof := range cfg.Validation.Profiles {
 		if !validScriptSegment(name) || strings.Contains(name, ":") {
 			diags = append(diags, validationDiagnostic("validation", "error", "invalid validation profile name "+name))
+		}
+		if validationReservedProfileName(name) {
+			diags = append(diags, validationDiagnostic("validation", "error", "validation profile name "+name+" is reserved by onlava validate"))
 		}
 		if prof.Cost != "" && prof.Cost != "low" && prof.Cost != "medium" && prof.Cost != "high" {
 			diags = append(diags, validationDiagnostic("validation", "error", "validation profile "+name+" has invalid cost "+prof.Cost))
@@ -727,6 +767,15 @@ func validateValidationConfig(appRoot string, cfg appcfg.Config) []checkDiagnost
 		diags[i].File = filepath.Join(appRoot, ".onlava.json")
 	}
 	return diags
+}
+
+func validationReservedProfileName(name string) bool {
+	switch name {
+	case "list", "inspect", "graph", "changed":
+		return true
+	default:
+		return false
+	}
 }
 
 func validationDiagnostic(stage, severity, message string) checkDiagnostic {
@@ -973,11 +1022,12 @@ func runValidationTask(ctx context.Context, appRoot string, cfg appcfg.Config, t
 	}
 	if kind == taskKindCode {
 		return runOnlavaScript(ctx, scriptOptions{
-			AppRoot: appRoot,
-			Target:  target,
-			Stdout:  stdout,
-			Stderr:  stderr,
-			Stdin:   os.Stdin,
+			AppRoot:    appRoot,
+			EnvOverlay: envOverlay,
+			Target:     target,
+			Stdout:     stdout,
+			Stderr:     stderr,
+			Stdin:      os.Stdin,
 		})
 	}
 	task, ok := cfg.Tasks[target]
@@ -1198,12 +1248,8 @@ func validationGlobMatches(pattern, file string) bool {
 		prefix := strings.TrimSuffix(pattern, "/**")
 		return file == prefix || strings.HasPrefix(file, prefix+"/")
 	}
-	if strings.Contains(pattern, "**/") {
-		parts := strings.Split(pattern, "**/")
-		if len(parts) == 2 && strings.HasPrefix(file, parts[0]) {
-			ok, _ := filepath.Match(parts[1], filepath.Base(file))
-			return ok || strings.HasSuffix(file, parts[1])
-		}
+	if validationGlobMatchSegments(strings.Split(pattern, "/"), strings.Split(file, "/")) {
+		return true
 	}
 	ok, _ := filepath.Match(pattern, file)
 	if ok {
@@ -1214,4 +1260,29 @@ func validationGlobMatches(pattern, file string) bool {
 		return ok
 	}
 	return false
+}
+
+func validationGlobMatchSegments(patternParts, fileParts []string) bool {
+	if len(patternParts) == 0 {
+		return len(fileParts) == 0
+	}
+	if patternParts[0] == "**" {
+		if validationGlobMatchSegments(patternParts[1:], fileParts) {
+			return true
+		}
+		for i := range fileParts {
+			if validationGlobMatchSegments(patternParts[1:], fileParts[i+1:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(fileParts) == 0 {
+		return false
+	}
+	ok, err := filepath.Match(patternParts[0], fileParts[0])
+	if err != nil || !ok {
+		return false
+	}
+	return validationGlobMatchSegments(patternParts[1:], fileParts[1:])
 }

@@ -36,15 +36,16 @@ type scriptCandidate struct {
 }
 
 type scriptOptions struct {
-	AppRoot string
-	Env     string
-	Lang    string
-	JSON    bool
-	Target  string
-	Args    []string
-	Stdout  io.Writer
-	Stderr  io.Writer
-	Stdin   io.Reader
+	AppRoot    string
+	Env        string
+	EnvOverlay map[string]string
+	Lang       string
+	JSON       bool
+	Target     string
+	Args       []string
+	Stdout     io.Writer
+	Stderr     io.Writer
+	Stdin      io.Reader
 }
 
 type scriptInspectOutput struct {
@@ -495,6 +496,7 @@ func runScriptProcess(ctx context.Context, root string, cfg app.Config, program 
 	if err != nil {
 		return err
 	}
+	env = overlayEnv(env, opts.EnvOverlay)
 	extra := []string{
 		"ONLAVA_APP_ID=" + cfg.AppID(),
 		"ONLAVA_APP_ROOT=" + root,

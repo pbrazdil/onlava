@@ -58,6 +58,39 @@ func TestInspectValidationProfiles(t *testing.T) {
 	}
 }
 
+func TestInspectValidationReturnsEmptyArrays(t *testing.T) {
+	root := validationFixtureRoot(t, `{
+		"name": "demo",
+		"validation": {
+			"default": "quick",
+			"profiles": {
+				"quick": {"steps": ["check"]}
+			}
+		}
+	}`)
+
+	var out bytes.Buffer
+	if err := runOnlavaInspect([]string{"validation", "--app-root", root, "--json"}, &out); err != nil {
+		t.Fatalf("inspect validation: %v", err)
+	}
+	var resp inspectValidationResponse
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, out.String())
+	}
+	if resp.Diagnostics == nil {
+		t.Fatalf("diagnostics is nil")
+	}
+	if len(resp.Profiles) != 1 {
+		t.Fatalf("profiles = %+v", resp.Profiles)
+	}
+	if resp.Profiles[0].Paths == nil {
+		t.Fatalf("paths is nil")
+	}
+	if resp.Profiles[0].Artifacts == nil {
+		t.Fatalf("artifacts is nil")
+	}
+}
+
 func TestValidateDryRunDoesNotExecute(t *testing.T) {
 	root := validationFixtureRoot(t, `{
 		"name": "demo",
@@ -193,13 +226,52 @@ func TestValidateChangedSelectsMatchingProfiles(t *testing.T) {
 	}
 }
 
+func TestValidateChangedCollectsPathsRelativeToAppRoot(t *testing.T) {
+	repo := t.TempDir()
+	appRoot := filepath.Join(repo, "app")
+	writeTestAppFile(t, appRoot, ".onlava.json", `{"name":"demo"}`)
+	writeTestAppFile(t, appRoot, "src/main.go", "package main\n")
+	writeTestAppFile(t, filepath.Join(repo, "other"), "main.go", "package main\n")
+	runValidationGit(t, repo, "init")
+	runValidationGit(t, repo, "config", "user.email", "test@example.com")
+	runValidationGit(t, repo, "config", "user.name", "Test")
+	runValidationGit(t, repo, "add", ".")
+	runValidationGit(t, repo, "commit", "-m", "initial")
+	base := strings.TrimSpace(runValidationGit(t, repo, "rev-parse", "HEAD"))
+	writeTestAppFile(t, appRoot, "src/main.go", "package main\nconst changed = true\n")
+	writeTestAppFile(t, filepath.Join(repo, "other"), "main.go", "package main\nconst changed = true\n")
+	runValidationGit(t, repo, "add", ".")
+	runValidationGit(t, repo, "commit", "-m", "change")
+
+	files, err := collectValidationChangedFiles(context.Background(), appRoot, base)
+	if err != nil {
+		t.Fatalf("collect changed files: %v", err)
+	}
+	if strings.Join(files, ",") != "src/main.go" {
+		t.Fatalf("files = %+v", files)
+	}
+}
+
+func TestValidationGlobMatchesRecursiveMiddleSegments(t *testing.T) {
+	if !validationGlobMatches("apps/**/src/*.ts", "apps/web/src/main.ts") {
+		t.Fatalf("recursive middle glob did not match")
+	}
+	if validationGlobMatches("apps/**/src/*.ts", "apps/web/test/main.ts") {
+		t.Fatalf("recursive middle glob matched wrong path")
+	}
+}
+
 func TestValidateCapturesCodeTaskOutput(t *testing.T) {
 	root := validationFixtureRoot(t, `{
 		"name": "demo",
 		"validation": {
 			"default": "quick",
 			"profiles": {
-				"quick": {"cost": "low", "steps": ["task:billing:reconcile"]}
+				"quick": {
+					"cost": "low",
+					"env": {"CODE_TASK_VALUE": "code-task-env"},
+					"steps": ["task:billing:reconcile"]
+				}
 			}
 		}
 	}`)
@@ -207,7 +279,7 @@ func TestValidateCapturesCodeTaskOutput(t *testing.T) {
 
 	prev := scriptCommandContext
 	scriptCommandContext = func(ctx context.Context, program string, args ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "sh", "-c", "printf code-task")
+		return exec.CommandContext(ctx, "sh", "-c", "printf '%s' \"$CODE_TASK_VALUE\"")
 	}
 	t.Cleanup(func() { scriptCommandContext = prev })
 
@@ -219,8 +291,31 @@ func TestValidateCapturesCodeTaskOutput(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
 		t.Fatalf("json.Unmarshal: %v\n%s", err, out.String())
 	}
-	if got := resp.Steps[0].Evidence.StdoutTail; got != "code-task" {
+	if got := resp.Steps[0].Evidence.StdoutTail; got != "code-task-env" {
 		t.Fatalf("stdout tail = %q", got)
+	}
+}
+
+func TestValidationConfigRejectsReservedProfileNames(t *testing.T) {
+	root := validationFixtureRoot(t, `{
+		"name": "demo",
+		"validation": {
+			"default": "changed",
+			"profiles": {
+				"changed": {"steps": ["check"]}
+			}
+		}
+	}`)
+	appRoot, cfg, err := discoverConfiguredApp(root)
+	if err != nil {
+		t.Fatalf("discover app: %v", err)
+	}
+	diags := validateValidationConfig(appRoot, cfg)
+	if len(diags) == 0 {
+		t.Fatalf("expected diagnostics")
+	}
+	if !strings.Contains(diags[0].Message, "reserved") {
+		t.Fatalf("diagnostics = %+v", diags)
 	}
 }
 
@@ -239,4 +334,15 @@ func TestValidationConfigRejectsUnknownFields(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	_ = os.RemoveAll(root)
+}
+
+func runValidationGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+	return string(out)
 }
