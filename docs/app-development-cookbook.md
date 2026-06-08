@@ -305,6 +305,7 @@ Validate:
 ```sh
 onlava traces list --json --since 15m
 onlava metrics list --json --since 1h
+onlava metrics query --json --since 15m --step 5s --promql 'onlava_request_duration_seconds'
 ```
 
 Common failure: using a raw pool in app code and then expecting DB spans in the dashboard.
@@ -455,8 +456,11 @@ onlava inspect app --json
 onlava inspect routes --json
 onlava inspect endpoints --json
 onlava logs --limit 200
+onlava inspect observability --json --session current
+onlava logs query --json --session current --since 15m --query 'error OR panic'
 onlava traces list --json --since 15m
 onlava metrics list --json --since 1h
+onlava metrics query --json --session current --since 15m --step 5s --promql 'onlava_request_duration_seconds'
 ```
 
 For generated paths:

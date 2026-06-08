@@ -296,6 +296,12 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 			return err
 		}
 		return writeInspectJSON(stdout, resp)
+	case "observability":
+		resp, err := buildInspectObservabilityResponse(context.Background(), appRoot, cfg, opts.Trace.Session)
+		if err != nil {
+			return err
+		}
+		return writeInspectJSON(stdout, resp)
 	default:
 		return fmt.Errorf("unknown inspect subject %q", opts.Subject)
 	}
@@ -358,6 +364,13 @@ func parseInspectArgsInternal(args []string, allowObservability bool) (inspectOp
 			i++
 			if i >= len(args) {
 				return inspectOptions{}, fmt.Errorf("missing value for %s", args[i-1])
+			}
+			if args[i-1] == "--session" && opts.Subject == "observability" {
+				opts.Trace.Session = strings.TrimSpace(args[i])
+				if opts.Trace.Session == "" {
+					return inspectOptions{}, fmt.Errorf("invalid session %q", args[i])
+				}
+				continue
 			}
 			if opts.Subject != "traces" && opts.Subject != "metrics" {
 				return inspectOptions{}, fmt.Errorf("%s is only supported for traces list and metrics list", args[i-1])

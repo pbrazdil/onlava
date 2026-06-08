@@ -9,7 +9,7 @@ For exact command grammar and schemas, use `docs/local-contract.md`. For app rec
 Use this order when instructions overlap:
 
 1. Current implementation and tests.
-2. Machine-readable CLI output: `onlava inspect ... --json`, `onlava check --json`, `onlava logs --jsonl`, and `onlava harness ... --json`.
+2. Machine-readable CLI output: `onlava inspect ... --json`, `onlava check --json`, `onlava logs --jsonl`, scoped observability query commands, and `onlava harness ... --json`.
 3. JSON schemas in `docs/schemas/`.
 4. `docs/local-contract.md`.
 5. This guide.
@@ -36,9 +36,12 @@ During local debugging:
 
 ```sh
 onlava up
+onlava inspect observability --json --session current
 onlava logs --session current --jsonl --limit 200
+onlava logs query --json --session current --since 15m --query 'error OR panic'
 onlava traces list --json --session current --since 15m --slowest
 onlava metrics list --json --session current --since 1h
+onlava metrics query --json --session current --since 15m --step 5s --promql 'onlava_request_duration_seconds'
 ```
 
 Before finishing app work:
@@ -161,7 +164,10 @@ Prefer JSON when output will feed another tool or decision.
 | Run app validation snapshot | `onlava harness --json --write` |
 | Run repo validation snapshot | `onlava harness self --summary --write` |
 | Follow logs | `onlava logs --jsonl --session current --limit 200` |
+| Query logs | `onlava logs query --json --session current --query 'error OR panic'` |
+| Inspect observability | `onlava inspect observability --json --session current` |
 | Inspect traces/metrics | `onlava traces list --json --session current`, `onlava metrics list --json --session current` |
+| Query metrics | `onlava metrics query --json --session current --promql 'onlava_request_duration_seconds'` |
 | Generate TypeScript client | `onlava generate client --lang typescript --output <path>` |
 | Run configured generation | `onlava generate --dry-run --json`, then `onlava generate` |
 | Apply configured DB lifecycle | `onlava db apply --json` |
@@ -303,8 +309,11 @@ onlava logs --jsonl --limit 200
 Slow or failing request:
 
 ```sh
+onlava inspect observability --json --session current
+onlava logs query --json --session current --since 15m --query 'error OR panic'
 onlava traces list --json --session current --since 15m --slowest
 onlava metrics list --json --session current --since 1h
+onlava metrics query --json --session current --since 15m --step 5s --promql 'onlava_request_duration_seconds'
 ```
 
 Generated client mismatch:
