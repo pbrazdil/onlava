@@ -521,7 +521,7 @@ func downCommand(args []string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stdout, "removed onlava session state %s\n", deletedSession.StateRoot)
-		removedPin, err := removeNeonWorktreeDBPinIfConfigured(appRoot)
+		removedPin, err := removeNeonWorktreeDBPinForSession(appRoot, deletedSession)
 		if err != nil {
 			return err
 		}
@@ -841,6 +841,10 @@ func dropSessionManagedDatabase(ctx context.Context, appRoot string, session loc
 }
 
 func removeNeonWorktreeDBPinIfConfigured(appRoot string) (bool, error) {
+	return removeNeonWorktreeDBPinForSession(appRoot, localagent.Session{})
+}
+
+func removeNeonWorktreeDBPinForSession(appRoot string, session localagent.Session) (bool, error) {
 	if strings.TrimSpace(appRoot) == "" {
 		return false, nil
 	}
@@ -855,6 +859,32 @@ func removeNeonWorktreeDBPinIfConfigured(appRoot string) (bool, error) {
 		return false, nil
 	}
 	path := worktreeDBPinPath(appRoot)
+	pin, ok, err := readWorktreeDBPin(path)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	if sessionID := strings.TrimSpace(session.SessionID); sessionID != "" {
+		if strings.TrimSpace(pin.SessionID) != "" {
+			if pin.SessionID != sessionID {
+				return false, nil
+			}
+		} else if firstNonEmpty(strings.TrimSpace(neonPostgresService(cfg).BranchPolicy), neonDefaultBranchPolicy) == "session" {
+			branch, _, err := deriveNeonBranchName(appRoot, cfg, &session)
+			if err != nil {
+				return false, err
+			}
+			expected, err := buildWorktreeDBPinForSession(appRoot, cfg, &session, branch)
+			if err != nil {
+				return false, err
+			}
+			if !sameNeonLease(pin, expected) && !sameNeonBranch(pin, expected) {
+				return false, nil
+			}
+		}
+	}
 	if err := os.Remove(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil

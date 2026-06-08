@@ -1137,7 +1137,10 @@ exit 1
 	if err := json.Unmarshal(restoreOut.Bytes(), &restorePayload); err != nil {
 		t.Fatalf("decode restore JSON: %v\n%s", err, restoreOut.String())
 	}
-	if restorePayload.SchemaVersion != "onlava.db.branch.restore.v1" || restorePayload.Status != "restored" || restorePayload.RestorePoint.Ref != firstRef {
+	if restorePayload.SchemaVersion != "onlava.db.branch.restore.v1" ||
+		restorePayload.Status != "restored" ||
+		restorePayload.RestorePoint.Source != "branch-restore" ||
+		restorePayload.RestorePoint.RestoredFrom != firstRef {
 		t.Fatalf("restore payload = %+v", restorePayload)
 	}
 	state, _, err = readNeonRestorePointsState()
@@ -1145,8 +1148,20 @@ exit 1
 		t.Fatalf("read restore points after restore: %v", err)
 	}
 	points = state.Points[pin.BranchID]
-	if len(points) != 2 || points[len(points)-1].Source != "branch-reset" {
+	if len(points) != 3 || points[len(points)-1].Source != "branch-restore" || points[len(points)-1].RestoredFrom != firstRef {
 		t.Fatalf("restore points after restore = %+v", points)
+	}
+	arbitraryRef := "0/16B6C50"
+	if err := runDBBranchCommand(t.Context(), io.Discard, []string{"restore", "--at", arbitraryRef, "--app-root", root, "--yes", "--json"}); err != nil {
+		t.Fatalf("restore arbitrary ref returned error: %v", err)
+	}
+	state, _, err = readNeonRestorePointsState()
+	if err != nil {
+		t.Fatalf("read restore points after arbitrary restore: %v", err)
+	}
+	points = state.Points[pin.BranchID]
+	if len(points) != 4 || points[len(points)-1].Source != "branch-restore" || points[len(points)-1].RestoredFrom != arbitraryRef {
+		t.Fatalf("restore points after arbitrary restore = %+v", points)
 	}
 
 	var diffOut bytes.Buffer

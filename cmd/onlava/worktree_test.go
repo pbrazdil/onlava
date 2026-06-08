@@ -187,6 +187,66 @@ func TestWorktreeCreateRollsBackWhenNeonPinWriteFails(t *testing.T) {
 	}
 }
 
+func TestWorktreeCreateSkipsNeonPinForManualBranchPolicy(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := filepath.Join(t.TempDir(), "demo")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestAppFile(t, root, ".onlava.json", `{"name":"demo","dev":{"services":{"postgres":{"kind":"neon","mode":"self-hosted","isolation":"branch","project":"demo","branch_policy":"manual"}}}}`)
+	runGitForTest(t, root, "init", "-b", "main")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "add", ".onlava.json")
+	runGitForTest(t, root, "commit", "-m", "initial")
+
+	var out bytes.Buffer
+	if err := runWorktreeCommand(t.Context(), &out, []string{"create", "manual-agent", "--from", "main", "--app-root", root, "--json"}); err != nil {
+		t.Fatalf("runWorktreeCommand create returned error: %v", err)
+	}
+	var created worktreeCreateResult
+	if err := json.Unmarshal(out.Bytes(), &created); err != nil {
+		t.Fatalf("decode create JSON: %v\n%s", err, out.String())
+	}
+	if created.DBPin != nil {
+		t.Fatalf("manual policy should not auto-pin db branch: %+v", created.DBPin)
+	}
+	if _, err := os.Stat(worktreeDBPinPath(created.Path)); !os.IsNotExist(err) {
+		t.Fatalf("manual policy wrote db pin, stat err=%v", err)
+	}
+}
+
+func TestWorktreeRemoveRestoresDBStateWhenGitRemoveFails(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := filepath.Join(t.TempDir(), "demo")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestAppFile(t, root, ".onlava.json", `{"name":"demo","dev":{"services":{"postgres":{"kind":"neon","mode":"self-hosted","isolation":"branch","project":"demo","branch_name_template":"{app}/{git_branch}"}}}}`)
+	runGitForTest(t, root, "init", "-b", "main")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "add", ".onlava.json")
+	runGitForTest(t, root, "commit", "-m", "initial")
+
+	var out bytes.Buffer
+	if err := runWorktreeCommand(t.Context(), &out, []string{"create", "dirty-agent", "--from", "main", "--app-root", root, "--json"}); err != nil {
+		t.Fatalf("runWorktreeCommand create returned error: %v", err)
+	}
+	var created worktreeCreateResult
+	if err := json.Unmarshal(out.Bytes(), &created); err != nil {
+		t.Fatalf("decode create JSON: %v\n%s", err, out.String())
+	}
+	writeTestAppFile(t, created.Path, ".onlava.json", `{"name":"demo","dirty":true}`)
+	err := runWorktreeCommand(t.Context(), &bytes.Buffer{}, []string{"remove", "dirty-agent", "--app-root", root, "--db", "--json"})
+	if err == nil {
+		t.Fatal("remove should fail for dirty worktree")
+	}
+	if _, err := os.Stat(worktreeDBPinPath(created.Path)); err != nil {
+		t.Fatalf("db state was not restored after failed remove: %v", err)
+	}
+}
+
 func TestWorktreeRemoveDoesNotDeleteStateForUnlistedTarget(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "demo")
 	if err := os.MkdirAll(root, 0o755); err != nil {

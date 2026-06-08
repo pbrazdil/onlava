@@ -107,10 +107,6 @@ func (d executableNeonBranchDriver) ResetBranch(ctx context.Context, pin worktre
 }
 
 func (d executableNeonBranchDriver) RestoreBranch(ctx context.Context, pin worktreeDBPin, at string) (neonBranchRestorePoint, error) {
-	restoreFrom, err := resolveNeonRestorePoint(pin.BranchID, at)
-	if err != nil {
-		return neonBranchRestorePoint{}, err
-	}
 	result, err := d.run(ctx, "restore", pin, []string{"--at", strings.TrimSpace(at)})
 	if err != nil {
 		return neonBranchRestorePoint{}, err
@@ -121,7 +117,7 @@ func (d executableNeonBranchDriver) RestoreBranch(ctx context.Context, pin workt
 	if result.RestorePoint != nil {
 		return *result.RestorePoint, nil
 	}
-	return restoreFrom, nil
+	return recordNeonRestorePoint(pin, "branch-restore", at)
 }
 
 func (d executableNeonBranchDriver) DiffBranch(ctx context.Context, pin worktreeDBPin, target string) (string, error) {

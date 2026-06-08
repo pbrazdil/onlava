@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	appcfg "github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/envpolicy"
 	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
@@ -395,7 +396,15 @@ func resolveDatabaseURLForConfig(ctx context.Context, appRoot string, cfg appcfg
 				return externalPostgresDatabaseURL(baseEnv)
 			}
 			if strings.TrimSpace(svc.Kind) == "neon" {
-				dsn, err := resolveNeonBranchDatabaseURL(ctx, appRoot, cfg, nil)
+				var session *localagent.Session
+				if firstNonEmpty(strings.TrimSpace(svc.BranchPolicy), neonDefaultBranchPolicy) == "session" {
+					active, err := currentAgentSessionForAppRoot(ctx, appRoot)
+					if err != nil {
+						return "", err
+					}
+					session = active
+				}
+				dsn, err := resolveNeonBranchDatabaseURL(ctx, appRoot, cfg, session)
 				if err != nil {
 					return "", fmt.Errorf("dev.services.postgres kind %q could not resolve Neon branch connection: %w", svc.Kind, err)
 				}

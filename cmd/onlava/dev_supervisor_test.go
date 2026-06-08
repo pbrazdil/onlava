@@ -701,6 +701,10 @@ func TestManagedAppEnvUsesConfiguredNeonDatabaseURLEnv(t *testing.T) {
 			t.Fatalf("app base env kept stale %s: %+v", key, appBaseEnv)
 		}
 	}
+	setupEnv := managedDatabaseSetupEnv(s.cfg, env)
+	if !containsString(setupEnv, appDatabaseURLEnv+"=postgres://cloud_admin@127.0.0.1:55435/demo?sslmode=disable") {
+		t.Fatalf("setup env missing canonical database URL: %+v", setupEnv)
+	}
 }
 
 func TestManagedAppEnvSkipsNeonWhenExternalPostgresIsConfigured(t *testing.T) {

@@ -137,6 +137,18 @@ func runWorktreeCreate(ctx context.Context, stdout io.Writer, opts worktreeOptio
 		return fmt.Errorf("worktree name is empty after sanitization")
 	}
 	target := defaultWorktreePath(appRoot, name)
+	autoPin := false
+	pinTemplate := ""
+	if _, svc, ok := managedPostgresDeclared(cfg); ok && strings.TrimSpace(svc.Kind) == "neon" {
+		policy := firstNonEmpty(strings.TrimSpace(svc.BranchPolicy), neonDefaultBranchPolicy)
+		if policy != "manual" {
+			autoPin = true
+			pinTemplate = firstNonEmpty(strings.TrimSpace(svc.BranchNameTemplate), neonDefaultBranchNameTemplate)
+			if policy == "session" && strings.TrimSpace(svc.BranchNameTemplate) == "" {
+				pinTemplate = "{app}/{session}"
+			}
+		}
+	}
 	args := []string{"-C", appRoot, "worktree", "add", "-b", name, target}
 	if strings.TrimSpace(opts.From) != "" {
 		args = append(args, opts.From)
@@ -153,15 +165,13 @@ func runWorktreeCreate(ctx context.Context, stdout io.Writer, opts worktreeOptio
 		From:          strings.TrimSpace(opts.From),
 		NextCommand:   "cd " + target + " && onlava up",
 	}
-	if _, svc, ok := managedPostgresDeclared(cfg); ok && strings.TrimSpace(svc.Kind) == "neon" {
+	if autoPin {
 		targetRoot, targetCfg, err := appcfg.DiscoverRoot(target)
 		if err != nil {
 			rollbackCreatedWorktree(ctx, appRoot, target)
 			return err
 		}
-		targetService := neonPostgresService(targetCfg)
-		template := firstNonEmpty(strings.TrimSpace(targetService.BranchNameTemplate), neonDefaultBranchNameTemplate)
-		pin, err := buildWorktreeDBPinForSession(targetRoot, targetCfg, nil, renderNeonBranchTemplate(template, targetRoot, targetCfg, nil))
+		pin, err := buildWorktreeDBPinForSession(targetRoot, targetCfg, nil, renderNeonBranchTemplate(pinTemplate, targetRoot, targetCfg, nil))
 		if err != nil {
 			rollbackCreatedWorktree(ctx, appRoot, target)
 			return err
@@ -226,21 +236,37 @@ func runWorktreeRemove(ctx context.Context, stdout io.Writer, opts worktreeOptio
 		Path:          target,
 	}
 	var dbPinPresent bool
+	var dbStateBackup string
 	if opts.DB {
+		stateDir := filepath.Join(target, ".onlava")
 		if _, err := os.Stat(worktreeDBPinPath(target)); err == nil {
 			dbPinPresent = true
 		} else if err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		pinPath := worktreeDBPinPath(target)
-		if err := os.Remove(pinPath); err != nil && !os.IsNotExist(err) {
+		if _, err := os.Stat(stateDir); err == nil {
+			backupRoot, err := os.MkdirTemp(filepath.Dir(target), ".onlava-worktree-db-*")
+			if err != nil {
+				return err
+			}
+			dbStateBackup = filepath.Join(backupRoot, ".onlava")
+			if err := os.Rename(stateDir, dbStateBackup); err != nil {
+				_ = os.RemoveAll(backupRoot)
+				return err
+			}
+		} else if err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		_ = os.Remove(filepath.Join(target, ".onlava", ".gitignore"))
-		_ = os.RemoveAll(filepath.Join(target, ".onlava"))
 	}
 	if err := runGitCommand(ctx, "-C", appRoot, "worktree", "remove", target); err != nil {
+		if dbStateBackup != "" {
+			_ = os.Rename(dbStateBackup, filepath.Join(target, ".onlava"))
+			_ = os.RemoveAll(filepath.Dir(dbStateBackup))
+		}
 		return err
+	}
+	if dbStateBackup != "" {
+		_ = os.RemoveAll(filepath.Dir(dbStateBackup))
 	}
 	if opts.DB {
 		result.DBPinRemoved = dbPinPresent

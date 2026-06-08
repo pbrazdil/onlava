@@ -768,6 +768,7 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 		"ONLAVA_DEV_SUPERVISOR=1",
 	)
 	env = append(env, managedEnv...)
+	env = append(env, managedDatabaseSetupEnv(s.cfg, managedEnv)...)
 	source := devdash.DevSource{ID: "database-setup", Kind: "setup", Name: "database setup", Role: "database", Status: "running"}
 	s.eventSink().Emit(ctx, source, "info", "database setup started", map[string]any{
 		"seed_count": len(setup.Seeds),
@@ -792,6 +793,19 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 		"seeds": seedResult.Summary,
 	})
 	s.dbSetupFingerprint = setup.Fingerprint
+	return nil
+}
+
+func managedDatabaseSetupEnv(cfg app.Config, managedEnv []string) []string {
+	if _, svc, ok := managedPostgresDeclared(cfg); !ok || strings.TrimSpace(svc.Kind) != "neon" {
+		return nil
+	}
+	if value, _ := lookupEnvValue(managedEnv, appDatabaseURLEnv); value != "" {
+		return nil
+	}
+	if value, _ := lookupEnvValue(managedEnv, "ONLAVA_MANAGED_DATABASE_URL"); value != "" {
+		return []string{appDatabaseURLEnv + "=" + value}
+	}
 	return nil
 }
 
