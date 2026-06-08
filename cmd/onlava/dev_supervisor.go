@@ -768,6 +768,7 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 		"ONLAVA_DEV_SUPERVISOR=1",
 	)
 	env = append(env, managedEnv...)
+	env = append(env, managedDatabaseSetupEnv(s.cfg, managedEnv)...)
 	source := devdash.DevSource{ID: "database-setup", Kind: "setup", Name: "database setup", Role: "database", Status: "running"}
 	s.eventSink().Emit(ctx, source, "info", "database setup started", map[string]any{
 		"seed_count": len(setup.Seeds),
@@ -795,7 +796,46 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 	return nil
 }
 
+func managedDatabaseSetupEnv(cfg app.Config, managedEnv []string) []string {
+	if _, svc, ok := managedPostgresDeclared(cfg); !ok || strings.TrimSpace(svc.Kind) != "neon" {
+		return nil
+	}
+	if value, _ := lookupEnvValue(managedEnv, appDatabaseURLEnv); value != "" {
+		return nil
+	}
+	if value, _ := lookupEnvValue(managedEnv, "ONLAVA_MANAGED_DATABASE_URL"); value != "" {
+		return []string{appDatabaseURLEnv + "=" + value}
+	}
+	return nil
+}
+
 func (s *devSupervisor) managedAppEnv(ctx context.Context, baseEnv []string) ([]string, error) {
+	if _, _, ok := managedPostgresDeclared(s.cfg); ok && managedPostgresUsesExternalDatabase(baseEnv) {
+		if _, err := externalPostgresDatabaseURL(baseEnv); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if _, svc, ok := managedPostgresDeclared(s.cfg); ok && strings.TrimSpace(svc.Kind) == "neon" {
+		env, resolution, connection, err := neonManagedPostgresEnv(ctx, s.root, s.cfg, s.agentSession)
+		status := "running"
+		message := "Neon branch lease ready"
+		if err != nil {
+			status = "pending"
+			message = "Neon branch lease resolved"
+		}
+		s.eventSink().Emit(ctx, devdash.DevSource{ID: "neon", Kind: "substrate", Name: "neon", Role: "database", Status: status}, "info", message, map[string]any{
+			"branch":  resolution.Pin.Branch,
+			"source":  resolution.Source,
+			"created": resolution.Created,
+			"host":    connection.Endpoint.Host,
+			"port":    connection.Endpoint.Port,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("dev.services.postgres kind %q resolved branch %q, but Neon branch connection is not ready: %w", svc.Kind, resolution.Pin.Branch, err)
+		}
+		return env, nil
+	}
 	env, err := managedPostgresEnv(ctx, s.cfg, s.agentSession, baseEnv, s.agent)
 	if err != nil {
 		return nil, err
@@ -818,7 +858,13 @@ func (s *devSupervisor) appDatabaseAuthorityEnv(baseEnv []string) []string {
 	if managedPostgresUsesExternalDatabase(baseEnv) {
 		return envWithoutKeys(baseEnv, legacyDatabaseURLEnv)
 	}
-	return envWithoutKeys(baseEnv, appDatabaseURLEnv, legacyDatabaseURLEnv)
+	keys := []string{appDatabaseURLEnv, legacyDatabaseURLEnv}
+	if _, svc, ok := managedPostgresDeclared(s.cfg); ok && strings.TrimSpace(svc.Kind) == "neon" {
+		if envName := neonDatabaseURLEnv(s.cfg); envName != appDatabaseURLEnv {
+			keys = append(keys, envName)
+		}
+	}
+	return envWithoutKeys(baseEnv, keys...)
 }
 
 func (s *devSupervisor) sessionIdentityEnv() []string {

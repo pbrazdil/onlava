@@ -933,7 +933,7 @@ func buildHarnessAgentRelevantExecPlans(repoRoot string, changedArea *harnessCha
 	if err != nil {
 		return []harnessAgentExecPlan{}
 	}
-	var plans []harnessAgentExecPlan
+	plans := []harnessAgentExecPlan{}
 	for _, doc := range index.Documents {
 		reason, ok := relevant[doc.Path]
 		if !ok || doc.Status != "active" {

@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+var ErrRootNotFound = errors.New("no .onlava.json found in current directory or any parent")
+
 type Config struct {
 	Name          string                `json:"name"`
 	ID            string                `json:"id"`
@@ -55,13 +57,21 @@ type DevConfig struct {
 }
 
 type DevServiceConfig struct {
-	Kind      string            `json:"kind"`
-	Version   string            `json:"version"`
-	Isolation string            `json:"isolation"`
-	Image     string            `json:"image"`
-	Database  string            `json:"database"`
-	Route     string            `json:"route"`
-	Env       map[string]string `json:"env"`
+	Kind               string            `json:"kind"`
+	Mode               string            `json:"mode"`
+	Version            string            `json:"version"`
+	Isolation          string            `json:"isolation"`
+	Project            string            `json:"project"`
+	ParentBranch       string            `json:"parent_branch"`
+	BranchPolicy       string            `json:"branch_policy"`
+	BranchNameTemplate string            `json:"branch_name_template"`
+	TTL                string            `json:"ttl"`
+	Role               string            `json:"role"`
+	DatabaseURLEnv     string            `json:"database_url_env"`
+	Image              string            `json:"image"`
+	Database           string            `json:"database"`
+	Route              string            `json:"route"`
+	Env                map[string]string `json:"env"`
 }
 
 type GeneratorsConfig struct {
@@ -204,7 +214,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 		}
 		dir = parent
 	}
-	return "", Config{}, errors.New("no .onlava.json found in current directory or any parent")
+	return "", Config{}, ErrRootNotFound
 }
 
 func decodeConfig(path string, data []byte, cfg *Config) error {

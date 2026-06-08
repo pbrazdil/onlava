@@ -581,6 +581,161 @@ func TestDevSetupUsesManagedDatabaseURLWithoutLegacyDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestManagedAppEnvUsesReadyNeonBranchLease(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := t.TempDir()
+	s := &devSupervisor{
+		root: root,
+		cfg: app.Config{
+			Name: "demo",
+			Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+				"postgres": {
+					Kind:               "neon",
+					Mode:               "self-hosted",
+					Isolation:          "branch",
+					Project:            "demo",
+					BranchPolicy:       "session",
+					BranchNameTemplate: "{app}/{session}",
+				},
+			}},
+		},
+		status: devdash.AppRecord{ID: "demo"},
+		agentSession: &localagent.Session{
+			SessionID: "review-a",
+			BaseAppID: "demo",
+		},
+	}
+	env, err := s.managedAppEnv(context.Background(), []string{"A=1"})
+	if err == nil || !strings.Contains(err.Error(), `resolved branch "demo/review-a"`) || !strings.Contains(err.Error(), "not ready") {
+		t.Fatalf("managedAppEnv env=%v err=%v", env, err)
+	}
+	pin, ok, err := readWorktreeDBPin(worktreeDBPinPath(root))
+	if err != nil || !ok {
+		t.Fatalf("read pin ok=%v err=%v", ok, err)
+	}
+	if pin.Branch != "demo/review-a" || pin.SessionID != "review-a" {
+		t.Fatalf("pin = %+v", pin)
+	}
+	markNeonLeaseReadyForTest(t, pin, neonEndpoint{
+		Host:     "127.0.0.1",
+		Port:     55435,
+		Database: "demo",
+		Role:     "cloud_admin",
+		SSLMode:  "disable",
+	})
+	env, err = s.managedAppEnv(context.Background(), []string{"A=1", appDatabaseURLEnv + "=postgres://localhost/stale", legacyDatabaseURLEnv + "=postgres://localhost/poison"})
+	if err != nil {
+		t.Fatalf("managedAppEnv ready: %v", err)
+	}
+	for _, want := range []string{
+		appDatabaseURLEnv + "=postgres://cloud_admin@127.0.0.1:55435/demo?sslmode=disable",
+		"ONLAVA_MANAGED_DATABASE_URL=postgres://cloud_admin@127.0.0.1:55435/demo?sslmode=disable",
+		"ONLAVA_MANAGED_DATABASE_NAME=demo",
+	} {
+		if !containsString(env, want) {
+			t.Fatalf("managed env missing %q: %+v", want, env)
+		}
+	}
+}
+
+func TestManagedAppEnvUsesConfiguredNeonDatabaseURLEnv(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := t.TempDir()
+	s := &devSupervisor{
+		root: root,
+		cfg: app.Config{
+			Name: "demo",
+			Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+				"postgres": {
+					Kind:           "neon",
+					Mode:           "self-hosted",
+					Isolation:      "branch",
+					Project:        "demo",
+					DatabaseURLEnv: "APP_DATABASE_URL",
+				},
+			}},
+		},
+		status: devdash.AppRecord{ID: "demo"},
+		agentSession: &localagent.Session{
+			SessionID: "review-a",
+			BaseAppID: "demo",
+			Branch:    "feature-a",
+		},
+	}
+	_, err := s.managedAppEnv(context.Background(), nil)
+	if err == nil {
+		t.Fatal("managedAppEnv should wait for ready Neon lease")
+	}
+	pin, ok, err := readWorktreeDBPin(worktreeDBPinPath(root))
+	if err != nil || !ok {
+		t.Fatalf("read pin ok=%v err=%v", ok, err)
+	}
+	markNeonLeaseReadyForTest(t, pin, neonEndpoint{
+		Host:     "127.0.0.1",
+		Port:     55435,
+		Database: "demo",
+		Role:     "cloud_admin",
+		SSLMode:  "disable",
+	})
+	env, err := s.managedAppEnv(context.Background(), []string{
+		"APP_DATABASE_URL=postgres://localhost/stale",
+		appDatabaseURLEnv + "=postgres://localhost/stale-default",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+	})
+	if err != nil {
+		t.Fatalf("managedAppEnv ready: %v", err)
+	}
+	if !containsString(env, "APP_DATABASE_URL=postgres://cloud_admin@127.0.0.1:55435/demo?sslmode=disable") {
+		t.Fatalf("managed env missing configured database URL env: %+v", env)
+	}
+	if containsString(env, appDatabaseURLEnv+"=postgres://cloud_admin@127.0.0.1:55435/demo?sslmode=disable") || containsString(env, legacyDatabaseURLEnv+"=postgres://localhost/poison") {
+		t.Fatalf("managed env leaked unconfigured database URL env: %+v", env)
+	}
+	appBaseEnv := s.appDatabaseAuthorityEnv([]string{
+		"APP_DATABASE_URL=postgres://localhost/stale",
+		appDatabaseURLEnv + "=postgres://localhost/stale-default",
+		legacyDatabaseURLEnv + "=postgres://localhost/poison",
+	})
+	for _, key := range []string{"APP_DATABASE_URL=", appDatabaseURLEnv + "=", legacyDatabaseURLEnv + "="} {
+		if envValueFromList(appBaseEnv, strings.TrimSuffix(key, "=")) != "" {
+			t.Fatalf("app base env kept stale %s: %+v", key, appBaseEnv)
+		}
+	}
+	setupEnv := managedDatabaseSetupEnv(s.cfg, env)
+	if !containsString(setupEnv, appDatabaseURLEnv+"=postgres://cloud_admin@127.0.0.1:55435/demo?sslmode=disable") {
+		t.Fatalf("setup env missing canonical database URL: %+v", setupEnv)
+	}
+}
+
+func TestManagedAppEnvSkipsNeonWhenExternalPostgresIsConfigured(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := t.TempDir()
+	s := &devSupervisor{
+		root: root,
+		cfg: app.Config{
+			Name: "demo",
+			Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+				"postgres": {Kind: "neon", Mode: "self-hosted", Isolation: "branch", Project: "demo"},
+			}},
+		},
+		status:       devdash.AppRecord{ID: "demo"},
+		agentSession: &localagent.Session{SessionID: "review-a", BaseAppID: "demo"},
+	}
+	env, err := s.managedAppEnv(context.Background(), []string{
+		devPostgresExternalEnv + "=1",
+		appDatabaseURLEnv + "=postgres://localhost/external",
+	})
+	if err != nil {
+		t.Fatalf("managedAppEnv external: %v", err)
+	}
+	if len(env) != 0 {
+		t.Fatalf("managedAppEnv external env = %+v", env)
+	}
+	if _, ok, err := readWorktreeDBPin(worktreeDBPinPath(root)); err != nil || ok {
+		t.Fatalf("external mode wrote Neon pin ok=%v err=%v", ok, err)
+	}
+}
+
 func TestTypeScriptWorkerAutoStartRequiresTemporalEnabled(t *testing.T) {
 	cfg := app.Config{
 		Name: "demo",

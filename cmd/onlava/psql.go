@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	localagent "github.com/pbrazdil/onlava/internal/agent"
 	appcfg "github.com/pbrazdil/onlava/internal/app"
 	"github.com/pbrazdil/onlava/internal/envpolicy"
 	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
@@ -22,7 +23,7 @@ type psqlOptions struct {
 
 func dbCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: onlava db psql|apply|seed|setup|reset|drop|snapshot [--app-root <path>]")
+		return fmt.Errorf("usage: onlava db psql|apply|seed|setup|reset|drop|snapshot|branch|neon [--app-root <path>]")
 	}
 	switch args[0] {
 	case "psql":
@@ -39,6 +40,10 @@ func dbCommand(args []string) error {
 		return dbDropCommand(args[1:])
 	case "snapshot":
 		return dbSnapshotCommand(args[1:])
+	case "branch":
+		return dbBranchCommand(args[1:])
+	case "neon":
+		return dbNeonCommand(args[1:])
 	default:
 		return fmt.Errorf("unknown db command %q", args[0])
 	}
@@ -386,8 +391,25 @@ func buildPSQLInvocationForConfig(ctx context.Context, appRoot string, cfg appcf
 
 func resolveDatabaseURLForConfig(ctx context.Context, appRoot string, cfg appcfg.Config, baseEnv []string, useManaged bool) (string, error) {
 	if useManaged {
-		if _, _, ok := managedPostgresDeclared(cfg); ok && managedPostgresUsesExternalDatabase(baseEnv) {
-			return externalPostgresDatabaseURL(baseEnv)
+		if _, svc, ok := managedPostgresDeclared(cfg); ok {
+			if managedPostgresUsesExternalDatabase(baseEnv) {
+				return externalPostgresDatabaseURL(baseEnv)
+			}
+			if strings.TrimSpace(svc.Kind) == "neon" {
+				var session *localagent.Session
+				if firstNonEmpty(strings.TrimSpace(svc.BranchPolicy), neonDefaultBranchPolicy) == "session" {
+					active, err := currentAgentSessionForAppRoot(ctx, appRoot)
+					if err != nil {
+						return "", err
+					}
+					session = active
+				}
+				dsn, err := resolveNeonBranchDatabaseURL(ctx, appRoot, cfg, session)
+				if err != nil {
+					return "", fmt.Errorf("dev.services.postgres kind %q could not resolve Neon branch connection: %w", svc.Kind, err)
+				}
+				return dsn, nil
+			}
 		}
 		plan, err := managedPostgresPlanForCurrentSession(ctx, appRoot, cfg, baseEnv)
 		if err != nil {
