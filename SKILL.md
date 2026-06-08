@@ -28,9 +28,10 @@ onlava inspect wire --json
 onlava system toolchain verify --json
 onlava logs --jsonl --limit 200
 onlava harness --json --write
+onlava validate quick --json --write
 ```
 
-Prefer JSON output for agent decisions. Prefer `onlava up` for local development. Use `onlava serve` for headless API execution. Use `onlava task` for configured and code tasks. Use `onlava worker` for worker-only cron/Temporal execution.
+Prefer JSON output for agent decisions. Prefer `onlava up` for local development. Use `onlava serve` for headless API execution. Use `onlava task` for configured and code tasks. Use `onlava validate` for app-owned quality gates. Use `onlava worker` for worker-only cron/Temporal execution.
 
 Run `onlava doctor --json` before deep app debugging when local readiness is in doubt. It is read-only and reports host resources, Go version, optional tools, and app-sensitive dependency hints without building or starting services.
 
@@ -238,6 +239,11 @@ onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
 onlava task run <name> [--app-root <path>]
 onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
 onlava task graph --json [--app-root <path>]
+onlava validate [<profile>] [--app-root <path>] [--json] [--write] [--dry-run]
+onlava validate list [--app-root <path>] [--json]
+onlava validate inspect <profile> [--app-root <path>] [--json]
+onlava validate graph [<profile>] [--app-root <path>] --json
+onlava validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
 onlava harness [--app-root <path>] --json --write
 onlava harness self [--repo-root <path>] --summary --write
 onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
@@ -263,6 +269,7 @@ For app changes:
 onlava check --json
 go test ./...
 onlava harness --json --write
+onlava validate quick --json --write
 ```
 
 For onlava repo changes:

@@ -37,6 +37,8 @@ same as the stable v0 support surface.
 - `onlava task list|inspect|run|graph`
 - `onlava task run <name>`
 - `onlava task run <domain>:<name>`
+- `onlava validate list|inspect|graph|changed`
+- `onlava validate <profile> --json`
 - `onlava harness --json`
 - `onlava harness self --json`
 - `onlava harness ui --json`
@@ -50,6 +52,7 @@ same as the stable v0 support surface.
 - `onlava inspect paths --json`
 - `onlava inspect generators --json`
 - `onlava inspect temporal --json`
+- `onlava inspect validation --json`
 - `onlava traces list --json`
 - `onlava metrics list --json`
 - `onlava inspect docs --json`
@@ -88,6 +91,8 @@ Dev-only or beta surface:
 - `onlava task list|inspect|run|graph`
 - `onlava task run <name>`
 - `onlava task run <domain>:<name>`
+- `onlava validate`
+- `onlava inspect validation --json`
 - `onlava traces list|metrics --json`
 - `onlava inspect generators --json`
 - `onlava inspect temporal --json`
@@ -164,6 +169,28 @@ Current shape:
     "ui-harness": {
       "cwd": "apps/web",
       "run": "bun run ui-harness"
+    }
+  },
+  "validation": {
+    "default": "quick",
+    "profiles": {
+      "quick": {
+        "description": "Fast agent handoff gate.",
+        "cost": "low",
+        "steps": ["harness:core", "task:harness"]
+      },
+      "frontend": {
+        "description": "Frontend validation.",
+        "cost": "medium",
+        "paths": ["apps/web/**"],
+        "steps": ["task:ui-harness"],
+        "artifacts": ["test-results/ui-harness/diff-report.md"]
+      },
+      "full": {
+        "description": "Full local quality gate.",
+        "cost": "high",
+        "steps": ["profile:quick", "profile:frontend"]
+      }
     }
   },
   "auth": {
@@ -243,6 +270,8 @@ Rules:
 - Service-local `SERVICE/db/seed.sql` is initial data. It is not Atlas schema input, not SQLC input, and not a generated-source input. The accepted lifecycle applies seed data through `onlava db seed`; the first implementation fails closed on changed previously-applied seed files and obviously destructive seed SQL rather than adding force or reseed escape hatches.
 - `tasks` is a beta thin repo-task layer. Each configured task can define either `run` or `steps`, plus optional `cwd` and string `env`. `run` uses the platform shell from the app root or task cwd. `steps` currently accepts `task:<name>`, `task:<domain>:<name>`, `check`, `test`, `test:go`, `generate`, `generate:client`, `generate:sqlc`, `db:apply`, `db:seed`, and `db:setup`.
 - Code tasks are beta app-local targets under `<domain>/tasks/`. Targets use `<domain>:<name>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`. `onlava task list`, `onlava task inspect`, and `onlava task run <domain>:<name> [-- task args...]` discover and execute them without requiring the app model to parse cleanly.
+- `validation` is a beta app-owned quality-gate layer. It has `default` and `profiles`; each profile can define `description`, `cost` (`low`, `medium`, or `high`), `paths`, `steps`, string `env`, and advisory `artifacts`. Profile names use the configured-task name rule and cannot contain `:`.
+- Validation profile steps are not shell. They accept `profile:<name>`, `task:<name>`, `task:<domain>:<name>`, `harness:core`, `harness:ui`, `harness`, `check`, `test`, `test:go`, `generate`, `generate:client`, `generate:sqlc`, `db:apply`, `db:seed`, and `db:setup`. Shell commands must live behind configured `tasks.<name>.run`.
 - `dev.services.postgres` currently defaults to version `18` and `isolation: "database"`. Other isolation modes are rejected until implemented. With an active agent session, onlava creates or reuses a physical Postgres server substrate, verifies the recorded owner/reachability/version before reuse, and separately allocates a deterministic per-session database. The global Postgres substrate record contains physical-server metadata only: admin URL, version, isolation, data/socket directories, port, source, process owners, and exit metadata. It must not contain `session.<id>` database URLs or names. The session database lease is exposed through session/app env as `DatabaseURL`, `ONLAVA_MANAGED_DATABASE_URL`, and `ONLAVA_MANAGED_DATABASE_NAME`, even when local env files already contain stale database URLs. Managed app, setup, DB setup, and worker environments do not receive Onlava-injected `DATABASE_URL`; `ONLAVA_MANAGED_DATABASE_URL` remains available as tooling/debug metadata. The admin cluster comes from `ONLAVA_DEV_POSTGRES_ADMIN_URL`, a reusable agent Postgres substrate, Docker when available for the requested version, or local `initdb`/`postgres` binaries under the agent state directory. Managed local Postgres starts with logical replication settings so `dev.services.electric` can attach. `ONLAVA_DEV_POSTGRES_INITDB` and `ONLAVA_DEV_POSTGRES_BIN` can point at explicit local binaries. Set `ONLAVA_DEV_POSTGRES_EXTERNAL=1` to keep an explicit external `DatabaseURL` instead of using the managed session database; external mode requires `DatabaseURL` and ignores `DATABASE_URL` as an app database authority. Old substrate records with legacy `session.<id>` keys remain readable during adoption, but new writes omit those keys.
 - `dev.services.electric` supports explicit upstream routing with `ONLAVA_DEV_ELECTRIC_UPSTREAM`; when set, onlava registers the upstream as a hidden session backend and injects `ELECTRIC_URL`/`ONLAVA_ELECTRIC_URL` using the agent route. Without an explicit upstream, onlava starts a hidden per-session Electric process from `ONLAVA_DEV_ELECTRIC_BIN` or, when `dev.services.electric.image` is set and Docker is available, from that image. Electric uses the common managed process readiness and early-exit lifecycle, but remains session-scoped: it is registered as an agent session backend/process, not as a global Electric substrate row. Electric receives the managed Postgres session database URL when `dev.services.postgres` is declared. When declared Postgres is in `ONLAVA_DEV_POSTGRES_EXTERNAL=1` mode, Electric derives its private adapter URL from `DatabaseURL`; without declared Postgres it can still receive explicit `DatabaseURL`/`DATABASE_URL`. onlava also sets a deterministic session-scoped `ELECTRIC_REPLICATION_STREAM_ID` by default so multiple sessions can share one Postgres cluster without colliding on Electric publication or replication-slot names. Configured `dev.services.electric.env` values stay on the Electric process/container and are not injected into the app process; an explicit `ELECTRIC_REPLICATION_STREAM_ID` there overrides the onlava default.
 - Standard auth uses the `github.com/pbrazdil/onlava/auth` top surface and stores DB-backed auth state in PostgreSQL schema `onlava_auth`.
@@ -315,10 +344,15 @@ onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
 onlava task run <name> [--app-root <path>]
 onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
 onlava task graph --json [--app-root <path>]
-onlava harness [--app-root <path>] [--json] [--write]
+onlava validate [<profile>] [--app-root <path>] [--json] [--write] [--dry-run]
+onlava validate list [--app-root <path>] [--json]
+onlava validate inspect <profile> [--app-root <path>] [--json]
+onlava validate graph [<profile>] [--app-root <path>] --json
+onlava validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
+onlava harness [--app-root <path>] [--json] [--write] [--with-validation[=<profile>]]
 onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--quick|--race|--release]
 onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
-onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
+onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|validation --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
 onlava inspect harness [artifact <name>|diagnostics --severity error|warning|timing --top <n>] --json [--app-root <path>] [--repo-root <path>]
 onlava traces list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
@@ -408,6 +442,10 @@ Command split:
 - Onlava task flags must appear before the target. Code task arguments must appear after `--`, for example `onlava task run --env production billing:reconcile -- --dry-run`. Configured tasks do not accept `--env`, `--lang`, or extra runtime arguments.
 - Supported code task layouts are `<domain>/tasks/<name>.task.go`, `<domain>/tasks/<name>.task.ts`, `<domain>/tasks/<name>/main.go`, and `<domain>/tasks/<name>/index.ts`. Single-file Go tasks must start with `//go:build ignore` so normal app package loading cannot accidentally include them. If multiple candidates match a target, onlava fails unless `--lang go|typescript` selects a single language.
 - Code tasks execute with cwd set to the app root. Go tasks use `go run`; TypeScript tasks prefer `bun` and fall back to `node --import tsx`. Task processes receive `ONLAVA_APP_ID`, `ONLAVA_APP_ROOT`, and `ONLAVA_ENV`/`ONLAVA_RUNTIME_ENV` when `--env` is set, with `.env` and `.env.local` loaded when present.
+- `onlava inspect validation --json` is read-only and returns `onlava.inspect.validation.v1` with app metadata, default profile, profile records, advisory artifacts, and diagnostics.
+- `onlava validate list|inspect|graph --json` returns `onlava.validation.list.v1`, `onlava.validation.inspect.v1`, and `onlava.validation.graph.v1`. `onlava validate <profile> --dry-run --json` returns `onlava.validation.plan.v1` and must not execute shell, task, code-task, harness, database, or generation steps.
+- `onlava validate [<profile>] --json --write` runs the resolved profile sequentially, fails fast, keeps stdout as one JSON document, captures child output as bounded evidence tails and artifacts, returns `onlava.validation.result.v1`, and writes `.onlava/harness/validation/latest.json` plus `.onlava/harness/validation/<profile>-latest.json`.
+- `onlava validate changed --base <ref>` computes `git diff --name-only <base>...HEAD`, includes the default profile, adds profiles whose `paths` globs match changed files, resolves nested `profile:` steps, deduplicates profiles, and reports selection reasoning in JSON.
 - Cron declarations use Temporal Schedules when Temporal is enabled. `onlava serve` reconciles schedules from the API role, while `onlava worker` runs the cron workflow/activity worker on `onlava.<app>.cron.go`. Temporal cron executions derive their onlava request start/idempotency metadata from the workflow scheduled start time.
 - `onlava worker` builds once and starts the app runtime in worker-only mode with no public HTTP server. In this beta implementation it runs cron and native Temporal workers; generated binaries use `ONLAVA_ROLE=worker`.
 - `onlava worker bindings` validates `.onlava/workers/*.json` manifests and writes language-specific activity starter files. Python manifests produce `onlava_worker.py`; TypeScript/JavaScript manifests produce `onlava_worker.ts`; unknown languages receive a normalized JSON binding file.
@@ -505,6 +543,7 @@ onlava harness --json --write
 - failed and expensive steps include `evidence` conforming to `onlava.harness.artifact.v1`
 - `--write` persists the same result to `.onlava/harness/latest.json`
 - `--write` persists large evidence payloads under `.onlava/harness/artifacts/<run-id>/`
+- `--with-validation` and `--with-validation=<profile>` run app validation after the core harness and add a small `validation` pointer with `profile`, `ok`, and `result_path`; the validation result itself stays in `.onlava/harness/validation/latest.json`
 
 Implemented `harness self` JSON rules:
 
@@ -638,6 +677,11 @@ Implemented now:
     latest.json
   harness/
     latest.json
+    validation/
+      latest.json
+      <profile>-latest.json
+      artifacts/
+        <run-id>/
     self-latest.json
 ```
 
@@ -655,7 +699,7 @@ Rules:
 - `wire/capabilities.json` is an internal cache for `onlava inspect wire --json` and the runtime `GET /_wire/capabilities` response.
 - `manifest.json` ties generated cache artifacts to schema versions, artifact paths, and deterministic content hashes for debugging generation.
 - Use `onlava inspect build --json` for build metadata. `build/latest.json` is a local cache pointer to the latest prepared or compiled build workspace.
-- Use `onlava harness --json` and `onlava harness self --summary` for validation results. `harness/latest.json`, `harness/self-latest.json`, and `harness/self-summary-latest.json` are local snapshots written by `--write`; `--json=full` is the explicit full archive stdout mode.
+- Use `onlava harness --json` for framework app-model proof, `onlava validate <profile> --json` for app-owned quality gates, and `onlava harness self --summary` for onlava repo validation. `harness/latest.json`, `harness/validation/latest.json`, `harness/self-latest.json`, and `harness/self-summary-latest.json` are local snapshots written by `--write`; `--json=full` is the explicit full archive stdout mode.
 - Future implementation should keep cache paths predictable for debugging, but external tools and agents should integrate through command JSON output.
 
 ## JSON Schemas
@@ -680,6 +724,12 @@ Implemented now:
 - [onlava.task.list.v1.schema.json](schemas/onlava.task.list.v1.schema.json)
 - [onlava.task.inspect.v1.schema.json](schemas/onlava.task.inspect.v1.schema.json)
 - [onlava.task.graph.v1.schema.json](schemas/onlava.task.graph.v1.schema.json)
+- [onlava.inspect.validation.v1.schema.json](schemas/onlava.inspect.validation.v1.schema.json)
+- [onlava.validation.list.v1.schema.json](schemas/onlava.validation.list.v1.schema.json)
+- [onlava.validation.inspect.v1.schema.json](schemas/onlava.validation.inspect.v1.schema.json)
+- [onlava.validation.graph.v1.schema.json](schemas/onlava.validation.graph.v1.schema.json)
+- [onlava.validation.plan.v1.schema.json](schemas/onlava.validation.plan.v1.schema.json)
+- [onlava.validation.result.v1.schema.json](schemas/onlava.validation.result.v1.schema.json)
 - [onlava.traces.clear.v1.schema.json](schemas/onlava.traces.clear.v1.schema.json)
 - [onlava.worker.manifest.v1.schema.json](schemas/onlava.worker.manifest.v1.schema.json)
 - [onlava.worker.manifest.v2.schema.json](schemas/onlava.worker.manifest.v2.schema.json)

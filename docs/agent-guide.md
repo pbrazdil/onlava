@@ -47,6 +47,7 @@ Before finishing app work:
 onlava check --json
 go test ./...
 onlava harness --json --write
+onlava validate quick --json --write
 ```
 
 Before finishing onlava repo work:
@@ -159,6 +160,8 @@ Prefer JSON when output will feed another tool or decision.
 | Install managed local tools | `onlava system toolchain sync --json` or `onlava system toolchain sync --tool <name> --json` |
 | Inspect local HTTPS edge | `onlava system edge status --json` |
 | Run app validation snapshot | `onlava harness --json --write` |
+| Run app quality gate | `onlava validate quick --json --write`, `onlava validate changed --json --write`, or `onlava validate full --json --write` |
+| Inspect app validation gates | `onlava inspect validation --json`, `onlava validate graph full --json` |
 | Run repo validation snapshot | `onlava harness self --summary --write` |
 | Follow logs | `onlava logs --jsonl --session current --limit 200` |
 | Inspect traces/metrics | `onlava traces list --json --session current`, `onlava metrics list --json --session current` |
@@ -189,6 +192,7 @@ Use non-JSON output only for human inspection.
 - Use `onlava db apply` to mutate schema/app database setup only. Use `onlava db seed` to apply service-local initial data only; changed previously-applied seeds and destructive seed SQL fail closed with path/line diagnostics. Use `onlava db setup` for the one-command local setup path: apply then seed. `onlava up` runs that setup lifecycle before app startup when DB setup inputs exist, and skips it on ordinary rebuilds until `database.apply` config or seed file hashes change.
 - Use `onlava task list`, `onlava task inspect <target>`, and `onlava task run <target>` for configured repo tasks and app-local code tasks. Configured tasks use plain names; code tasks use `<domain>:<name>`, and task arguments must appear after `--`.
 - Use `onlava task run <name>` only for repo-local workflows that are not core onlava lifecycle commands.
+- Use `onlava validate` for app-owned quality gates defined in `.onlava.json`. `onlava harness` remains the framework-owned app-model proof; `onlava validate quick|changed|full --json --write` runs app-specific tasks/profiles and writes `.onlava/harness/validation/latest.json`.
 
 ## Generated And Cache Artifacts
 
@@ -202,6 +206,7 @@ onlava inspect endpoints --json
 onlava inspect wire --json
 onlava inspect build --json
 onlava harness --json
+onlava validate quick --json
 onlava harness self --summary
 ```
 
@@ -218,6 +223,7 @@ Generated repo-local files may exist after inspect/build/harness commands produc
     manifest.json
   build/latest.json
   harness/latest.json
+  harness/validation/latest.json
 ```
 
 Treat these files as internal cache or local snapshot artifacts. Do not read `.onlava/gen/*` directly unless debugging onlava generation.

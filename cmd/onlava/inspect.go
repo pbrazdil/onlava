@@ -296,6 +296,8 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 			return err
 		}
 		return writeInspectJSON(stdout, resp)
+	case "validation":
+		return writeInspectJSON(stdout, buildInspectValidationResponse(appRoot, cfg))
 	default:
 		return fmt.Errorf("unknown inspect subject %q", opts.Subject)
 	}

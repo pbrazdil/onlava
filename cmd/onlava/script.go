@@ -42,6 +42,9 @@ type scriptOptions struct {
 	JSON    bool
 	Target  string
 	Args    []string
+	Stdout  io.Writer
+	Stderr  io.Writer
+	Stdin   io.Reader
 }
 
 type scriptInspectOutput struct {
@@ -500,9 +503,9 @@ func runScriptProcess(ctx context.Context, root string, cfg app.Config, program 
 		extra = append(extra, "ONLAVA_ENV="+opts.Env, "ONLAVA_RUNTIME_ENV="+opts.Env)
 	}
 	cmd.Env = envWithOverrides(env, extra...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	cmd.Stdout = firstNonNilWriter(opts.Stdout, os.Stdout)
+	cmd.Stderr = firstNonNilWriter(opts.Stderr, os.Stderr)
+	cmd.Stdin = firstNonNilReader(opts.Stdin, os.Stdin)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -512,6 +515,24 @@ func runScriptProcess(ctx context.Context, root string, cfg app.Config, program 
 	}
 	if err != nil {
 		return fmt.Errorf("onlava task run exited: %w", err)
+	}
+	return nil
+}
+
+func firstNonNilWriter(items ...io.Writer) io.Writer {
+	for _, item := range items {
+		if item != nil {
+			return item
+		}
+	}
+	return io.Discard
+}
+
+func firstNonNilReader(items ...io.Reader) io.Reader {
+	for _, item := range items {
+		if item != nil {
+			return item
+		}
 	}
 	return nil
 }
