@@ -253,13 +253,13 @@ func runDBNeonCommand(ctx context.Context, stdout io.Writer, args []string) erro
 	case "status":
 		return runDBNeonStatus(ctx, stdout, opts)
 	case "logs":
-		return runDBNeonLogs(stdout, opts)
+		return runDBNeonLogs(ctx, stdout, opts)
 	case "stop":
 		return runDBNeonStop(ctx, stdout, opts)
 	case "restart":
 		return runDBNeonRestart(ctx, stdout, opts)
 	case "uninstall":
-		return runDBNeonUninstall(stdout, opts)
+		return runDBNeonUninstall(ctx, stdout, opts)
 	default:
 		return fmt.Errorf("unknown db neon command %q", opts.Command)
 	}
@@ -418,8 +418,8 @@ func runDBNeonStatus(ctx context.Context, stdout io.Writer, opts dbNeonOptions) 
 	return nil
 }
 
-func runDBNeonLogs(stdout io.Writer, opts dbNeonOptions) error {
-	result, err := buildDBNeonStatus(context.Background())
+func runDBNeonLogs(ctx context.Context, stdout io.Writer, opts dbNeonOptions) error {
+	result, err := buildDBNeonStatus(ctx)
 	if err != nil {
 		return err
 	}
@@ -568,7 +568,7 @@ func runDBNeonRestart(ctx context.Context, stdout io.Writer, opts dbNeonOptions)
 	return nil
 }
 
-func runDBNeonUninstall(stdout io.Writer, opts dbNeonOptions) error {
+func runDBNeonUninstall(ctx context.Context, stdout io.Writer, opts dbNeonOptions) error {
 	if !opts.DestroyData {
 		return fmt.Errorf("onlava db neon uninstall requires --destroy-data")
 	}
@@ -576,10 +576,17 @@ func runDBNeonUninstall(stdout io.Writer, opts dbNeonOptions) error {
 	if err != nil {
 		return err
 	}
+	if state, ok, err := readNeonCellState(root); err != nil {
+		return err
+	} else if ok && fileStatus(state.ComposePath) == "present" {
+		if _, err := runDockerCompose(ctx, 90*time.Second, state, "down", "-v", "--remove-orphans"); err != nil {
+			return fmt.Errorf("stop Neon dev-cell before uninstall: %w", err)
+		}
+	}
 	if err := os.RemoveAll(root); err != nil {
 		return err
 	}
-	result, err := buildDBNeonStatus(context.Background())
+	result, err := buildDBNeonStatus(ctx)
 	if err != nil {
 		return err
 	}
@@ -1021,19 +1028,6 @@ func dockerContainerStatuses(ctx context.Context) (map[string]string, error) {
 	return statuses, nil
 }
 
-func dockerHealthFromStatus(status string) string {
-	start := strings.Index(status, "(health: ")
-	if start == -1 {
-		return ""
-	}
-	rest := status[start+len("(health: "):]
-	end := strings.Index(rest, ")")
-	if end == -1 {
-		return ""
-	}
-	return rest[:end]
-}
-
 func markImagesUnknown(images []neonImageStatus, message string) {
 	for i := range images {
 		images[i].Status = "unknown"
@@ -1302,22 +1296,22 @@ func runDBBranchExpire(ctx context.Context, stdout io.Writer, opts dbBranchOptio
 	if err != nil {
 		return fmt.Errorf("parse --after: %w", err)
 	}
-	branch, err := resolveBranchCommandTarget(appRoot, opts)
+	target, err := resolveBranchCommandTarget(appRoot, cfg, opts)
 	if err != nil {
 		return err
 	}
-	if err := expireNeonBranchLease(branch, time.Now().UTC().Add(after)); err != nil {
+	if err := expireNeonBranchLease(target, time.Now().UTC().Add(after)); err != nil {
 		return err
 	}
 	result, err := buildDBBranchStatus(ctx, appRoot, cfg)
 	if err != nil {
 		return err
 	}
-	result.Message = fmt.Sprintf("Local Neon branch lease %q expiration updated. Backend expiration is not implemented yet.", branch)
+	result.Message = fmt.Sprintf("Local Neon branch lease %q expiration updated. Backend expiration is not implemented yet.", target.Branch)
 	if opts.JSON {
 		return writeInspectJSON(stdout, result)
 	}
-	fmt.Fprintf(stdout, "updated db branch lease expiration for %s\n", branch)
+	fmt.Fprintf(stdout, "updated db branch lease expiration for %s\n", target.Branch)
 	return nil
 }
 
@@ -1401,15 +1395,20 @@ func runDBBranchDelete(ctx context.Context, _ io.Writer, opts dbBranchOptions) e
 	if err != nil {
 		return err
 	}
-	if ok {
-		if branch == pin.ParentBranch {
-			return fmt.Errorf("refusing to delete protected parent branch %q", branch)
-		}
-		if branch == pin.Branch && !opts.Force {
-			return fmt.Errorf("refusing to delete current branch %q without --force", branch)
+	targetPin := pin
+	if !ok {
+		targetPin, err = buildWorktreeDBPin(appRoot, cfg, branch)
+		if err != nil {
+			return err
 		}
 	}
-	return neonBranchProviderForConfig(cfg).DeleteBranch(ctx, pin, branch, opts)
+	if branch == targetPin.ParentBranch {
+		return fmt.Errorf("refusing to delete protected parent branch %q", branch)
+	}
+	if ok && branch == pin.Branch && !opts.Force {
+		return fmt.Errorf("refusing to delete current branch %q without --force", branch)
+	}
+	return neonBranchProviderForConfig(cfg).DeleteBranch(ctx, targetPin, branch, opts)
 }
 
 func buildDBBranchStatus(ctx context.Context, appRoot string, cfg appcfg.Config) (dbBranchStatusResult, error) {
@@ -1437,7 +1436,7 @@ func buildDBBranchStatus(ctx context.Context, appRoot string, cfg appcfg.Config)
 		Connection:     backendStatus.Endpoint,
 		PinPath:        pinPath,
 		Pin:            pinPtr,
-		DatabaseURLEnv: firstNonEmpty(neonPostgresService(cfg).DatabaseURLEnv, appDatabaseURLEnv),
+		DatabaseURLEnv: neonDatabaseURLEnv(cfg),
 		PSQLCommand:    "onlava db psql",
 		ResetCommand:   "onlava db branch reset",
 		Message:        dbBranchStatusMessage(ok),
@@ -1664,7 +1663,7 @@ func registryPins(registry neonBranchRegistry, cfg appcfg.Config) []worktreeDBPi
 }
 
 func registryListLeases(ctx context.Context, registry neonBranchRegistry, cfg appcfg.Config) []dbBranchListLease {
-	project := sanitizeNeonBranchSegment(firstNonEmpty(neonPostgresService(cfg).Project, cfg.AppID(), "app"))
+	project := neonProjectForConfig(cfg)
 	leases := make([]dbBranchListLease, 0, len(registry.Leases))
 	provider := neonBranchProviderForConfig(cfg)
 	for _, lease := range registry.Leases {
@@ -1691,22 +1690,22 @@ func dbBranchListLeaseFromRegistryLease(ctx context.Context, provider neonBranch
 	}
 }
 
-func resolveBranchCommandTarget(appRoot string, opts dbBranchOptions) (string, error) {
+func resolveBranchCommandTarget(appRoot string, cfg appcfg.Config, opts dbBranchOptions) (worktreeDBPin, error) {
 	branch := normalizeNeonBranchName(opts.Branch)
 	if branch != "" {
-		return branch, nil
+		return buildWorktreeDBPin(appRoot, cfg, branch)
 	}
 	pin, ok, err := readWorktreeDBPin(worktreeDBPinPath(appRoot))
 	if err != nil {
-		return "", err
+		return worktreeDBPin{}, err
 	}
 	if ok && strings.TrimSpace(pin.Branch) != "" {
-		return pin.Branch, nil
+		return pin, nil
 	}
-	return "", fmt.Errorf("no db branch target supplied and no worktree database branch pin exists")
+	return worktreeDBPin{}, fmt.Errorf("no db branch target supplied and no worktree database branch pin exists")
 }
 
-func expireNeonBranchLease(branch string, expiresAt time.Time) error {
+func expireNeonBranchLease(pin worktreeDBPin, expiresAt time.Time) error {
 	root, err := neonSubstrateRoot()
 	if err != nil {
 		return err
@@ -1715,13 +1714,16 @@ func expireNeonBranchLease(branch string, expiresAt time.Time) error {
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(pin.Project) == "" || strings.TrimSpace(pin.Branch) == "" {
+		return fmt.Errorf("db branch expire requires a resolved Neon project and branch")
+	}
 	nowText := time.Now().UTC().Format(time.RFC3339)
 	var found bool
 	for i := range registry.Leases {
 		if !isOnlavaOwnedNeonLease(registry.Leases[i]) {
 			continue
 		}
-		if registry.Leases[i].Pin.Branch != branch {
+		if !sameNeonLease(registry.Leases[i].Pin, pin) && !sameNeonBranch(registry.Leases[i].Pin, pin) {
 			continue
 		}
 		registry.Leases[i].ExpiresAt = expiresAt.UTC().Format(time.RFC3339)
@@ -1729,7 +1731,7 @@ func expireNeonBranchLease(branch string, expiresAt time.Time) error {
 		found = true
 	}
 	if !found {
-		return fmt.Errorf("no Onlava-owned local Neon branch lease found for %q", branch)
+		return fmt.Errorf("no Onlava-owned local Neon branch lease found for %q in project %q", pin.Branch, pin.Project)
 	}
 	registry.UpdatedAt = nowText
 	return writeNeonBranchRegistry(root, registry)
@@ -2047,10 +2049,10 @@ func neonLeaseMatchesBranchForDelete(lease neonBranchLease, current worktreeDBPi
 	if lease.Pin.Branch != branch {
 		return false
 	}
-	if current.Project != "" {
-		return lease.Pin.Project == current.Project
+	if strings.TrimSpace(current.Project) == "" {
+		return false
 	}
-	return true
+	return lease.Pin.Project == current.Project
 }
 
 func (neonSelfhostBranchProvider) RestoreBranch(ctx context.Context, pin worktreeDBPin, opts dbBranchOptions) (neonBranchRestorePoint, error) {
@@ -2132,8 +2134,19 @@ func resolveNeonBranchConnection(ctx context.Context, appRoot string, cfg appcfg
 	return pin, connection, nil
 }
 
-func resolveNeonBranchDatabaseURL(ctx context.Context, appRoot string, cfg appcfg.Config) (string, error) {
-	_, connection, err := resolveNeonBranchConnection(ctx, appRoot, cfg)
+func resolveNeonBranchDatabaseURL(ctx context.Context, appRoot string, cfg appcfg.Config, session *localagent.Session) (string, error) {
+	if session == nil {
+		_, connection, err := resolveNeonBranchConnection(ctx, appRoot, cfg)
+		if err != nil {
+			return "", err
+		}
+		return connection.DatabaseURL, nil
+	}
+	resolution, err := ensureNeonBranchPinForSession(ctx, appRoot, cfg, session)
+	if err != nil {
+		return "", err
+	}
+	connection, err := neonBranchProviderForConfig(cfg).Connection(ctx, resolution.Pin)
 	if err != nil {
 		return "", err
 	}
@@ -2149,8 +2162,9 @@ func neonManagedPostgresEnv(ctx context.Context, appRoot string, cfg appcfg.Conf
 	if err != nil {
 		return nil, resolution, neonBranchConnectionInfo{}, err
 	}
+	envName := neonDatabaseURLEnv(cfg)
 	return []string{
-		appDatabaseURLEnv + "=" + connection.DatabaseURL,
+		envName + "=" + connection.DatabaseURL,
 		"ONLAVA_MANAGED_DATABASE_URL=" + connection.DatabaseURL,
 		"ONLAVA_MANAGED_DATABASE_NAME=" + connection.DatabaseName,
 	}, resolution, connection, nil
@@ -2261,10 +2275,7 @@ func buildWorktreeDBPinForSession(appRoot string, cfg appcfg.Config, session *lo
 	if isolation := firstNonEmpty(strings.TrimSpace(svc.Isolation), neonDefaultIsolation); isolation != neonDefaultIsolation {
 		return worktreeDBPin{}, fmt.Errorf("dev.services.postgres isolation %q is not supported for Neon; use %q", isolation, neonDefaultIsolation)
 	}
-	project := sanitizeNeonBranchSegment(firstNonEmpty(svc.Project, cfg.AppID(), "app"))
-	if project == "" {
-		project = "app"
-	}
+	project := neonProjectForConfig(cfg)
 	branch = normalizeNeonBranchName(branch)
 	if branch == "" {
 		return worktreeDBPin{}, fmt.Errorf("db branch name is empty after sanitization")
@@ -2296,6 +2307,26 @@ func ensureNeonBranchPinForSession(ctx context.Context, appRoot string, cfg appc
 	if existing, ok, err := readWorktreeDBPin(pinPath); err != nil {
 		return neonBranchResolution{}, err
 	} else if ok {
+		if firstNonEmpty(strings.TrimSpace(neonPostgresService(cfg).BranchPolicy), neonDefaultBranchPolicy) == "session" {
+			branch, source, err := deriveNeonBranchName(appRoot, cfg, session)
+			if err != nil {
+				return neonBranchResolution{}, err
+			}
+			pin, err := buildWorktreeDBPinForSession(appRoot, cfg, session, branch)
+			if err != nil {
+				return neonBranchResolution{}, err
+			}
+			if existing.SessionID != pin.SessionID || (!sameNeonLease(existing, pin) && !sameNeonBranch(existing, pin)) {
+				if err := writeWorktreeDBPin(appRoot, pin); err != nil {
+					return neonBranchResolution{}, err
+				}
+				backendStatus, err := provider.EnsureBranch(ctx, pin)
+				if err != nil {
+					return neonBranchResolution{}, err
+				}
+				return neonBranchResolution{Pin: pin, Source: source, Created: true, BackendStatus: backendStatus}, nil
+			}
+		}
 		backendStatus, err := provider.EnsureBranch(ctx, existing)
 		if err != nil {
 			return neonBranchResolution{}, err

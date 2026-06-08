@@ -913,7 +913,7 @@ func buildHarnessAgentDocsFreshness(repoRoot string) harnessAgentDocsFreshness {
 
 func buildHarnessAgentRelevantExecPlans(repoRoot string, changedArea *harnessChangedAreaReport) []harnessAgentExecPlan {
 	if changedArea == nil {
-		return nil
+		return []harnessAgentExecPlan{}
 	}
 	relevant := map[string]string{}
 	for _, path := range changedArea.RelevantDocs {
@@ -927,13 +927,13 @@ func buildHarnessAgentRelevantExecPlans(repoRoot string, changedArea *harnessCha
 		}
 	}
 	if len(relevant) == 0 {
-		return nil
+		return []harnessAgentExecPlan{}
 	}
 	index, err := readDocsKnowledgeIndex(repoRoot)
 	if err != nil {
-		return nil
+		return []harnessAgentExecPlan{}
 	}
-	var plans []harnessAgentExecPlan
+	plans := []harnessAgentExecPlan{}
 	for _, doc := range index.Documents {
 		reason, ok := relevant[doc.Path]
 		if !ok || doc.Status != "active" {

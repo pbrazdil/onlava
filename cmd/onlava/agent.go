@@ -846,7 +846,10 @@ func removeNeonWorktreeDBPinIfConfigured(appRoot string) (bool, error) {
 	}
 	_, cfg, err := app.DiscoverRoot(appRoot)
 	if err != nil {
-		return false, nil
+		if errors.Is(err, app.ErrRootNotFound) {
+			return false, nil
+		}
+		return false, err
 	}
 	if !appConfigUsesNeonPostgres(cfg) {
 		return false, nil

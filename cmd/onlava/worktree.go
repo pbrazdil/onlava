@@ -230,7 +230,7 @@ func runWorktreeRemove(ctx context.Context, stdout io.Writer, opts worktreeOptio
 			return err
 		}
 		_ = os.Remove(filepath.Join(target, ".onlava", ".gitignore"))
-		_ = os.Remove(filepath.Join(target, ".onlava"))
+		_ = os.RemoveAll(filepath.Join(target, ".onlava"))
 	}
 	if err := runGitCommand(ctx, "-C", appRoot, "worktree", "remove", target); err != nil {
 		return err

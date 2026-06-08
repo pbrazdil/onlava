@@ -857,6 +857,7 @@ exit 1
 	}
 	registry, _, err := readNeonBranchRegistryForDefaultRoot()
 	if err != nil {
+
 		t.Fatalf("read registry: %v", err)
 	}
 	if len(registry.Leases) != 1 || registry.Leases[0].Status != "ready" || registry.Leases[0].Endpoint == nil {
@@ -882,6 +883,17 @@ exit 1
 	}
 	if _, err := os.Stat(worktreeDBPinPath(root)); !os.IsNotExist(err) {
 		t.Fatalf("current delete should remove worktree pin, stat err=%v", err)
+	}
+}
+
+func TestDockerHealthFromStatusParsesSteadyStateTokens(t *testing.T) {
+	t.Parallel()
+
+	if got := dockerHealthFromStatus("Up 2 minutes (healthy)"); got != "healthy" {
+		t.Fatalf("healthy status = %q", got)
+	}
+	if got := dockerHealthFromStatus("Up 2 minutes (unhealthy)"); got != "unhealthy" {
+		t.Fatalf("unhealthy status = %q", got)
 	}
 }
 
@@ -1013,7 +1025,7 @@ exit 1
 		t.Fatalf("read restore points after restore: %v", err)
 	}
 	points = state.Points[pin.BranchID]
-	if len(points) < 3 || points[len(points)-1].Source != "branch-restore" || points[len(points)-1].RestoredFrom != firstRef {
+	if len(points) != 2 || points[len(points)-1].Source != "branch-reset" {
 		t.Fatalf("restore points after restore = %+v", points)
 	}
 
@@ -1430,6 +1442,96 @@ func TestEnsureNeonBranchPinForSessionDerivesWorktreeBranch(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, ".onlava", "worktree-db.json")); err != nil {
 		t.Fatalf("pin not written: %v", err)
+	}
+}
+
+func TestEnsureNeonBranchPinForSessionRewritesStaleSessionPin(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := t.TempDir()
+	cfg := appcfg.Config{
+		Name: "demo",
+		Dev: appcfg.DevConfig{Services: map[string]appcfg.DevServiceConfig{
+			"postgres": {
+				Kind:               "neon",
+				Mode:               "self-hosted",
+				Isolation:          "branch",
+				Project:            "demo",
+				BranchPolicy:       "session",
+				BranchNameTemplate: "{app}/{session}",
+			},
+		}},
+	}
+	first, err := ensureNeonBranchPinForSession(t.Context(), root, cfg, &localagent.Session{SessionID: "session-a", BaseAppID: "demo"})
+	if err != nil {
+		t.Fatalf("first ensure returned error: %v", err)
+	}
+	second, err := ensureNeonBranchPinForSession(t.Context(), root, cfg, &localagent.Session{SessionID: "session-b", BaseAppID: "demo"})
+	if err != nil {
+		t.Fatalf("second ensure returned error: %v", err)
+	}
+	if !second.Created || second.Pin.Branch == first.Pin.Branch || second.Pin.SessionID != "session-b" {
+		t.Fatalf("second resolution = %+v, first = %+v", second, first)
+	}
+	pin, ok, err := readWorktreeDBPin(worktreeDBPinPath(root))
+	if err != nil || !ok {
+		t.Fatalf("read rewritten pin ok=%v err=%v", ok, err)
+	}
+	if pin.Branch != "demo/session-b" || pin.SessionID != "session-b" {
+		t.Fatalf("rewritten pin = %+v", pin)
+	}
+}
+
+func TestDBBranchDeleteAndExpireScopeUnpinnedTargetToAppProject(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := t.TempDir()
+	writeTestAppFile(t, root, ".onlava.json", `{
+		"name": "app-a",
+		"dev": {
+			"services": {
+				"postgres": {
+					"kind": "neon",
+					"mode": "self-hosted",
+					"isolation": "branch",
+					"project": "app-a"
+				}
+			}
+		}
+	}`)
+	pinA := worktreeDBPin{SchemaVersion: dbBranchPinSchemaVersion, Provider: neonSelfhostProvider, Project: "app-a", ParentBranch: "main", Branch: "shared", BranchID: neonLocalBranchID("app-a", "shared"), Database: "app_a", Role: "cloud_admin", CreatedBy: "onlava"}
+	pinB := worktreeDBPin{SchemaVersion: dbBranchPinSchemaVersion, Provider: neonSelfhostProvider, Project: "app-b", ParentBranch: "main", Branch: "shared", BranchID: neonLocalBranchID("app-b", "shared"), Database: "app_b", Role: "cloud_admin", CreatedBy: "onlava"}
+	home, err := neonSubstrateRoot()
+	if err != nil {
+		t.Fatalf("neonSubstrateRoot: %v", err)
+	}
+	if err := writeNeonBranchRegistry(home, neonBranchRegistry{
+		SchemaVersion: dbBranchRegistrySchemaVersion,
+		Provider:      neonSelfhostProvider,
+		Leases: []neonBranchLease{
+			{Pin: pinA, Status: "pending"},
+			{Pin: pinB, Status: "pending"},
+		},
+	}); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	if err := runDBBranchCommand(t.Context(), io.Discard, []string{"expire", "shared", "--after", "1h", "--app-root", root, "--json"}); err != nil {
+		t.Fatalf("expire returned error: %v", err)
+	}
+	registry, err := readNeonBranchRegistry(home)
+	if err != nil {
+		t.Fatalf("read registry after expire: %v", err)
+	}
+	if registry.Leases[0].ExpiresAt == "" || registry.Leases[1].ExpiresAt != "" {
+		t.Fatalf("expire scope leaked across projects: %+v", registry.Leases)
+	}
+	if err := runDBBranchCommand(t.Context(), io.Discard, []string{"delete", "shared", "--app-root", root, "--force"}); err != nil {
+		t.Fatalf("delete returned error: %v", err)
+	}
+	registry, err = readNeonBranchRegistry(home)
+	if err != nil {
+		t.Fatalf("read registry after delete: %v", err)
+	}
+	if len(registry.Leases) != 1 || registry.Leases[0].Pin.Project != "app-b" {
+		t.Fatalf("delete scope leaked across projects: %+v", registry.Leases)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -106,7 +107,10 @@ func (d executableNeonBranchDriver) ResetBranch(ctx context.Context, pin worktre
 }
 
 func (d executableNeonBranchDriver) RestoreBranch(ctx context.Context, pin worktreeDBPin, at string) (neonBranchRestorePoint, error) {
-	restoreFrom, _ := resolveNeonRestorePoint(pin.BranchID, at)
+	restoreFrom, err := resolveNeonRestorePoint(pin.BranchID, at)
+	if err != nil {
+		return neonBranchRestorePoint{}, err
+	}
 	result, err := d.run(ctx, "restore", pin, []string{"--at", strings.TrimSpace(at)})
 	if err != nil {
 		return neonBranchRestorePoint{}, err
@@ -117,15 +121,7 @@ func (d executableNeonBranchDriver) RestoreBranch(ctx context.Context, pin workt
 	if result.RestorePoint != nil {
 		return *result.RestorePoint, nil
 	}
-	restoredFrom := restoreFrom.Ref
-	point, err := recordNeonRestorePoint(pin, "branch-restore", restoredFrom)
-	if err != nil {
-		return neonBranchRestorePoint{}, err
-	}
-	if restoreFrom.Ref != "" {
-		return restoreFrom, nil
-	}
-	return point, nil
+	return restoreFrom, nil
 }
 
 func (d executableNeonBranchDriver) DiffBranch(ctx context.Context, pin worktreeDBPin, target string) (string, error) {
@@ -171,7 +167,7 @@ func (d executableNeonBranchDriver) run(ctx context.Context, action string, pin 
 		return executableNeonBranchDriverResult{}, fmt.Errorf("%s %q failed: %w", d.name, action, err)
 	}
 	var result executableNeonBranchDriverResult
-	dec := json.NewDecoder(strings.NewReader(string(out)))
+	dec := json.NewDecoder(bytes.NewReader(out))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&result); err != nil {
 		return executableNeonBranchDriverResult{}, fmt.Errorf("parse %s %q JSON: %w", d.name, action, err)

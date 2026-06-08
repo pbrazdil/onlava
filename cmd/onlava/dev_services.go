@@ -382,7 +382,7 @@ func managedElectricDatabaseURL(ctx context.Context, root string, cfg app.Config
 		}
 		if _, svc, ok := managedPostgresDeclared(cfg); ok {
 			if strings.TrimSpace(svc.Kind) == "neon" {
-				dbURL, err := resolveNeonBranchDatabaseURL(ctx, root, cfg)
+				dbURL, err := resolveNeonBranchDatabaseURL(ctx, root, cfg, session)
 				if err != nil {
 					return "", fmt.Errorf("dev.services.%s could not resolve database URL from managed dev.services.postgres: %w", plan.ServiceName, err)
 				}

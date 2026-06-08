@@ -796,6 +796,12 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 }
 
 func (s *devSupervisor) managedAppEnv(ctx context.Context, baseEnv []string) ([]string, error) {
+	if _, _, ok := managedPostgresDeclared(s.cfg); ok && managedPostgresUsesExternalDatabase(baseEnv) {
+		if _, err := externalPostgresDatabaseURL(baseEnv); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
 	if _, svc, ok := managedPostgresDeclared(s.cfg); ok && strings.TrimSpace(svc.Kind) == "neon" {
 		env, resolution, connection, err := neonManagedPostgresEnv(ctx, s.root, s.cfg, s.agentSession)
 		status := "running"
@@ -838,7 +844,13 @@ func (s *devSupervisor) appDatabaseAuthorityEnv(baseEnv []string) []string {
 	if managedPostgresUsesExternalDatabase(baseEnv) {
 		return envWithoutKeys(baseEnv, legacyDatabaseURLEnv)
 	}
-	return envWithoutKeys(baseEnv, appDatabaseURLEnv, legacyDatabaseURLEnv)
+	keys := []string{appDatabaseURLEnv, legacyDatabaseURLEnv}
+	if _, svc, ok := managedPostgresDeclared(s.cfg); ok && strings.TrimSpace(svc.Kind) == "neon" {
+		if envName := neonDatabaseURLEnv(s.cfg); envName != appDatabaseURLEnv {
+			keys = append(keys, envName)
+		}
+	}
+	return envWithoutKeys(baseEnv, keys...)
 }
 
 func (s *devSupervisor) sessionIdentityEnv() []string {

@@ -395,7 +395,7 @@ func resolveDatabaseURLForConfig(ctx context.Context, appRoot string, cfg appcfg
 				return externalPostgresDatabaseURL(baseEnv)
 			}
 			if strings.TrimSpace(svc.Kind) == "neon" {
-				dsn, err := resolveNeonBranchDatabaseURL(ctx, appRoot, cfg)
+				dsn, err := resolveNeonBranchDatabaseURL(ctx, appRoot, cfg, nil)
 				if err != nil {
 					return "", fmt.Errorf("dev.services.postgres kind %q could not resolve Neon branch connection: %w", svc.Kind, err)
 				}

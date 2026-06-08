@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+var ErrRootNotFound = errors.New("no .onlava.json found in current directory or any parent")
+
 type Config struct {
 	Name          string                `json:"name"`
 	ID            string                `json:"id"`
@@ -212,7 +214,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 		}
 		dir = parent
 	}
-	return "", Config{}, errors.New("no .onlava.json found in current directory or any parent")
+	return "", Config{}, ErrRootNotFound
 }
 
 func decodeConfig(path string, data []byte, cfg *Config) error {

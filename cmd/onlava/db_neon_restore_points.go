@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,7 +52,7 @@ func readNeonRestorePointsState() (neonRestorePointsState, string, error) {
 	if err != nil {
 		return neonRestorePointsState{}, "", err
 	}
-	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&state); err != nil {
 		return neonRestorePointsState{}, "", fmt.Errorf("parse %s: %w", path, err)

@@ -36,7 +36,9 @@ func TestDiscoverRootAcceptsNeonPostgresConfig(t *testing.T) {
 		t.Fatalf("DiscoverRoot returned error: %v", err)
 	}
 	svc := cfg.Dev.Services["postgres"]
-	if svc.Kind != "neon" || svc.Mode != "self-hosted" || svc.Isolation != "branch" || svc.Project != "neonapp" {
+	if svc.Kind != "neon" || svc.Mode != "self-hosted" || svc.Isolation != "branch" || svc.Project != "neonapp" ||
+		svc.ParentBranch != "main" || svc.BranchPolicy != "worktree" || svc.BranchNameTemplate != "{app}/{git_branch}" ||
+		svc.TTL != "168h" || svc.Database != "neonapp" || svc.Role != "cloud_admin" || svc.DatabaseURLEnv != "DatabaseURL" {
 		t.Fatalf("service = %+v", svc)
 	}
 }
