@@ -321,6 +321,8 @@ func TestAgentDashboardReportUsesSessionReportToken(t *testing.T) {
 
 func TestAgentDashboardRejectsStaleReportWithStructuredLog(t *testing.T) {
 	ctx := context.Background()
+	agentHome := t.TempDir()
+	t.Setenv("ONLAVA_AGENT_HOME", agentHome)
 	runDir, err := os.MkdirTemp("/tmp", "onlava-agent-test-")
 	if err != nil {
 		t.Fatal(err)
@@ -334,6 +336,9 @@ func TestAgentDashboardRejectsStaleReportWithStructuredLog(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := agentServer.Paths().RegistryPath; filepath.Dir(got) != filepath.Join(agentHome, "agent") {
+		t.Fatalf("agent registry path = %q, want under isolated agent home %q", got, agentHome)
 	}
 	done := make(chan error, 1)
 	ctx, cancel := context.WithCancel(ctx)
