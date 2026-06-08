@@ -14,9 +14,9 @@ The harness contract gives Codex and other agents a short feedback loop:
 
 ```text
 onlava harness [--app-root <path>] [--json] [--write]
-onlava harness self [--repo-root <path>] [--json] [--write]
+onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write]
 onlava harness ui [--app-root <path>] [--dashboard-url <url>] [--headed] [--json] [--write]
-onlava inspect harness --json [--app-root <path>] [--repo-root <path>]
+onlava inspect harness [artifact <name>|diagnostics --severity error|warning|timing --top <n>] --json [--app-root <path>] [--repo-root <path>]
 ```
 
 Use this before large edits and after fixes when an agent needs a single machine-readable status snapshot.
@@ -25,16 +25,16 @@ Recommended agent loop:
 
 ```text
 onlava doctor --json
-onlava harness self --quick --json --write
+onlava harness self --quick --summary --write
 cat .onlava/harness/agent-context.json
 # implement
-onlava harness self --json --write
+onlava harness self --summary --write
 ```
 
 For release-risk changes, also run:
 
 ```text
-onlava harness self --release --json --write
+onlava harness self --release --summary --write
 scripts/release-gate.sh
 ```
 
@@ -74,7 +74,15 @@ states, cron status, and temporal/worker status cards.
 
 `onlava inspect harness --json` reads the latest app, self, and UI harness
 outputs from `.onlava/harness/` and returns their artifacts plus normalized
-evidence records.
+evidence records. Focused drill-down commands read bounded topic detail without
+opening the full archive:
+
+```text
+onlava inspect harness artifact test-timing --json
+onlava inspect harness artifact drift --json
+onlava inspect harness diagnostics --severity warning --json
+onlava inspect harness timing --top 10 --json
+```
 
 ## Output
 
@@ -128,11 +136,17 @@ relevant active ExecPlans, recent failed harness artifacts, docs freshness, and
 risk classification across runtime, CLI contract, dashboard, schema, release,
 and ONLV-impacting changes.
 
-For the onlava repo itself, `onlava harness self --json --write` writes:
+For the onlava repo itself, `onlava harness self --summary --write` prints the
+compact `onlava.harness.self.summary.v1` decision packet and writes:
 
 ```text
 <repo-root>/.onlava/harness/self-latest.json
+<repo-root>/.onlava/harness/self-summary-latest.json
 ```
+
+Use `onlava harness self --json=full --write` only when stdout must contain the
+full `onlava.harness.self.v1` archive. Agents should prefer artifacts and focused
+inspect commands over pasting `.onlava/harness/self-latest.json` into chat.
 
 The self harness validates the local onlava development loop:
 
@@ -144,8 +158,8 @@ The self harness validates the local onlava development loop:
 - architecture checks for dependency policy, package boundaries, generated-file hygiene, and oversized source files
 - dashboard UI typecheck and build
 - dashboard build freshness
-- `go install ./cmd/onlava`
-- installed `onlava` binary freshness against repo sources
+- worktree-local `go build -o .onlava/harness/bin/onlava ./cmd/onlava`
+- local `.onlava/harness/bin/onlava` freshness against repo sources
 
 The default self-harness still runs the complete Go suite and writes
 `.onlava/harness/test-timing-latest.json`, but the wall-clock duration budget is
@@ -166,7 +180,7 @@ duration budget when maintainers intentionally want a hard speed gate.
 
 Run `onlava inspect docs --json` before non-trivial repo changes and use its
 `summary.review_due_count`, document-level `review_due`, and `stale` fields to
-choose small cleanup work. `onlava harness self --json --write` includes the
+choose small cleanup work. `onlava harness self --summary --write` includes the
 same docs knowledge signals in its summaries, so review-due documentation is
 visible during ordinary validation instead of being hidden in prose.
 

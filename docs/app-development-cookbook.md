@@ -484,9 +484,12 @@ For onlava repo changes:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go test ./cmd/onlava
+onlava harness self --summary --write
 ```
+
+Do not run `go install ./cmd/onlava` unless a human explicitly asks; self-harness
+uses a worktree-local `.onlava/harness/bin/onlava` build for binary freshness.
 
 For dashboard/browser validation:
 

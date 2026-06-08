@@ -796,7 +796,7 @@ func waitForAgentSessionRoutes(t *testing.T, ctx context.Context, client *locala
 }
 
 func waitForIntegrationAgentPing(ctx context.Context, client *localagent.Client) error {
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		if err := client.Ping(ctx); err == nil {

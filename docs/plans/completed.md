@@ -32,6 +32,32 @@ Validation:
 - `go test ./internal/observability ./cmd/onlava` passed during implementation.
 - Full validation was run before PR creation for the implementation change.
 
+## Harness Self Summary Output
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-08
+- Quality: B+
+- ExecPlan: [0066 Harness Self Summary Output](0066-harness-self-summary-output.md)
+
+Shipped:
+
+- Summary-first self-harness stdout through `onlava.harness.self.summary.v1` for `--summary`, `--json`, and `--json=summary`.
+- Explicit full archive stdout through `--json=full`, with `.onlava/harness/self-latest.json` preserved as the full evidence artifact.
+- Compact `.onlava/harness/self-summary-latest.json` plus focused `onlava inspect harness artifact`, `diagnostics`, and `timing` drill-downs.
+- Worktree-local `.onlava/harness/bin/onlava` build/freshness checks so agent validation does not overwrite the shared installed `onlava` binary.
+- Changed-area ignore rules for local harness/report artifacts, repo-relative summary paths, and JSON-aware `onlava version --json` parsing.
+
+Validation:
+
+- `go test ./cmd/onlava` passed.
+- `go test ./...` passed.
+- `go build -o .onlava/harness/bin/onlava ./cmd/onlava` passed.
+- `onlava harness self --summary --write` passed with warnings.
+- `onlava harness self --json=summary --write` passed with warnings.
+- `onlava harness self --json=full --write` passed with warnings.
+- `onlava inspect harness --json` and focused harness drill-downs passed.
+
 ## ENV Harness
 
 - Status: completed

@@ -3,24 +3,13 @@
   "$id": "https://onlava.com/schemas/onlava.inspect.harness.v1.schema.json",
   "title": "onlava inspect harness",
   "type": "object",
-  "required": ["schema_version", "generated_at", "scope", "root", "latest"],
+  "required": ["schema_version", "generated_at", "scope", "root"],
   "properties": {
-    "schema_version": {
-      "const": "onlava.inspect.harness.v1"
-    },
-    "generated_at": {
-      "type": "string"
-    },
-    "scope": {
-      "enum": ["app", "repo"]
-    },
-    "root": {
-      "type": "string"
-    },
-    "app": {
-      "type": "object",
-      "additionalProperties": true
-    },
+    "schema_version": { "const": "onlava.inspect.harness.v1" },
+    "generated_at": { "type": "string" },
+    "scope": { "enum": ["app", "repo"] },
+    "root": { "type": "string" },
+    "app": { "type": "object", "additionalProperties": true },
     "repo": {
       "type": "object",
       "required": ["root", "module_path", "go_mod_path"],
@@ -31,18 +20,19 @@
       },
       "additionalProperties": false
     },
-    "latest": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/latest" }
-    },
-    "artifacts": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/artifact" }
-    },
-    "evidence": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/evidence" }
-    }
+    "latest": { "type": "array", "items": { "$ref": "#/$defs/latest" } },
+    "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "artifact": { "$ref": "#/$defs/artifact" },
+    "payload": true,
+    "severity": { "type": "string" },
+    "diagnostics": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "omitted_count": { "type": "integer" },
+    "top": { "type": "integer" },
+    "total_seconds": { "type": "number" },
+    "budgets": { "type": "object", "additionalProperties": true },
+    "slow_tests": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "slow_packages": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
   },
   "additionalProperties": false,
   "$defs": {
@@ -75,20 +65,14 @@
       "required": ["schema_version", "duration_ms"],
       "properties": {
         "schema_version": { "const": "onlava.harness.artifact.v1" },
-        "command": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
+        "command": { "type": "array", "items": { "type": "string" } },
         "cwd": { "type": "string" },
         "started_at": { "type": "string" },
         "duration_ms": { "type": "integer" },
         "exit_code": { "type": "integer" },
         "stdout_tail": { "type": "string" },
         "stderr_tail": { "type": "string" },
-        "artifacts": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/evidence_artifact" }
-        },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/evidence_artifact" } },
         "repro_command": { "type": "string" }
       },
       "additionalProperties": false

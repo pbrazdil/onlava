@@ -108,6 +108,7 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 		{name: "inspect.harness", schemaRel: "docs/schemas/onlava.inspect.harness.v1.schema.json", payload: inspectHarnessPayload},
 		{name: "harness.artifact", schemaRel: "docs/schemas/onlava.harness.artifact.v1.schema.json", payload: artifactEvidencePayload},
 		{name: "harness.self", schemaRel: "docs/schemas/onlava.harness.self.v1.schema.json", payload: resp},
+		{name: "harness.self.summary", schemaRel: "docs/schemas/onlava.harness.self.summary.v1.schema.json", payload: buildHarnessSelfSummary(resp)},
 		{name: "harness.toolchain", schemaRel: "docs/schemas/onlava.harness.toolchain.v1.schema.json", payload: resp.Toolchain},
 		{name: "harness.changed_area", schemaRel: "docs/schemas/onlava.harness.changed_area.v1.schema.json", payload: resp.ChangedArea},
 		{name: "harness.drift", schemaRel: "docs/schemas/onlava.harness.drift.v1.schema.json", payload: resp.Drift},

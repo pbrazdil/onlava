@@ -36,7 +36,7 @@ Prefer JSON output for agent decisions. Prefer `onlava up` for local development
 
 Run `onlava doctor --json` before deep app debugging when local readiness is in doubt. It is read-only and reports host resources, Go version, optional tools, and app-sensitive dependency hints without building or starting services.
 
-`onlava inspect docs --json` exposes `summary.review_due_count` plus document-level `review_due` and `stale` fields. For onlava repo changes, `onlava harness self --json --write` surfaces those docs knowledge signals in validation summaries. When docs and behavior disagree, the same PR must either fix the affected docs or open/update an ExecPlan that records the drift.
+`onlava inspect docs --json` exposes `summary.review_due_count` plus document-level `review_due` and `stale` fields. For onlava repo changes, `onlava harness self --summary --write` surfaces those docs knowledge signals in compact validation summaries and leaves full evidence in `.onlava/harness/` artifacts. When docs and behavior disagree, the same PR must either fix the affected docs or open/update an ExecPlan that records the drift.
 
 ## Mental Model
 
@@ -244,7 +244,7 @@ onlava task run <name> [--app-root <path>]
 onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
 onlava task graph --json [--app-root <path>]
 onlava harness [--app-root <path>] --json --write
-onlava harness self [--repo-root <path>] --json --write
+onlava harness self [--repo-root <path>] --summary --write
 onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|observability --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
 onlava traces list --json [--app-root <path>]
@@ -279,6 +279,10 @@ For onlava repo changes:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go test ./cmd/onlava
+onlava harness self --summary --write
 ```
+
+Do not run `go install ./cmd/onlava` unless the human explicitly asks. Multiple
+worktrees can share one installed binary; self-harness builds a worktree-local
+`.onlava/harness/bin/onlava` for freshness checks.

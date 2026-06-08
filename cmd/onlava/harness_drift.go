@@ -28,13 +28,16 @@ type harnessToolchainReport struct {
 }
 
 type harnessToolchainTool struct {
-	Name     string `json:"name"`
-	Scope    string `json:"scope"`
-	Required bool   `json:"required"`
-	Present  bool   `json:"present"`
-	Path     string `json:"path,omitempty"`
-	Version  string `json:"version,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Name      string `json:"name"`
+	Scope     string `json:"scope"`
+	Required  bool   `json:"required"`
+	Present   bool   `json:"present"`
+	Path      string `json:"path,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Commit    string `json:"commit,omitempty"`
+	BuiltAt   string `json:"built_at,omitempty"`
+	GoVersion string `json:"go_version,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type harnessEnvValue struct {
@@ -208,6 +211,16 @@ func probeHarnessTool(ctx context.Context, name, scope string, required bool, ar
 		tool.Error = strings.TrimSpace(err.Error() + ": " + string(output))
 		return tool
 	}
+	if name == "onlava" && len(args) == 2 && args[0] == "version" && args[1] == "--json" {
+		var version versionResponse
+		if json.Unmarshal(output, &version) == nil && version.Version != "" {
+			tool.Version = version.Version
+			tool.Commit = version.Commit
+			tool.BuiltAt = version.BuiltAt
+			tool.GoVersion = version.GoVersion
+			return tool
+		}
+	}
 	tool.Version = firstLine(strings.TrimSpace(string(output)))
 	return tool
 }
@@ -266,11 +279,11 @@ func buildHarnessCLIContractReport(repoRoot string, diagnostics []checkDiagnosti
 			var out bytes.Buffer
 			return runOnlavaInspect([]string{"docs", "--repo-root", repoRoot, "--json"}, &out)
 		}},
-		{name: "inspect harness", needle: "onlava inspect harness --json [--app-root <path>] [--repo-root <path>]", mode: "execute", smoke: func() error {
+		{name: "inspect harness", needle: "onlava inspect harness [artifact <name>|diagnostics --severity error|warning|timing --top <n>] --json [--app-root <path>] [--repo-root <path>]", mode: "execute", smoke: func() error {
 			var out bytes.Buffer
 			return runOnlavaInspect([]string{"harness", "--repo-root", repoRoot, "--json"}, &out)
 		}},
-		{name: "harness self", needle: "onlava harness self [--repo-root <path>] [--json] [--write]", mode: "parse", smoke: func() error {
+		{name: "harness self", needle: "onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write]", mode: "parse", smoke: func() error {
 			_, err := parseHarnessSelfArgs([]string{"--repo-root", repoRoot, "--json"})
 			return err
 		}},
@@ -334,7 +347,10 @@ func buildHarnessEnvVarReport(repoRoot string, diagnostics []checkDiagnostic) (h
 		SkipDir:  architectureSkipDir,
 	})
 	for _, name := range envpolicy.VariableNames(scan) {
-		refs := scan.Variables[name]
+		refs := filterHarnessEnvReferences(scan.Variables[name])
+		if len(refs) == 0 {
+			continue
+		}
 		scope := envpolicy.EffectiveScope(refs, name)
 		documented := strings.Contains(documentedText, name)
 		finding := harnessEnvFinding(name, scope, documented, refs, registry)
@@ -364,6 +380,17 @@ func buildHarnessEnvVarReport(repoRoot string, diagnostics []checkDiagnostic) (h
 		}
 	}
 	return report, diagnostics
+}
+
+func filterHarnessEnvReferences(refs []envpolicy.Reference) []envpolicy.Reference {
+	out := refs[:0]
+	for _, ref := range refs {
+		if isIgnoredHarnessLocalArtifact(ref.File) {
+			continue
+		}
+		out = append(out, ref)
+	}
+	return out
 }
 
 func harnessEnvFinding(name, scope string, documented bool, refs []envpolicy.Reference, registry *envpolicy.Registry) harnessEnvVarFinding {
@@ -477,6 +504,9 @@ func directOSEnvUsages(repoRoot string) []string {
 			if rel != "." && architectureSkipDir(rel) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if isIgnoredHarnessLocalArtifact(rel) {
 			return nil
 		}
 		if filepath.Ext(rel) != ".go" ||
@@ -604,8 +634,8 @@ func buildHarnessEmbedReport(repoRoot string, diagnostics []checkDiagnostic) (ha
 					Stage:           "contract drift checks",
 					Severity:        "error",
 					File:            filepath.ToSlash(filepath.Join(repoRoot, filepath.FromSlash(rel))),
-					Message:         "go:embed pattern is not covered by installed-binary freshness: " + pattern,
-					SuggestedAction: "Update latestHarnessSourceModTime inputs so embedded files rebuild the installed onlava binary.",
+					Message:         "go:embed pattern is not covered by local binary freshness: " + pattern,
+					SuggestedAction: "Update latestHarnessSourceModTime inputs so embedded files rebuild the worktree-local onlava binary.",
 				})
 			}
 		}

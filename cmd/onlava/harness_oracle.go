@@ -31,6 +31,7 @@ const (
 type harnessChangedAreaReport struct {
 	SchemaVersion       string               `json:"schema_version"`
 	ChangedFiles        []harnessChangedFile `json:"changed_files"`
+	IgnoredFiles        []harnessChangedFile `json:"ignored_files,omitempty"`
 	AffectedPackages    []string             `json:"affected_packages"`
 	RecommendedCommands []string             `json:"recommended_commands"`
 	RelevantDocs        []string             `json:"relevant_docs"`
@@ -216,6 +217,11 @@ func populateHarnessChangedAreaReport(repoRoot string, report *harnessChangedAre
 	riskSet := map[string]bool{}
 
 	for _, change := range changes {
+		if isIgnoredHarnessLocalArtifact(change.Path) {
+			change.Category = "local-artifact"
+			report.IgnoredFiles = append(report.IgnoredFiles, change)
+			continue
+		}
 		change.Category = classifyHarnessChangedFile(change.Path)
 		if strings.HasSuffix(change.Path, ".go") {
 			if pkg, ok := harnessPackageForFile(repoRoot, change.Path, packages); ok {
@@ -237,7 +243,7 @@ func populateHarnessChangedAreaReport(repoRoot string, report *harnessChangedAre
 	if len(report.ChangedFiles) > 0 {
 		report.RecommendedCommands = appendUniqueSorted(report.RecommendedCommands,
 			"go test -count=1 ./...",
-			"onlava harness self --json --write",
+			"onlava harness self --summary --write",
 		)
 	}
 	report.RelevantDocs = sortedStringSet(docSet)
@@ -295,6 +301,29 @@ func collectHarnessChangedFiles(ctx context.Context, repoRoot string) ([]harness
 		changes = append(changes, byPath[path])
 	}
 	return changes, diagnostics
+}
+
+func isIgnoredHarnessLocalArtifact(path string) bool {
+	path = filepath.ToSlash(strings.TrimSpace(path))
+	base := filepath.Base(path)
+	switch {
+	case path == "":
+		return false
+	case strings.HasPrefix(path, "docs/schemas/"):
+		return false
+	case strings.HasPrefix(path, ".onlava/"):
+		return true
+	case strings.HasPrefix(path, "coverage/"):
+		return true
+	case strings.HasPrefix(path, "test-results/"):
+		return true
+	case strings.Contains(base, ".harness") && strings.HasSuffix(base, ".json"):
+		return true
+	case strings.HasPrefix(base, "onlava-harness-self-") && strings.HasSuffix(base, ".json"):
+		return true
+	default:
+		return false
+	}
 }
 
 func runHarnessGit(ctx context.Context, repoRoot string, args ...string) (string, error) {
@@ -731,13 +760,13 @@ func buildHarnessAgentContext(repoRoot string, resp harnessSelfResponse) harness
 		RiskClassification:             riskClassification,
 		DocsEntrypoints:                entrypoints,
 		Schemas:                        schemas,
-		KnownFastLoop:                  "onlava doctor --json\nonlava harness self --quick --json --write\ncat .onlava/harness/agent-context.json\n# implement\nonlava harness self --json --write",
-		KnownReleaseLoop:               "onlava harness self --release --json --write\nscripts/release-gate.sh",
+		KnownFastLoop:                  "onlava doctor --json\nonlava harness self --quick --summary --write\ncat .onlava/harness/agent-context.json\n# implement\nonlava harness self --summary --write",
+		KnownReleaseLoop:               "onlava harness self --release --summary --write\nscripts/release-gate.sh",
 		ArchitectureRules: []string{
 			"Prefer Go standard library dependencies unless the payoff is concrete.",
 			"Do not add legacy aliases or backwards-compatibility shims for renamed onlava APIs.",
-			"After repository changes, run go install ./cmd/onlava.",
-			"For substantial repository changes, run onlava harness self --json --write when practical.",
+			"Do not write the shared `onlava` binary with `go install ./cmd/onlava` unless a human explicitly asks; use self-harness' worktree-local `.onlava/harness/bin/onlava` build instead.",
+			"For substantial repository changes, run onlava harness self --summary --write when practical.",
 		},
 		RecentFailures: recentFailures,
 	}
@@ -747,7 +776,7 @@ func buildHarnessAgentContext(repoRoot string, resp harnessSelfResponse) harness
 	}
 	contextPack.RecommendedCommands = appendUniqueSorted(contextPack.RecommendedCommands, contextPack.RerunCommands...)
 	if len(contextPack.RecommendedCommands) == 0 {
-		contextPack.RecommendedCommands = []string{"onlava doctor --json", "onlava harness self --quick --json --write", "onlava harness self --json --write"}
+		contextPack.RecommendedCommands = []string{"onlava doctor --json", "onlava harness self --quick --summary --write", "onlava harness self --summary --write"}
 	}
 	sort.Strings(contextPack.DocsEntrypoints)
 	sort.Strings(contextPack.Schemas)

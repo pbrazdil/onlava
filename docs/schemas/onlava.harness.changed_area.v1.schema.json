@@ -12,6 +12,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/changed_file" }
     },
+    "ignored_files": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/changed_file" }
+    },
     "affected_packages": {
       "type": "array",
       "items": { "type": "string" }
