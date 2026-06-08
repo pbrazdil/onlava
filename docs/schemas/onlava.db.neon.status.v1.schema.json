@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": { "const": "onlava.db.neon.status.v1" },
     "ok": { "type": "boolean" },
-    "provider": { "const": "neon-self-hosted" },
+    "provider": { "const": "neon-selfhost" },
     "mode": { "const": "self-hosted" },
     "status": { "type": "string", "enum": ["not_installed", "installed", "ready", "degraded", "exited"] },
     "root": { "type": "string", "minLength": 1 },
@@ -41,7 +41,7 @@
       "additionalProperties": false,
       "properties": {
         "schema_version": { "const": "onlava.db.neon.cell.v1" },
-        "provider": { "const": "neon-self-hosted" },
+        "provider": { "const": "neon-selfhost" },
         "mode": { "const": "self-hosted" },
         "status": { "type": "string" },
         "root": { "type": "string" },

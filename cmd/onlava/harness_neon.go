@@ -48,14 +48,14 @@ func runHarnessNeonLocalLifecycleCheck(parent context.Context) (map[string]any, 
 
 	agentHome := filepath.Join(os.TempDir(), "onlava-harness-neon-"+harnessRandomLabel())
 	defer os.RemoveAll(agentHome)
-	branchDriverLog, branchDriver, err := installHarnessFakeNeonBranchDriver(agentHome)
+	branchDriverLog, branchDriver, err := installHarnessFakeDriver(agentHome)
 	if err != nil {
 		return nil, nil, err
 	}
 	restoreEnv := patchEnv(map[string]*string{
-		"ONLAVA_AGENT_HOME":    stringPtr(agentHome),
-		neonBranchDriverEnv:    stringPtr(branchDriver),
-		devElectricUpstreamEnv: nil,
+		"ONLAVA_AGENT_HOME":          stringPtr(agentHome),
+		localPostgresBranchDriverEnv: stringPtr(branchDriver),
+		devElectricUpstreamEnv:       nil,
 	})
 	defer restoreEnv()
 	dockerCallLog, restoreDocker, err := installHarnessFakeNeonDocker(agentHome)
@@ -220,8 +220,8 @@ func runHarnessNeonLocalLifecycleCheck(parent context.Context) (map[string]any, 
 	if err := json.Unmarshal(readyStatusOut.Bytes(), &readyStatus); err != nil {
 		return nil, diagnostics, fmt.Errorf("decode ready branch status JSON: %w: %s", err, readyStatusOut.String())
 	}
-	check(readyStatus.BackendStatus == "ready", "configured Neon branch driver must mark checkout backend_status ready")
-	check(readyStatus.Connection != nil && readyStatus.Connection.Source == "harness-driver", "ready branch status must expose redacted driver endpoint metadata")
+	check(readyStatus.BackendStatus == "ready", "configured local-postgres-branch driver must mark checkout backend_status ready")
+	check(readyStatus.Connection != nil && readyStatus.Connection.Source == "fake-driver", "ready branch status must expose redacted driver endpoint metadata")
 	_, cfg, err := discoverConfiguredApp(createdA.Path)
 	if err != nil {
 		return nil, diagnostics, err
@@ -245,8 +245,8 @@ func runHarnessNeonLocalLifecycleCheck(parent context.Context) (map[string]any, 
 	if err != nil {
 		return nil, diagnostics, err
 	}
-	check(strings.Contains(string(branchDriverCalls), "ensure") && strings.Contains(string(branchDriverCalls), "--branch feature/current"), "configured branch driver must receive ensure calls for checked-out branches")
-	check(strings.Contains(string(branchDriverCalls), "delete") && strings.Contains(string(branchDriverCalls), "--branch feature/current"), "configured branch driver must receive ready branch delete calls")
+	check(strings.Contains(string(branchDriverCalls), "ensure") && strings.Contains(string(branchDriverCalls), "--branch feature/current"), "configured local-postgres-branch driver must receive ensure calls for checked-out branches")
+	check(strings.Contains(string(branchDriverCalls), "delete") && strings.Contains(string(branchDriverCalls), "--branch feature/current"), "configured local-postgres-branch driver must receive ready branch delete calls")
 
 	summary := map[string]any{
 		"worktrees":          2,
@@ -286,18 +286,18 @@ func harnessRegistryHasBranch(registry neonBranchRegistry, pin *worktreeDBPin) b
 	return false
 }
 
-func installHarnessFakeNeonBranchDriver(root string) (string, string, error) {
-	bin := filepath.Join(root, "fake-neon-driver")
+func installHarnessFakeDriver(root string) (string, string, error) {
+	bin := filepath.Join(root, "fake-driver-bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		return "", "", err
 	}
-	callLog := filepath.Join(bin, "branch-driver.calls.log")
-	driver := filepath.Join(bin, "neon-branch-driver")
+	callLog := filepath.Join(bin, "fake-driver.calls.log")
+	driver := filepath.Join(bin, "fake-driver")
 	script := fmt.Sprintf(`#!/bin/sh
 printf '%%s\n' "$*" >> %s
 case "$1" in
   ensure|reset|restore)
-    printf '{"status":"ready","message":"harness driver ready","endpoint":{"host":"127.0.0.1","port":55433,"database":"neon_harness","role":"cloud_admin","sslmode":"disable","source":"harness-driver"}}\n'
+    printf '{"status":"ready","message":"harness driver ready","endpoint":{"host":"127.0.0.1","port":55433,"database":"neon_harness","role":"cloud_admin","sslmode":"disable","source":"fake-driver"}}\n'
     exit 0
     ;;
   delete)
@@ -305,7 +305,7 @@ case "$1" in
     exit 0
     ;;
 esac
-echo "unexpected branch driver $*" >&2
+echo "unexpected local-postgres-branch driver $*" >&2
 exit 1
 `, shellQuote(callLog))
 	if err := os.WriteFile(driver, []byte(script), 0o755); err != nil {

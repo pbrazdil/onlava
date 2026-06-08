@@ -30,7 +30,7 @@ const (
 	dbBranchStatusSchemaVersion   = "onlava.db.branch.status.v1"
 	dbBranchListSchemaVersion     = "onlava.db.branch.list.v1"
 	dbBranchPinSchemaVersion      = "onlava.db.branch.v1"
-	neonSelfHostedProvider        = "neon-self-hosted"
+	neonSelfhostProvider          = "neon-selfhost"
 	neonDefaultMode               = "self-hosted"
 	neonDefaultIsolation          = "branch"
 	neonDefaultParentBranch       = "main"
@@ -39,7 +39,7 @@ const (
 	neonDefaultTTL                = "168h"
 	neonDefaultDatabase           = "postgres"
 	neonDefaultRole               = "cloud_admin"
-	neonBranchDriverEnv           = "ONLAVA_DEV_NEON_BRANCH_DRIVER"
+	localPostgresBranchDriverEnv  = "ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER"
 )
 
 type dbNeonOptions struct {
@@ -232,7 +232,7 @@ type neonBranchProvider interface {
 	DiffBranch(context.Context, worktreeDBPin, string, dbBranchOptions) (string, error)
 }
 
-type selfHostedNeonBranchProvider struct{}
+type neonSelfhostBranchProvider struct{}
 
 var neonDockerCommand = "docker"
 
@@ -603,7 +603,7 @@ func buildDBNeonStatus(ctx context.Context) (dbNeonStatusResult, error) {
 	result := dbNeonStatusResult{
 		SchemaVersion:  neonStatusSchemaVersion,
 		OK:             ok,
-		Provider:       neonSelfHostedProvider,
+		Provider:       neonSelfhostProvider,
 		Mode:           neonDefaultMode,
 		Status:         "not_installed",
 		Root:           root,
@@ -675,7 +675,7 @@ func neonSubstrateRoot() (string, error) {
 func defaultNeonCellState(root, status string) neonCellState {
 	return neonCellState{
 		SchemaVersion: neonCellSchemaVersion,
-		Provider:      neonSelfHostedProvider,
+		Provider:      neonSelfhostProvider,
 		Mode:          neonDefaultMode,
 		Status:        status,
 		Root:          root,
@@ -1430,7 +1430,7 @@ func buildDBBranchStatus(ctx context.Context, appRoot string, cfg appcfg.Config)
 		SchemaVersion:  dbBranchStatusSchemaVersion,
 		OK:             true,
 		App:            inspectAppRef(appRoot, cfg),
-		Provider:       neonSelfHostedProvider,
+		Provider:       neonSelfhostProvider,
 		Status:         status,
 		BackendStatus:  backendStatus.Status,
 		BackendMessage: backendStatus.Message,
@@ -1482,7 +1482,7 @@ func readNeonBranchRegistry(root string) (neonBranchRegistry, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return neonBranchRegistry{
 			SchemaVersion: dbBranchRegistrySchemaVersion,
-			Provider:      neonSelfHostedProvider,
+			Provider:      neonSelfhostProvider,
 			Leases:        []neonBranchLease{},
 		}, nil
 	}
@@ -1501,7 +1501,7 @@ func readNeonBranchRegistry(root string) (neonBranchRegistry, error) {
 	if registry.SchemaVersion != dbBranchRegistrySchemaVersion {
 		return neonBranchRegistry{}, fmt.Errorf("%s has unsupported schema_version %q", path, registry.SchemaVersion)
 	}
-	if registry.Provider != neonSelfHostedProvider {
+	if registry.Provider != neonSelfhostProvider {
 		return neonBranchRegistry{}, fmt.Errorf("%s has unsupported provider %q", path, registry.Provider)
 	}
 	if registry.Leases == nil {
@@ -1524,7 +1524,7 @@ func readLegacyNeonBranchRegistry(data []byte) (neonBranchRegistry, error) {
 	}
 	registry := neonBranchRegistry{
 		SchemaVersion: dbBranchRegistrySchemaVersion,
-		Provider:      neonSelfHostedProvider,
+		Provider:      neonSelfhostProvider,
 		UpdatedAt:     legacy.UpdatedAt,
 		Leases:        []neonBranchLease{},
 	}
@@ -1533,7 +1533,7 @@ func readLegacyNeonBranchRegistry(data []byte) (neonBranchRegistry, error) {
 		if err := json.Unmarshal(raw, &pin); err != nil {
 			return neonBranchRegistry{}, err
 		}
-		if pin.SchemaVersion != dbBranchPinSchemaVersion || pin.Provider != neonSelfHostedProvider {
+		if pin.SchemaVersion != dbBranchPinSchemaVersion || pin.Provider != neonSelfhostProvider {
 			continue
 		}
 		var meta struct {
@@ -1561,7 +1561,7 @@ func writeNeonBranchRegistry(root string, registry neonBranchRegistry) error {
 		return err
 	}
 	registry.SchemaVersion = dbBranchRegistrySchemaVersion
-	registry.Provider = neonSelfHostedProvider
+	registry.Provider = neonSelfhostProvider
 	if registry.Leases == nil {
 		registry.Leases = []neonBranchLease{}
 	}
@@ -1633,7 +1633,7 @@ func sameNeonBranch(a, b worktreeDBPin) bool {
 }
 
 func isOnlavaOwnedNeonPin(pin worktreeDBPin) bool {
-	return pin.Provider == neonSelfHostedProvider && pin.CreatedBy == "onlava"
+	return pin.Provider == neonSelfhostProvider && pin.CreatedBy == "onlava"
 }
 
 func isOnlavaOwnedNeonLease(lease neonBranchLease) bool {
@@ -1833,17 +1833,17 @@ func removeCurrentNeonBranchLease(appRoot string) (string, bool, error) {
 }
 
 func neonBranchProviderForConfig(_ appcfg.Config) neonBranchProvider {
-	return selfHostedNeonBranchProvider{}
+	return neonSelfhostBranchProvider{}
 }
 
-func (p selfHostedNeonBranchProvider) EnsureBranch(ctx context.Context, pin worktreeDBPin) (neonBranchBackendStatus, error) {
+func (p neonSelfhostBranchProvider) EnsureBranch(ctx context.Context, pin worktreeDBPin) (neonBranchBackendStatus, error) {
 	if err := upsertNeonBranchLease(pin); err != nil {
 		return neonBranchBackendStatus{
 			Status:  "unknown",
 			Message: err.Error(),
 		}, err
 	}
-	driver, ok, err := configuredSelfHostedNeonBranchDriver()
+	driver, ok, err := configuredNeonBranchDriver()
 	if err != nil {
 		return neonBranchBackendStatus{
 			Status:  "unknown",
@@ -1856,7 +1856,7 @@ func (p selfHostedNeonBranchProvider) EnsureBranch(ctx context.Context, pin work
 	return p.InspectBranch(ctx, pin), nil
 }
 
-func (selfHostedNeonBranchProvider) InspectBranch(ctx context.Context, pin worktreeDBPin) neonBranchBackendStatus {
+func (neonSelfhostBranchProvider) InspectBranch(ctx context.Context, pin worktreeDBPin) neonBranchBackendStatus {
 	lease, ok, err := findNeonBranchLease(pin)
 	if err != nil {
 		return neonBranchBackendStatus{
@@ -1907,11 +1907,11 @@ func (selfHostedNeonBranchProvider) InspectBranch(ctx context.Context, pin workt
 			Message: "Local Neon branch lease is marked expired.",
 		}
 	default:
-		return selfHostedNeonPendingBranchStatus(ctx)
+		return neonSelfhostPendingBranchStatus(ctx)
 	}
 }
 
-func selfHostedNeonPendingBranchStatus(ctx context.Context) neonBranchBackendStatus {
+func neonSelfhostPendingBranchStatus(ctx context.Context) neonBranchBackendStatus {
 	status, err := buildDBNeonStatus(ctx)
 	if err != nil {
 		return neonBranchBackendStatus{
@@ -1938,7 +1938,7 @@ func selfHostedNeonPendingBranchStatus(ctx context.Context) neonBranchBackendSta
 	}
 }
 
-func (selfHostedNeonBranchProvider) Connection(_ context.Context, pin worktreeDBPin) (neonBranchConnectionInfo, error) {
+func (neonSelfhostBranchProvider) Connection(_ context.Context, pin worktreeDBPin) (neonBranchConnectionInfo, error) {
 	lease, ok, err := findNeonBranchLease(pin)
 	if err != nil {
 		return neonBranchConnectionInfo{}, err
@@ -1970,21 +1970,21 @@ func (selfHostedNeonBranchProvider) Connection(_ context.Context, pin worktreeDB
 	}, nil
 }
 
-func (selfHostedNeonBranchProvider) ResetBranch(ctx context.Context, pin worktreeDBPin, _ dbBranchOptions) error {
-	driver, ok, err := configuredSelfHostedNeonBranchDriver()
+func (neonSelfhostBranchProvider) ResetBranch(ctx context.Context, pin worktreeDBPin, _ dbBranchOptions) error {
+	driver, ok, err := configuredNeonBranchDriver()
 	if err != nil {
 		return err
 	}
 	if ok {
 		return driver.ResetBranch(ctx, pin)
 	}
-	if err := selfHostedNeonMutationPreflight(ctx, "reset"); err != nil {
+	if err := neonSelfhostMutationPreflight(ctx, "reset"); err != nil {
 		return err
 	}
-	return fmt.Errorf("db branch reset validated %q but Neon backend reset is not implemented yet", pin.Branch)
+	return fmt.Errorf("db branch reset validated %q but no Neon branch driver is configured; set %s for neon-selfhost or %s for the local fallback", pin.Branch, neonSelfhostBranchDriverEnv, localPostgresBranchDriverEnv)
 }
 
-func (selfHostedNeonBranchProvider) DeleteBranch(ctx context.Context, pin worktreeDBPin, branch string, opts dbBranchOptions) error {
+func (neonSelfhostBranchProvider) DeleteBranch(ctx context.Context, pin worktreeDBPin, branch string, opts dbBranchOptions) error {
 	root, err := neonSubstrateRoot()
 	if err != nil {
 		return err
@@ -1997,7 +1997,7 @@ func (selfHostedNeonBranchProvider) DeleteBranch(ctx context.Context, pin worktr
 	if branch == "" {
 		return fmt.Errorf("db branch delete requires a branch name")
 	}
-	driver, driverConfigured, err := configuredSelfHostedNeonBranchDriver()
+	driver, driverConfigured, err := configuredNeonBranchDriver()
 	if err != nil {
 		return err
 	}
@@ -2014,7 +2014,7 @@ func (selfHostedNeonBranchProvider) DeleteBranch(ctx context.Context, pin worktr
 		}
 		if lease.Status == "ready" {
 			if !driverConfigured {
-				return fmt.Errorf("db branch delete validated %q but Neon backend delete is not implemented yet", branch)
+				return fmt.Errorf("db branch delete validated %q but no Neon branch driver is configured; set %s for neon-selfhost or %s for the local fallback", branch, neonSelfhostBranchDriverEnv, localPostgresBranchDriverEnv)
 			}
 			if err := driver.DeleteBranch(ctx, lease.Pin); err != nil {
 				return err
@@ -2053,36 +2053,36 @@ func neonLeaseMatchesBranchForDelete(lease neonBranchLease, current worktreeDBPi
 	return true
 }
 
-func (selfHostedNeonBranchProvider) RestoreBranch(ctx context.Context, pin worktreeDBPin, opts dbBranchOptions) (neonBranchRestorePoint, error) {
-	driver, ok, err := configuredSelfHostedNeonBranchDriver()
+func (neonSelfhostBranchProvider) RestoreBranch(ctx context.Context, pin worktreeDBPin, opts dbBranchOptions) (neonBranchRestorePoint, error) {
+	driver, ok, err := configuredNeonBranchDriver()
 	if err != nil {
 		return neonBranchRestorePoint{}, err
 	}
 	if ok {
 		return driver.RestoreBranch(ctx, pin, opts.At)
 	}
-	if err := selfHostedNeonMutationPreflight(ctx, "restore"); err != nil {
+	if err := neonSelfhostMutationPreflight(ctx, "restore"); err != nil {
 		return neonBranchRestorePoint{}, err
 	}
-	return neonBranchRestorePoint{}, fmt.Errorf("db branch restore validated %q at %q but Neon backend restore is not implemented yet", pin.Branch, strings.TrimSpace(opts.At))
+	return neonBranchRestorePoint{}, fmt.Errorf("db branch restore validated %q at %q but no Neon branch driver is configured; set %s for neon-selfhost or %s for the local fallback", pin.Branch, strings.TrimSpace(opts.At), neonSelfhostBranchDriverEnv, localPostgresBranchDriverEnv)
 }
 
-func (selfHostedNeonBranchProvider) DiffBranch(ctx context.Context, pin worktreeDBPin, target string, _ dbBranchOptions) (string, error) {
-	driver, ok, err := configuredSelfHostedNeonBranchDriver()
+func (neonSelfhostBranchProvider) DiffBranch(ctx context.Context, pin worktreeDBPin, target string, _ dbBranchOptions) (string, error) {
+	driver, ok, err := configuredNeonBranchDriver()
 	if err != nil {
 		return "", err
 	}
 	if ok {
 		return driver.DiffBranch(ctx, pin, target)
 	}
-	if err := selfHostedNeonMutationPreflight(ctx, "diff"); err != nil {
+	if err := neonSelfhostMutationPreflight(ctx, "diff"); err != nil {
 		return "", err
 	}
-	return "", fmt.Errorf("db branch diff validated %q against %q but Neon backend diff is not implemented yet", pin.Branch, target)
+	return "", fmt.Errorf("db branch diff validated %q against %q but no Neon branch driver is configured; set %s for neon-selfhost or %s for the local fallback", pin.Branch, target, neonSelfhostBranchDriverEnv, localPostgresBranchDriverEnv)
 }
 
-func selfHostedNeonMutationPreflight(ctx context.Context, action string) error {
-	status := selfHostedNeonPendingBranchStatus(ctx)
+func neonSelfhostMutationPreflight(ctx context.Context, action string) error {
+	status := neonSelfhostPendingBranchStatus(ctx)
 	if status.Status == "missing" {
 		return fmt.Errorf("db branch %s requires generated Neon dev-cell readiness: %s", action, status.Message)
 	}
@@ -2276,7 +2276,7 @@ func buildWorktreeDBPinForSession(appRoot string, cfg appcfg.Config, session *lo
 	}
 	return worktreeDBPin{
 		SchemaVersion: dbBranchPinSchemaVersion,
-		Provider:      neonSelfHostedProvider,
+		Provider:      neonSelfhostProvider,
 		Project:       project,
 		ParentBranch:  parent,
 		Branch:        branch,

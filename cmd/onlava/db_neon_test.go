@@ -458,7 +458,7 @@ func TestDBBranchStatusReadsWorktreePin(t *testing.T) {
 	}`)
 	writeTestAppFile(t, root, ".onlava/worktree-db.json", `{
 		"schema_version": "onlava.db.branch.v1",
-		"provider": "neon-self-hosted",
+		"provider": "neon-selfhost",
 		"project": "branchapp",
 		"parent_branch": "main",
 		"branch": "branchapp/feature",
@@ -541,7 +541,7 @@ func TestDBBranchListIgnoresForeignLease(t *testing.T) {
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"branchapp","dev":{"services":{"postgres":{"kind":"neon","mode":"self-hosted","isolation":"branch","project":"branchapp"}}}}`)
 	foreignPin := worktreeDBPin{
 		SchemaVersion: dbBranchPinSchemaVersion,
-		Provider:      neonSelfHostedProvider,
+		Provider:      neonSelfhostProvider,
 		Project:       "branchapp",
 		ParentBranch:  "main",
 		Branch:        "feature/foreign",
@@ -637,7 +637,7 @@ func TestDBBranchCheckoutRefusesForeignLease(t *testing.T) {
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"branchapp","dev":{"services":{"postgres":{"kind":"neon","mode":"self-hosted","isolation":"branch","project":"branchapp"}}}}`)
 	foreignPin := worktreeDBPin{
 		SchemaVersion: dbBranchPinSchemaVersion,
-		Provider:      neonSelfHostedProvider,
+		Provider:      neonSelfhostProvider,
 		Project:       "branchapp",
 		ParentBranch:  "main",
 		Branch:        "feature/foreign",
@@ -810,12 +810,12 @@ func TestDBBranchCheckoutAndDeleteUseConfiguredBranchDriver(t *testing.T) {
 
 	binDir := t.TempDir()
 	driverLog := filepath.Join(binDir, "driver.log")
-	driver := filepath.Join(binDir, "neon-branch-driver")
+	driver := filepath.Join(binDir, "fake-driver")
 	if err := os.WriteFile(driver, []byte(`#!/bin/sh
 printf '%s\n' "$*" >> "$DRIVER_LOG"
 case "$1" in
   ensure|reset|restore)
-    printf '{"status":"ready","message":"driver marked branch ready","endpoint":{"host":"127.0.0.1","port":55433,"database":"branchapp","role":"cloud_admin","sslmode":"disable","source":"test-driver"}}\n'
+    printf '{"status":"ready","message":"driver marked branch ready","endpoint":{"host":"127.0.0.1","port":55433,"database":"branchapp","role":"cloud_admin","sslmode":"disable","source":"fake-driver"}}\n'
     exit 0
     ;;
   delete)
@@ -829,7 +829,7 @@ exit 1
 		t.Fatal(err)
 	}
 	t.Setenv("DRIVER_LOG", driverLog)
-	t.Setenv(neonBranchDriverEnv, driver)
+	t.Setenv(localPostgresBranchDriverEnv, driver)
 
 	var out bytes.Buffer
 	if err := runDBBranchCommand(t.Context(), &out, []string{"checkout", "feature/driver", "--app-root", root, "--json"}); err != nil {
@@ -839,7 +839,7 @@ exit 1
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		t.Fatalf("decode checkout JSON: %v\n%s", err, out.String())
 	}
-	if payload.BackendStatus != "ready" || payload.Connection == nil || payload.Connection.Source != "test-driver" {
+	if payload.BackendStatus != "ready" || payload.Connection == nil || payload.Connection.Source != "fake-driver" {
 		t.Fatalf("payload = %+v", payload)
 	}
 	if strings.Contains(out.String(), "postgres://") {
@@ -885,6 +885,66 @@ exit 1
 	}
 }
 
+func TestDBBranchCheckoutPrefersNeonSelfhostDriver(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	root := t.TempDir()
+	writeTestAppFile(t, root, ".onlava.json", `{"name":"branchapp","dev":{"services":{"postgres":{"kind":"neon","mode":"self-hosted","isolation":"branch","project":"branchapp"}}}}`)
+
+	binDir := t.TempDir()
+	selfhostLog := filepath.Join(binDir, "selfhost.log")
+	selfhostDriver := filepath.Join(binDir, "fake-neon-selfhost-driver")
+	if err := os.WriteFile(selfhostDriver, []byte(`#!/bin/sh
+printf '%s\n' "$*" >> "$SELFHOST_DRIVER_LOG"
+case "$1" in
+  ensure|reset|restore)
+    printf '{"status":"ready","message":"selfhost driver marked branch ready","endpoint":{"host":"127.0.0.1","port":55433,"database":"branchapp","role":"cloud_admin","sslmode":"disable"}}\n'
+    exit 0
+    ;;
+  delete)
+    printf '{"status":"deleted","message":"selfhost driver deleted branch"}\n'
+    exit 0
+    ;;
+esac
+echo "unexpected neon-selfhost driver action $1" >&2
+exit 1
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	localLog := filepath.Join(binDir, "local.log")
+	localDriver := filepath.Join(binDir, "fake-local-postgres-branch-driver")
+	if err := os.WriteFile(localDriver, []byte(`#!/bin/sh
+printf '%s\n' "$*" >> "$LOCAL_DRIVER_LOG"
+printf '{"status":"ready","message":"local driver should not be selected","endpoint":{"host":"127.0.0.1","port":55434,"database":"branchapp","role":"cloud_admin","sslmode":"disable"}}\n'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SELFHOST_DRIVER_LOG", selfhostLog)
+	t.Setenv("LOCAL_DRIVER_LOG", localLog)
+	t.Setenv(neonSelfhostBranchDriverEnv, selfhostDriver)
+	t.Setenv(localPostgresBranchDriverEnv, localDriver)
+
+	var out bytes.Buffer
+	if err := runDBBranchCommand(t.Context(), &out, []string{"checkout", "feature/selfhost", "--app-root", root, "--json"}); err != nil {
+		t.Fatalf("checkout returned error: %v", err)
+	}
+	var payload dbBranchStatusResult
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("decode checkout JSON: %v\n%s", err, out.String())
+	}
+	if payload.BackendStatus != "ready" || payload.Connection == nil || payload.Connection.Source != neonSelfhostBranchDriverEndpointSource {
+		t.Fatalf("payload = %+v", payload)
+	}
+	selfhostLogBytes, err := os.ReadFile(selfhostLog)
+	if err != nil {
+		t.Fatalf("read selfhost driver log: %v", err)
+	}
+	if !strings.Contains(string(selfhostLogBytes), "ensure") || !strings.Contains(string(selfhostLogBytes), "--branch feature/selfhost") {
+		t.Fatalf("selfhost driver log = %q", string(selfhostLogBytes))
+	}
+	if localLogBytes, err := os.ReadFile(localLog); err == nil && strings.TrimSpace(string(localLogBytes)) != "" {
+		t.Fatalf("local fallback driver was called: %q", string(localLogBytes))
+	}
+}
 func TestDBBranchDriverRestoreDiffAndRestorePoints(t *testing.T) {
 	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
 	root := t.TempDir()
@@ -892,12 +952,12 @@ func TestDBBranchDriverRestoreDiffAndRestorePoints(t *testing.T) {
 
 	binDir := t.TempDir()
 	driverLog := filepath.Join(binDir, "driver.log")
-	driver := filepath.Join(binDir, "neon-branch-driver")
+	driver := filepath.Join(binDir, "fake-driver")
 	if err := os.WriteFile(driver, []byte(`#!/bin/sh
 printf '%s\n' "$*" >> "$DRIVER_LOG"
 case "$1" in
   ensure|reset|restore)
-    printf '{"status":"ready","message":"driver marked branch ready","endpoint":{"host":"127.0.0.1","port":55433,"database":"branchapp","role":"cloud_admin","sslmode":"disable","source":"test-driver"}}\n'
+    printf '{"status":"ready","message":"driver marked branch ready","endpoint":{"host":"127.0.0.1","port":55433,"database":"branchapp","role":"cloud_admin","sslmode":"disable","source":"fake-driver"}}\n'
     exit 0
     ;;
   diff)
@@ -911,7 +971,7 @@ exit 1
 		t.Fatal(err)
 	}
 	t.Setenv("DRIVER_LOG", driverLog)
-	t.Setenv(neonBranchDriverEnv, driver)
+	t.Setenv(localPostgresBranchDriverEnv, driver)
 
 	if err := runDBBranchCommand(t.Context(), io.Discard, []string{"checkout", "branchapp/feature", "--app-root", root, "--json"}); err != nil {
 		t.Fatalf("checkout returned error: %v", err)
@@ -989,21 +1049,42 @@ exit 1
 func TestNeonFixtureConfigLoads(t *testing.T) {
 	t.Parallel()
 
-	root := filepath.Join(appcfg.RepoRoot(), "testdata", "apps", "neon-basic")
-	_, cfg, err := appcfg.DiscoverRoot(root)
+	basicRoot := filepath.Join(appcfg.RepoRoot(), "testdata", "apps", "neon-basic")
+	_, basicCfg, err := appcfg.DiscoverRoot(basicRoot)
 	if err != nil {
 		t.Fatalf("DiscoverRoot(neon-basic) error = %v", err)
 	}
-	_, svc, ok := managedPostgresDeclared(cfg)
-	if !ok || svc.Kind != "neon" {
-		t.Fatalf("managed Postgres service = %+v, ok=%v", svc, ok)
+	_, basicSvc, ok := managedPostgresDeclared(basicCfg)
+	if !ok || basicSvc.Kind != "neon" {
+		t.Fatalf("managed Postgres service = %+v, ok=%v", basicSvc, ok)
 	}
-	pin, err := buildWorktreeDBPin(root, cfg, "neonbasic/fixture")
+	basicPin, err := buildWorktreeDBPin(basicRoot, basicCfg, "neonbasic/fixture")
 	if err != nil {
 		t.Fatalf("buildWorktreeDBPin(neon-basic) error = %v", err)
 	}
-	if pin.Project != "neonbasic" || pin.Database != "neonbasic" || pin.Role != "cloud_admin" {
-		t.Fatalf("pin = %+v", pin)
+	if basicPin.Project != "neonbasic" || basicPin.Database != "neonbasic" || basicPin.Role != "cloud_admin" {
+		t.Fatalf("basic pin = %+v", basicPin)
+	}
+
+	electricRoot := filepath.Join(appcfg.RepoRoot(), "testdata", "apps", "neon-electric")
+	_, electricCfg, err := appcfg.DiscoverRoot(electricRoot)
+	if err != nil {
+		t.Fatalf("DiscoverRoot(neon-electric) error = %v", err)
+	}
+	_, electricSvc, ok := managedPostgresDeclared(electricCfg)
+	if !ok || electricSvc.Kind != "neon" {
+		t.Fatalf("electric managed Postgres service = %+v, ok=%v", electricSvc, ok)
+	}
+	electricName, electricService, ok := managedElectricDeclared(electricCfg)
+	if !ok || electricName != "electric" || electricService.Kind != "electric" || electricService.Database != "postgres" {
+		t.Fatalf("managed Electric service name=%q svc=%+v ok=%v", electricName, electricService, ok)
+	}
+	electricPin, err := buildWorktreeDBPin(electricRoot, electricCfg, "neonelectric/fixture")
+	if err != nil {
+		t.Fatalf("buildWorktreeDBPin(neon-electric) error = %v", err)
+	}
+	if electricPin.Project != "neonelectric" || electricPin.Database != "neonelectric" || electricPin.Role != "cloud_admin" {
+		t.Fatalf("electric pin = %+v", electricPin)
 	}
 }
 
@@ -1052,7 +1133,7 @@ func TestDBBranchExpireAndPruneLocalRegistry(t *testing.T) {
 	}
 	foreignPin := worktreeDBPin{
 		SchemaVersion: dbBranchPinSchemaVersion,
-		Provider:      neonSelfHostedProvider,
+		Provider:      neonSelfhostProvider,
 		Project:       "branchapp",
 		ParentBranch:  "main",
 		Branch:        "feature/foreign",
@@ -1168,7 +1249,7 @@ func TestDBBranchDeleteReadyLeaseRequiresBackend(t *testing.T) {
 	})
 
 	err = runDBBranchCommand(t.Context(), io.Discard, []string{"delete", "feature/ready", "--app-root", root, "--force"})
-	if err == nil || !strings.Contains(err.Error(), "Neon backend delete is not implemented yet") {
+	if err == nil || !strings.Contains(err.Error(), "no Neon branch driver is configured") {
 		t.Fatalf("ready delete error = %v", err)
 	}
 	registry, _, err := readNeonBranchRegistryForDefaultRoot()
@@ -1231,7 +1312,7 @@ func TestDBBranchResetAndDeleteGuards(t *testing.T) {
 	writeTestAppFile(t, root, ".onlava.json", `{"name":"branchapp","dev":{"services":{"postgres":{"kind":"neon","mode":"self-hosted","isolation":"branch","project":"branchapp"}}}}`)
 	writeTestAppFile(t, root, ".onlava/worktree-db.json", `{
 		"schema_version": "onlava.db.branch.v1",
-		"provider": "neon-self-hosted",
+		"provider": "neon-selfhost",
 		"project": "branchapp",
 		"parent_branch": "main",
 		"branch": "main",
@@ -1256,7 +1337,7 @@ func TestDBBranchResetAndDeleteGuards(t *testing.T) {
 
 	writeTestAppFile(t, root, ".onlava/worktree-db.json", `{
 		"schema_version": "onlava.db.branch.v1",
-		"provider": "neon-self-hosted",
+		"provider": "neon-selfhost",
 		"project": "branchapp",
 		"parent_branch": "main",
 		"branch": "branchapp/feature",
@@ -1302,15 +1383,15 @@ func TestDBBranchResetAndDeleteGuards(t *testing.T) {
 		t.Fatalf("install dev-cell returned error: %v", err)
 	}
 	err = runDBBranchCommand(t.Context(), io.Discard, []string{"reset", "--app-root", root, "--yes"})
-	if err == nil || !strings.Contains(err.Error(), `Neon backend reset is not implemented yet`) {
+	if err == nil || !strings.Contains(err.Error(), `no Neon branch driver is configured`) {
 		t.Fatalf("reset backend error = %v", err)
 	}
 	err = runDBBranchCommand(t.Context(), io.Discard, []string{"restore", "--at", "2026-06-08T00:00:00Z", "--app-root", root, "--yes"})
-	if err == nil || !strings.Contains(err.Error(), `Neon backend restore is not implemented yet`) {
+	if err == nil || !strings.Contains(err.Error(), `no Neon branch driver is configured`) {
 		t.Fatalf("restore backend error = %v", err)
 	}
 	err = runDBBranchCommand(t.Context(), io.Discard, []string{"diff", "main", "--app-root", root, "--json"})
-	if err == nil || !strings.Contains(err.Error(), `Neon backend diff is not implemented yet`) {
+	if err == nil || !strings.Contains(err.Error(), `no Neon branch driver is configured`) {
 		t.Fatalf("diff backend error = %v", err)
 	}
 }
@@ -1357,7 +1438,7 @@ func TestEnsureNeonBranchPinForSessionReusesExistingPin(t *testing.T) {
 	root := t.TempDir()
 	writeTestAppFile(t, root, ".onlava/worktree-db.json", `{
 		"schema_version": "onlava.db.branch.v1",
-		"provider": "neon-self-hosted",
+		"provider": "neon-selfhost",
 		"project": "branchapp",
 		"parent_branch": "main",
 		"branch": "branchapp/manual",

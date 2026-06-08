@@ -182,7 +182,7 @@ func TestResolveDatabaseURLForConfigUsesReadyNeonBranchConnection(t *testing.T) 
 	}
 	writeTestAppFile(t, root, ".onlava/worktree-db.json", `{
 		"schema_version": "onlava.db.branch.v1",
-		"provider": "neon-self-hosted",
+		"provider": "neon-selfhost",
 		"project": "demo",
 		"parent_branch": "main",
 		"branch": "demo/review-a",

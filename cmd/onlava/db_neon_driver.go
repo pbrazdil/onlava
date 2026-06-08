@@ -14,7 +14,13 @@ import (
 	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
-type neonBranchDriverResult struct {
+const (
+	neonSelfhostBranchDriverEnv             = "ONLAVA_DEV_NEON_SELFHOST_DRIVER"
+	localPostgresBranchDriverEndpointSource = "local-postgres-branch-driver"
+	neonSelfhostBranchDriverEndpointSource  = "neon-selfhost-driver"
+)
+
+type executableNeonBranchDriverResult struct {
 	Status       string                  `json:"status,omitempty"`
 	Message      string                  `json:"message,omitempty"`
 	Diff         string                  `json:"diff,omitempty"`
@@ -22,37 +28,60 @@ type neonBranchDriverResult struct {
 	RestorePoint *neonBranchRestorePoint `json:"restore_point,omitempty"`
 }
 
-type selfHostedNeonBranchDriver struct {
-	path string
+type executableNeonBranchDriver struct {
+	path                  string
+	name                  string
+	envName               string
+	defaultEndpointSource string
 }
 
-func configuredSelfHostedNeonBranchDriver() (selfHostedNeonBranchDriver, bool, error) {
-	path := strings.TrimSpace(envpolicy.Get(neonBranchDriverEnv))
+func configuredNeonBranchDriver() (executableNeonBranchDriver, bool, error) {
+	if driver, ok, err := configuredNeonSelfhostBranchDriver(); ok || err != nil {
+		return driver, ok, err
+	}
+	return configuredLocalPostgresBranchDriver()
+}
+
+func configuredNeonSelfhostBranchDriver() (executableNeonBranchDriver, bool, error) {
+	return configuredExecutableNeonBranchDriver(neonSelfhostBranchDriverEnv, "neon-selfhost driver", neonSelfhostBranchDriverEndpointSource)
+}
+
+func configuredLocalPostgresBranchDriver() (executableNeonBranchDriver, bool, error) {
+	return configuredExecutableNeonBranchDriver(localPostgresBranchDriverEnv, "local-postgres-branch driver", localPostgresBranchDriverEndpointSource)
+}
+
+func configuredExecutableNeonBranchDriver(envName, name, defaultEndpointSource string) (executableNeonBranchDriver, bool, error) {
+	path := strings.TrimSpace(envpolicy.Get(envName))
 	if path == "" {
-		return selfHostedNeonBranchDriver{}, false, nil
+		return executableNeonBranchDriver{}, false, nil
 	}
 	if !filepath.IsAbs(path) {
-		return selfHostedNeonBranchDriver{}, false, fmt.Errorf("%s must be an absolute path to a local Neon branch driver executable", neonBranchDriverEnv)
+		return executableNeonBranchDriver{}, false, fmt.Errorf("%s must be an absolute path to a %s executable", envName, name)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return selfHostedNeonBranchDriver{}, false, fmt.Errorf("stat %s: %w", neonBranchDriverEnv, err)
+		return executableNeonBranchDriver{}, false, fmt.Errorf("stat %s: %w", envName, err)
 	}
 	if info.IsDir() {
-		return selfHostedNeonBranchDriver{}, false, fmt.Errorf("%s points at a directory, want executable file", neonBranchDriverEnv)
+		return executableNeonBranchDriver{}, false, fmt.Errorf("%s points at a directory, want executable file", envName)
 	}
 	if info.Mode()&0o111 == 0 {
-		return selfHostedNeonBranchDriver{}, false, fmt.Errorf("%s is not executable", neonBranchDriverEnv)
+		return executableNeonBranchDriver{}, false, fmt.Errorf("%s is not executable", envName)
 	}
-	return selfHostedNeonBranchDriver{path: path}, true, nil
+	return executableNeonBranchDriver{
+		path:                  path,
+		name:                  name,
+		envName:               envName,
+		defaultEndpointSource: defaultEndpointSource,
+	}, true, nil
 }
 
-func (d selfHostedNeonBranchDriver) EnsureBranch(ctx context.Context, pin worktreeDBPin) (neonBranchBackendStatus, error) {
+func (d executableNeonBranchDriver) EnsureBranch(ctx context.Context, pin worktreeDBPin) (neonBranchBackendStatus, error) {
 	result, err := d.run(ctx, "ensure", pin, nil)
 	if err != nil {
 		return neonBranchBackendStatus{Status: "unknown", Message: err.Error()}, err
 	}
-	status, err := updateNeonBranchLeaseFromDriver(pin, result)
+	status, err := updateNeonBranchLeaseFromDriver(pin, result, d)
 	if err != nil {
 		return status, err
 	}
@@ -64,25 +93,25 @@ func (d selfHostedNeonBranchDriver) EnsureBranch(ctx context.Context, pin worktr
 	return status, nil
 }
 
-func (d selfHostedNeonBranchDriver) ResetBranch(ctx context.Context, pin worktreeDBPin) error {
+func (d executableNeonBranchDriver) ResetBranch(ctx context.Context, pin worktreeDBPin) error {
 	result, err := d.run(ctx, "reset", pin, nil)
 	if err != nil {
 		return err
 	}
-	if _, err := updateNeonBranchLeaseFromDriver(pin, result); err != nil {
+	if _, err := updateNeonBranchLeaseFromDriver(pin, result, d); err != nil {
 		return err
 	}
 	_, err = recordNeonRestorePoint(pin, "branch-reset", "")
 	return err
 }
 
-func (d selfHostedNeonBranchDriver) RestoreBranch(ctx context.Context, pin worktreeDBPin, at string) (neonBranchRestorePoint, error) {
+func (d executableNeonBranchDriver) RestoreBranch(ctx context.Context, pin worktreeDBPin, at string) (neonBranchRestorePoint, error) {
 	restoreFrom, _ := resolveNeonRestorePoint(pin.BranchID, at)
 	result, err := d.run(ctx, "restore", pin, []string{"--at", strings.TrimSpace(at)})
 	if err != nil {
 		return neonBranchRestorePoint{}, err
 	}
-	if _, err := updateNeonBranchLeaseFromDriver(pin, result); err != nil {
+	if _, err := updateNeonBranchLeaseFromDriver(pin, result, d); err != nil {
 		return neonBranchRestorePoint{}, err
 	}
 	if result.RestorePoint != nil {
@@ -99,7 +128,7 @@ func (d selfHostedNeonBranchDriver) RestoreBranch(ctx context.Context, pin workt
 	return point, nil
 }
 
-func (d selfHostedNeonBranchDriver) DiffBranch(ctx context.Context, pin worktreeDBPin, target string) (string, error) {
+func (d executableNeonBranchDriver) DiffBranch(ctx context.Context, pin worktreeDBPin, target string) (string, error) {
 	result, err := d.run(ctx, "diff", pin, []string{"--target", strings.TrimSpace(target)})
 	if err != nil {
 		return "", err
@@ -107,14 +136,14 @@ func (d selfHostedNeonBranchDriver) DiffBranch(ctx context.Context, pin worktree
 	return result.Diff, nil
 }
 
-func (d selfHostedNeonBranchDriver) DeleteBranch(ctx context.Context, pin worktreeDBPin) error {
+func (d executableNeonBranchDriver) DeleteBranch(ctx context.Context, pin worktreeDBPin) error {
 	_, err := d.run(ctx, "delete", pin, nil)
 	return err
 }
 
-func (d selfHostedNeonBranchDriver) run(ctx context.Context, action string, pin worktreeDBPin, extra []string) (neonBranchDriverResult, error) {
+func (d executableNeonBranchDriver) run(ctx context.Context, action string, pin worktreeDBPin, extra []string) (executableNeonBranchDriverResult, error) {
 	if strings.TrimSpace(action) == "" {
-		return neonBranchDriverResult{}, fmt.Errorf("Neon branch driver action is required")
+		return executableNeonBranchDriverResult{}, fmt.Errorf("%s action is required", d.name)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
@@ -137,20 +166,20 @@ func (d selfHostedNeonBranchDriver) run(ctx context.Context, action string, pin 
 	out, err := cmd.Output()
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return neonBranchDriverResult{}, fmt.Errorf("Neon branch driver %q timed out", action)
+			return executableNeonBranchDriverResult{}, fmt.Errorf("%s %q timed out", d.name, action)
 		}
-		return neonBranchDriverResult{}, fmt.Errorf("Neon branch driver %q failed: %w", action, err)
+		return executableNeonBranchDriverResult{}, fmt.Errorf("%s %q failed: %w", d.name, action, err)
 	}
-	var result neonBranchDriverResult
+	var result executableNeonBranchDriverResult
 	dec := json.NewDecoder(strings.NewReader(string(out)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&result); err != nil {
-		return neonBranchDriverResult{}, fmt.Errorf("parse Neon branch driver %q JSON: %w", action, err)
+		return executableNeonBranchDriverResult{}, fmt.Errorf("parse %s %q JSON: %w", d.name, action, err)
 	}
 	return result, nil
 }
 
-func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result neonBranchDriverResult) (neonBranchBackendStatus, error) {
+func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result executableNeonBranchDriverResult, driver executableNeonBranchDriver) (neonBranchBackendStatus, error) {
 	status := strings.ToLower(strings.TrimSpace(result.Status))
 	if status == "" {
 		if result.Endpoint != nil {
@@ -162,11 +191,11 @@ func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result neonBranchDriverR
 	switch status {
 	case "ready":
 		if result.Endpoint == nil {
-			return neonBranchBackendStatus{}, fmt.Errorf("Neon branch driver marked %q ready without endpoint metadata", pin.Branch)
+			return neonBranchBackendStatus{}, fmt.Errorf("%s marked %q ready without endpoint metadata", driver.name, pin.Branch)
 		}
 	case "pending", "missing", "expired":
 	default:
-		return neonBranchBackendStatus{}, fmt.Errorf("Neon branch driver returned unsupported status %q for %q", status, pin.Branch)
+		return neonBranchBackendStatus{}, fmt.Errorf("%s returned unsupported status %q for %q", driver.name, status, pin.Branch)
 	}
 
 	root, err := neonSubstrateRoot()
@@ -183,7 +212,7 @@ func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result neonBranchDriverR
 	if result.Endpoint != nil && status == "ready" {
 		normalized := normalizedNeonEndpoint(*result.Endpoint, pin)
 		if normalized.Source == "" {
-			normalized.Source = "branch-driver"
+			normalized.Source = driver.defaultEndpointSource
 		}
 		endpoint = &normalized
 	}
@@ -192,7 +221,7 @@ func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result neonBranchDriverR
 			continue
 		}
 		if !isOnlavaOwnedNeonLease(registry.Leases[i]) {
-			return neonBranchBackendStatus{}, fmt.Errorf("refusing to update foreign local Neon branch lease %q from branch driver", pin.Branch)
+			return neonBranchBackendStatus{}, fmt.Errorf("refusing to update foreign local Neon branch lease %q from %s", pin.Branch, driver.name)
 		}
 		if registry.Leases[i].CreatedAt == "" {
 			registry.Leases[i].CreatedAt = nowText
@@ -207,7 +236,7 @@ func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result neonBranchDriverR
 		}
 		return neonBranchBackendStatus{
 			Status:   status,
-			Message:  firstNonEmpty(strings.TrimSpace(result.Message), "Neon branch driver updated the local branch lease."),
+			Message:  firstNonEmpty(strings.TrimSpace(result.Message), driver.name+" updated the local branch lease."),
 			Endpoint: endpoint,
 		}, nil
 	}
@@ -225,7 +254,7 @@ func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result neonBranchDriverR
 	}
 	return neonBranchBackendStatus{
 		Status:   status,
-		Message:  firstNonEmpty(strings.TrimSpace(result.Message), "Neon branch driver created the local branch lease."),
+		Message:  firstNonEmpty(strings.TrimSpace(result.Message), driver.name+" created the local branch lease."),
 		Endpoint: endpoint,
 	}, nil
 }

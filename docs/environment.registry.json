@@ -1104,7 +1104,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_NEON_BRANCH_DRIVER",
+      "name": "ONLAVA_DEV_NEON_SELFHOST_DRIVER",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1117,8 +1117,30 @@
         "tests"
       ],
       "owner": "onlava runtime",
-      "rationale": "Explicit local self-hosted Neon branch driver executable path for ensure/reset/restore/delete branch operations",
-      "preferred_surface": ".onlava.json for stable provider configuration; this env is an explicit local dev-cell driver escape hatch",
+      "rationale": "Explicit neon-selfhost branch driver executable path for the actual self-hosted Neon dev-cell backend",
+      "preferred_surface": ".onlava.json for stable provider configuration; this env selects the executable backend while the dev-cell driver is still toolchain-managed separately",
+      "replacement": "",
+      "sunset": "",
+      "docs": [
+        "docs/environment.md"
+      ]
+    },
+    {
+      "name": "ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER",
+      "match": "exact",
+      "scope": "runtime",
+      "direction": "user_input",
+      "category": "dev.services",
+      "stability": "dev_escape_hatch",
+      "secret": false,
+      "allowed_in": [
+        "code",
+        "docs",
+        "tests"
+      ],
+      "owner": "onlava runtime",
+      "rationale": "Explicit local-postgres-branch development fallback executable path for branch pin/lease/env validation against local Postgres-shaped endpoints",
+      "preferred_surface": ".onlava.json for stable provider configuration; this env is not the actual neon-selfhost dev-cell backend",
       "replacement": "",
       "sunset": "",
       "docs": [

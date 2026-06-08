@@ -51,22 +51,40 @@ func TestWorktreeCreateListAndRemoveWithNeonPin(t *testing.T) {
 	runGitForTest(t, root, "add", ".onlava.json")
 	runGitForTest(t, root, "commit", "-m", "initial")
 
-	var createOut bytes.Buffer
-	if err := runWorktreeCommand(t.Context(), &createOut, []string{"create", "pricing-agent", "--from", "main", "--app-root", root, "--json"}); err != nil {
-		t.Fatalf("runWorktreeCommand create returned error: %v", err)
+	var createAOut bytes.Buffer
+	if err := runWorktreeCommand(t.Context(), &createAOut, []string{"create", "pricing-agent", "--from", "main", "--app-root", root, "--json"}); err != nil {
+		t.Fatalf("runWorktreeCommand create A returned error: %v", err)
 	}
-	var created worktreeCreateResult
-	if err := json.Unmarshal(createOut.Bytes(), &created); err != nil {
-		t.Fatalf("decode create JSON: %v\n%s", err, createOut.String())
+	var createdA worktreeCreateResult
+	if err := json.Unmarshal(createAOut.Bytes(), &createdA); err != nil {
+		t.Fatalf("decode create A JSON: %v\n%s", err, createAOut.String())
 	}
-	if !created.OK || created.DBPin == nil || created.DBPin.Branch != "demo/pricing-agent" {
-		t.Fatalf("created = %+v", created)
+	if !createdA.OK || createdA.DBPin == nil || createdA.DBPin.Branch != "demo/pricing-agent" {
+		t.Fatalf("created A = %+v", createdA)
 	}
-	if diagnostics := validateHarnessJSONSchemaFile(filepath.Join(repoRootForTest(t), "docs", "schemas", "onlava.worktree.create.v1.schema.json"), created); len(diagnostics) != 0 {
-		t.Fatalf("create schema diagnostics = %+v", diagnostics)
+	if diagnostics := validateHarnessJSONSchemaFile(filepath.Join(repoRootForTest(t), "docs", "schemas", "onlava.worktree.create.v1.schema.json"), createdA); len(diagnostics) != 0 {
+		t.Fatalf("create A schema diagnostics = %+v", diagnostics)
 	}
-	if _, err := os.Stat(filepath.Join(created.Path, ".onlava", "worktree-db.json")); err != nil {
-		t.Fatalf("target pin missing: %v", err)
+	if _, err := os.Stat(filepath.Join(createdA.Path, ".onlava", "worktree-db.json")); err != nil {
+		t.Fatalf("target A pin missing: %v", err)
+	}
+
+	var createBOut bytes.Buffer
+	if err := runWorktreeCommand(t.Context(), &createBOut, []string{"create", "content-agent", "--from", "main", "--app-root", root, "--json"}); err != nil {
+		t.Fatalf("runWorktreeCommand create B returned error: %v", err)
+	}
+	var createdB worktreeCreateResult
+	if err := json.Unmarshal(createBOut.Bytes(), &createdB); err != nil {
+		t.Fatalf("decode create B JSON: %v\n%s", err, createBOut.String())
+	}
+	if !createdB.OK || createdB.DBPin == nil || createdB.DBPin.Branch != "demo/content-agent" {
+		t.Fatalf("created B = %+v", createdB)
+	}
+	if createdA.Path == createdB.Path || createdA.DBPin.BranchID == createdB.DBPin.BranchID || createdA.DBPin.Branch == createdB.DBPin.Branch {
+		t.Fatalf("created worktrees are not isolated: A=%+v B=%+v", createdA, createdB)
+	}
+	if _, err := os.Stat(filepath.Join(createdB.Path, ".onlava", "worktree-db.json")); err != nil {
+		t.Fatalf("target B pin missing: %v", err)
 	}
 
 	var listOut bytes.Buffer
@@ -77,35 +95,43 @@ func TestWorktreeCreateListAndRemoveWithNeonPin(t *testing.T) {
 	if err := json.Unmarshal(listOut.Bytes(), &listed); err != nil {
 		t.Fatalf("decode list JSON: %v\n%s", err, listOut.String())
 	}
-	var found bool
+	found := map[string]bool{}
 	for _, wt := range listed.Worktrees {
-		if evalPathForTest(t, wt.Path) == evalPathForTest(t, created.Path) && wt.Branch == "pricing-agent" {
-			found = true
+		if evalPathForTest(t, wt.Path) == evalPathForTest(t, createdA.Path) && wt.Branch == "pricing-agent" {
+			found["pricing-agent"] = true
+		}
+		if evalPathForTest(t, wt.Path) == evalPathForTest(t, createdB.Path) && wt.Branch == "content-agent" {
+			found["content-agent"] = true
 		}
 	}
-	if !found {
-		t.Fatalf("created worktree not listed: %+v", listed.Worktrees)
+	if !found["pricing-agent"] || !found["content-agent"] {
+		t.Fatalf("created worktrees not listed: %+v", listed.Worktrees)
 	}
 	if diagnostics := validateHarnessJSONSchemaFile(filepath.Join(repoRootForTest(t), "docs", "schemas", "onlava.worktree.list.v1.schema.json"), listed); len(diagnostics) != 0 {
 		t.Fatalf("list schema diagnostics = %+v", diagnostics)
 	}
 
-	var removeOut bytes.Buffer
-	if err := runWorktreeCommand(t.Context(), &removeOut, []string{"remove", "pricing-agent", "--app-root", root, "--db", "--json"}); err != nil {
-		t.Fatalf("runWorktreeCommand remove returned error: %v", err)
+	for _, name := range []string{"pricing-agent", "content-agent"} {
+		var removeOut bytes.Buffer
+		if err := runWorktreeCommand(t.Context(), &removeOut, []string{"remove", name, "--app-root", root, "--db", "--json"}); err != nil {
+			t.Fatalf("runWorktreeCommand remove %s returned error: %v", name, err)
+		}
+		var removed worktreeRemoveResult
+		if err := json.Unmarshal(removeOut.Bytes(), &removed); err != nil {
+			t.Fatalf("decode remove %s JSON: %v\n%s", name, err, removeOut.String())
+		}
+		if !removed.OK || !removed.DBPinRemoved {
+			t.Fatalf("removed %s = %+v", name, removed)
+		}
+		if diagnostics := validateHarnessJSONSchemaFile(filepath.Join(repoRootForTest(t), "docs", "schemas", "onlava.worktree.remove.v1.schema.json"), removed); len(diagnostics) != 0 {
+			t.Fatalf("remove %s schema diagnostics = %+v", name, diagnostics)
+		}
 	}
-	var removed worktreeRemoveResult
-	if err := json.Unmarshal(removeOut.Bytes(), &removed); err != nil {
-		t.Fatalf("decode remove JSON: %v\n%s", err, removeOut.String())
+	if _, err := os.Stat(createdA.Path); !os.IsNotExist(err) {
+		t.Fatalf("target A path after remove err=%v", err)
 	}
-	if !removed.OK || !removed.DBPinRemoved {
-		t.Fatalf("removed = %+v", removed)
-	}
-	if diagnostics := validateHarnessJSONSchemaFile(filepath.Join(repoRootForTest(t), "docs", "schemas", "onlava.worktree.remove.v1.schema.json"), removed); len(diagnostics) != 0 {
-		t.Fatalf("remove schema diagnostics = %+v", diagnostics)
-	}
-	if _, err := os.Stat(created.Path); !os.IsNotExist(err) {
-		t.Fatalf("target path after remove err=%v", err)
+	if _, err := os.Stat(createdB.Path); !os.IsNotExist(err) {
+		t.Fatalf("target B path after remove err=%v", err)
 	}
 }
 
