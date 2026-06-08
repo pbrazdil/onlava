@@ -302,6 +302,42 @@
       ]
     },
     {
+      "path": "docs/plans/0067-cli-observability-query.md",
+      "title": "CLI Observability Query Surface",
+      "owner": "onlava runtime / agent DX",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-08",
+      "review_after": "2026-07-08",
+      "summary": "Active ExecPlan for adding scoped CLI-only LogsQL and PromQL/MetricsQL query commands under existing observability nouns, with discovery, JSON contracts, and session-isolation validation.",
+      "tags": [
+        "plans",
+        "execplans",
+        "observability",
+        "cli",
+        "agents"
+      ]
+    },
+    {
+      "path": "docs/plans/0066-harness-self-summary-output.md",
+      "title": "Harness Self Summary Output",
+      "owner": "onlava runtime / agent DX",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-08",
+      "review_after": "2026-07-08",
+      "summary": "Active ExecPlan for making onlava harness self stdout a compact agent-facing summary by default, with full evidence archives behind explicit artifacts and focused drill-down commands.",
+      "tags": [
+        "plans",
+        "execplans",
+        "harness",
+        "agents",
+        "cli"
+      ]
+    },
+    {
       "path": "docs/plans/0064-agent-first-development-control-plane.md",
       "title": "Agent-First Development Control Plane",
       "owner": "onlava maintainers / agent DX",
