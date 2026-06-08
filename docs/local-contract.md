@@ -316,11 +316,11 @@ onlava task run <name> [--app-root <path>]
 onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
 onlava task graph --json [--app-root <path>]
 onlava harness [--app-root <path>] [--json] [--write]
-onlava harness self [--repo-root <path>] [--json] [--write]
+onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--quick|--race|--release]
 onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
 onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
 onlava inspect docs --json [--repo-root <path>]
-onlava inspect harness --json [--app-root <path>] [--repo-root <path>]
+onlava inspect harness [artifact <name>|diagnostics --severity error|warning|timing --top <n>] --json [--app-root <path>] [--repo-root <path>]
 onlava traces list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
 onlava metrics list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
 onlava traces clear --json [--app-root <path>]
@@ -506,24 +506,31 @@ onlava harness --json --write
 - `--write` persists the same result to `.onlava/harness/latest.json`
 - `--write` persists large evidence payloads under `.onlava/harness/artifacts/<run-id>/`
 
-Implemented `harness self --json` rules:
+Implemented `harness self` JSON rules:
 
 ```text
+onlava harness self --summary
 onlava harness self --json
-onlava harness self --json --write
+onlava harness self --json=summary
+onlava harness self --json=full
+onlava harness self --summary --write
 ```
 
-- output is a single JSON document
-- output conforms to `onlava.harness.self.v1`
+- `--summary`, `--json`, and `--json=summary` output a single compact JSON document conforming to `onlava.harness.self.summary.v1`
+- `--json=full` outputs the full archive JSON document conforming to `onlava.harness.self.v1`
+- summary output is the agent-facing default and must reference artifacts instead of embedding full drift inventories, successful stdout/stderr tails, complete timing package lists, or full large-file lists
+- green summary output should stay under 12 KB; failed summary output should stay under 32 KB while preserving the first actionable failure and artifact references
 - it validates the onlava repo itself instead of a target app
-- it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, UI static architecture checks, Go package tests for the CLI, dev dashboard store, and runtime, dashboard UI typecheck/build, UI freshness checks, `go install ./cmd/onlava`, and installed binary freshness checks
+- it runs docs knowledge validation, `onlava inspect docs --json`, architecture checks, UI static architecture checks, Go package tests, dashboard UI typecheck/build, UI freshness checks, worktree-local `go build -o .onlava/harness/bin/onlava ./cmd/onlava`, and local binary freshness checks
+- agents must not run `go install ./cmd/onlava` unless a human explicitly requests updating the shared installed `onlava` binary; multiple worktrees may otherwise overwrite each other's CLI
 - architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source/code files over 2500 lines; Markdown docs are not subject to line-count size checks
-- architecture checks warn on non-generated source/code files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths
+- architecture checks warn on non-generated source/code files over 1000 lines, cgo imports, `.DS_Store` artifacts, and compatibility imports outside known migration paths; unchanged warnings outside the changed area are debt summary in compact output, not agent attention
+- local harness/report artifacts matching `.onlava/**`, `coverage/**`, `test-results/**`, `*.harness*.json`, or `onlava-harness-self-*.json` are reported as ignored local artifacts and do not drive changed-area recommended commands
 - UI static architecture checks fail on raw shadcn install scripts, non-`@onlava` registries, unsafe registry item source/target declarations, legacy `components/ui` imports, direct vendor shadcn imports from screens, and direct Radix/styling utility imports outside onlava primitives/layouts/vendor
 - UI static architecture checks scan multiline imports, re-exports, dynamic imports, and CommonJS requires for forbidden UI boundary bypasses
 - UI static architecture checks warn on long or advanced `className` literals and common expression forms such as `cn(...)`, template literals, and conditional literals outside onlava primitives/layouts/vendor while the dashboard is migrated into the stricter slot-layout model
 - `onlava harness ui --json` is not part of the default self-harness path. It needs a local Chrome/Chromium-compatible browser and is intended for explicit dashboard route validation. The route journeys cover dashboard home app selector/status, API Explorer endpoint/form behavior, service catalog metadata, traces empty/table/detail behavior, DB list or unavailable states, cron status/empty states, and temporal/worker status cards.
-- `--write` persists the same result to `.onlava/harness/self-latest.json`
+- `--write` persists the full archive to `.onlava/harness/self-latest.json`, the compact summary to `.onlava/harness/self-summary-latest.json`, and topic artifacts such as `.onlava/harness/test-timing-latest.json`
 - failed and expensive steps include `evidence` conforming to `onlava.harness.artifact.v1`; Go test JSONL evidence is written as `.onlava/harness/artifacts/<run-id>/go-test.jsonl` when `--write` is present
 - `--write` refreshes `.onlava/harness/agent-context.json` as the one-file agent handoff. It includes current failing steps, first files to read, exact rerun commands, changed-area recommended commands, relevant active ExecPlans, recent failed harness artifacts, docs freshness, and risk classifications: `runtime`, `CLI contract`, `dashboard`, `schema`, `release`, and `onlv-impacting`.
 
@@ -531,31 +538,38 @@ Default agent loop:
 
 ```text
 onlava doctor --json
-onlava harness self --quick --json --write
+onlava harness self --quick --summary --write
 cat .onlava/harness/agent-context.json
 # implement
-onlava harness self --json --write
+onlava harness self --summary --write
 ```
 
 Release-risk loop:
 
 ```text
-onlava harness self --release --json --write
+onlava harness self --release --summary --write
 scripts/release-gate.sh
 ```
 
-Implemented `inspect harness --json` rules:
+Implemented `inspect harness` rules:
 
 ```text
 onlava inspect harness --json
 onlava inspect harness --json --app-root <path>
 onlava inspect harness --json --repo-root <path>
+onlava inspect harness artifact test-timing --json
+onlava inspect harness diagnostics --severity warning --json
+onlava inspect harness timing --top 10 --json
 ```
 
-- output conforms to `onlava.inspect.harness.v1`
-- from an app root, it reports `.onlava/harness/latest.json`, `.onlava/harness/ui/latest.json`, and `.onlava/harness/artifacts/`
-- from the onlava repo root, it reports `.onlava/harness/self-latest.json`, `.onlava/harness/ui/latest.json`, and `.onlava/harness/artifacts/`
-- it reads latest harness outputs when present and returns their normalized `artifacts` and `evidence` arrays
+- manifest output conforms to `onlava.inspect.harness.v1`
+- focused outputs use the same schema version and return bounded topic-specific JSON for artifacts, diagnostics, and timing
+- from an app root, manifest output reports `.onlava/harness/latest.json`, `.onlava/harness/ui/latest.json`, and `.onlava/harness/artifacts/`
+- from the onlava repo root, manifest output reports `.onlava/harness/self-latest.json`, `.onlava/harness/self-summary-latest.json`, `.onlava/harness/ui/latest.json`, and `.onlava/harness/artifacts/`
+- focused artifact output reads known `.onlava/harness/*-latest.json` files by name (`self-harness`, `self-summary`, `toolchain`, `changed-area`, `drift`, `test-timing`, `fixture-matrix`, `schema-validation`, `agent-context`)
+- diagnostics output caps returned diagnostics at 50 and supports `--severity error|warning`
+- timing output reads `.onlava/harness/test-timing-latest.json`, sorts slow packages/tests by duration, and caps both lists with `--top`
+- manifest output reads latest harness outputs when present and returns their normalized `artifacts` and `evidence` arrays
 - evidence records use `onlava.harness.artifact.v1` and include `command`, `cwd`, `started_at`, `duration_ms`, `exit_code`, output tails, artifact references, and `repro_command`
 
 Release gate:
@@ -565,7 +579,7 @@ scripts/release-gate.sh
 ```
 
 - this is the high-signal pre-release gate, not the normal inner-loop developer check
-- it runs documentation/architecture checks, a parallel dev-session safety check, a real ONLV two-worktree smoke when an ONLV checkout is available, focused Go tests, dashboard UI typecheck/build, installed-binary freshness checks, and artifact hygiene checks
+- it runs documentation/architecture checks, a parallel dev-session safety check, a real ONLV two-worktree smoke when an ONLV checkout is available, focused Go tests, dashboard UI typecheck/build, worktree-local binary freshness checks, and artifact hygiene checks
 - release-gate logs and future ONLV gates should use the same `onlava.harness.artifact.v1` evidence shape for failed or expensive steps
 - `ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT` may point at a read-only onlava app for the optional external app smoke
 - `ONLAVA_RELEASE_GATE_LOG_DIR` may override the log directory; otherwise logs are written under `.onlava/release-gate/`
@@ -641,7 +655,7 @@ Rules:
 - `wire/capabilities.json` is an internal cache for `onlava inspect wire --json` and the runtime `GET /_wire/capabilities` response.
 - `manifest.json` ties generated cache artifacts to schema versions, artifact paths, and deterministic content hashes for debugging generation.
 - Use `onlava inspect build --json` for build metadata. `build/latest.json` is a local cache pointer to the latest prepared or compiled build workspace.
-- Use `onlava harness --json` and `onlava harness self --json` for validation results. `harness/latest.json` and `harness/self-latest.json` are local snapshots written by `--write`.
+- Use `onlava harness --json` and `onlava harness self --summary` for validation results. `harness/latest.json`, `harness/self-latest.json`, and `harness/self-summary-latest.json` are local snapshots written by `--write`; `--json=full` is the explicit full archive stdout mode.
 - Future implementation should keep cache paths predictable for debugging, but external tools and agents should integrate through command JSON output.
 
 ## JSON Schemas
@@ -675,6 +689,7 @@ Implemented now:
 - [onlava.check.result.v1.schema.json](schemas/onlava.check.result.v1.schema.json)
 - [onlava.harness.result.v1.schema.json](schemas/onlava.harness.result.v1.schema.json)
 - [onlava.harness.self.v1.schema.json](schemas/onlava.harness.self.v1.schema.json)
+- [onlava.harness.self.summary.v1.schema.json](schemas/onlava.harness.self.summary.v1.schema.json)
 - [onlava.dev.event.v1.schema.json](schemas/onlava.dev.event.v1.schema.json)
 - [onlava.logs.event.v1.schema.json](schemas/onlava.logs.event.v1.schema.json)
 - [onlava.version.v1.schema.json](schemas/onlava.version.v1.schema.json)
@@ -997,6 +1012,7 @@ Source files:
 
 - `.onlava/harness/latest.json`
 - `.onlava/harness/self-latest.json`
+- `.onlava/harness/self-summary-latest.json`
 - `.onlava/harness/ui/latest.json`
 - `.onlava/harness/ui/screenshots/*.png`
 - `.onlava/harness/ui/dom/*.json`
@@ -1008,6 +1024,9 @@ Example:
 
 ```text
 onlava inspect harness --json
+onlava inspect harness artifact test-timing --json
+onlava inspect harness diagnostics --severity warning --json
+onlava inspect harness timing --top 10 --json
 ```
 
 Example output:

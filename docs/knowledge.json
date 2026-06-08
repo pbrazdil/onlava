@@ -177,6 +177,7 @@
         "docs/schemas/onlava.toolchain.v1.schema.json",
         "docs/schemas/onlava.toolchain.status.v1.schema.json",
         "docs/schemas/onlava.harness.artifact.v1.schema.json",
+        "docs/schemas/onlava.harness.self.summary.v1.schema.json",
         "docs/schemas/onlava.inspect.harness.v1.schema.json",
         "docs/schemas/onlava.harness.ui.v1.schema.json",
         "docs/schemas/onlava.harness.ui.dom.v1.schema.json"
@@ -260,6 +261,7 @@
       ],
       "schema_refs": [
         "docs/schemas/onlava.harness.artifact.v1.schema.json",
+        "docs/schemas/onlava.harness.self.summary.v1.schema.json",
         "docs/schemas/onlava.inspect.harness.v1.schema.json",
         "docs/schemas/onlava.agent_context.v1.schema.json",
         "docs/schemas/onlava.harness.ui.v1.schema.json",
@@ -323,18 +325,22 @@
       "path": "docs/plans/0066-harness-self-summary-output.md",
       "title": "Harness Self Summary Output",
       "owner": "onlava runtime / agent DX",
-      "status": "active",
+      "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-08",
       "review_after": "2026-07-08",
-      "summary": "Active ExecPlan for making onlava harness self stdout a compact agent-facing summary by default, with full evidence archives behind explicit artifacts and focused drill-down commands.",
+      "summary": "Completed ExecPlan that made onlava harness self stdout summary-first, preserved explicit full archive mode, added focused harness drill-downs, and switched binary freshness to a worktree-local build.",
       "tags": [
         "plans",
         "execplans",
         "harness",
         "agents",
         "cli"
+      ],
+      "schema_refs": [
+        "docs/schemas/onlava.harness.self.summary.v1.schema.json",
+        "docs/schemas/onlava.inspect.harness.v1.schema.json"
       ]
     },
     {

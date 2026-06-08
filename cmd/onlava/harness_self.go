@@ -20,6 +20,7 @@ type harnessSelfOptions struct {
 	JSON     bool
 	Write    bool
 	Mode     string
+	Output   string
 }
 
 type harnessSelfResponse struct {
@@ -97,9 +98,10 @@ func runOnlavaHarnessSelf(ctx context.Context, stdout io.Writer, args []string) 
 	case harnessSelfModeQuick:
 		resp.Steps = append(resp.Steps, runHarnessAffectedPackageTestsStep(ctx, repoRoot, changedArea, artifactCtx))
 	case harnessSelfModeDefault, harnessSelfModeRace, harnessSelfModeRelease:
+		localOnlavaPath := harnessLocalOnlavaBinaryPath(repoRoot)
 		resp.Steps = append(resp.Steps,
-			runHarnessExecStep(ctx, repoRoot, "install onlava binary", []string{"go", "install", "./cmd/onlava"}, artifactCtx),
-			runHarnessOnlavaBinaryStep(repoRoot),
+			runHarnessLocalOnlavaBuildStep(ctx, repoRoot, localOnlavaPath, artifactCtx),
+			runHarnessOnlavaBinaryStep(repoRoot, localOnlavaPath),
 		)
 		goTestStep, testTiming := runHarnessGoTestTimingStepForMode(ctx, repoRoot, opts.Mode, artifactCtx)
 		resp.TestTiming = testTiming
@@ -152,8 +154,14 @@ func runOnlavaHarnessSelf(ctx context.Context, stdout io.Writer, args []string) 
 	}
 
 	if opts.JSON {
-		if err := writeHarnessSelfJSON(stdout, resp); err != nil {
-			return err
+		if opts.Output == harnessSelfOutputFull {
+			if err := writeHarnessSelfJSON(stdout, resp); err != nil {
+				return err
+			}
+		} else {
+			if err := writeHarnessSelfSummaryJSON(stdout, buildHarnessSelfSummary(resp)); err != nil {
+				return err
+			}
 		}
 		if !resp.OK {
 			return &silentCLIError{err: fmt.Errorf("onlava harness self failed")}
@@ -171,10 +179,12 @@ func runOnlavaHarnessSelf(ctx context.Context, stdout io.Writer, args []string) 
 }
 
 const (
-	harnessSelfModeDefault = "default"
-	harnessSelfModeQuick   = "quick"
-	harnessSelfModeRace    = "race"
-	harnessSelfModeRelease = "release"
+	harnessSelfModeDefault   = "default"
+	harnessSelfModeQuick     = "quick"
+	harnessSelfModeRace      = "race"
+	harnessSelfModeRelease   = "release"
+	harnessSelfOutputSummary = "summary"
+	harnessSelfOutputFull    = "full"
 )
 
 func harnessSelfGoTestCommand() []string {
@@ -253,6 +263,16 @@ func parseHarnessSelfArgs(args []string) (harnessSelfOptions, error) {
 			opts.RepoRoot = args[i]
 		case "--json":
 			opts.JSON = true
+			opts.Output = harnessSelfOutputSummary
+		case "--summary":
+			opts.JSON = true
+			opts.Output = harnessSelfOutputSummary
+		case "--json=summary":
+			opts.JSON = true
+			opts.Output = harnessSelfOutputSummary
+		case "--json=full":
+			opts.JSON = true
+			opts.Output = harnessSelfOutputFull
 		case "--write":
 			opts.Write = true
 		case "--quick":
@@ -415,31 +435,56 @@ func runHarnessFreshnessStep(name, root string, staleFn func(string) (bool, erro
 	return step
 }
 
-func runHarnessOnlavaBinaryStep(repoRoot string) harnessStep {
-	started := time.Now()
-	step := harnessStep{
-		Name:       "onlava binary fresh",
-		Command:    []string{"go", "install", "./cmd/onlava"},
-		DurationMS: 0,
-	}
-	onlavaPath, err := exec.LookPath("onlava")
-	if err != nil {
-		step.OK = false
-		step.DurationMS = time.Since(started).Milliseconds()
-		step.Error = "onlava not found in PATH"
+func harnessLocalOnlavaBinaryPath(repoRoot string) string {
+	return filepath.Join(repoRoot, ".onlava", "harness", "bin", "onlava")
+}
+
+func runHarnessLocalOnlavaBuildStep(ctx context.Context, repoRoot, binaryPath string, artifactCtxs ...harnessArtifactContext) harnessStep {
+	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
+		started := time.Now()
+		step := harnessStep{
+			Name:       "build onlava binary",
+			Command:    []string{"go", "build", "-o", binaryPath, "./cmd/onlava"},
+			DurationMS: time.Since(started).Milliseconds(),
+			Error:      err.Error(),
+			Summary: map[string]any{
+				"binary_path": binaryPath,
+			},
+		}
 		step.Diagnostics = []checkDiagnostic{{
 			Stage:           step.Name,
 			Severity:        "error",
-			Message:         step.Error,
-			SuggestedAction: "Run `go install ./cmd/onlava` from the onlava repo and ensure your Go bin directory is in PATH.",
+			Message:         err.Error(),
+			SuggestedAction: "Ensure `.onlava/harness/bin` is writable, then rerun self-harness.",
 		}}
 		return step
 	}
-	binaryInfo, err := os.Stat(onlavaPath)
+	step := runHarnessExecStep(ctx, repoRoot, "build onlava binary", []string{"go", "build", "-o", binaryPath, "./cmd/onlava"}, artifactCtxs...)
+	if step.Summary == nil {
+		step.Summary = map[string]any{}
+	}
+	step.Summary["binary_path"] = binaryPath
+	return step
+}
+
+func runHarnessOnlavaBinaryStep(repoRoot, binaryPath string) harnessStep {
+	started := time.Now()
+	step := harnessStep{
+		Name:       "local onlava binary fresh",
+		Command:    []string{"go", "build", "-o", binaryPath, "./cmd/onlava"},
+		DurationMS: 0,
+	}
+	binaryInfo, err := os.Stat(binaryPath)
 	if err != nil {
 		step.OK = false
 		step.DurationMS = time.Since(started).Milliseconds()
 		step.Error = err.Error()
+		step.Diagnostics = []checkDiagnostic{{
+			Stage:           step.Name,
+			Severity:        "error",
+			Message:         "local onlava binary was not built",
+			SuggestedAction: "Rerun `onlava harness self --summary --write`; it builds a worktree-local binary under `.onlava/harness/bin/`.",
+		}}
 		return step
 	}
 	latest, ok, err := latestHarnessSourceModTime(repoRoot)
@@ -450,7 +495,7 @@ func runHarnessOnlavaBinaryStep(repoRoot string) harnessStep {
 		return step
 	}
 	step.Summary = map[string]any{
-		"binary_path":        onlavaPath,
+		"binary_path":        binaryPath,
 		"binary_mod_time":    binaryInfo.ModTime().UTC().Format(time.RFC3339Nano),
 		"latest_source_time": latest.UTC().Format(time.RFC3339Nano),
 	}
@@ -459,8 +504,8 @@ func runHarnessOnlavaBinaryStep(repoRoot string) harnessStep {
 		step.Diagnostics = []checkDiagnostic{{
 			Stage:           step.Name,
 			Severity:        "error",
-			Message:         "installed onlava binary is older than repo sources",
-			SuggestedAction: "Run `go install ./cmd/onlava` from the onlava repo.",
+			Message:         "local onlava binary is older than repo sources",
+			SuggestedAction: "Rerun `onlava harness self --summary --write` to rebuild `.onlava/harness/bin/onlava`.",
 		}}
 	} else {
 		step.OK = true
@@ -718,7 +763,7 @@ var requiredSkillMentions = []string{
 	"docs/ui-agent-contract.md",
 	"@onlava registry",
 	"bun run shadcn:add @onlava/",
-	"onlava harness self --json --write",
+	"onlava harness self --summary --write",
 }
 
 func validateSkillCoverage(repoRoot string) ([]checkDiagnostic, map[string]any) {
@@ -918,6 +963,7 @@ func buildHarnessSelfKnowledge(repoRoot string) harnessKnowledge {
 		"docs/schemas/onlava.harness.artifact.v1.schema.json",
 		"docs/schemas/onlava.harness.self.v1.schema.json",
 		"docs/schemas/onlava.harness.toolchain.v1.schema.json",
+		"docs/schemas/onlava.harness.self.summary.v1.schema.json",
 		"docs/schemas/onlava.harness.changed_area.v1.schema.json",
 		"docs/schemas/onlava.harness.drift.v1.schema.json",
 		"docs/schemas/onlava.harness.test_timing.v1.schema.json",
@@ -961,6 +1007,7 @@ func buildHarnessSelfKnowledge(repoRoot string) harnessKnowledge {
 func buildHarnessSelfArtifacts(repoRoot string, selfWillExist bool, resp harnessSelfResponse) []harnessArtifact {
 	artifacts := []harnessArtifact{
 		{Name: "self-harness", Path: ".onlava/harness/self-latest.json", SchemaVersion: "onlava.harness.self.v1"},
+		{Name: "self-summary", Path: ".onlava/harness/self-summary-latest.json", SchemaVersion: "onlava.harness.self.summary.v1"},
 		{Name: "toolchain", Path: ".onlava/harness/toolchain-latest.json", SchemaVersion: "onlava.harness.toolchain.v1"},
 		{Name: "changed-area", Path: ".onlava/harness/changed-area-latest.json", SchemaVersion: "onlava.harness.changed_area.v1"},
 		{Name: "drift", Path: ".onlava/harness/drift-latest.json", SchemaVersion: "onlava.harness.drift.v1"},
@@ -972,6 +1019,7 @@ func buildHarnessSelfArtifacts(repoRoot string, selfWillExist bool, resp harness
 	}
 	reportWillExist := map[string]bool{
 		"self-harness":      selfWillExist,
+		"self-summary":      selfWillExist,
 		"toolchain":         selfWillExist && resp.Toolchain != nil,
 		"changed-area":      selfWillExist && resp.ChangedArea != nil,
 		"drift":             selfWillExist && resp.Drift != nil,
@@ -997,6 +1045,9 @@ func writeHarnessSelfResult(path string, resp harnessSelfResponse) error {
 
 func writeHarnessSelfOracleArtifacts(repoRoot string, resp harnessSelfResponse) error {
 	harnessRoot := filepath.Join(repoRoot, ".onlava", "harness")
+	if err := writeHarnessCompactJSONFile(filepath.Join(harnessRoot, "self-summary-latest.json"), buildHarnessSelfSummary(resp)); err != nil {
+		return err
+	}
 	if resp.Toolchain != nil {
 		if err := writeHarnessJSONFile(filepath.Join(harnessRoot, "toolchain-latest.json"), resp.Toolchain); err != nil {
 			return err
@@ -1065,9 +1116,43 @@ func writeHarnessJSONFile(path string, payload any) error {
 	return nil
 }
 
+func writeHarnessCompactJSONFile(path string, payload any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(payload); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
 func writeHarnessSelfJSON(w io.Writer, payload harnessSelfResponse) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	return enc.Encode(payload)
+}
+
+func writeHarnessSelfSummaryJSON(w io.Writer, payload harnessSelfSummaryResponse) error {
+	enc := json.NewEncoder(w)
 	return enc.Encode(payload)
 }
 

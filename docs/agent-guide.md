@@ -53,10 +53,14 @@ Before finishing onlava repo work:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
-onlava system toolchain verify --json
-onlava harness self --json --write
+go test ./cmd/onlava
+onlava harness self --summary --write
 ```
+
+Do not run `go install ./cmd/onlava` during agent validation unless a human
+explicitly asks. Multiple worktrees share the installed `onlava` binary; the
+self-harness builds `.onlava/harness/bin/onlava` inside the current worktree for
+freshness checks.
 
 When a command cannot be run, report the exact command and environmental reason.
 
@@ -155,7 +159,7 @@ Prefer JSON when output will feed another tool or decision.
 | Install managed local tools | `onlava system toolchain sync --json` or `onlava system toolchain sync --tool <name> --json` |
 | Inspect local HTTPS edge | `onlava system edge status --json` |
 | Run app validation snapshot | `onlava harness --json --write` |
-| Run repo validation snapshot | `onlava harness self --json --write` |
+| Run repo validation snapshot | `onlava harness self --summary --write` |
 | Follow logs | `onlava logs --jsonl --session current --limit 200` |
 | Inspect traces/metrics | `onlava traces list --json --session current`, `onlava metrics list --json --session current` |
 | Generate TypeScript client | `onlava generate client --lang typescript --output <path>` |
@@ -198,7 +202,7 @@ onlava inspect endpoints --json
 onlava inspect wire --json
 onlava inspect build --json
 onlava harness --json
-onlava harness self --json
+onlava harness self --summary
 ```
 
 Generated repo-local files may exist after inspect/build/harness commands produce them:

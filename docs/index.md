@@ -6,7 +6,7 @@ For agents, the machine-readable source of truth is [knowledge.json](knowledge.j
 
 ```text
 onlava inspect docs --json
-onlava harness self --json
+onlava harness self --summary
 ```
 
 ## Agent Entry Points
@@ -47,6 +47,7 @@ Start with:
 - [onlava.environment.registry.v1](schemas/onlava.environment.registry.v1.schema.json)
 - [onlava.harness.result.v1](schemas/onlava.harness.result.v1.schema.json)
 - [onlava.harness.self.v1](schemas/onlava.harness.self.v1.schema.json)
+- [onlava.harness.self.summary.v1](schemas/onlava.harness.self.summary.v1.schema.json)
 - [onlava.inspect.docs.v1](schemas/onlava.inspect.docs.v1.schema.json)
 - [onlava.inspect.temporal.v1](schemas/onlava.inspect.temporal.v1.schema.json)
 - [onlava.worker.manifest.v1](schemas/onlava.worker.manifest.v1.schema.json)

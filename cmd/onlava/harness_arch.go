@@ -224,7 +224,7 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "error",
-				File:            filepath.ToSlash(path),
+				File:            rel,
 				Message:         fmt.Sprintf("file has %d lines, over hard limit %d", lineCount, architectureErrorLines),
 				SuggestedAction: "Split the file before adding more behavior.",
 			})
@@ -233,7 +233,7 @@ func checkArchitectureSource(repoRoot string, summary *architectureSummary) ([]c
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "warning",
-				File:            filepath.ToSlash(path),
+				File:            rel,
 				Message:         fmt.Sprintf("file has %d lines, over warning threshold %d", lineCount, architectureWarnLines),
 				SuggestedAction: "Prefer splitting this file when editing the same area.",
 			})
@@ -266,7 +266,7 @@ func checkRemovedAgentTransportTerms(path, rel string) []checkDiagnostic {
 				diagnostics = append(diagnostics, checkDiagnostic{
 					Stage:           "architecture checks",
 					Severity:        "error",
-					File:            filepath.ToSlash(path),
+					File:            rel,
 					Line:            index + 1,
 					Message:         "text references removed agent transport",
 					SuggestedAction: "Delete the reference or rewrite the workflow to use onlava inspect/status/logs/db/run/check commands.",
@@ -332,7 +332,7 @@ func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "error",
-				File:            filepath.ToSlash(path),
+				File:            rel,
 				Message:         "forbidden import " + importPath + ": " + reason,
 				SuggestedAction: "Use the existing onlava standard-library/internal implementation instead.",
 			})
@@ -341,7 +341,7 @@ func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "warning",
-				File:            filepath.ToSlash(path),
+				File:            rel,
 				Message:         "cgo import detected",
 				SuggestedAction: "Keep cgo isolated and document the native build requirement.",
 			})
@@ -350,7 +350,7 @@ func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "error",
-				File:            filepath.ToSlash(path),
+				File:            rel,
 				Message:         "non-CLI package imports github.com/pbrazdil/onlava/cmd/onlava",
 				SuggestedAction: "Move shared code into internal/ instead of importing the CLI package.",
 			})
@@ -364,7 +364,7 @@ func checkArchitectureGoImports(path, rel string) ([]checkDiagnostic, error) {
 					diagnostics = append(diagnostics, checkDiagnostic{
 						Stage:           "architecture checks",
 						Severity:        "error",
-						File:            filepath.ToSlash(path),
+						File:            rel,
 						Message:         "package layer violation: " + rule.Name + " forbids import " + importPath,
 						SuggestedAction: "Move shared code to a lower-level internal package or invert the dependency.",
 					})
@@ -400,7 +400,7 @@ func checkArchitectureGeneratedHygiene(repoRoot string, summary *architectureSum
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "error",
-				File:            filepath.ToSlash(filepath.Join(repoRoot, ".gitignore")),
+				File:            ".gitignore",
 				Message:         ".gitignore missing required pattern: " + pattern,
 				SuggestedAction: "Add the missing ignore pattern so local/generated artifacts stay out of git.",
 			})
@@ -417,7 +417,7 @@ func checkArchitectureGeneratedHygiene(repoRoot string, summary *architectureSum
 			diagnostics = append(diagnostics, checkDiagnostic{
 				Stage:           "architecture checks",
 				Severity:        "error",
-				File:            filepath.ToSlash(filepath.Join(repoRoot, ".gitattributes")),
+				File:            ".gitattributes",
 				Message:         ".gitattributes missing generated/vendored marker: " + pattern,
 				SuggestedAction: "Mark generated or vendored trees in .gitattributes to keep diffs reviewable.",
 			})
@@ -449,7 +449,7 @@ func checkArchitectureGeneratedHygiene(repoRoot string, summary *architectureSum
 		diagnostics = append(diagnostics, checkDiagnostic{
 			Stage:           "architecture checks",
 			Severity:        "warning",
-			File:            filepath.ToSlash(repoRoot),
+			File:            "$REPO",
 			Message:         fmt.Sprintf("%d macOS .DS_Store artifacts exist in the working tree: %s", dsStoreCount, strings.Join(dsStoreExamples, ", ")),
 			SuggestedAction: "Delete .DS_Store artifacts when touching nearby files.",
 		})

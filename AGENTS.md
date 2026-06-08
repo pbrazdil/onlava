@@ -102,7 +102,7 @@ onlava traces list --json
 onlava metrics list --json
 onlava logs --jsonl --limit 200
 onlava harness --json --write
-onlava harness self --json --write
+onlava harness self --summary --write
 ```
 
 Use `onlava doctor --json` before expensive troubleshooting when the failure may be local environment readiness: missing or old Go, low disk or memory, absent optional tools, or an app root that is not discoverable.
@@ -149,13 +149,17 @@ For ordinary onlava repo changes:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
+go test ./cmd/onlava
 ```
+
+Do not run `go install ./cmd/onlava` during agent validation unless the human
+explicitly asks. Multiple worktrees share the same installed `onlava` path; use
+self-harness' worktree-local `.onlava/harness/bin/onlava` build instead.
 
 For substantial onlava repo changes:
 
 ```sh
-onlava harness self --json --write
+onlava harness self --summary --write
 ```
 
 For target app changes:
@@ -182,7 +186,7 @@ bun run typecheck
 bun run test
 bun run build
 cd ..
-onlava harness self --json --write
+onlava harness self --summary --write
 ```
 
 For browser/dashboard validation when relevant:

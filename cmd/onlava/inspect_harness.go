@@ -49,6 +49,7 @@ func buildInspectHarnessResponse(opts inspectOptions) (inspectHarnessResponse, e
 	candidates := []inspectHarnessLatest{
 		{Name: "app-harness", Path: ".onlava/harness/latest.json", SchemaVersion: "onlava.harness.result.v1"},
 		{Name: "self-harness", Path: ".onlava/harness/self-latest.json", SchemaVersion: "onlava.harness.self.v1"},
+		{Name: "self-summary", Path: ".onlava/harness/self-summary-latest.json", SchemaVersion: harnessSelfSummarySchema},
 		{Name: "ui-harness", Path: ".onlava/harness/ui/latest.json", SchemaVersion: "onlava.harness.ui.v1"},
 		{Name: "evidence-artifacts", Path: ".onlava/harness/artifacts", SchemaVersion: harnessArtifactEvidenceSchema},
 	}

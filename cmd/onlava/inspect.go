@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +43,7 @@ type inspectOptions struct {
 	RepoRoot string
 	JSON     bool
 	Trace    inspectTraceQueryOptions
+	Harness  inspectHarnessOptions
 }
 
 type inspectBuildResponse struct {
@@ -191,6 +193,13 @@ func runOnlavaInspect(args []string, stdout io.Writer) error {
 		return writeInspectJSON(stdout, resp)
 	}
 	if opts.Subject == "harness" {
+		if opts.Harness.Topic != "" {
+			resp, err := buildInspectHarnessFocusedResponse(opts)
+			if err != nil {
+				return err
+			}
+			return writeInspectJSON(stdout, resp)
+		}
 		resp, err := buildInspectHarnessResponse(opts)
 		if err != nil {
 			return err
@@ -323,6 +332,28 @@ func parseInspectArgsInternal(args []string, allowObservability bool) (inspectOp
 				return inspectOptions{}, fmt.Errorf("--repo-root is only supported for inspect docs and inspect harness")
 			}
 			opts.RepoRoot = args[i]
+		case "--severity":
+			i++
+			if i >= len(args) {
+				return inspectOptions{}, fmt.Errorf("missing value for --severity")
+			}
+			if opts.Subject != "harness" || opts.Harness.Topic != "diagnostics" {
+				return inspectOptions{}, fmt.Errorf("--severity is only supported for inspect harness diagnostics")
+			}
+			opts.Harness.Severity = args[i]
+		case "--top":
+			i++
+			if i >= len(args) {
+				return inspectOptions{}, fmt.Errorf("missing value for --top")
+			}
+			if opts.Subject != "harness" || opts.Harness.Topic != "timing" {
+				return inspectOptions{}, fmt.Errorf("--top is only supported for inspect harness timing")
+			}
+			top, err := strconv.Atoi(args[i])
+			if err != nil || top <= 0 {
+				return inspectOptions{}, fmt.Errorf("--top must be a positive integer")
+			}
+			opts.Harness.Top = top
 		case "--limit", "-n", "--since", "--service", "--endpoint", "--trace-id", "--session", "--status", "--min-duration-ms":
 			i++
 			if i >= len(args) {
@@ -339,6 +370,21 @@ func parseInspectArgsInternal(args []string, allowObservability bool) (inspectOp
 				return inspectOptions{}, fmt.Errorf("%s is only supported for traces list and metrics list", args[i])
 			}
 			opts.Trace.Slowest = true
+		case "artifact", "diagnostics", "timing":
+			if opts.Subject != "harness" {
+				return inspectOptions{}, fmt.Errorf("unknown flag %q", args[i])
+			}
+			if opts.Harness.Topic != "" {
+				return inspectOptions{}, fmt.Errorf("only one inspect harness topic may be selected")
+			}
+			opts.Harness.Topic = args[i]
+			if args[i] == "artifact" {
+				i++
+				if i >= len(args) {
+					return inspectOptions{}, fmt.Errorf("missing inspect harness artifact name")
+				}
+				opts.Harness.Name = args[i]
+			}
 		default:
 			return inspectOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}

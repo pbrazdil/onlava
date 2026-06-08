@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,7 +165,7 @@ func TestBuildHarnessChangedAreaReportRecommendsPackageCommands(t *testing.T) {
 	if !stringSliceContains(report.RecommendedCommands, "go test -count=1 ./cmd/onlava") {
 		t.Fatalf("recommended commands = %+v", report.RecommendedCommands)
 	}
-	if !stringSliceContains(report.RecommendedCommands, "onlava harness self --json --write") {
+	if !stringSliceContains(report.RecommendedCommands, "onlava harness self --summary --write") {
 		t.Fatalf("recommended commands = %+v", report.RecommendedCommands)
 	}
 	if !stringSliceContains(report.RiskFlags, "cli-contract") {
@@ -322,7 +323,7 @@ func TestWriteHarnessSelfOracleArtifacts(t *testing.T) {
 				ReproCommand: "cd " + root + " && go test -count=1 -json ./...",
 			},
 		}},
-		NextActions: []string{"onlava harness self --json --write"},
+		NextActions: []string{"onlava harness self --summary --write"},
 	}
 
 	if err := writeHarnessSelfOracleArtifacts(root, resp); err != nil {
@@ -476,7 +477,7 @@ func TestBuildHarnessSchemaValidationReport(t *testing.T) {
 		Artifacts: []harnessArtifact{{Name: "self-harness", Path: ".onlava/harness/self-latest.json", Exists: true}},
 	}
 	report := buildHarnessSchemaValidationReport(root, resp)
-	if len(report.Validated) != 11 {
+	if len(report.Validated) != 12 {
 		t.Fatalf("validated = %+v", report.Validated)
 	}
 	if hasErrorDiagnostics(report.Diagnostics) {
@@ -1018,6 +1019,7 @@ func writeHarnessSelfRepo(t *testing.T, schema string) string {
 		"docs/schemas/onlava.environment.registry.v1.schema.json",
 		"docs/schemas/onlava.harness.artifact.v1.schema.json",
 		"docs/schemas/onlava.harness.self.v1.schema.json",
+		"docs/schemas/onlava.harness.self.summary.v1.schema.json",
 		"docs/schemas/onlava.harness.toolchain.v1.schema.json",
 		"docs/schemas/onlava.harness.changed_area.v1.schema.json",
 		"docs/schemas/onlava.harness.drift.v1.schema.json",
@@ -1147,6 +1149,231 @@ func validExecPlanStandardForTest() string {
 		b.WriteString("`\n")
 	}
 	return b.String()
+}
+
+func TestParseHarnessSelfArgsSupportsSummaryAndFullModes(t *testing.T) {
+	t.Parallel()
+
+	summary, err := parseHarnessSelfArgs([]string{"--summary", "--write"})
+	if err != nil {
+		t.Fatalf("summary parse: %v", err)
+	}
+	if !summary.JSON || summary.Output != harnessSelfOutputSummary {
+		t.Fatalf("summary opts = %+v", summary)
+	}
+	full, err := parseHarnessSelfArgs([]string{"--json=full"})
+	if err != nil {
+		t.Fatalf("full parse: %v", err)
+	}
+	if !full.JSON || full.Output != harnessSelfOutputFull {
+		t.Fatalf("full opts = %+v", full)
+	}
+}
+
+func TestHarnessSelfSummaryStaysSmallAndOmitsArchiveFields(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	resp := harnessSelfResponse{
+		SchemaVersion: "onlava.harness.self.v1",
+		OK:            true,
+		GeneratedAt:   "2026-06-08T00:00:00Z",
+		Mode:          harnessSelfModeDefault,
+		Repo: harnessSelfRepo{
+			Root:       root,
+			ModulePath: "github.com/pbrazdil/onlava",
+			GoModPath:  filepath.Join(root, "go.mod"),
+		},
+		Knowledge: harnessKnowledge{
+			Entrypoints: []harnessKnowledgeFile{{Path: "AGENTS.md", Exists: true}},
+			Schemas:     []harnessKnowledgeFile{{Path: "docs/schemas/onlava.harness.self.v1.schema.json", Exists: true}},
+		},
+		ChangedArea: &harnessChangedAreaReport{
+			SchemaVersion:       harnessChangedAreaSchema,
+			IgnoredFiles:        []harnessChangedFile{{Path: ".onlava/harness/self-latest.json", Status: "untracked", Category: "local-artifact"}},
+			RecommendedCommands: []string{},
+		},
+		Drift: &harnessDriftReport{
+			SchemaVersion: harnessDriftSchema,
+			Env: harnessEnvVarReport{Variables: []harnessEnvVarFinding{
+				{Name: "ONLAVA_ALPHA"}, {Name: "ONLAVA_BETA"},
+			}},
+			CLI:    harnessCLIContractReport{Commands: []harnessCLIContractCommand{{Name: "harness self"}}},
+			Embeds: harnessEmbedReport{Embeds: []harnessEmbedFinding{{File: "cmd/onlava/main.go"}}},
+		},
+		TestTiming: &harnessTestTimingReport{
+			SchemaVersion: harnessTestTimingSchema,
+			Command:       harnessSelfGoTestCommand(),
+			TotalSeconds:  8,
+			Budgets:       defaultHarnessTestTimingBudgets(),
+		},
+		Steps: []harnessStep{{
+			Name:       "go tests",
+			Command:    harnessSelfGoTestCommand(),
+			OK:         true,
+			DurationMS: 8000,
+			Evidence: &harnessEvidence{
+				SchemaVersion: harnessArtifactEvidenceSchema,
+				DurationMS:    8000,
+				StdoutTail:    strings.Repeat("pass\n", 1000),
+				StderrTail:    strings.Repeat("warn\n", 1000),
+			},
+		}, {
+			Name: "architecture checks",
+			OK:   true,
+			Summary: map[string]any{
+				"large_files": 10,
+			},
+			Diagnostics: []checkDiagnostic{{
+				Stage:    "architecture checks",
+				Severity: "warning",
+				File:     filepath.Join(root, "cmd/onlava/old.go"),
+				Message:  "file has 1001 lines, over warning threshold 1000",
+			}},
+		}},
+		Artifacts: []harnessArtifact{{Name: "self-harness", Path: ".onlava/harness/self-latest.json", SchemaVersion: "onlava.harness.self.v1", Exists: true}},
+	}
+	for i := 0; i < 20; i++ {
+		resp.TestTiming.Packages = append(resp.TestTiming.Packages, harnessPackageTiming{Package: fmt.Sprintf("example.com/pkg%d", i), Seconds: float64(20 - i)})
+		resp.TestTiming.SlowTests = append(resp.TestTiming.SlowTests, harnessTestTiming{Name: fmt.Sprintf("TestSlow%d", i), Package: "example.com/pkg", Seconds: float64(20 - i)})
+	}
+
+	summary := buildHarnessSelfSummary(resp)
+	if summary.Status != "pass_with_debt" {
+		t.Fatalf("status = %q, want pass_with_debt", summary.Status)
+	}
+	data, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) > 12000 {
+		t.Fatalf("summary too large: got %d bytes", len(data))
+	}
+	for _, forbidden := range [][]byte{[]byte(`"variables"`), []byte(`"stdout_tail"`), []byte(`"stderr_tail"`)} {
+		if bytes.Contains(data, forbidden) {
+			t.Fatalf("summary contains forbidden field %s", forbidden)
+		}
+	}
+	if len(summary.Reports.TestTiming.TopSlowTests) != 5 || len(summary.Reports.TestTiming.TopSlowPackages) != 5 {
+		t.Fatalf("timing caps not applied: %+v", summary.Reports.TestTiming)
+	}
+}
+
+func TestChangedAreaIgnoresLocalHarnessArtifacts(t *testing.T) {
+	root := t.TempDir()
+	oldCollect := harnessCollectChangedFiles
+	oldList := harnessListGoPackages
+	harnessCollectChangedFiles = func(context.Context, string) ([]harnessChangedFile, []checkDiagnostic) {
+		return []harnessChangedFile{
+			{Path: ".onlava/harness/self-latest.json", Status: "untracked"},
+			{Path: "coverage/unit.harness.json", Status: "untracked"},
+			{Path: "onlava-harness-self-20260608.json", Status: "untracked"},
+		}, nil
+	}
+	harnessListGoPackages = func(context.Context, string) ([]harnessPackageInfo, error) { return nil, nil }
+	t.Cleanup(func() {
+		harnessCollectChangedFiles = oldCollect
+		harnessListGoPackages = oldList
+	})
+
+	report := buildHarnessChangedAreaReport(context.Background(), root)
+	if len(report.ChangedFiles) != 0 {
+		t.Fatalf("changed files = %+v, want none", report.ChangedFiles)
+	}
+	if len(report.IgnoredFiles) != 3 {
+		t.Fatalf("ignored files = %+v", report.IgnoredFiles)
+	}
+	if stringSliceContains(report.RecommendedCommands, "go test -count=1 ./...") || stringSliceContains(report.RecommendedCommands, "onlava harness self --summary --write") {
+		t.Fatalf("ignored-only changes recommended commands: %+v", report.RecommendedCommands)
+	}
+}
+
+func TestHarnessLocalArtifactIgnoreDoesNotHideSchemas(t *testing.T) {
+	t.Parallel()
+
+	if !isIgnoredHarnessLocalArtifact("coverage/unit.harness.json") {
+		t.Fatal("coverage harness report should be ignored")
+	}
+	if isIgnoredHarnessLocalArtifact("docs/schemas/onlava.harness.self.v1.schema.json") {
+		t.Fatal("schema source files must remain in changed-area analysis")
+	}
+}
+
+func TestProbeHarnessToolParsesOnlavaVersionJSON(t *testing.T) {
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "onlava")
+	script := "#!/bin/sh\nprintf '%s\\n' '{\"schema_version\":\"onlava.version.v1\",\"version\":\"v1.2.3\",\"commit\":\"abc\",\"built_at\":\"2026-06-08T00:00:00Z\",\"go_version\":\"go1.26.3\"}'\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	tool := probeHarnessTool(context.Background(), "onlava", "required", true, []string{"version", "--json"})
+	if tool.Version != "v1.2.3" || tool.Commit != "abc" || tool.GoVersion != "go1.26.3" {
+		t.Fatalf("tool = %+v", tool)
+	}
+}
+
+func TestInspectHarnessFocusedCommands(t *testing.T) {
+	t.Parallel()
+
+	root := writeHarnessSelfRepo(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`)
+	self := harnessSelfResponse{
+		SchemaVersion: "onlava.harness.self.v1",
+		OK:            true,
+		GeneratedAt:   "2026-06-08T00:00:00Z",
+		Mode:          harnessSelfModeDefault,
+		Repo:          harnessSelfRepo{Root: root, ModulePath: "github.com/pbrazdil/onlava", GoModPath: filepath.Join(root, "go.mod")},
+		Knowledge:     buildHarnessSelfKnowledge(root),
+		Steps: []harnessStep{{
+			Name: "go tests",
+			OK:   true,
+			Diagnostics: []checkDiagnostic{{
+				Stage:    "go tests",
+				Severity: "warning",
+				Message:  "full Go suite took 8.000s",
+			}},
+		}},
+		Artifacts: buildHarnessSelfArtifacts(root, true, harnessSelfResponse{TestTiming: &harnessTestTimingReport{}}),
+	}
+	if err := writeHarnessSelfResult(filepath.Join(root, ".onlava", "harness", "self-latest.json"), self); err != nil {
+		t.Fatal(err)
+	}
+	timing := harnessTestTimingReport{
+		SchemaVersion: harnessTestTimingSchema,
+		Command:       harnessSelfGoTestCommand(),
+		TotalSeconds:  8,
+		Budgets:       defaultHarnessTestTimingBudgets(),
+		Packages:      []harnessPackageTiming{{Package: "example.com/slow", Seconds: 3}},
+		SlowTests:     []harnessTestTiming{{Name: "TestSlow", Package: "example.com/slow", Seconds: 1}},
+	}
+	if err := writeHarnessJSONFile(filepath.Join(root, ".onlava", "harness", "test-timing-latest.json"), timing); err != nil {
+		t.Fatal(err)
+	}
+
+	var diagnosticsOut bytes.Buffer
+	if err := runOnlavaInspect([]string{"harness", "diagnostics", "--severity", "warning", "--repo-root", root, "--json"}, &diagnosticsOut); err != nil {
+		t.Fatalf("diagnostics inspect: %v", err)
+	}
+	var diagnostics inspectHarnessDiagnosticsResponse
+	if err := json.Unmarshal(diagnosticsOut.Bytes(), &diagnostics); err != nil {
+		t.Fatal(err)
+	}
+	if len(diagnostics.Diagnostics) != 1 || diagnostics.Diagnostics[0].Severity != "warning" {
+		t.Fatalf("diagnostics = %+v", diagnostics.Diagnostics)
+	}
+
+	var timingOut bytes.Buffer
+	if err := runOnlavaInspect([]string{"harness", "timing", "--top", "1", "--repo-root", root, "--json"}, &timingOut); err != nil {
+		t.Fatalf("timing inspect: %v", err)
+	}
+	var timingResp inspectHarnessTimingResponse
+	if err := json.Unmarshal(timingOut.Bytes(), &timingResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(timingResp.SlowTests) != 1 || len(timingResp.SlowPackages) != 1 {
+		t.Fatalf("timing response = %+v", timingResp)
+	}
 }
 
 func harnessArtifactExists(items []harnessArtifact, name string) bool {
