@@ -29,7 +29,11 @@ func replaceBackendBranchTimeline(opts branchActionOptions, action string, resto
 	if err != nil {
 		return BranchActionResult{}, err
 	}
-	path := filepath.Join(root, "backend.json")
+	unlock, err := lockBackendState(root)
+	if err != nil {
+		return BranchActionResult{}, err
+	}
+	defer unlock()
 	state, path, err := readOrCreateBackendState(opts)
 	if err != nil {
 		return BranchActionResult{}, err
@@ -90,7 +94,7 @@ func replaceBackendBranchTimeline(opts branchActionOptions, action string, resto
 	if err := WriteBackendState(path, state); err != nil {
 		return BranchActionResult{}, err
 	}
-	if ready, computeMessage, err := ensureBranchCompute(ctx, root, state.TenantID, branch); err != nil {
+	if ready, computeMessage, err := ensureBranchCompute(ctx, root, state.TenantID, opts.BranchID, branch); err != nil {
 		return BranchActionResult{}, err
 	} else if ready {
 		branch.Status = "ready"
@@ -150,6 +154,11 @@ func deleteBackendBranch(opts branchActionOptions) (BranchActionResult, error) {
 	if err != nil {
 		return BranchActionResult{}, err
 	}
+	unlock, err := lockBackendState(root)
+	if err != nil {
+		return BranchActionResult{}, err
+	}
+	defer unlock()
 	path := filepath.Join(root, "backend.json")
 	state, ok, err := ReadBackendState(path)
 	if err != nil {
@@ -242,12 +251,30 @@ func backendBranchFromOptions(state BackendState, opts branchActionOptions) Back
 	branch.Branch = strings.TrimSpace(opts.Branch)
 	branch.ParentTimelineID = firstNonEmpty(branch.ParentTimelineID, "pending-"+safeIdentifier(firstNonEmpty(opts.ParentBranch, "main")))
 	branch.EndpointID = firstNonEmpty(branch.EndpointID, safeIdentifier(opts.Branch))
-	branch.ComputeContainer = firstNonEmpty(branch.ComputeContainer, "onlava-neon-compute-"+safeIdentifier(opts.Branch))
+	branch.ComputeContainer = firstNonEmpty(branch.ComputeContainer, computeContainerName(opts.Project, opts.BranchID))
 	branch.Host = "127.0.0.1"
 	branch.Port = port
 	branch.Database = strings.TrimSpace(opts.Database)
 	branch.Role = strings.TrimSpace(opts.Role)
 	return branch
+}
+
+func computeContainerName(project, branchID string) string {
+	projectPart := safeIdentifier(firstNonEmpty(project, "onlava"))
+	branchPart := safeBranchIDSuffix(branchID)
+	return "onlava-neon-compute-" + projectPart + "-" + branchPart
+}
+
+func safeBranchIDSuffix(branchID string) string {
+	value := safeIdentifier(branchID)
+	value = strings.TrimPrefix(value, "br-local-")
+	if value == "" {
+		return "branch"
+	}
+	if len(value) > 12 {
+		return value[len(value)-12:]
+	}
+	return value
 }
 
 func recordedComputeReady(branch BackendBranch) (bool, string) {

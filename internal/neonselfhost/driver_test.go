@@ -3,10 +3,12 @@ package neonselfhost
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -400,8 +402,13 @@ exit 1
 		t.Fatalf("read docker log: %v", err)
 	}
 	log := string(logBytes)
-	if !strings.Contains(log, "run -d --name onlava-neon-compute-feature-x") {
+	if !strings.Contains(log, "run -d --name onlava-neon-compute-onlv-test") {
 		t.Fatalf("docker log missing run: %q", log)
+	}
+	if !strings.Contains(log, "--label onlava.project=onlv") ||
+		!strings.Contains(log, "--label onlava.branch_id=br-local-test") ||
+		!strings.Contains(log, "--label onlava.branch=feature/x") {
+		t.Fatalf("docker log missing project/branch labels: %q", log)
 	}
 	if !strings.Contains(log, "--network onlava-neon_default") || !strings.Contains(log, "-p 127.0.0.1:") || !strings.Contains(log, ":55433") {
 		t.Fatalf("docker log missing network/port: %q", log)
@@ -445,10 +452,69 @@ func TestRunEnsureWritesPendingBackendBranch(t *testing.T) {
 		t.Fatalf("read backend ok=%v err=%v", ok, err)
 	}
 	branch := state.Branches["br-local-test"]
-	if branch.Status != "pending" || branch.Project != "onlv" || branch.Port == 0 || branch.ComputeContainer != "onlava-neon-compute-onlv-feature-x" {
+	if branch.Status != "pending" || branch.Project != "onlv" || branch.Port == 0 || branch.ComputeContainer != "onlava-neon-compute-onlv-test" {
 		t.Fatalf("branch = %+v", branch)
 	}
 	if stdout.Len() == 0 || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunEnsureSerializesBackendStateMutations(t *testing.T) {
+	root := t.TempDir()
+	const branchCount = 20
+	start := make(chan struct{})
+	errs := make(chan error, branchCount)
+	var wg sync.WaitGroup
+	for i := 0; i < branchCount; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			branch := fmt.Sprintf("feature/%02d", i)
+			branchID := fmt.Sprintf("br-local-%02d", i)
+			var stdout, stderr bytes.Buffer
+			err := Run(&stdout, &stderr, []string{
+				"ensure",
+				"--project", "onlv",
+				"--parent-branch", "main",
+				"--branch", branch,
+				"--branch-id", branchID,
+				"--database", "onlv",
+				"--role", "cloud_admin",
+				"--root", root,
+				"--json",
+			})
+			if err != nil {
+				errs <- fmt.Errorf("ensure %s: %w", branchID, err)
+				return
+			}
+			if stderr.Len() != 0 {
+				errs <- fmt.Errorf("ensure %s stderr = %q", branchID, stderr.String())
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	state, ok, err := ReadBackendState(filepath.Join(root, "backend.json"))
+	if err != nil || !ok {
+		t.Fatalf("read backend ok=%v err=%v", ok, err)
+	}
+	if len(state.Branches) != branchCount {
+		t.Fatalf("backend branches = %d, want %d: %+v", len(state.Branches), branchCount, state.Branches)
+	}
+	for i := 0; i < branchCount; i++ {
+		branchID := fmt.Sprintf("br-local-%02d", i)
+		if _, ok := state.Branches[branchID]; !ok {
+			t.Fatalf("backend state lost branch %q: %+v", branchID, state.Branches)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "backend.lock")); err != nil {
+		t.Fatalf("backend lock file missing: %v", err)
 	}
 }

@@ -44,15 +44,8 @@ func TestParseHarnessSelfArgs(t *testing.T) {
 	if _, err := parseHarnessSelfArgs([]string{"--quick", "--race"}); err == nil {
 		t.Fatal("expected conflicting harness self modes to fail")
 	}
-	selfhost, err := parseHarnessSelfArgs([]string{"--json", "--with-neon-selfhost"})
-	if err != nil {
-		t.Fatalf("parseHarnessSelfArgs with selfhost returned error: %v", err)
-	}
-	if !selfhost.WithNeonSelfhost {
-		t.Fatalf("opts = %+v, want WithNeonSelfhost", selfhost)
-	}
-	if _, err := parseHarnessSelfArgs([]string{"--quick", "--with-neon-selfhost"}); err == nil {
-		t.Fatal("expected quick selfhost harness to fail")
+	if _, err := parseHarnessSelfArgs([]string{"--with-neon-selfhost"}); err == nil {
+		t.Fatal("expected removed Neon selfhost flag to fail")
 	}
 }
 

@@ -7,6 +7,11 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
+- [0072 Neon Selfhost Project-Tenant Mapping](0072-neon-project-tenants.md)
+  - Status: active
+  - Owner: onlava runtime / agent DX
+  - Created: 2026-06-09
+  - Focus: migrate self-hosted Neon backend state from one global tenant and branch map to project-local tenants and branch maps so `dev.services.postgres.project` is the tenant boundary.
 - [0071 Bind-Mounted Neon Storage](0071-neon-bind-mounted-storage.md)
   - Status: active
   - Owner: onlava runtime / agent DX

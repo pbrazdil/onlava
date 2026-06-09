@@ -95,6 +95,15 @@ func WriteBackendState(path string, state BackendState) error {
 	return atomicWriteFile(path, data, 0o644)
 }
 
+func WithBackendStateLock(root string, fn func() error) error {
+	unlock, err := lockBackendState(root)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return fn()
+}
+
 func AllocateBranchPort(state BackendState, branchID string) int {
 	if branch, ok := state.Branches[branchID]; ok && branch.Port > 0 {
 		return branch.Port

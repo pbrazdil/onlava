@@ -331,6 +331,25 @@
       ]
     },
     {
+      "path": "docs/plans/0072-neon-project-tenants.md",
+      "title": "Neon Selfhost Project-Tenant Mapping",
+      "owner": "onlava runtime / agent DX",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-09",
+      "review_after": "2026-07-09",
+      "summary": "Active ExecPlan for migrating self-hosted Neon backend state from one global tenant and branch map to project-local tenants and branch maps so dev.services.postgres.project is the Neon tenant boundary.",
+      "tags": [
+        "plans",
+        "execplans",
+        "database",
+        "neon",
+        "tenants",
+        "agents"
+      ]
+    },
+    {
       "path": "docs/plans/0071-neon-bind-mounted-storage.md",
       "title": "Bind-Mounted Neon Storage",
       "owner": "onlava runtime / agent DX",

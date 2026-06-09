@@ -27,7 +27,7 @@ var (
 	computeReadyInterval = 250 * time.Millisecond
 )
 
-func ensureBranchCompute(ctx context.Context, root string, tenantID string, branch BackendBranch) (bool, string, error) {
+func ensureBranchCompute(ctx context.Context, root string, tenantID string, branchID string, branch BackendBranch) (bool, string, error) {
 	if ready, message := recordedComputeReady(branch); ready {
 		return true, message, nil
 	}
@@ -63,7 +63,9 @@ func ensureBranchCompute(ctx context.Context, root string, tenantID string, bran
 			"--add-host", computeHostDockerInternalTarget,
 			"--label", "onlava.substrate=neon",
 			"--label", "onlava.component=compute",
-			"--label", "onlava.branch=" + safeIdentifier(branch.Branch),
+			"--label", "onlava.project=" + strings.TrimSpace(branch.Project),
+			"--label", "onlava.branch_id=" + strings.TrimSpace(branchID),
+			"--label", "onlava.branch=" + strings.TrimSpace(branch.Branch),
 			"-e", "PG_VERSION=16",
 			"-e", "TENANT_ID=" + strings.TrimSpace(tenantID),
 			"-e", "TIMELINE_ID=" + branch.TimelineID,

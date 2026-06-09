@@ -84,3 +84,30 @@ func TestAllocateBranchPortStableAndCollisionAware(t *testing.T) {
 		t.Fatalf("next port out of range: %d", next)
 	}
 }
+
+func TestBackendBranchComputeContainerUsesProjectAndBranchID(t *testing.T) {
+	state := NewBackendState("tenant-test", 16)
+	first := backendBranchFromOptions(state, branchActionOptions{
+		Project:  "app-a",
+		Branch:   "feature/foo",
+		BranchID: "br-local-1111111111111111",
+		Database: "app_a",
+		Role:     "cloud_admin",
+	})
+	second := backendBranchFromOptions(state, branchActionOptions{
+		Project:  "app-b",
+		Branch:   "feature/foo",
+		BranchID: "br-local-2222222222222222",
+		Database: "app_b",
+		Role:     "cloud_admin",
+	})
+	if first.ComputeContainer != "onlava-neon-compute-app-a-111111111111" {
+		t.Fatalf("first compute container = %q", first.ComputeContainer)
+	}
+	if second.ComputeContainer != "onlava-neon-compute-app-b-222222222222" {
+		t.Fatalf("second compute container = %q", second.ComputeContainer)
+	}
+	if first.ComputeContainer == second.ComputeContainer {
+		t.Fatalf("compute containers collided: %q", first.ComputeContainer)
+	}
+}

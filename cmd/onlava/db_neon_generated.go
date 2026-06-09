@@ -20,15 +20,17 @@ func writeGeneratedNeonFiles(state neonCellState) error {
 	if err := writeGeneratedComputeTemplate(filepath.Join(state.Root, "compute_templates")); err != nil {
 		return err
 	}
-	if _, ok, err := readBackendStateForInstall(filepath.Join(state.Root, "backend.json")); err != nil {
-		return err
-	} else if !ok {
-		backend := neonselfhost.NewBackendState("", 16)
-		if err := neonselfhost.WriteBackendState(filepath.Join(state.Root, "backend.json"), backend); err != nil {
+	return neonselfhost.WithBackendStateLock(state.Root, func() error {
+		if _, ok, err := readBackendStateForInstall(filepath.Join(state.Root, "backend.json")); err != nil {
 			return err
+		} else if !ok {
+			backend := neonselfhost.NewBackendState("", 16)
+			if err := neonselfhost.WriteBackendState(filepath.Join(state.Root, "backend.json"), backend); err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func writeGeneratedNeonCompose(state neonCellState) error {

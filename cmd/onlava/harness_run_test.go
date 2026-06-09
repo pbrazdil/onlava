@@ -150,6 +150,29 @@ func TestRunHarnessNeonLocalLifecycleStep(t *testing.T) {
 	}
 }
 
+func TestRunHarnessNeonSelfhostStepUsesDefaultHarnessCommand(t *testing.T) {
+	prev := runHarnessNeonSelfhostCheckFunc
+	t.Cleanup(func() { runHarnessNeonSelfhostCheckFunc = prev })
+	runHarnessNeonSelfhostCheckFunc = func(context.Context, string) (map[string]any, []checkDiagnostic, error) {
+		return map[string]any{
+			"worktrees": 2,
+			"branches":  2,
+		}, nil, nil
+	}
+
+	root := t.TempDir()
+	step := runHarnessNeonSelfhostStep(context.Background(), root)
+	if !step.OK {
+		t.Fatalf("Neon selfhost step failed: error=%s diagnostics=%+v summary=%+v", step.Error, step.Diagnostics, step.Summary)
+	}
+	if strings.Contains(strings.Join(step.Command, " "), "--with-neon-selfhost") {
+		t.Fatalf("step command still mentions removed flag: %+v", step.Command)
+	}
+	if got, _ := step.Summary["branches"].(int); got != 2 {
+		t.Fatalf("branches summary = %v, want 2", step.Summary["branches"])
+	}
+}
+
 func TestParseHarnessSelfArgsSupportsSummaryAndFullModes(t *testing.T) {
 	t.Parallel()
 

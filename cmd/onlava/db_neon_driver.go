@@ -312,6 +312,11 @@ func updateNeonBranchLeaseFromDriver(pin worktreeDBPin, result executableNeonBra
 	if err != nil {
 		return neonBranchBackendStatus{}, err
 	}
+	unlock, err := lockNeonBranchRegistry(root)
+	if err != nil {
+		return neonBranchBackendStatus{}, err
+	}
+	defer unlock()
 	registry, err := readNeonBranchRegistry(root)
 	if err != nil {
 		return neonBranchBackendStatus{}, err

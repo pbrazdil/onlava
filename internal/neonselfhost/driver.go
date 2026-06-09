@@ -302,6 +302,11 @@ func ensurePendingBranch(opts branchActionOptions) (BranchActionResult, error) {
 	if err != nil {
 		return BranchActionResult{}, err
 	}
+	unlock, err := lockBackendState(root)
+	if err != nil {
+		return BranchActionResult{}, err
+	}
+	defer unlock()
 	path := filepath.Join(root, "backend.json")
 	state, ok, err := ReadBackendState(path)
 	if err != nil {
@@ -352,7 +357,7 @@ func ensurePendingBranch(opts branchActionOptions) (BranchActionResult, error) {
 		}
 	}
 	if pageserverReady {
-		if ok, computeMessage, err := ensureBranchCompute(ctx, root, state.TenantID, branch); err != nil {
+		if ok, computeMessage, err := ensureBranchCompute(ctx, root, state.TenantID, opts.BranchID, branch); err != nil {
 			return BranchActionResult{}, err
 		} else if computeMessage != "" {
 			message = computeMessage

@@ -174,7 +174,7 @@ Milestone 6: Document and validate the contract.
 
 Update docs and schemas so agents can discover where Neon bytes live. Add tests
 that fail if generated Compose reintroduces anonymous volumes for durable Neon
-services. Keep the opt-in real Docker-backed Neon harness working against the
+services. Keep the default real Docker-backed Neon harness working against the
 bind-mounted storage layout.
 
 ## Plan of Work
@@ -262,7 +262,7 @@ worktree branch does not allocate new storage roots.
    - `README.md`
    - `docs/schemas/onlava.db.neon.status.v1.schema.json` if status gains a storage object.
 
-9. Validate with focused tests, full tests, docs inspection, and the opt-in real Neon harness when practical.
+9. Validate with focused tests, full tests, docs inspection, and the default real Neon harness when practical.
 
 ## Validation and Acceptance
 
@@ -290,13 +290,13 @@ Do not run `go install ./cmd/onlava` during agent validation unless the human
 explicitly asks. If a human asks for installation, install only after the build
 and test gates pass.
 
-Manual or opt-in Docker-backed validation when practical:
+Manual Docker-backed validation when practical:
 
 ```sh
 onlava db neon status --json
 onlava db neon start --json
 onlava db branch status --json
-onlava harness self --json --write --with-neon-selfhost
+onlava harness self --json --write
 ```
 
 Acceptance criteria:
@@ -374,7 +374,7 @@ onlava inspect docs --json
 git diff --check
 ```
 
-The opt-in real Docker-backed Neon proof was not run during this implementation
+The real Docker-backed Neon proof was not run during this implementation
 pass because the current live cell still uses legacy anonymous `/data` volumes,
 and exercising the fresh-start path would require destructive
 `onlava db neon uninstall --destroy-data` against that cell.

@@ -16,6 +16,7 @@ import (
 )
 
 var runHarnessNeonLocalLifecycleCheckFunc = runHarnessNeonLocalLifecycleCheck
+var runHarnessNeonSelfhostCheckFunc = runHarnessNeonSelfhostCheck
 
 func runHarnessNeonLocalLifecycleStep(ctx context.Context, repoRoot string) harnessStep {
 	started := time.Now()
@@ -48,9 +49,9 @@ func runHarnessNeonSelfhostStep(ctx context.Context, repoRoot string) harnessSte
 	started := time.Now()
 	step := harnessStep{
 		Name:    "neon selfhost real lifecycle",
-		Command: []string{"onlava", "harness", "self", "--with-neon-selfhost", "--repo-root", repoRoot},
+		Command: []string{"onlava", "harness", "self", "--repo-root", repoRoot},
 	}
-	summary, diagnostics, err := runHarnessNeonSelfhostCheck(ctx, repoRoot)
+	summary, diagnostics, err := runHarnessNeonSelfhostCheckFunc(ctx, repoRoot)
 	step.DurationMS = time.Since(started).Milliseconds()
 	step.Summary = summary
 	step.Diagnostics = diagnostics
@@ -62,7 +63,7 @@ func runHarnessNeonSelfhostStep(ctx context.Context, repoRoot string) harnessSte
 				Stage:           step.Name,
 				Severity:        "error",
 				Message:         step.Error,
-				SuggestedAction: "Fix the real self-hosted Neon dev-cell lifecycle, then rerun `onlava harness self --json --write --with-neon-selfhost`.",
+				SuggestedAction: "Fix the real self-hosted Neon dev-cell lifecycle, then rerun `onlava harness self --json --write`.",
 			}}
 		}
 		return step
@@ -84,12 +85,12 @@ func runHarnessNeonSelfhostCheck(parent context.Context, repoRoot string) (map[s
 			Stage:           "neon selfhost real lifecycle",
 			Severity:        "error",
 			Message:         message,
-			SuggestedAction: "Inspect `onlava db neon status --json`, Docker logs, and branch status, then rerun `onlava harness self --json --write --with-neon-selfhost`.",
+			SuggestedAction: "Inspect `onlava db neon status --json`, Docker logs, and branch status, then rerun `onlava harness self --json --write`.",
 		})
 	}
 	requireTool := func(name string) error {
 		if _, err := exec.LookPath(name); err != nil {
-			return fmt.Errorf("%s is required for --with-neon-selfhost: %w", name, err)
+			return fmt.Errorf("%s is required for the self-hosted Neon harness: %w", name, err)
 		}
 		return nil
 	}
@@ -100,7 +101,7 @@ func runHarnessNeonSelfhostCheck(parent context.Context, repoRoot string) (map[s
 		return nil, diagnostics, err
 	}
 	if _, err := runDockerProbe(ctx, "version", "--format", "{{.Server.Version}}"); err != nil {
-		return nil, diagnostics, fmt.Errorf("docker daemon is required for --with-neon-selfhost: %w", err)
+		return nil, diagnostics, fmt.Errorf("docker daemon is required for the self-hosted Neon harness: %w", err)
 	}
 
 	agentHome := filepath.Join(os.TempDir(), "onlava-harness-neon-selfhost-"+harnessRandomLabel())

@@ -701,7 +701,9 @@ func buildDBNeonStatus(ctx context.Context) (dbNeonStatusResult, error) {
 		{Path: filepath.Join(root, "compute_templates", "config.json"), Kind: "template", Status: fileStatus(filepath.Join(root, "compute_templates", "config.json"))},
 		{Path: filepath.Join(root, "compute_templates", "compute.sh"), Kind: "template", Status: fileStatus(filepath.Join(root, "compute_templates", "compute.sh"))},
 		{Path: filepath.Join(root, "backend.json"), Kind: "backend-state", Status: fileStatus(filepath.Join(root, "backend.json"))},
+		{Path: filepath.Join(root, "backend.lock"), Kind: "backend-lock", Status: fileStatus(filepath.Join(root, "backend.lock"))},
 		{Path: neonBranchRegistryPath(root), Kind: "branch-registry", Status: fileStatus(neonBranchRegistryPath(root))},
+		{Path: neonBranchRegistryLockPath(root), Kind: "branch-registry-lock", Status: fileStatus(neonBranchRegistryLockPath(root))},
 	}
 	storageDirs := neonStorageDirs(root)
 	for _, name := range neonStorageDirNames() {

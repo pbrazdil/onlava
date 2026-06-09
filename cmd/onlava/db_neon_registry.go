@@ -31,12 +31,10 @@ func neonBranchRegistryPath(root string) string {
 }
 
 func ensureNeonBranchRegistry(root string) error {
-	registry, err := readNeonBranchRegistry(root)
-	if err != nil {
-		return err
-	}
-	registry.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	return writeNeonBranchRegistry(root, registry)
+	return mutateNeonBranchRegistry(root, func(registry *neonBranchRegistry) error {
+		registry.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		return nil
+	})
 }
 
 func readNeonBranchRegistry(root string) (neonBranchRegistry, error) {
@@ -136,52 +134,66 @@ func writeNeonBranchRegistry(root string, registry neonBranchRegistry) error {
 	return atomicWriteFile(neonBranchRegistryPath(root), data, 0o644)
 }
 
+func mutateNeonBranchRegistry(root string, mutate func(*neonBranchRegistry) error) error {
+	unlock, err := lockNeonBranchRegistry(root)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	registry, err := readNeonBranchRegistry(root)
+	if err != nil {
+		return err
+	}
+	if err := mutate(&registry); err != nil {
+		return err
+	}
+	return writeNeonBranchRegistry(root, registry)
+}
+
 func upsertNeonBranchLease(pin worktreeDBPin) error {
 	root, err := neonSubstrateRoot()
 	if err != nil {
 		return err
 	}
-	registry, err := readNeonBranchRegistry(root)
-	if err != nil {
-		return err
-	}
-	now := time.Now().UTC()
-	nowText := now.Format(time.RFC3339)
-	expiresAt := neonLeaseExpiresAt(now, pin.TTL)
-	for i := range registry.Leases {
-		if sameNeonLease(registry.Leases[i].Pin, pin) || sameNeonBranch(registry.Leases[i].Pin, pin) {
-			if !isOnlavaOwnedNeonLease(registry.Leases[i]) {
-				return fmt.Errorf("refusing to reuse foreign local Neon branch lease %q; remove or rename that lease before checkout", pin.Branch)
+	return mutateNeonBranchRegistry(root, func(registry *neonBranchRegistry) error {
+		now := time.Now().UTC()
+		nowText := now.Format(time.RFC3339)
+		expiresAt := neonLeaseExpiresAt(now, pin.TTL)
+		for i := range registry.Leases {
+			if sameNeonLease(registry.Leases[i].Pin, pin) || sameNeonBranch(registry.Leases[i].Pin, pin) {
+				if !isOnlavaOwnedNeonLease(registry.Leases[i]) {
+					return fmt.Errorf("refusing to reuse foreign local Neon branch lease %q; remove or rename that lease before checkout", pin.Branch)
+				}
+				createdAt := registry.Leases[i].CreatedAt
+				if createdAt == "" {
+					createdAt = nowText
+				}
+				status := registry.Leases[i].Status
+				if status != "ready" {
+					status = "pending"
+				}
+				registry.Leases[i] = neonBranchLease{
+					Pin:       pin,
+					Status:    status,
+					Endpoint:  registry.Leases[i].Endpoint,
+					CreatedAt: createdAt,
+					UpdatedAt: nowText,
+					ExpiresAt: expiresAt,
+				}
+				registry.UpdatedAt = nowText
+				return nil
 			}
-			createdAt := registry.Leases[i].CreatedAt
-			if createdAt == "" {
-				createdAt = nowText
-			}
-			status := registry.Leases[i].Status
-			if status != "ready" {
-				status = "pending"
-			}
-			registry.Leases[i] = neonBranchLease{
-				Pin:       pin,
-				Status:    status,
-				Endpoint:  registry.Leases[i].Endpoint,
-				CreatedAt: createdAt,
-				UpdatedAt: nowText,
-				ExpiresAt: expiresAt,
-			}
-			registry.UpdatedAt = nowText
-			return writeNeonBranchRegistry(root, registry)
 		}
-	}
-	registry.Leases = append(registry.Leases, neonBranchLease{
-		Pin:       pin,
-		Status:    "pending",
-		CreatedAt: nowText,
-		UpdatedAt: nowText,
-		ExpiresAt: expiresAt,
+		registry.Leases = append(registry.Leases, neonBranchLease{
+			Pin:       pin,
+			Status:    "pending",
+			CreatedAt: nowText,
+			UpdatedAt: nowText,
+			ExpiresAt: expiresAt,
+		})
+		registry.UpdatedAt = nowText
+		return nil
 	})
-	registry.UpdatedAt = nowText
-	return writeNeonBranchRegistry(root, registry)
 }
 
 func sameNeonLease(a, b worktreeDBPin) bool {
@@ -274,31 +286,29 @@ func expireNeonBranchLease(pin worktreeDBPin, expiresAt time.Time) error {
 	if err != nil {
 		return err
 	}
-	registry, err := readNeonBranchRegistry(root)
-	if err != nil {
-		return err
-	}
 	if strings.TrimSpace(pin.Project) == "" || strings.TrimSpace(pin.Branch) == "" {
 		return fmt.Errorf("db branch expire requires a resolved Neon project and branch")
 	}
-	nowText := time.Now().UTC().Format(time.RFC3339)
-	var found bool
-	for i := range registry.Leases {
-		if !isOnlavaOwnedNeonLease(registry.Leases[i]) {
-			continue
+	return mutateNeonBranchRegistry(root, func(registry *neonBranchRegistry) error {
+		nowText := time.Now().UTC().Format(time.RFC3339)
+		var found bool
+		for i := range registry.Leases {
+			if !isOnlavaOwnedNeonLease(registry.Leases[i]) {
+				continue
+			}
+			if !sameNeonLease(registry.Leases[i].Pin, pin) && !sameNeonBranch(registry.Leases[i].Pin, pin) {
+				continue
+			}
+			registry.Leases[i].ExpiresAt = expiresAt.UTC().Format(time.RFC3339)
+			registry.Leases[i].UpdatedAt = nowText
+			found = true
 		}
-		if !sameNeonLease(registry.Leases[i].Pin, pin) && !sameNeonBranch(registry.Leases[i].Pin, pin) {
-			continue
+		if !found {
+			return fmt.Errorf("no Onlava-owned local Neon branch lease found for %q in project %q", pin.Branch, pin.Project)
 		}
-		registry.Leases[i].ExpiresAt = expiresAt.UTC().Format(time.RFC3339)
-		registry.Leases[i].UpdatedAt = nowText
-		found = true
-	}
-	if !found {
-		return fmt.Errorf("no Onlava-owned local Neon branch lease found for %q in project %q", pin.Branch, pin.Project)
-	}
-	registry.UpdatedAt = nowText
-	return writeNeonBranchRegistry(root, registry)
+		registry.UpdatedAt = nowText
+		return nil
+	})
 }
 
 func pruneExpiredNeonBranchLeases(project, currentBranchID string, olderThan time.Duration) (int, error) {
@@ -306,6 +316,11 @@ func pruneExpiredNeonBranchLeases(project, currentBranchID string, olderThan tim
 	if err != nil {
 		return 0, err
 	}
+	unlock, err := lockNeonBranchRegistry(root)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
 	registry, err := readNeonBranchRegistry(root)
 	if err != nil {
 		return 0, err
@@ -371,6 +386,11 @@ func removeNeonBranchLeaseForSession(appRoot string, session localagent.Session)
 	if err != nil {
 		return "", false, err
 	}
+	unlock, err := lockNeonBranchRegistry(root)
+	if err != nil {
+		return "", false, err
+	}
+	defer unlock()
 	registry, err := readNeonBranchRegistry(root)
 	if err != nil {
 		return "", false, err

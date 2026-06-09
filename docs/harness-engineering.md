@@ -14,7 +14,7 @@ The harness contract gives Codex and other agents a short feedback loop:
 
 ```text
 onlava harness [--app-root <path>] [--json] [--write]
-onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--with-neon-selfhost]
+onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--quick|--race|--release]
 onlava harness ui [--app-root <path>] [--dashboard-url <url>] [--headed] [--json] [--write]
 onlava inspect harness [artifact <name>|diagnostics --severity error|warning|timing --top <n>] --json [--app-root <path>] [--repo-root <path>]
 ```
@@ -44,13 +44,13 @@ For dashboard route or UI behavior changes, also run:
 onlava harness ui --json --write
 ```
 
-For self-hosted Neon branch-provider changes, run the opt-in Docker-backed proof when the host has Docker and `psql`:
+For self-hosted Neon branch-provider changes, the default self-harness runs the Docker-backed proof when the host has Docker and `psql`:
 
 ```text
-onlava harness self --json --write --with-neon-selfhost
+onlava harness self --json --write
 ```
 
-That path is intentionally excluded from the default self-harness because it starts real Neon containers and waits for SQL-ready branch computes.
+Use `--quick` only when you intentionally need the smaller non-Docker self-harness loop.
 
 The command runs:
 
@@ -164,7 +164,7 @@ The self harness validates the local onlava development loop:
 - `onlava inspect docs --json`
 - docs review-due and stale summaries from `onlava inspect docs --json`
 - architecture checks for dependency policy, package boundaries, generated-file hygiene, and oversized source files
-- parallel dev-session safety and local Neon generated dev-cell start/stop plus branch pin/lease lifecycle safety
+- parallel dev-session safety, local Neon generated dev-cell start/stop plus branch pin/lease lifecycle safety, and the real Docker-backed self-hosted Neon lifecycle proof outside `--quick`
 - dashboard UI typecheck and build
 - dashboard build freshness
 - worktree-local `go build -o .onlava/harness/bin/onlava ./cmd/onlava`

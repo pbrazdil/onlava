@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,6 +55,69 @@ func TestNeonFixtureConfigLoads(t *testing.T) {
 	}
 	if electricPin.Project != "neonelectric" || electricPin.Database != "neonelectric" || electricPin.Role != "cloud_admin" {
 		t.Fatalf("electric pin = %+v", electricPin)
+	}
+}
+
+func TestUpsertNeonBranchLeaseSerializesRegistryMutations(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	const branchCount = 20
+	start := make(chan struct{})
+	errs := make(chan error, branchCount)
+	var wg sync.WaitGroup
+	for i := 0; i < branchCount; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			pin := worktreeDBPin{
+				SchemaVersion: dbBranchPinSchemaVersion,
+				Provider:      neonSelfhostProvider,
+				Project:       "onlv",
+				ParentBranch:  "main",
+				Branch:        fmt.Sprintf("feature/%02d", i),
+				BranchID:      fmt.Sprintf("br-local-%02d", i),
+				Database:      "onlv",
+				Role:          neonDefaultRole,
+				CreatedBy:     "onlava",
+			}
+			if err := upsertNeonBranchLease(pin); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	root, err := neonSubstrateRoot()
+	if err != nil {
+		t.Fatalf("neonSubstrateRoot: %v", err)
+	}
+	registry, err := readNeonBranchRegistry(root)
+	if err != nil {
+		t.Fatalf("read registry: %v", err)
+	}
+	if len(registry.Leases) != branchCount {
+		t.Fatalf("registry leases = %d, want %d: %+v", len(registry.Leases), branchCount, registry.Leases)
+	}
+	for i := 0; i < branchCount; i++ {
+		branchID := fmt.Sprintf("br-local-%02d", i)
+		var found bool
+		for _, lease := range registry.Leases {
+			if lease.Pin.BranchID == branchID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("registry lost branch lease %q: %+v", branchID, registry.Leases)
+		}
+	}
+	if _, err := os.Stat(neonBranchRegistryLockPath(root)); err != nil {
+		t.Fatalf("branch registry lock file missing: %v", err)
 	}
 }
 

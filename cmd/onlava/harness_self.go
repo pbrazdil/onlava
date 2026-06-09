@@ -16,12 +16,11 @@ import (
 )
 
 type harnessSelfOptions struct {
-	RepoRoot         string
-	JSON             bool
-	Write            bool
-	Mode             string
-	Output           string
-	WithNeonSelfhost bool
+	RepoRoot string
+	JSON     bool
+	Write    bool
+	Mode     string
+	Output   string
 }
 
 type harnessSelfResponse struct {
@@ -110,10 +109,8 @@ func runOnlavaHarnessSelf(ctx context.Context, stdout io.Writer, args []string) 
 			goTestStep,
 			runHarnessParallelDevStep(ctx, repoRoot),
 			runHarnessNeonLocalLifecycleStep(ctx, repoRoot),
+			runHarnessNeonSelfhostStep(ctx, repoRoot),
 		)
-		if opts.WithNeonSelfhost {
-			resp.Steps = append(resp.Steps, runHarnessNeonSelfhostStep(ctx, repoRoot))
-		}
 		resp.Steps = append(resp.Steps,
 			runHarnessExecStep(ctx, filepath.Join(repoRoot, "ui"), "dashboard ui typecheck", []string{"bun", "run", "typecheck"}, artifactCtx),
 			runHarnessExecStep(ctx, filepath.Join(repoRoot, "ui"), "dashboard ui build", []string{"bun", "run", "build"}, artifactCtx),
@@ -282,8 +279,6 @@ func parseHarnessSelfArgs(args []string) (harnessSelfOptions, error) {
 			opts.Output = harnessSelfOutputFull
 		case "--write":
 			opts.Write = true
-		case "--with-neon-selfhost":
-			opts.WithNeonSelfhost = true
 		case "--quick":
 			if opts.Mode != harnessSelfModeDefault {
 				return harnessSelfOptions{}, fmt.Errorf("only one harness self mode may be selected")
@@ -302,9 +297,6 @@ func parseHarnessSelfArgs(args []string) (harnessSelfOptions, error) {
 		default:
 			return harnessSelfOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
-	}
-	if opts.WithNeonSelfhost && opts.Mode == harnessSelfModeQuick {
-		return harnessSelfOptions{}, fmt.Errorf("--with-neon-selfhost cannot be combined with --quick")
 	}
 	return opts, nil
 }

@@ -168,6 +168,11 @@ func (neonSelfhostBranchProvider) DeleteBranch(ctx context.Context, pin worktree
 	if err != nil {
 		return err
 	}
+	unlock, err := lockNeonBranchRegistry(root)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	registry, err := readNeonBranchRegistry(root)
 	if err != nil {
 		return err
