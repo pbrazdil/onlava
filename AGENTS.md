@@ -24,6 +24,37 @@ Use the narrowest current source of truth that applies:
 
 When implementation and docs disagree, the same PR must either fix the affected docs or open/update an ExecPlan that records the drift, owner, and intended resolution path.
 
+## AGENTS Hierarchy
+
+`AGENTS.md` files are scoped operating contracts for the subtree that contains them.
+
+Before editing non-trivial changes:
+
+1. Read this root `AGENTS.md`.
+2. Identify the files and directories you expect to touch.
+3. For each target path, walk from the repository root to that path and read every `AGENTS.md` found along the way.
+4. Use the closest `AGENTS.md` for local details; parent `AGENTS.md` files still apply for repo-wide rules.
+5. When docs conflict, current implementation, tests, CLI JSON output, schemas, and the narrower `AGENTS.md` control local details, but child docs must not weaken root engineering rules, public contracts, generated-artifact rules, or validation requirements.
+6. Do not rely on memory. Re-check the applicable instruction chain in the current session before editing.
+
+After meaningful changes:
+
+- Update the nearest owning `AGENTS.md` when the change alters durable purpose, ownership, workflow, generated paths, validation commands, quality rules, required inputs/outputs, side effects, or future agent behavior for that subtree.
+- Update this root `AGENTS.md` when the change alters repo-wide rules, instruction layering, public onlava behavior, validation policy, or the child index.
+- Keep `docs/knowledge.json`, docs indexes, `SKILL.md`, `docs/agent-guide.md`, and child `AGENTS.md` files synchronized when the same contract is affected.
+- Do not update instruction docs for small implementation-only edits that do not change future agent behavior; still report that instruction docs were intentionally left unchanged.
+
+Child `AGENTS.md` files:
+
+- Add one only when a directory becomes a durable boundary with its own purpose, contracts, workflow, verification, or quality standards.
+- Keep child docs short and operational. Put broad onlava rules here; put concrete local commands and exceptions in the child.
+- Preferred section order for new child docs: Purpose, Ownership, Local Contracts, Work Guidance, Verification, Child Agent Index.
+
+### Child Agent Index
+
+- No child `AGENTS.md` files are currently indexed in this repo.
+- When adding one, list its path here and describe what it owns.
+
 ## Agent skills
 
 ### Issue tracker
