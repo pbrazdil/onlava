@@ -14,7 +14,7 @@ The harness contract gives Codex and other agents a short feedback loop:
 
 ```text
 onlava harness [--app-root <path>] [--json] [--write]
-onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write]
+onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--with-neon-selfhost]
 onlava harness ui [--app-root <path>] [--dashboard-url <url>] [--headed] [--json] [--write]
 onlava inspect harness [artifact <name>|diagnostics --severity error|warning|timing --top <n>] --json [--app-root <path>] [--repo-root <path>]
 ```
@@ -43,6 +43,14 @@ For dashboard route or UI behavior changes, also run:
 ```text
 onlava harness ui --json --write
 ```
+
+For self-hosted Neon branch-provider changes, run the opt-in Docker-backed proof when the host has Docker and `psql`:
+
+```text
+onlava harness self --json --write --with-neon-selfhost
+```
+
+That path is intentionally excluded from the default self-harness because it starts real Neon containers and waits for SQL-ready branch computes.
 
 The command runs:
 

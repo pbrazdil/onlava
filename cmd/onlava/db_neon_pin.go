@@ -89,9 +89,13 @@ func neonEndpointDatabaseURL(pin worktreeDBPin, endpoint neonEndpoint) (string, 
 	}
 	u := url.URL{
 		Scheme: "postgres",
-		User:   url.User(endpoint.Role),
 		Host:   net.JoinHostPort(endpoint.Host, strconv.Itoa(endpoint.Port)),
 		Path:   "/" + endpoint.Database,
+	}
+	if endpoint.Source == neonSelfhostBranchDriverEndpointSource {
+		u.User = url.UserPassword(endpoint.Role, "cloud_admin")
+	} else {
+		u.User = url.User(endpoint.Role)
 	}
 	q := u.Query()
 	q.Set("sslmode", endpoint.SSLMode)

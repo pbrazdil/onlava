@@ -43,7 +43,13 @@ type Artifact struct {
 	DefaultBinary string                      `json:"default_binary,omitempty"`
 	Binaries      []string                    `json:"binaries,omitempty"`
 	Platforms     map[string]PlatformArtifact `json:"platforms,omitempty"`
+	SourceBuild   *SourceBuildArtifact        `json:"source_build,omitempty"`
 	Images        []ImageArtifact             `json:"images,omitempty"`
+}
+
+type SourceBuildArtifact struct {
+	Kind    string `json:"kind"`
+	Package string `json:"package"`
 }
 
 type PlatformArtifact struct {
@@ -155,6 +161,17 @@ func (m Manifest) Validate() error {
 		if artifact.Kind == "binary" && strings.TrimSpace(artifact.DefaultBinary) == "" {
 			return fmt.Errorf("binary artifact %q missing default_binary", artifact.Name)
 		}
+		if artifact.SourceBuild != nil {
+			if artifact.Kind != "binary" {
+				return fmt.Errorf("artifact %q has source_build but kind %q", artifact.Name, artifact.Kind)
+			}
+			if artifact.SourceBuild.Kind != "go" {
+				return fmt.Errorf("artifact %q has unsupported source_build kind %q", artifact.Name, artifact.SourceBuild.Kind)
+			}
+			if cleanSourceBuildPackage(artifact.SourceBuild.Package) == "" {
+				return fmt.Errorf("artifact %q source_build missing valid package", artifact.Name)
+			}
+		}
 		for key, platform := range artifact.Platforms {
 			if _, err := ParsePlatform(key); err != nil {
 				return fmt.Errorf("artifact %q: %w", artifact.Name, err)
@@ -227,6 +244,21 @@ func cleanExtract(value string) string {
 	value = filepath.ToSlash(filepath.Clean(strings.TrimSpace(value)))
 	if value == "." || value == "" || strings.HasPrefix(value, "../") || strings.HasPrefix(value, "/") {
 		return ""
+	}
+	return value
+}
+
+func cleanSourceBuildPackage(value string) string {
+	raw := filepath.ToSlash(strings.TrimSpace(value))
+	if !strings.HasPrefix(raw, "./") {
+		return ""
+	}
+	value = filepath.ToSlash(filepath.Clean(raw))
+	if value == "." || value == "" || strings.HasPrefix(value, "../") || strings.HasPrefix(value, "/") {
+		return ""
+	}
+	if !strings.HasPrefix(value, ".") {
+		value = "./" + value
 	}
 	return value
 }

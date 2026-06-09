@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
+	"github.com/pbrazdil/onlava/internal/envpolicy"
 )
 
 var runHarnessNeonLocalLifecycleCheckFunc = runHarnessNeonLocalLifecycleCheck
@@ -42,6 +44,253 @@ func runHarnessNeonLocalLifecycleStep(ctx context.Context, repoRoot string) harn
 	return step
 }
 
+func runHarnessNeonSelfhostStep(ctx context.Context, repoRoot string) harnessStep {
+	started := time.Now()
+	step := harnessStep{
+		Name:    "neon selfhost real lifecycle",
+		Command: []string{"onlava", "harness", "self", "--with-neon-selfhost", "--repo-root", repoRoot},
+	}
+	summary, diagnostics, err := runHarnessNeonSelfhostCheck(ctx, repoRoot)
+	step.DurationMS = time.Since(started).Milliseconds()
+	step.Summary = summary
+	step.Diagnostics = diagnostics
+	if err != nil {
+		step.OK = false
+		step.Error = strings.TrimSpace(err.Error())
+		if len(step.Diagnostics) == 0 {
+			step.Diagnostics = []checkDiagnostic{{
+				Stage:           step.Name,
+				Severity:        "error",
+				Message:         step.Error,
+				SuggestedAction: "Fix the real self-hosted Neon dev-cell lifecycle, then rerun `onlava harness self --json --write --with-neon-selfhost`.",
+			}}
+		}
+		return step
+	}
+	step.OK = !hasErrorDiagnostics(diagnostics)
+	return step
+}
+
+func runHarnessNeonSelfhostCheck(parent context.Context, repoRoot string) (map[string]any, []checkDiagnostic, error) {
+	ctx, cancel := context.WithTimeout(parent, 12*time.Minute)
+	defer cancel()
+
+	var diagnostics []checkDiagnostic
+	check := func(ok bool, message string) {
+		if ok {
+			return
+		}
+		diagnostics = append(diagnostics, checkDiagnostic{
+			Stage:           "neon selfhost real lifecycle",
+			Severity:        "error",
+			Message:         message,
+			SuggestedAction: "Inspect `onlava db neon status --json`, Docker logs, and branch status, then rerun `onlava harness self --json --write --with-neon-selfhost`.",
+		})
+	}
+	requireTool := func(name string) error {
+		if _, err := exec.LookPath(name); err != nil {
+			return fmt.Errorf("%s is required for --with-neon-selfhost: %w", name, err)
+		}
+		return nil
+	}
+	if err := requireTool("docker"); err != nil {
+		return nil, diagnostics, err
+	}
+	if err := requireTool("psql"); err != nil {
+		return nil, diagnostics, err
+	}
+	if _, err := runDockerProbe(ctx, "version", "--format", "{{.Server.Version}}"); err != nil {
+		return nil, diagnostics, fmt.Errorf("docker daemon is required for --with-neon-selfhost: %w", err)
+	}
+
+	agentHome := filepath.Join(os.TempDir(), "onlava-harness-neon-selfhost-"+harnessRandomLabel())
+	restoreEnv := patchEnv(map[string]*string{
+		"ONLAVA_AGENT_HOME":          stringPtr(agentHome),
+		neonSelfhostBranchDriverEnv:  nil,
+		localPostgresBranchDriverEnv: nil,
+		devElectricUpstreamEnv:       nil,
+	})
+	defer restoreEnv()
+	defer os.RemoveAll(agentHome)
+	defer func() {
+		_ = runDBNeonCommand(context.Background(), &bytes.Buffer{}, []string{"uninstall", "--destroy-data", "--json"})
+	}()
+
+	root := filepath.Join(os.TempDir(), "onlava-harness-neon-selfhost-app-"+harnessRandomLabel(), "demo")
+	defer os.RemoveAll(filepath.Dir(root))
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return nil, diagnostics, err
+	}
+	if err := os.WriteFile(filepath.Join(root, ".onlava.json"), []byte(`{
+		"name": "neon-selfhost-harness",
+		"id": "neon-selfhost-harness",
+		"dev": {
+			"services": {
+				"postgres": {
+					"kind": "neon",
+					"mode": "self-hosted",
+					"isolation": "branch",
+					"project": "neon-selfhost-harness",
+					"database": "neon_selfhost_harness",
+					"branch_name_template": "{app}/{git_branch}"
+				},
+				"electric": {
+					"kind": "electric"
+				}
+			}
+		}
+	}`), 0o644); err != nil {
+		return nil, diagnostics, err
+	}
+	if err := runGitCommand(ctx, "-C", root, "init", "-b", "main"); err != nil {
+		return nil, diagnostics, err
+	}
+	if err := runGitCommand(ctx, "-C", root, "config", "user.email", "harness@example.com"); err != nil {
+		return nil, diagnostics, err
+	}
+	if err := runGitCommand(ctx, "-C", root, "config", "user.name", "Onlava Harness"); err != nil {
+		return nil, diagnostics, err
+	}
+	if err := runGitCommand(ctx, "-C", root, "add", ".onlava.json"); err != nil {
+		return nil, diagnostics, err
+	}
+	if err := runGitCommand(ctx, "-C", root, "commit", "-m", "initial"); err != nil {
+		return nil, diagnostics, err
+	}
+
+	if err := runDBNeonCommand(ctx, &bytes.Buffer{}, []string{"install", "--json"}); err != nil {
+		return nil, diagnostics, err
+	}
+	var startOut bytes.Buffer
+	if err := runDBNeonCommand(ctx, &startOut, []string{"start", "--json"}); err != nil {
+		return nil, diagnostics, err
+	}
+	var startStatus dbNeonStatusResult
+	if err := json.Unmarshal(startOut.Bytes(), &startStatus); err != nil {
+		return nil, diagnostics, fmt.Errorf("decode Neon start JSON: %w: %s", err, startOut.String())
+	}
+	check(startStatus.Driver != nil && startStatus.Driver.Tool == neonSelfhostDriverToolchainArtifact, "install/start must resolve the managed neon-selfhost-driver toolchain artifact")
+
+	createdA, err := harnessCreateNeonWorktree(ctx, root, "selfhost-a")
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	createdB, err := harnessCreateNeonWorktree(ctx, root, "selfhost-b")
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	statusA, err := harnessNeonBranchStatus(ctx, createdA.Path)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	statusB, err := harnessNeonBranchStatus(ctx, createdB.Path)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	check(statusA.BackendStatus == "ready", "worktree A must get a ready Neon selfhost branch")
+	check(statusB.BackendStatus == "ready", "worktree B must get a ready Neon selfhost branch")
+	if statusA.Connection != nil && statusB.Connection != nil {
+		check(statusA.Connection.Port != statusB.Connection.Port, "parallel Neon selfhost branches must use distinct compute ports")
+	}
+	if err := harnessManagedPSQL(ctx, createdA.Path, "-v", "ON_ERROR_STOP=1", "-c", "create table if not exists onlava_harness_probe(id integer primary key); insert into onlava_harness_probe(id) values (1) on conflict do nothing"); err != nil {
+		return nil, diagnostics, fmt.Errorf("write probe data to branch A: %w", err)
+	}
+	branchBProbe, err := harnessManagedPSQLOutput(ctx, createdB.Path, "-tAc", "select to_regclass('public.onlava_harness_probe') is null")
+	if err != nil {
+		return nil, diagnostics, fmt.Errorf("read branch B isolation probe: %w", err)
+	}
+	check(strings.TrimSpace(branchBProbe) == "t", "branch B must not observe table created only on branch A")
+
+	_, cfgA, err := discoverConfiguredApp(createdA.Path)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	managedEnvA, _, connectionA, err := neonManagedPostgresEnv(ctx, createdA.Path, cfgA, &localagent.Session{SessionID: "selfhost-a", BaseAppID: "neon-selfhost-harness", Branch: "selfhost-a"})
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	electricURLA, err := managedElectricDatabaseURL(ctx, createdA.Path, cfgA, &localagent.Session{SessionID: "selfhost-a"}, &managedElectricPlan{ServiceName: "electric"}, nil, nil)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	check(envValueFromList(managedEnvA, appDatabaseURLEnv) == connectionA.DatabaseURL, "managed env must expose the ready selfhost branch DatabaseURL")
+	check(electricURLA == connectionA.DatabaseURL, "managed Electric must resolve the ready selfhost branch DatabaseURL")
+
+	if err := harnessManagedPSQL(ctx, createdA.Path, "-v", "ON_ERROR_STOP=1", "-c", "create table if not exists onlava_harness_reset(id integer primary key)"); err != nil {
+		return nil, diagnostics, fmt.Errorf("create reset probe table: %w", err)
+	}
+	if err := runDBBranchCommand(ctx, &bytes.Buffer{}, []string{"reset", "--yes", "--app-root", createdA.Path}); err != nil {
+		return nil, diagnostics, fmt.Errorf("reset selfhost branch: %w", err)
+	}
+	resetStatus, err := harnessNeonBranchStatus(ctx, createdA.Path)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	check(resetStatus.BackendStatus == "ready", "reset selfhost branch must return to ready status")
+	resetProbe, err := harnessManagedPSQLOutput(ctx, createdA.Path, "-tAc", "select to_regclass('public.onlava_harness_reset') is null")
+	if err != nil {
+		return nil, diagnostics, fmt.Errorf("read reset probe table: %w", err)
+	}
+	check(strings.TrimSpace(resetProbe) == "t", "reset selfhost branch must replace the branch timeline")
+
+	if err := harnessManagedPSQL(ctx, createdA.Path, "-v", "ON_ERROR_STOP=1", "-c", "create table if not exists onlava_harness_restore_keep(id integer primary key)"); err != nil {
+		return nil, diagnostics, fmt.Errorf("create restore baseline table: %w", err)
+	}
+	restoreLSN, err := harnessManagedPSQLOutput(ctx, createdA.Path, "-tAc", "select pg_current_wal_lsn()")
+	if err != nil {
+		return nil, diagnostics, fmt.Errorf("read restore LSN: %w", err)
+	}
+	restoreLSN = strings.TrimSpace(restoreLSN)
+	if err := harnessManagedPSQL(ctx, createdA.Path, "-v", "ON_ERROR_STOP=1", "-c", "create table if not exists onlava_harness_restore_after(id integer primary key)"); err != nil {
+		return nil, diagnostics, fmt.Errorf("create post-restore probe table: %w", err)
+	}
+	var restoreOut bytes.Buffer
+	if err := runDBBranchCommand(ctx, &restoreOut, []string{"restore", "--at", restoreLSN, "--yes", "--app-root", createdA.Path, "--json"}); err != nil {
+		return nil, diagnostics, fmt.Errorf("restore selfhost branch: %w", err)
+	}
+	if !strings.Contains(restoreOut.String(), `"schema_version": "onlava.db.branch.restore.v1"`) {
+		check(false, "restore selfhost branch must emit restore JSON")
+	}
+	restoreStatus, err := harnessNeonBranchStatus(ctx, createdA.Path)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	check(restoreStatus.BackendStatus == "ready", "restore selfhost branch must return to ready status")
+	restoreAfterProbe, err := harnessManagedPSQLOutput(ctx, createdA.Path, "-tAc", "select to_regclass('public.onlava_harness_restore_after') is null")
+	if err != nil {
+		return nil, diagnostics, fmt.Errorf("read post-restore probe table: %w", err)
+	}
+	check(strings.TrimSpace(restoreAfterProbe) == "t", "restore selfhost branch must replace the branch timeline at the requested LSN")
+
+	var diffOut bytes.Buffer
+	if createdB.DBPin != nil {
+		if err := runDBBranchCommand(ctx, &diffOut, []string{"diff", createdB.DBPin.Branch, "--app-root", createdA.Path, "--json"}); err != nil {
+			return nil, diagnostics, fmt.Errorf("diff selfhost branches: %w", err)
+		}
+		check(strings.Contains(diffOut.String(), `"schema_version": "onlava.db.branch.diff.v1"`) && strings.Contains(diffOut.String(), "onlava_harness_restore"), "diff selfhost branches must emit schema diff JSON")
+		if err := runDBBranchCommand(ctx, &bytes.Buffer{}, []string{"delete", createdB.DBPin.Branch, "--app-root", createdA.Path, "--force"}); err != nil {
+			return nil, diagnostics, fmt.Errorf("delete selfhost branch: %w", err)
+		}
+	}
+
+	summary := map[string]any{
+		"worktrees":          2,
+		"dev_cell_lifecycle": true,
+		"managed_driver":     true,
+		"branches_ready":     statusA.BackendStatus == "ready" && statusB.BackendStatus == "ready",
+		"branch_isolation":   strings.TrimSpace(branchBProbe) == "t",
+		"electric_db_url":    electricURLA == connectionA.DatabaseURL,
+		"reset_restore":      resetStatus.BackendStatus == "ready" && restoreStatus.BackendStatus == "ready",
+		"schema_diff":        strings.Contains(diffOut.String(), `"schema_version": "onlava.db.branch.diff.v1"`),
+		"delete":             createdB.DBPin != nil,
+		"diagnostics":        len(diagnostics),
+	}
+	if hasErrorDiagnostics(diagnostics) {
+		return summary, diagnostics, fmt.Errorf("Neon selfhost real lifecycle check failed")
+	}
+	return summary, diagnostics, nil
+}
+
 func runHarnessNeonLocalLifecycleCheck(parent context.Context) (map[string]any, []checkDiagnostic, error) {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
@@ -54,7 +303,8 @@ func runHarnessNeonLocalLifecycleCheck(parent context.Context) (map[string]any, 
 	}
 	restoreEnv := patchEnv(map[string]*string{
 		"ONLAVA_AGENT_HOME":          stringPtr(agentHome),
-		localPostgresBranchDriverEnv: stringPtr(branchDriver),
+		neonSelfhostBranchDriverEnv:  stringPtr(branchDriver),
+		localPostgresBranchDriverEnv: nil,
 		devElectricUpstreamEnv:       nil,
 	})
 	defer restoreEnv()
@@ -274,6 +524,46 @@ func harnessCreateNeonWorktree(ctx context.Context, appRoot, name string) (workt
 	return result, nil
 }
 
+func harnessNeonBranchStatus(ctx context.Context, appRoot string) (dbBranchStatusResult, error) {
+	var out bytes.Buffer
+	if err := runDBBranchCommand(ctx, &out, []string{"status", "--app-root", appRoot, "--json"}); err != nil {
+		return dbBranchStatusResult{}, err
+	}
+	var status dbBranchStatusResult
+	if err := json.Unmarshal(out.Bytes(), &status); err != nil {
+		return dbBranchStatusResult{}, fmt.Errorf("decode branch status JSON: %w: %s", err, out.String())
+	}
+	return status, nil
+}
+
+func harnessManagedPSQL(ctx context.Context, appRoot string, args ...string) error {
+	_, err := harnessManagedPSQLOutput(ctx, appRoot, args...)
+	return err
+}
+
+func harnessManagedPSQLOutput(ctx context.Context, appRoot string, args ...string) (string, error) {
+	_, cfg, err := discoverConfiguredApp(appRoot)
+	if err != nil {
+		return "", err
+	}
+	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
+	if err != nil {
+		return "", err
+	}
+	invocation, err := buildPSQLInvocationForConfig(ctx, appRoot, cfg, baseEnv, psqlOptions{UseManaged: true, Args: args})
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, invocation.Program, invocation.Args...)
+	cmd.Dir = invocation.Dir
+	cmd.Env = invocation.Env
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%s %s: %w: %s", invocation.Program, strings.Join(invocation.Args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return string(output), nil
+}
+
 func harnessRegistryHasBranch(registry neonBranchRegistry, pin *worktreeDBPin) bool {
 	if pin == nil {
 		return false
@@ -338,9 +628,9 @@ if [ "$1" = "ps" ]; then
     state="$(cat %s)"
   fi
   if [ "$state" = "started" ]; then
-    printf 'onlava-neon-compute\tUp 2 minutes\n'
+    printf 'onlava-neon-storage-broker\tUp 2 minutes\n'
   elif [ "$state" = "stopped" ]; then
-    printf 'onlava-neon-compute\tExited (0) 1 second ago\n'
+    printf 'onlava-neon-storage-broker\tExited (0) 1 second ago\n'
   fi
   exit 0
 fi

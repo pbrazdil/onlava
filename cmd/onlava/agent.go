@@ -387,9 +387,7 @@ func writeStatus(ctx context.Context, client *localagent.Client, appRoot string,
 			"substrates":     substrates,
 		})
 	}
-	for _, session := range sessions {
-		fmt.Fprintf(os.Stdout, "%s\t%s\t%s\n", session.SessionID, session.Status, session.AppRoot)
-	}
+	writeStatusTable(os.Stdout, sessions)
 	if opts.Watch {
 		fmt.Fprintln(os.Stdout, "---")
 	}

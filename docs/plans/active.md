@@ -7,6 +7,11 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
+- [0070 Toolchain-Managed Neon Selfhost Driver](0070-toolchain-managed-neon-selfhost-driver.md)
+  - Status: active
+  - Owner: onlava runtime / agent DX
+  - Created: 2026-06-09
+  - Focus: make the real `neon-selfhost-driver` a toolchain-managed Onlava binary, auto-installed/resolved by Neon dev-cell commands, and responsible for actual tenant, timeline, compute, branch mutation, schema diff, and Electric isolation proof.
 - [0064 Agent-First Development Control Plane](0064-agent-first-development-control-plane.md)
   - Status: active
   - Owner: onlava maintainers / agent DX

@@ -259,7 +259,13 @@ func buildHarnessDriftReport(ctx context.Context, repoRoot string) *harnessDrift
 }
 
 func buildHarnessCLIContractReport(repoRoot string, diagnostics []checkDiagnostic) (harnessCLIContractReport, []checkDiagnostic) {
-	usage := usageError().Error()
+	var usageBuilder strings.Builder
+	writeHelpAll(&usageBuilder)
+	for _, entry := range helpCommands {
+		usageBuilder.WriteString("\n")
+		writeCommandHelp(&usageBuilder, entry)
+	}
+	usage := usageBuilder.String()
 	var report harnessCLIContractReport
 	for _, spec := range []struct {
 		name   string
@@ -287,7 +293,7 @@ func buildHarnessCLIContractReport(repoRoot string, diagnostics []checkDiagnosti
 			_, err := parseHarnessSelfArgs([]string{"--repo-root", repoRoot, "--json"})
 			return err
 		}},
-		{name: "ps", needle: "onlava ps --json [--app-root <path>] [--session <id>] [--watch]", mode: "parse", smoke: func() error {
+		{name: "ps", needle: "onlava ps [--json] [--app-root <path>] [--session <id>] [--watch]", mode: "parse", smoke: func() error {
 			_, err := parseStatusArgs([]string{"--json", "--app-root", repoRoot, "--session", "current", "--watch"})
 			return err
 		}},

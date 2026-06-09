@@ -1126,6 +1126,28 @@
       ]
     },
     {
+      "name": "ONLAVA_NEON_SELFHOST_ROOT",
+      "match": "exact",
+      "scope": "internal",
+      "direction": "internal",
+      "category": "dev.services",
+      "stability": "internal",
+      "secret": false,
+      "allowed_in": [
+        "code",
+        "docs",
+        "tests"
+      ],
+      "owner": "onlava runtime",
+      "rationale": "Injected into the managed neon-selfhost driver so driver-owned backend state uses the same local substrate root as onlava db neon commands",
+      "preferred_surface": "internal CLI-to-driver handoff; users should not set it directly",
+      "replacement": "",
+      "sunset": "",
+      "docs": [
+        "docs/environment.md"
+      ]
+    },
+    {
       "name": "ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER",
       "match": "exact",
       "scope": "runtime",

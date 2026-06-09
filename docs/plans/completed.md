@@ -32,6 +32,32 @@ Validation:
 - `go test ./internal/observability ./cmd/onlava` passed during implementation.
 - Full validation was run before PR creation for the implementation change.
 
+## CLI Help and Human Session Status
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-09
+- Quality: B+
+- ExecPlan: [0069 CLI Help and Human Session Status](0069-cli-help-and-human-ps.md)
+
+Shipped:
+
+- Compact orienting root help for bare `onlava` and `onlava help`.
+- `onlava help all` as the grouped full command reference.
+- `onlava help <command>` for exact usage, subcommands, flags, and notes.
+- `onlava help --json` with schema `onlava.help.v1`.
+- Bare `onlava ps` human table output, while `onlava ps --json` keeps the existing agent-facing status JSON shape.
+- Drift checks, self-harness schema validation, local contract docs, README, agent guide, installable skill, and focused CLI tests updated for the new contract.
+
+Validation:
+
+- `go test ./cmd/onlava` passed.
+- `go test ./...` passed.
+- `go run ./cmd/onlava help --json | python3 -m json.tool` passed.
+- Source-driven help smokes passed for root help, `help all`, and `help logs`.
+- `go run ./cmd/onlava inspect docs --json` passed.
+- `go run ./cmd/onlava harness self --summary --write` passed with warnings only.
+
 ## App Validation Profiles
 
 - Status: completed

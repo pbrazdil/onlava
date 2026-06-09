@@ -178,6 +178,80 @@ func TestStoreSyncHonorsDownloadDisable(t *testing.T) {
 	}
 }
 
+func TestStoreSyncSourceBuildArtifact(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/sourcebuild\n\ngo 1.26.3\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	cmdDir := filepath.Join(root, "cmd", "demo")
+	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
+		t.Fatalf("mkdir cmd: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cmdDir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+	manifest := Manifest{
+		SchemaVersion:   ManifestSchemaVersion,
+		ManifestVersion: 1,
+		Artifacts: []Artifact{{
+			Name:          "demo-source",
+			Kind:          "binary",
+			Version:       "dev",
+			DefaultBinary: "demo-source",
+			SourceBuild: &SourceBuildArtifact{
+				Kind:    "go",
+				Package: "./cmd/demo",
+			},
+		}},
+	}
+	store, err := NewStore(t.TempDir(), manifest)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	store.RootDir = root
+	store.Platform = Platform{GOOS: "linux", GOARCH: "amd64"}
+
+	status, err := store.Sync(context.Background(), Options{RootDir: root, Platform: store.Platform, Tool: "demo-source"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if got := status.Artifacts[0].Status; got != "installed" {
+		t.Fatalf("source build status = %q, want installed: %+v", got, status.Artifacts[0])
+	}
+	if !isExecutableFile(status.Artifacts[0].ManagedPath) {
+		t.Fatalf("managed path is not executable: %s", status.Artifacts[0].ManagedPath)
+	}
+	if status.Artifacts[0].Source != "source-build" {
+		t.Fatalf("source = %q", status.Artifacts[0].Source)
+	}
+
+	status, err = store.Verify(context.Background(), Options{RootDir: root, Platform: store.Platform, Tool: "demo-source"})
+	if err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
+	if got := status.Artifacts[0].Status; got != "installed" {
+		t.Fatalf("verify status = %q, want installed: %+v", got, status.Artifacts[0])
+	}
+}
+
+func TestParseManifestRejectsInvalidSourceBuildPackage(t *testing.T) {
+	_, err := ParseManifest([]byte(`{
+		"schema_version":"onlava.toolchain.v1",
+		"manifest_version":1,
+		"source_locks":[],
+		"artifacts":[{
+			"name":"demo",
+			"kind":"binary",
+			"version":"dev",
+			"default_binary":"demo",
+			"source_build":{"kind":"go","package":"../cmd/demo"}
+		}]
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "source_build missing valid package") {
+		t.Fatalf("ParseManifest invalid source_build error = %v", err)
+	}
+}
+
 func TestStoreRejectsArchiveTraversal(t *testing.T) {
 	archive := testTarGz(t, map[string]string{"../demo": "#!/bin/sh\nexit 0\n"})
 	sum := sha256.Sum256(archive)

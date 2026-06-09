@@ -51,6 +51,7 @@
           },
           "additionalProperties": false
         },
+        "source_build": { "$ref": "#/$defs/source_build" },
         "images": {
           "type": "array",
           "items": { "$ref": "#/$defs/image" }
@@ -67,7 +68,24 @@
         "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
         "extract": { "type": "string", "minLength": 1 },
         "home": { "type": "boolean" },
-        "strip_components": { "type": "integer", "minimum": 0 }
+        "strip_components": { "type": "integer", "minimum": 0 },
+        "build": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "build_output": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source_build": {
+      "type": "object",
+      "required": ["kind", "package"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "go" },
+        "package": {
+          "type": "string",
+          "pattern": "^\\./[^/].*"
+        }
       }
     },
     "image": {

@@ -191,7 +191,8 @@ onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--k
 onlava system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 onlava system edge install|trust|status|restart|uninstall|dns|privileged [--json]
-onlava ps --json [--app-root <path>] [--session <id>] [--watch]
+onlava help <command>|all|--json
+onlava ps [--json] [--app-root <path>] [--session <id>] [--watch]
 onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
 onlava prune --older-than <duration> [--app-root <path>] [--json]
 onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]

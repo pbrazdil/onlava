@@ -1,0 +1,77 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	localagent "github.com/pbrazdil/onlava/internal/agent"
+)
+
+func writeStatusTable(w io.Writer, sessions []localagent.Session) {
+	if len(sessions) == 0 {
+		fmt.Fprintln(w, "No onlava sessions found.")
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "SESSION\tSTATUS\tAPP\tAPI\tUPDATED")
+	for _, session := range sessions {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			statusTableValue(session.SessionID),
+			statusTableValue(session.Status),
+			statusTableValue(session.AppRoot),
+			statusTableValue(statusSessionAPIURL(session)),
+			statusTableUpdated(session.UpdatedAt),
+		)
+	}
+	_ = tw.Flush()
+}
+
+func statusSessionAPIURL(session localagent.Session) string {
+	if session.Routes != nil {
+		if value := strings.TrimSpace(session.Routes[localagent.RouteAPI]); value != "" {
+			return value
+		}
+	}
+	if session.Aliases != nil {
+		if value := strings.TrimSpace(session.Aliases[localagent.RouteAPI]); value != "" {
+			return value
+		}
+	}
+	if session.RouteNamespace.Hosts != nil {
+		if host := strings.TrimSpace(session.RouteNamespace.Hosts[localagent.RouteAPI]); host != "" {
+			return host
+		}
+	}
+	return ""
+}
+
+func statusTableValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	return value
+}
+
+func statusTableUpdated(updated time.Time) string {
+	if updated.IsZero() {
+		return "-"
+	}
+	d := time.Since(updated)
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d/time.Minute))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d/time.Hour))
+	default:
+		return updated.Local().Format("2006-01-02")
+	}
+}

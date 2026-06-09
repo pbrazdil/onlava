@@ -96,12 +96,18 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 		}},
 		ReproCommand: "cd " + repoRoot + " && go test -count=1 -json ./...",
 	}
+	var helpJSON bytes.Buffer
+	helpPayload := map[string]any{}
+	if err := writeHelpJSON(&helpJSON); err == nil {
+		_ = json.Unmarshal(helpJSON.Bytes(), &helpPayload)
+	}
 	items := []struct {
 		name      string
 		schemaRel string
 		payload   any
 	}{
 		{name: "environment.registry", schemaRel: "docs/schemas/onlava.environment.registry.v1.schema.json", payload: environmentRegistryPayload},
+		{name: "help", schemaRel: "docs/schemas/onlava.help.v1.schema.json", payload: helpPayload},
 		{name: "version", schemaRel: "docs/schemas/onlava.version.v1.schema.json", payload: versionPayload},
 		{name: "doctor", schemaRel: "docs/schemas/onlava.doctor.result.v1.schema.json", payload: buildHarnessDoctorSchemaPayload(versionPayload)},
 		{name: "inspect.docs", schemaRel: "docs/schemas/onlava.inspect.docs.v1.schema.json", payload: inspectDocsPayload},

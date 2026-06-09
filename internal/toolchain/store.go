@@ -118,6 +118,7 @@ type InstallMetadata struct {
 	ManifestSHA256 string `json:"manifest_sha256"`
 	SourceURL      string `json:"source_url"`
 	SourceSHA256   string `json:"source_sha256"`
+	SourceKind     string `json:"source_kind,omitempty"`
 	InstalledAt    string `json:"installed_at"`
 }
 
@@ -163,6 +164,16 @@ func (s *Store) Sync(ctx context.Context, opts Options) (Status, error) {
 		}
 		status := s.artifactStatus(artifact, opts.Platform, true)
 		if status.Status == "installed" {
+			continue
+		}
+		root := opts.RootDir
+		if root == "" {
+			root = s.RootDir
+		}
+		if artifact.SourceBuild != nil {
+			if err := s.installSourceBuildArtifact(ctx, artifact, opts.Platform, root); err != nil {
+				return Status{}, err
+			}
 			continue
 		}
 		if isFalseEnv(envpolicy.Get("ONLAVA_TOOLCHAIN_DOWNLOAD")) {
@@ -263,6 +274,21 @@ func (s *Store) artifactStatus(artifact Artifact, platform Platform, verify bool
 	status := ArtifactStatus{Name: artifact.Name, Kind: artifact.Kind, Version: artifact.Version, Status: "missing"}
 	if artifact.Kind != "binary" {
 		status.Status = "declared"
+		return status
+	}
+	if artifact.SourceBuild != nil {
+		status.ManagedPath = s.sourceBuildManagedBinaryPath(artifact, platform)
+		if !isExecutableFile(status.ManagedPath) {
+			return status
+		}
+		status.Status = "installed"
+		status.Source = "source-build"
+		if verify {
+			if err := s.verifySourceBuildInstall(artifact, platform); err != nil {
+				status.Status = "invalid"
+				status.Message = err.Error()
+			}
+		}
 		return status
 	}
 	entry, ok := artifact.PlatformArtifact(platform)
@@ -445,6 +471,58 @@ func (s *Store) installArtifact(ctx context.Context, artifact Artifact, platform
 		InstalledAt:    time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	data, err = json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(finalDir, "install.json"), append(data, '\n'), 0o644)
+}
+
+func (s *Store) installSourceBuildArtifact(ctx context.Context, artifact Artifact, platform Platform, root string) error {
+	if artifact.SourceBuild == nil {
+		return fmt.Errorf("toolchain artifact %s has no source_build", artifact.Name)
+	}
+	pkg := cleanSourceBuildPackage(artifact.SourceBuild.Package)
+	if pkg == "" {
+		return fmt.Errorf("toolchain artifact %s has invalid source_build package %q", artifact.Name, artifact.SourceBuild.Package)
+	}
+	if root == "" {
+		root = "."
+	}
+	finalDir := s.artifactPlatformDir(artifact, platform)
+	tmpDir := filepath.Join(filepath.Dir(finalDir), ".tmp-"+artifact.Name+"-"+time.Now().UTC().Format("20060102150405.000000000"))
+	_ = os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tmpDir)
+	binDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		return err
+	}
+	outputPath := filepath.Join(binDir, artifact.DefaultBinary)
+	cmd := exec.CommandContext(ctx, "go", "build", "-o", outputPath, pkg)
+	cmd.Dir = root
+	cmd.Env = envpolicy.Environ()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("build source toolchain artifact %s: %w: %s", artifact.Name, err, strings.TrimSpace(string(output)))
+	}
+	if err := os.MkdirAll(filepath.Dir(finalDir), 0o755); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(finalDir)
+	if err := os.Rename(tmpDir, finalDir); err != nil {
+		return err
+	}
+	meta := InstallMetadata{
+		SchemaVersion:  InstallSchemaVersion,
+		Name:           artifact.Name,
+		Version:        artifact.Version,
+		Platform:       platform.String(),
+		ManifestSHA256: s.manifestSHA256(),
+		SourceURL:      pkg,
+		SourceSHA256:   s.manifestSHA256(),
+		SourceKind:     "source-build",
+		InstalledAt:    time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -691,6 +769,31 @@ func (s *Store) verifyInstall(artifact Artifact, entry PlatformArtifact, platfor
 	return nil
 }
 
+func (s *Store) verifySourceBuildInstall(artifact Artifact, platform Platform) error {
+	metaPath := filepath.Join(s.artifactPlatformDir(artifact, platform), "install.json")
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return err
+	}
+	var meta InstallMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return err
+	}
+	if meta.SchemaVersion != InstallSchemaVersion || meta.Name != artifact.Name || meta.Version != artifact.Version || meta.Platform != platform.String() {
+		return fmt.Errorf("install metadata does not match manifest")
+	}
+	if meta.SourceKind != "source-build" {
+		return fmt.Errorf("install metadata source_kind does not match source build")
+	}
+	if artifact.SourceBuild == nil || meta.SourceURL != cleanSourceBuildPackage(artifact.SourceBuild.Package) {
+		return fmt.Errorf("install metadata source package does not match manifest")
+	}
+	if meta.ManifestSHA256 != s.manifestSHA256() || meta.SourceSHA256 != s.manifestSHA256() {
+		return fmt.Errorf("install metadata manifest checksum does not match bundled manifest")
+	}
+	return nil
+}
+
 func (s *Store) artifactPlatformDir(artifact Artifact, platform Platform) string {
 	return filepath.Join(s.Dir, "artifacts", artifact.Name, artifact.Version, platform.DirName())
 }
@@ -714,6 +817,10 @@ func (s *Store) managedBinaryPath(artifact Artifact, entry PlatformArtifact, pla
 	if entry.Home {
 		return filepath.Join(s.homePath(artifact, platform), cleanExtract(entry.Extract))
 	}
+	return filepath.Join(s.artifactPlatformDir(artifact, platform), "bin", artifact.DefaultBinary)
+}
+
+func (s *Store) sourceBuildManagedBinaryPath(artifact Artifact, platform Platform) string {
 	return filepath.Join(s.artifactPlatformDir(artifact, platform), "bin", artifact.DefaultBinary)
 }
 

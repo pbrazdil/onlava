@@ -261,6 +261,18 @@
       ]
     },
     {
+      "name": "neon-selfhost-driver",
+      "kind": "binary",
+      "version": "dev",
+      "license": "Apache-2.0",
+      "default_binary": "onlava-neon-selfhost-driver",
+      "binaries": ["onlava-neon-selfhost-driver"],
+      "source_build": {
+        "kind": "go",
+        "package": "./cmd/onlava-neon-selfhost-driver"
+      }
+    },
+    {
       "name": "temporal-cli",
       "kind": "binary",
       "version": "1.7.0",

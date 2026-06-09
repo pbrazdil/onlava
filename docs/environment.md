@@ -87,7 +87,7 @@ App-defined auth env names such as `JWTSecret`, `GoogleOAuthClientID`, `GoogleOA
 | `ONLAVA_TOOLCHAIN_DIR` | user input | Overrides the managed toolchain store root. Default is `.onlava/toolchain/` under the app or repo root; machine-level edge tools use `~/.onlava/toolchain/`. |
 | `ONLAVA_TOOLCHAIN_DOWNLOAD` | user input | `0` disables automatic downloads for managed toolchain binaries. |
 
-Managed toolchain artifacts come from `onlava.toolchain.json` and manifest-driven downloads into the managed store. Some app-root tools also expose documented per-tool env overrides. They do not fall back to ambient system `PATH` binaries.
+Managed toolchain artifacts come from `onlava.toolchain.json` and manifest-driven downloads or source builds into the managed store. Some app-root tools also expose documented per-tool env overrides. They do not fall back to ambient system `PATH` binaries.
 
 ## Managed Postgres And Electric
 
@@ -98,6 +98,7 @@ Managed toolchain artifacts come from `onlava.toolchain.json` and manifest-drive
 | `ONLAVA_DEV_POSTGRES_INITDB` | user input | Explicit local `initdb` binary path; onlava does not search `PATH` for it. |
 | `ONLAVA_DEV_POSTGRES_EXTERNAL` | user input | `1` keeps an explicit external `DatabaseURL` instead of creating a managed session database. External mode requires `DatabaseURL`; `DATABASE_URL` is ignored as the app database authority. |
 | `ONLAVA_DEV_NEON_SELFHOST_DRIVER` | user input | Explicit `neon-selfhost` branch driver executable path for the actual self-hosted Neon dev-cell backend. Onlava invokes it with the same branch JSON contract as the fallback driver and prefers it over `ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER` when both are set. |
+| `ONLAVA_NEON_SELFHOST_ROOT` | internal | Injected into the managed `neon-selfhost-driver` so it reads and writes the same local substrate root as the `onlava db neon ...` commands. Users should not set it directly. |
 | `ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER` | user input | Explicit local-postgres-branch development fallback driver executable path. onlava invokes it with the documented JSON contract to prove branch pin/lease/env behavior against local Postgres-shaped endpoints; it is not the actual `neon-selfhost` dev-cell backend. |
 | `ONLAVA_DEV_ELECTRIC_UPSTREAM` | user input | Explicit Electric upstream; onlava registers it as the session Electric backend. |
 | `ONLAVA_DEV_ELECTRIC_BIN` | user input | Explicit local Electric binary path; onlava does not search `PATH` for it. |

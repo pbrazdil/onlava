@@ -193,9 +193,12 @@
         "docs/schemas/onlava.inspect.observability.v1.schema.json",
         "docs/schemas/onlava.logs.query.v1.schema.json",
         "docs/schemas/onlava.logs.tail.entry.v1.schema.json",
+        "docs/schemas/onlava.help.v1.schema.json",
         "docs/schemas/onlava.metrics.labels.v1.schema.json",
         "docs/schemas/onlava.metrics.query.v1.schema.json",
         "docs/schemas/onlava.metrics.series.v1.schema.json",
+        "docs/schemas/onlava.db.neon.driver.capabilities.v1.schema.json",
+        "docs/schemas/onlava.db.neon.selfhost.backend.v1.schema.json",
         "docs/schemas/onlava.harness.ui.v1.schema.json",
         "docs/schemas/onlava.harness.ui.dom.v1.schema.json",
         "docs/schemas/onlava.inspect.validation.v1.schema.json",
@@ -324,6 +327,43 @@
         "shadcn",
         "registry",
         "guardrails"
+      ]
+    },
+    {
+      "path": "docs/plans/0070-toolchain-managed-neon-selfhost-driver.md",
+      "title": "Toolchain-Managed Neon Selfhost Driver",
+      "owner": "onlava runtime / agent DX",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-09",
+      "review_after": "2026-07-09",
+      "summary": "Active ExecPlan for making the real neon-selfhost branch driver a toolchain-managed Onlava binary that auto-installs, auto-resolves, owns tenant/timeline/compute lifecycle, implements branch mutations and schema diff, and proves branch/Electric isolation.",
+      "tags": [
+        "plans",
+        "execplans",
+        "database",
+        "neon",
+        "toolchain",
+        "agents"
+      ]
+    },
+    {
+      "path": "docs/plans/0069-cli-help-and-human-ps.md",
+      "title": "CLI Help and Human Session Status",
+      "owner": "onlava runtime / agent DX",
+      "status": "completed",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-09",
+      "review_after": "2026-07-09",
+      "summary": "Completed ExecPlan that made root help orienting, moved full grammar into command-specific help and help all, added a machine-readable help manifest, and made bare onlava ps human-readable while preserving ps --json.",
+      "tags": [
+        "plans",
+        "execplans",
+        "cli",
+        "help",
+        "agents"
       ]
     },
     {

@@ -194,6 +194,16 @@ func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 	}
 
 	output = captureStdout(t, func() error {
+		return statusCommand([]string{"--app-root", appRoot})
+	})
+	if !strings.Contains(output, "SESSION") || !strings.Contains(output, "STATUS") || !strings.Contains(output, "API") {
+		t.Fatalf("human status output missing table header:\n%s", output)
+	}
+	if !strings.Contains(output, session.SessionID) || !strings.Contains(output, "http://api.") {
+		t.Fatalf("human status output missing session or API route:\n%s", output)
+	}
+
+	output = captureStdout(t, func() error {
 		return downCommand([]string{"--session", session.SessionID})
 	})
 	if !strings.Contains(output, session.SessionID) {

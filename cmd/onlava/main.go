@@ -34,9 +34,12 @@ func init() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return usageError()
+		writeRootHelp(os.Stdout)
+		return nil
 	}
 	switch args[0] {
+	case "help":
+		return helpCommand(args[1:])
 	case "up":
 		return upCommand(args[1:])
 	case "ps":
@@ -84,74 +87,8 @@ func run(args []string) error {
 	case "system":
 		return systemCommand(args[1:])
 	default:
-		return fmt.Errorf("unknown command %q", args[0])
+		return fmt.Errorf("unknown command %q; use `onlava help`", args[0])
 	}
-}
-
-func usageError() error {
-	return fmt.Errorf(`usage:
-  commands:
-    onlava up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
-    onlava ps --json [--app-root <path>] [--session <id>] [--watch]
-    onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
-    onlava logs query [--app-root <path>] [--session current|<id>] --query <logsql> [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--timeout <duration>] [--fields <csv>] [--json|--jsonl]
-    onlava logs tail [--app-root <path>] [--session current|<id>] --query <logsql> [--since <duration>] [--timeout <duration>] [--fields <csv>] [--jsonl]
-    onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
-    onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all]
-    onlava prune --older-than <duration> [--app-root <path>] [--json]
-    onlava db psql [--app-root <path>] [psql args...]
-    onlava db apply [--app-root <path>] [--json]
-    onlava db seed [--app-root <path>] [--dry-run] [--json]
-    onlava db setup [--app-root <path>] [--json]
-    onlava db reset [--app-root <path>]
-    onlava db drop [--app-root <path>]
-    onlava db snapshot create|restore <name> [--app-root <path>]
-    onlava db branch status|list|checkout|reset|delete|restore|diff|expire|prune [--app-root <path>] [--json]
-    onlava db neon install|start|status|logs|stop|restart|uninstall [--json]
-    onlava worktree create <name> [--from <branch>] [--app-root <path>] [--json]
-    onlava worktree list [--app-root <path>] [--json]
-    onlava worktree remove <name> [--app-root <path>] [--db] [--json]
-    onlava generate [--app-root <path>] [--dry-run] [--json]
-    onlava generate client [<app-id>] [--lang typescript] [--output <path>] [--app-root <path>] [--dry-run] [--json]
-    onlava generate sqlc [--app-root <path>] [--dry-run] [--json]
-    onlava task list [--app-root <path>] [--json]
-    onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
-    onlava task run <target> [--app-root <path>] [--env <name>] [--lang go|typescript] [-- script args...]
-    onlava task graph --json [--app-root <path>]
-    onlava validate [<profile>] [--app-root <path>] [--json] [--write] [--dry-run]
-    onlava validate list [--app-root <path>] [--json]
-    onlava validate inspect <profile> [--app-root <path>] [--json]
-    onlava validate graph [<profile>] [--app-root <path>] --json
-    onlava validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
-    onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-    onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
-    onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
-    onlava worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
-    onlava worker deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
-    onlava worker deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
-    onlava worker deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
-    onlava doctor [--app-root <path>] [--json]
-    onlava version [--json]
-    onlava build [--app-root <path>] [-o <path>]
-    onlava check [--app-root <path>] [--json]
-    onlava harness [--app-root <path>] [--json] [--write] [--with-validation[=<profile>]]
-    onlava harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--quick|--race|--release]
-    onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
-    onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|observability|validation --json [--app-root <path>]
-    onlava inspect docs --json [--repo-root <path>]
-    onlava inspect harness [artifact <name>|diagnostics --severity error|warning|timing --top <n>] --json [--app-root <path>] [--repo-root <path>]
-    onlava traces list [--json] [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest] [--app-root <path>]
-    onlava traces clear --json [--app-root <path>]
-    onlava metrics list [--json] [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>] [--app-root <path>]
-    onlava metrics query [--json] [--app-root <path>] [--session current|<id>] --promql <query> [--instant] [--since <duration>] [--start <time>] [--end <time>] [--step <duration>] [--timeout <duration>] [--limit <n>]
-    onlava metrics labels [--json] [--app-root <path>] [--session current|<id>] [--match <selector>] [--since <duration>] [--start <time>] [--end <time>] [--timeout <duration>] [--limit <n>]
-    onlava metrics series [--json] [--app-root <path>] [--session current|<id>] --match <selector> [--since <duration>] [--start <time>] [--end <time>] [--timeout <duration>] [--limit <n>]
-    onlava test [--app-root <path>] [go test flags/packages...]
-    onlava system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-    onlava system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-    onlava system edge install|trust|status|restart|uninstall|dns|privileged [--json]
-    onlava system toolchain list|sync|verify|path [--json]
-    onlava system trust [--json]`)
 }
 
 type silentCLIError struct {

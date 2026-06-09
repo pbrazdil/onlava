@@ -6,17 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	appcfg "github.com/pbrazdil/onlava/internal/app"
 	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
+	"github.com/pbrazdil/onlava/internal/neonselfhost"
 )
 
 const (
@@ -66,11 +64,21 @@ type neonCellState struct {
 	Root          string                `json:"root"`
 	ComposePath   string                `json:"compose_path"`
 	LogDir        string                `json:"log_dir"`
+	Driver        *neonCellDriver       `json:"driver,omitempty"`
 	Ports         map[string]int        `json:"ports,omitempty"`
 	Images        []neonImageStatus     `json:"images"`
 	Components    []neonComponentStatus `json:"components"`
 	CreatedAt     string                `json:"created_at,omitempty"`
 	UpdatedAt     string                `json:"updated_at,omitempty"`
+}
+
+type neonCellDriver struct {
+	Kind    string `json:"kind"`
+	Tool    string `json:"tool"`
+	Path    string `json:"path,omitempty"`
+	Version string `json:"version,omitempty"`
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
 }
 
 type dbNeonStatusResult struct {
@@ -80,6 +88,8 @@ type dbNeonStatusResult struct {
 	Mode           string                `json:"mode"`
 	Status         string                `json:"status"`
 	Root           string                `json:"root"`
+	Driver         *neonCellDriver       `json:"driver,omitempty"`
+	Backend        *neonBackendStatus    `json:"backend,omitempty"`
 	Cell           *neonCellState        `json:"cell,omitempty"`
 	GeneratedFiles []neonGeneratedFile   `json:"generated_files,omitempty"`
 	Images         []neonImageStatus     `json:"images"`
@@ -120,6 +130,16 @@ type neonHealthCheck struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
+}
+
+type neonBackendStatus struct {
+	SchemaVersion string         `json:"schema_version"`
+	Present       bool           `json:"present"`
+	TenantID      string         `json:"tenant_id,omitempty"`
+	BranchCount   int            `json:"branch_count"`
+	ComputeCount  int            `json:"compute_count"`
+	Statuses      map[string]int `json:"statuses,omitempty"`
+	Message       string         `json:"message,omitempty"`
 }
 
 type worktreeDBPin struct {
@@ -291,7 +311,6 @@ func parseDBNeonArgs(args []string) (dbNeonOptions, error) {
 }
 
 func runDBNeonInstall(ctx context.Context, stdout io.Writer, opts dbNeonOptions) error {
-	_ = ctx
 	root, err := neonSubstrateRoot()
 	if err != nil {
 		return err
@@ -303,7 +322,9 @@ func runDBNeonInstall(ctx context.Context, stdout io.Writer, opts dbNeonOptions)
 	now := time.Now().UTC().Format(time.RFC3339)
 	state.CreatedAt = now
 	state.UpdatedAt = now
-	if err := writeGeneratedNeonCompose(state.ComposePath); err != nil {
+	driver := ensureNeonSelfhostDriverToolchain(ctx)
+	state.Driver = &driver
+	if err := writeGeneratedNeonFiles(state); err != nil {
 		return err
 	}
 	if err := writeNeonCellState(state); err != nil {
@@ -588,6 +609,8 @@ func runDBNeonUninstall(ctx context.Context, stdout io.Writer, opts dbNeonOption
 		if err := removeOnlavaNeonContainers(ctx); err != nil {
 			return fmt.Errorf("remove Neon dev-cell containers before uninstall: %w", err)
 		}
+	} else if err := removeOnlavaNeonContainers(ctx); err != nil {
+		return fmt.Errorf("remove remaining Neon dev-cell containers before uninstall: %w", err)
 	}
 	if err := os.RemoveAll(root); err != nil {
 		return err
@@ -631,11 +654,19 @@ func buildDBNeonStatus(ctx context.Context) (dbNeonStatusResult, error) {
 	generatedFiles := []neonGeneratedFile{
 		{Path: filepath.Join(root, "cell.json"), Kind: "state", Status: fileStatus(filepath.Join(root, "cell.json"))},
 		{Path: state.ComposePath, Kind: "compose", Status: fileStatus(state.ComposePath)},
+		{Path: filepath.Join(root, "pageserver_config", "pageserver.toml"), Kind: "config", Status: fileStatus(filepath.Join(root, "pageserver_config", "pageserver.toml"))},
+		{Path: filepath.Join(root, "pageserver_config", "identity.toml"), Kind: "config", Status: fileStatus(filepath.Join(root, "pageserver_config", "identity.toml"))},
+		{Path: filepath.Join(root, "compute_templates", "config.json"), Kind: "template", Status: fileStatus(filepath.Join(root, "compute_templates", "config.json"))},
+		{Path: filepath.Join(root, "compute_templates", "compute.sh"), Kind: "template", Status: fileStatus(filepath.Join(root, "compute_templates", "compute.sh"))},
+		{Path: filepath.Join(root, "backend.json"), Kind: "backend-state", Status: fileStatus(filepath.Join(root, "backend.json"))},
 		{Path: neonBranchRegistryPath(root), Kind: "branch-registry", Status: fileStatus(neonBranchRegistryPath(root))},
 	}
 	images, components, checks := probeNeonRuntime(ctx, state)
+	backend := buildNeonBackendStatus(root)
 	status := firstNonEmpty(state.Status, "installed")
 	if generatedFilesMissing(generatedFiles) {
+		status = "degraded"
+	} else if backend != nil && backend.Present && backend.Message != "" {
 		status = "degraded"
 	} else if componentStatusesInclude(components, "exited") {
 		status = "exited"
@@ -651,10 +682,16 @@ func buildDBNeonStatus(ctx context.Context) (dbNeonStatusResult, error) {
 	if len(cell.Ports) == 0 {
 		cell.Ports = defaultNeonPorts()
 	}
+	if cell.Driver == nil {
+		driver := inspectNeonSelfhostDriverToolchain()
+		cell.Driver = &driver
+	}
 	cell.Images = images
 	cell.Components = components
 	result.OK = true
 	result.Status = status
+	result.Driver = cell.Driver
+	result.Backend = backend
 	result.Cell = &cell
 	result.Images = images
 	result.Components = components
@@ -664,15 +701,15 @@ func buildDBNeonStatus(ctx context.Context) (dbNeonStatusResult, error) {
 	result.GeneratedFiles = generatedFiles
 	switch status {
 	case "ready":
-		result.Message = "Neon dev-cell containers are running, but branch-backed app startup is still pending branch-provider integration."
-		result.RequiredAction = "Continue with the branch-provider milestone before relying on app sessions or db psql against Neon."
+		result.Message = "Neon dev-cell storage containers are running. Branch compute readiness is managed by the configured branch driver during checkout or app startup."
+		result.RequiredAction = "Run `onlava db branch checkout <name> --json` or `onlava up` to ensure a branch compute endpoint, then inspect with `onlava db branch status --json`."
 	case "degraded", "exited":
 		result.OK = false
 		result.Message = "Neon dev-cell generated state is present, but runtime health is degraded."
 		result.RequiredAction = "Inspect generated files, Docker availability, image presence, and component log paths before starting branch-provider work."
 	default:
 		result.Message = "Neon dev-cell files are installed; runtime startup is pending implementation."
-		result.RequiredAction = "Status now checks Docker, optional images, generated files, and labeled containers; branch-provider integration is still pending."
+		result.RequiredAction = "Run `onlava db neon start --json`; branch compute startup requires the storage cell to become reachable."
 	}
 	return result, nil
 }
@@ -702,14 +739,13 @@ func defaultNeonCellState(root, status string) neonCellState {
 
 func defaultNeonPorts() map[string]int {
 	return map[string]int{
-		"minio_api":        55430,
-		"minio_console":    55431,
-		"storage_broker":   55432,
-		"compute_postgres": 55433,
-		"pageserver_http":  55434,
-		"safekeeper_1":     55435,
-		"safekeeper_2":     55436,
-		"safekeeper_3":     55437,
+		"minio_api":       55430,
+		"minio_console":   55431,
+		"storage_broker":  55432,
+		"pageserver_http": 55434,
+		"safekeeper_1":    55435,
+		"safekeeper_2":    55436,
+		"safekeeper_3":    55437,
 	}
 }
 
@@ -726,12 +762,12 @@ func defaultNeonComponents(root, status string) []neonComponentStatus {
 	log := func(name string) string { return filepath.Join(root, "logs", name+".log") }
 	return []neonComponentStatus{
 		{Name: "minio", Role: "object-storage", Status: status, Log: log("minio"), Container: "onlava-neon-minio"},
+		{Name: "bucket-init", Role: "init", Status: status, Log: log("bucket-init"), Container: "onlava-neon-bucket-init"},
 		{Name: "pageserver", Role: "storage", Status: status, Log: log("pageserver"), Container: "onlava-neon-pageserver"},
 		{Name: "safekeeper-1", Role: "wal", Status: status, Log: log("safekeeper-1"), Container: "onlava-neon-safekeeper-1"},
 		{Name: "safekeeper-2", Role: "wal", Status: status, Log: log("safekeeper-2"), Container: "onlava-neon-safekeeper-2"},
 		{Name: "safekeeper-3", Role: "wal", Status: status, Log: log("safekeeper-3"), Container: "onlava-neon-safekeeper-3"},
 		{Name: "storage-broker", Role: "control-plane", Status: status, Log: log("storage-broker"), Container: "onlava-neon-storage-broker"},
-		{Name: "compute", Role: "database", Status: status, Log: log("compute"), Container: "onlava-neon-compute"},
 	}
 }
 
@@ -765,353 +801,36 @@ func writeNeonCellState(state neonCellState) error {
 	return atomicWriteFile(filepath.Join(state.Root, "cell.json"), data, 0o644)
 }
 
-func writeGeneratedNeonCompose(path string) error {
-	text := `# Generated by onlava. Do not edit for normal operation.
-# This dev-cell file records the component topology used by onlava db neon start.
-# Readiness is determined by onlava db neon status --json.
-services:
-  minio:
-    image: quay.io/minio/minio:RELEASE.2022-10-20T00-55-09Z
-    container_name: onlava-neon-minio
-    ports:
-      - "127.0.0.1:55430:9000"
-      - "127.0.0.1:55431:9001"
-    labels:
-      onlava.substrate: neon
-      onlava.component: minio
-  pageserver:
-    image: ghcr.io/neondatabase/neon@sha256:7a4f124917bb929964b2d696d710f19584f80bb9bd51b2af4a6e2425434c761f
-    container_name: onlava-neon-pageserver
-    ports:
-      - "127.0.0.1:55434:9898"
-    labels:
-      onlava.substrate: neon
-      onlava.component: pageserver
-  safekeeper1:
-    image: ghcr.io/neondatabase/neon@sha256:7a4f124917bb929964b2d696d710f19584f80bb9bd51b2af4a6e2425434c761f
-    container_name: onlava-neon-safekeeper-1
-    ports:
-      - "127.0.0.1:55435:5454"
-    labels:
-      onlava.substrate: neon
-      onlava.component: safekeeper-1
-  safekeeper2:
-    image: ghcr.io/neondatabase/neon@sha256:7a4f124917bb929964b2d696d710f19584f80bb9bd51b2af4a6e2425434c761f
-    container_name: onlava-neon-safekeeper-2
-    ports:
-      - "127.0.0.1:55436:5454"
-    labels:
-      onlava.substrate: neon
-      onlava.component: safekeeper-2
-  safekeeper3:
-    image: ghcr.io/neondatabase/neon@sha256:7a4f124917bb929964b2d696d710f19584f80bb9bd51b2af4a6e2425434c761f
-    container_name: onlava-neon-safekeeper-3
-    ports:
-      - "127.0.0.1:55437:5454"
-    labels:
-      onlava.substrate: neon
-      onlava.component: safekeeper-3
-  storage_broker:
-    image: ghcr.io/neondatabase/neon@sha256:7a4f124917bb929964b2d696d710f19584f80bb9bd51b2af4a6e2425434c761f
-    container_name: onlava-neon-storage-broker
-    ports:
-      - "127.0.0.1:55432:50051"
-    labels:
-      onlava.substrate: neon
-      onlava.component: storage-broker
-  compute:
-    image: ghcr.io/neondatabase/compute-node-v16@sha256:b3e151661bd2ee11eb2843c8926001966cb23969227e9673c5f42fc3fbe14249
-    container_name: onlava-neon-compute
-    ports:
-      - "127.0.0.1:55433:5432"
-    labels:
-      onlava.substrate: neon
-      onlava.component: compute
-`
-	return atomicWriteFile(path, []byte(text), 0o644)
-}
-
-func probeNeonRuntime(ctx context.Context, state neonCellState) ([]neonImageStatus, []neonComponentStatus, []neonHealthCheck) {
-	images := cloneNeonImages(state.Images)
-	if len(images) == 0 {
-		images = defaultNeonImages()
+func buildNeonBackendStatus(root string) *neonBackendStatus {
+	summary := &neonBackendStatus{
+		SchemaVersion: neonselfhost.BackendSchemaVersion,
+		Present:       false,
+		Statuses:      map[string]int{},
 	}
-	components := cloneNeonComponents(state.Components)
-	if len(components) == 0 {
-		components = defaultNeonComponents(state.Root, "not_started")
-	}
-	checks := []neonHealthCheck{}
-	if _, err := exec.LookPath(neonDockerCommand); err != nil {
-		checks = append(checks, neonHealthCheck{Name: "docker", Status: "missing", Message: "docker CLI not found on PATH"})
-		markImagesUnknown(images, "docker CLI not found")
-		markComponentsNotStarted(components, "docker CLI not found")
-		return images, components, checks
-	}
-	if output, err := runDockerProbe(ctx, "version", "--format", "{{.Server.Version}}"); err != nil {
-		checks = append(checks, neonHealthCheck{Name: "docker", Status: "unavailable", Message: err.Error()})
-		markImagesUnknown(images, "docker daemon unavailable")
-		markComponentsNotStarted(components, "docker daemon unavailable")
-		return images, components, checks
-	} else {
-		checks = append(checks, neonHealthCheck{Name: "docker", Status: "available", Message: strings.TrimSpace(output)})
-	}
-	for i := range images {
-		if _, err := runDockerProbe(ctx, "image", "inspect", images[i].Ref); err != nil {
-			images[i].Status = "missing"
-			images[i].Message = err.Error()
-			continue
-		}
-		images[i].Status = "present"
-	}
-	containerStatus, err := dockerContainerStatuses(ctx)
+	state, ok, err := neonselfhost.ReadBackendState(filepath.Join(root, "backend.json"))
 	if err != nil {
-		checks = append(checks, neonHealthCheck{Name: "containers", Status: "unavailable", Message: err.Error()})
-		markComponentsNotStarted(components, "could not inspect Docker containers")
-		return images, components, checks
+		summary.Present = true
+		summary.Message = err.Error()
+		return summary
 	}
-	checks = append(checks, neonHealthCheck{Name: "containers", Status: "inspected"})
-	for i := range components {
-		status, ok := containerStatus[components[i].Container]
-		if !ok {
-			components[i].Status = "not_started"
-			continue
+	if !ok {
+		summary.Message = "backend.json is not installed yet"
+		return summary
+	}
+	summary.Present = true
+	summary.TenantID = state.TenantID
+	summary.BranchCount = len(state.Branches)
+	for _, branch := range state.Branches {
+		if strings.TrimSpace(branch.ComputeContainer) != "" {
+			summary.ComputeCount++
 		}
-		components[i].Message = status
-		components[i].Health = dockerHealthFromStatus(status)
-		switch {
-		case strings.HasPrefix(status, "Up "):
-			components[i].Status = "running"
-			if components[i].Health == "unhealthy" {
-				components[i].Status = "degraded"
-			}
-		case strings.HasPrefix(status, "Exited ") || strings.HasPrefix(status, "Dead"):
-			components[i].Status = "exited"
-		default:
-			components[i].Status = "unknown"
-		}
+		status := firstNonEmpty(branch.Status, "unknown")
+		summary.Statuses[status]++
 	}
-	portChecks := probeNeonPorts(ctx, firstPorts(state.Ports), components)
-	checks = append(checks, portChecks...)
-	for _, check := range portChecks {
-		if check.Status != "closed" {
-			continue
-		}
-		componentName := strings.TrimPrefix(check.Name, "port.")
-		for i := range components {
-			if components[i].Name != componentName {
-				continue
-			}
-			components[i].Status = "degraded"
-			if components[i].Message == "" {
-				components[i].Message = check.Message
-			} else if check.Message != "" {
-				components[i].Message += "; " + check.Message
-			}
-			break
-		}
+	if len(summary.Statuses) == 0 {
+		summary.Statuses = nil
 	}
-	return images, components, checks
-}
-
-func firstPorts(ports map[string]int) map[string]int {
-	if len(ports) == 0 {
-		return defaultNeonPorts()
-	}
-	return ports
-}
-
-func probeNeonPorts(ctx context.Context, ports map[string]int, components []neonComponentStatus) []neonHealthCheck {
-	portKeys := map[string]string{
-		"minio":          "minio_api",
-		"pageserver":     "pageserver_http",
-		"safekeeper-1":   "safekeeper_1",
-		"safekeeper-2":   "safekeeper_2",
-		"safekeeper-3":   "safekeeper_3",
-		"storage-broker": "storage_broker",
-		"compute":        "compute_postgres",
-	}
-	checks := make([]neonHealthCheck, 0, len(portKeys))
-	for _, component := range components {
-		key, ok := portKeys[component.Name]
-		if !ok {
-			continue
-		}
-		port := ports[key]
-		if port == 0 || component.Status != "running" {
-			continue
-		}
-		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-		if err := probeTCPPort(ctx, addr); err != nil {
-			checks = append(checks, neonHealthCheck{Name: "port." + component.Name, Status: "closed", Message: addr + ": " + err.Error()})
-			continue
-		}
-		checks = append(checks, neonHealthCheck{Name: "port." + component.Name, Status: "open", Message: addr})
-	}
-	return checks
-}
-
-func probeTCPPort(ctx context.Context, addr string) error {
-	dialer := net.Dialer{Timeout: 250 * time.Millisecond}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return err
-	}
-	return conn.Close()
-}
-
-func cloneNeonImages(images []neonImageStatus) []neonImageStatus {
-	out := make([]neonImageStatus, len(images))
-	copy(out, images)
-	return out
-}
-
-func cloneNeonComponents(components []neonComponentStatus) []neonComponentStatus {
-	out := make([]neonComponentStatus, len(components))
-	copy(out, components)
-	return out
-}
-
-func cloneNeonPorts(ports map[string]int) map[string]int {
-	if len(ports) == 0 {
-		return nil
-	}
-	out := make(map[string]int, len(ports))
-	for key, value := range ports {
-		out[key] = value
-	}
-	return out
-}
-
-func cloneNeonEndpoint(endpoint *neonEndpoint) *neonEndpoint {
-	if endpoint == nil {
-		return nil
-	}
-	out := *endpoint
-	return &out
-}
-
-func runDockerProbe(ctx context.Context, args ...string) (string, error) {
-	return runDockerCommand(ctx, 3*time.Second, args...)
-}
-
-func runDockerCommand(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
-	probeCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := exec.CommandContext(probeCtx, neonDockerCommand, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("docker %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
-	}
-	return string(output), nil
-}
-
-func runDockerCompose(ctx context.Context, timeout time.Duration, state neonCellState, args ...string) (string, error) {
-	composePath := strings.TrimSpace(state.ComposePath)
-	if composePath == "" {
-		return "", errors.New("missing Neon compose path in cell state")
-	}
-	dockerArgs := []string{"compose", "-f", composePath, "-p", "onlava-neon"}
-	dockerArgs = append(dockerArgs, args...)
-	return runDockerCommand(ctx, timeout, dockerArgs...)
-}
-
-func dockerContainerStatuses(ctx context.Context) (map[string]string, error) {
-	output, err := runDockerProbe(ctx, "ps", "-a", "--filter", "label=onlava.substrate=neon", "--format", "{{.Names}}\t{{.Status}}")
-	if err != nil {
-		return nil, err
-	}
-	statuses := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		name, status, ok := strings.Cut(line, "\t")
-		if !ok {
-			continue
-		}
-		statuses[strings.TrimSpace(name)] = strings.TrimSpace(status)
-	}
-	return statuses, nil
-}
-
-func onlavaNeonContainerNames(ctx context.Context) ([]string, error) {
-	output, err := runDockerCommand(ctx, 15*time.Second, "ps", "-a", "--filter", "label=onlava.substrate=neon", "--format", "{{.Names}}")
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
-			names = append(names, name)
-		}
-	}
-	return names, nil
-}
-
-func removeOnlavaNeonContainers(ctx context.Context) error {
-	names, err := onlavaNeonContainerNames(ctx)
-	if err != nil {
-		return err
-	}
-	if len(names) == 0 {
-		return nil
-	}
-	args := append([]string{"rm", "-f", "-v"}, names...)
-	_, err = runDockerCommand(ctx, 90*time.Second, args...)
-	return err
-}
-
-func markImagesUnknown(images []neonImageStatus, message string) {
-	for i := range images {
-		images[i].Status = "unknown"
-		images[i].Message = message
-	}
-}
-
-func markComponentsNotStarted(components []neonComponentStatus, message string) {
-	for i := range components {
-		components[i].Status = "not_started"
-		components[i].Message = message
-	}
-}
-
-func generatedFilesMissing(files []neonGeneratedFile) bool {
-	for _, file := range files {
-		if file.Status != "present" {
-			return true
-		}
-	}
-	return false
-}
-
-func componentsAllRunning(components []neonComponentStatus) bool {
-	if len(components) == 0 {
-		return false
-	}
-	for _, component := range components {
-		if component.Status != "running" {
-			return false
-		}
-	}
-	return true
-}
-
-func componentsPartiallyRunning(components []neonComponentStatus) bool {
-	for _, component := range components {
-		if component.Status == "running" {
-			return true
-		}
-	}
-	return false
-}
-
-func componentStatusesInclude(components []neonComponentStatus, status string) bool {
-	for _, component := range components {
-		if component.Status == status {
-			return true
-		}
-	}
-	return false
+	return summary
 }
 
 func fileStatus(path string) string {
@@ -1119,369 +838,6 @@ func fileStatus(path string) string {
 		return "present"
 	}
 	return "missing"
-}
-
-func dbBranchCommand(args []string) error {
-	return runDBBranchCommand(context.Background(), os.Stdout, args)
-}
-
-func runDBBranchCommand(ctx context.Context, stdout io.Writer, args []string) error {
-	opts, err := parseDBBranchArgs(args)
-	if err != nil {
-		return err
-	}
-	switch opts.Command {
-	case "status":
-		return runDBBranchStatus(ctx, stdout, opts)
-	case "list":
-		return runDBBranchList(ctx, stdout, opts)
-	case "checkout":
-		return runDBBranchCheckout(ctx, stdout, opts)
-	case "reset":
-		return runDBBranchReset(ctx, stdout, opts)
-	case "delete":
-		return runDBBranchDelete(ctx, stdout, opts)
-	case "restore":
-		return runDBBranchRestore(ctx, stdout, opts)
-	case "diff":
-		return runDBBranchDiff(ctx, stdout, opts)
-	case "expire":
-		return runDBBranchExpire(ctx, stdout, opts)
-	case "prune":
-		return runDBBranchPrune(ctx, stdout, opts)
-	default:
-		return fmt.Errorf("db branch %s is not implemented yet", opts.Command)
-	}
-}
-
-func parseDBBranchArgs(args []string) (dbBranchOptions, error) {
-	if len(args) == 0 {
-		return dbBranchOptions{}, fmt.Errorf("usage: onlava db branch status|list|checkout|reset|delete|restore|diff|expire|prune [--json] [--app-root <path>]")
-	}
-	opts := dbBranchOptions{Command: args[0]}
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--app-root":
-			i++
-			if i >= len(args) {
-				return dbBranchOptions{}, fmt.Errorf("missing value for --app-root")
-			}
-			opts.AppRoot = args[i]
-		case "--json":
-			opts.JSON = true
-		case "--yes":
-			opts.Yes = true
-		case "--force":
-			opts.Force = true
-		case "--at":
-			i++
-			if i >= len(args) {
-				return dbBranchOptions{}, fmt.Errorf("missing value for --at")
-			}
-			opts.At = args[i]
-		case "--after":
-			i++
-			if i >= len(args) {
-				return dbBranchOptions{}, fmt.Errorf("missing value for --after")
-			}
-			opts.After = args[i]
-		case "--older-than":
-			i++
-			if i >= len(args) {
-				return dbBranchOptions{}, fmt.Errorf("missing value for --older-than")
-			}
-			opts.Older = args[i]
-		default:
-			if strings.HasPrefix(args[i], "-") {
-				return dbBranchOptions{}, fmt.Errorf("unknown flag %q", args[i])
-			}
-			if opts.Branch == "" {
-				opts.Branch = args[i]
-			} else if opts.Target == "" {
-				opts.Target = args[i]
-			} else {
-				return dbBranchOptions{}, fmt.Errorf("unexpected argument %q", args[i])
-			}
-		}
-	}
-	switch opts.Command {
-	case "status", "list", "checkout", "reset", "delete", "prune", "restore", "diff", "expire":
-	default:
-		return dbBranchOptions{}, fmt.Errorf("unknown db branch command %q", opts.Command)
-	}
-	return opts, nil
-}
-
-func runDBBranchStatus(ctx context.Context, stdout io.Writer, opts dbBranchOptions) error {
-	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
-	if err != nil {
-		return err
-	}
-	result, err := buildDBBranchStatus(ctx, appRoot, cfg)
-	if err != nil {
-		return err
-	}
-	if opts.JSON {
-		return writeInspectJSON(stdout, result)
-	}
-	if result.Pin != nil {
-		fmt.Fprintf(stdout, "db branch %s (%s)\n", result.Pin.Branch, result.Pin.BranchID)
-		return nil
-	}
-	fmt.Fprintf(stdout, "db branch %s\n", result.Status)
-	return nil
-}
-
-func runDBBranchList(ctx context.Context, stdout io.Writer, opts dbBranchOptions) error {
-	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
-	if err != nil {
-		return err
-	}
-	status, err := buildDBBranchStatus(ctx, appRoot, cfg)
-	if err != nil {
-		return err
-	}
-	registry, registryPath, err := readNeonBranchRegistryForDefaultRoot()
-	if err != nil {
-		return err
-	}
-	result := dbBranchListResult{
-		SchemaVersion: dbBranchListSchemaVersion,
-		OK:            true,
-		App:           status.App,
-		Provider:      status.Provider,
-		Branches:      []worktreeDBPin{},
-		RegistryPath:  registryPath,
-	}
-	provider := neonBranchProviderForConfig(cfg)
-	seen := map[string]bool{}
-	for _, lease := range registry.Leases {
-		if !isOnlavaOwnedNeonLease(lease) {
-			continue
-		}
-		if lease.Pin.Project != sanitizeNeonBranchSegment(firstNonEmpty(neonPostgresService(cfg).Project, cfg.AppID(), "app")) {
-			continue
-		}
-		result.Branches = append(result.Branches, lease.Pin)
-		result.Leases = append(result.Leases, dbBranchListLeaseFromRegistryLease(ctx, provider, lease))
-		seen[lease.Pin.BranchID] = true
-	}
-	if status.Pin != nil && !seen[status.Pin.BranchID] {
-		result.Branches = append(result.Branches, *status.Pin)
-		result.Leases = append(result.Leases, dbBranchListLease{
-			Pin:      *status.Pin,
-			Status:   firstNonEmpty(status.BackendStatus, "missing"),
-			Endpoint: cloneNeonEndpoint(status.Connection),
-		})
-	}
-	if len(result.Branches) == 0 {
-		result.Message = "No Onlava-owned Neon branch leases exist for this app."
-	}
-	if opts.JSON {
-		return writeInspectJSON(stdout, result)
-	}
-	for _, branch := range result.Branches {
-		fmt.Fprintf(stdout, "%s %s\n", branch.Branch, branch.BranchID)
-	}
-	return nil
-}
-
-func runDBBranchCheckout(ctx context.Context, stdout io.Writer, opts dbBranchOptions) error {
-	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
-	if err != nil {
-		return err
-	}
-	branch := strings.TrimSpace(opts.Branch)
-	if branch == "" {
-		return fmt.Errorf("usage: onlava db branch checkout <name> [--app-root <path>] [--json]")
-	}
-	pin, err := buildWorktreeDBPin(appRoot, cfg, branch)
-	if err != nil {
-		return err
-	}
-	if err := writeWorktreeDBPin(appRoot, pin); err != nil {
-		return err
-	}
-	if _, err := neonBranchProviderForConfig(cfg).EnsureBranch(ctx, pin); err != nil {
-		return err
-	}
-	result, err := buildDBBranchStatus(ctx, appRoot, cfg)
-	if err != nil {
-		return err
-	}
-	result.Message = "Current worktree database branch pin updated. Neon branch provider ensure ran; connection becomes usable when backend_status is ready."
-	if opts.JSON {
-		return writeInspectJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "checked out db branch %s (%s)\n", pin.Branch, pin.BranchID)
-	return nil
-}
-
-func runDBBranchExpire(ctx context.Context, stdout io.Writer, opts dbBranchOptions) error {
-	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(opts.After) == "" {
-		return fmt.Errorf("onlava db branch expire requires --after <duration>")
-	}
-	after, err := time.ParseDuration(strings.TrimSpace(opts.After))
-	if err != nil {
-		return fmt.Errorf("parse --after: %w", err)
-	}
-	target, err := resolveBranchCommandTarget(appRoot, cfg, opts)
-	if err != nil {
-		return err
-	}
-	if err := expireNeonBranchLease(target, time.Now().UTC().Add(after)); err != nil {
-		return err
-	}
-	result, err := buildDBBranchStatus(ctx, appRoot, cfg)
-	if err != nil {
-		return err
-	}
-	result.Message = fmt.Sprintf("Local Neon branch lease %q expiration updated. Backend expiration is not implemented yet.", target.Branch)
-	if opts.JSON {
-		return writeInspectJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "updated db branch lease expiration for %s\n", target.Branch)
-	return nil
-}
-
-func runDBBranchPrune(ctx context.Context, stdout io.Writer, opts dbBranchOptions) error {
-	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
-	if err != nil {
-		return err
-	}
-	var olderThan time.Duration
-	if strings.TrimSpace(opts.Older) != "" {
-		olderThan, err = time.ParseDuration(strings.TrimSpace(opts.Older))
-		if err != nil {
-			return fmt.Errorf("parse --older-than: %w", err)
-		}
-	}
-	current, _, err := readWorktreeDBPin(worktreeDBPinPath(appRoot))
-	if err != nil {
-		return err
-	}
-	project := sanitizeNeonBranchSegment(firstNonEmpty(neonPostgresService(cfg).Project, cfg.AppID(), "app"))
-	pruned, err := pruneExpiredNeonBranchLeases(project, current.BranchID, olderThan)
-	if err != nil {
-		return err
-	}
-	status, err := buildDBBranchStatus(ctx, appRoot, cfg)
-	if err != nil {
-		return err
-	}
-	registry, registryPath, err := readNeonBranchRegistryForDefaultRoot()
-	if err != nil {
-		return err
-	}
-	result := dbBranchListResult{
-		SchemaVersion: dbBranchListSchemaVersion,
-		OK:            true,
-		App:           status.App,
-		Provider:      status.Provider,
-		Branches:      registryPins(registry, cfg),
-		Leases:        registryListLeases(ctx, registry, cfg),
-		RegistryPath:  registryPath,
-		Message:       fmt.Sprintf("Pruned %d expired local Neon branch lease(s). Backend branch deletion is not implemented yet.", pruned),
-	}
-	if opts.JSON {
-		return writeInspectJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "pruned %d expired db branch lease(s)\n", pruned)
-	return nil
-}
-
-func runDBBranchReset(ctx context.Context, _ io.Writer, opts dbBranchOptions) error {
-	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
-	if err != nil {
-		return err
-	}
-	pin, ok, err := readWorktreeDBPin(worktreeDBPinPath(appRoot))
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("no worktree database branch pin exists; run `onlava db branch checkout <name>` first")
-	}
-	if isProtectedNeonParentBranch(pin) {
-		return fmt.Errorf("refusing to reset protected parent branch %q", pin.Branch)
-	}
-	if !opts.Yes {
-		return fmt.Errorf("onlava db branch reset requires --yes")
-	}
-	return neonBranchProviderForConfig(cfg).ResetBranch(ctx, pin, opts)
-}
-
-func runDBBranchDelete(ctx context.Context, _ io.Writer, opts dbBranchOptions) error {
-	appRoot, cfg, err := discoverConfiguredApp(opts.AppRoot)
-	if err != nil {
-		return err
-	}
-	opts.AppRoot = appRoot
-	branch := normalizeNeonBranchName(opts.Branch)
-	if branch == "" {
-		return fmt.Errorf("usage: onlava db branch delete <name> [--app-root <path>] [--force]")
-	}
-	pin, ok, err := readWorktreeDBPin(worktreeDBPinPath(appRoot))
-	if err != nil {
-		return err
-	}
-	targetPin := pin
-	if !ok {
-		targetPin, err = buildWorktreeDBPin(appRoot, cfg, branch)
-		if err != nil {
-			return err
-		}
-	}
-	if branch == targetPin.ParentBranch {
-		return fmt.Errorf("refusing to delete protected parent branch %q", branch)
-	}
-	if ok && branch == pin.Branch && !opts.Force {
-		return fmt.Errorf("refusing to delete current branch %q without --force", branch)
-	}
-	return neonBranchProviderForConfig(cfg).DeleteBranch(ctx, targetPin, branch, opts)
-}
-
-func buildDBBranchStatus(ctx context.Context, appRoot string, cfg appcfg.Config) (dbBranchStatusResult, error) {
-	pinPath := worktreeDBPinPath(appRoot)
-	pin, ok, err := readWorktreeDBPin(pinPath)
-	if err != nil {
-		return dbBranchStatusResult{}, err
-	}
-	status := "unpinned"
-	var pinPtr *worktreeDBPin
-	backendStatus := neonBranchBackendStatus{Status: "none"}
-	if ok {
-		status = "pinned"
-		pinPtr = &pin
-		backendStatus = neonBranchProviderForConfig(cfg).InspectBranch(ctx, pin)
-	}
-	return dbBranchStatusResult{
-		SchemaVersion:  dbBranchStatusSchemaVersion,
-		OK:             true,
-		App:            inspectAppRef(appRoot, cfg),
-		Provider:       neonSelfhostProvider,
-		Status:         status,
-		BackendStatus:  backendStatus.Status,
-		BackendMessage: backendStatus.Message,
-		Connection:     backendStatus.Endpoint,
-		PinPath:        pinPath,
-		Pin:            pinPtr,
-		DatabaseURLEnv: neonDatabaseURLEnv(cfg),
-		PSQLCommand:    "onlava db psql",
-		ResetCommand:   "onlava db branch reset",
-		Message:        dbBranchStatusMessage(ok),
-	}, nil
-}
-
-func dbBranchStatusMessage(pinned bool) string {
-	if pinned {
-		return "Current worktree database branch pin is present."
-	}
-	return "No worktree database branch pin exists yet; run `onlava db branch checkout <name>` to pin this worktree."
 }
 
 func neonPostgresService(cfg appcfg.Config) appcfg.DevServiceConfig {

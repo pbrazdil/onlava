@@ -180,8 +180,16 @@ func runWorktreeCreate(ctx context.Context, stdout io.Writer, opts worktreeOptio
 			rollbackCreatedWorktree(ctx, appRoot, target)
 			return err
 		}
+		backendStatus, err := neonBranchProviderForConfig(targetCfg).EnsureBranch(ctx, pin)
+		if err != nil {
+			rollbackCreatedWorktree(ctx, appRoot, target)
+			return err
+		}
 		result.DBPin = &pin
-		result.Message = "Git worktree created and local Neon branch pin written. Backend Neon branch creation is not implemented yet."
+		result.Message = "Git worktree created and local Neon branch pin written. Backend Neon branch provider ensure ran; connection becomes usable when backend_status is ready."
+		if backendStatus.Status == "ready" {
+			result.Message = "Git worktree created and local Neon branch pin written. Backend Neon branch is ready."
+		}
 	} else {
 		result.Message = "Git worktree created."
 	}

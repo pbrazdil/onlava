@@ -40,6 +40,9 @@ func configuredNeonBranchDriver() (executableNeonBranchDriver, bool, error) {
 	if driver, ok, err := configuredNeonSelfhostBranchDriver(); ok || err != nil {
 		return driver, ok, err
 	}
+	if driver, ok, err := configuredManagedNeonSelfhostBranchDriver(); ok || err != nil {
+		return driver, ok, err
+	}
 	return configuredLocalPostgresBranchDriver()
 }
 
@@ -56,25 +59,34 @@ func configuredExecutableNeonBranchDriver(envName, name, defaultEndpointSource s
 	if path == "" {
 		return executableNeonBranchDriver{}, false, nil
 	}
+	driver, err := executableNeonBranchDriverFromPath(path, name, envName, defaultEndpointSource)
+	return driver, err == nil, err
+}
+
+func executableNeonBranchDriverFromPath(path, name, sourceName, defaultEndpointSource string) (executableNeonBranchDriver, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return executableNeonBranchDriver{}, fmt.Errorf("%s is empty", sourceName)
+	}
 	if !filepath.IsAbs(path) {
-		return executableNeonBranchDriver{}, false, fmt.Errorf("%s must be an absolute path to a %s executable", envName, name)
+		return executableNeonBranchDriver{}, fmt.Errorf("%s must be an absolute path to a %s executable", sourceName, name)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return executableNeonBranchDriver{}, false, fmt.Errorf("stat %s: %w", envName, err)
+		return executableNeonBranchDriver{}, fmt.Errorf("stat %s: %w", sourceName, err)
 	}
 	if info.IsDir() {
-		return executableNeonBranchDriver{}, false, fmt.Errorf("%s points at a directory, want executable file", envName)
+		return executableNeonBranchDriver{}, fmt.Errorf("%s points at a directory, want executable file", sourceName)
 	}
 	if info.Mode()&0o111 == 0 {
-		return executableNeonBranchDriver{}, false, fmt.Errorf("%s is not executable", envName)
+		return executableNeonBranchDriver{}, fmt.Errorf("%s is not executable", sourceName)
 	}
 	return executableNeonBranchDriver{
 		path:                  path,
 		name:                  name,
-		envName:               envName,
+		envName:               sourceName,
 		defaultEndpointSource: defaultEndpointSource,
-	}, true, nil
+	}, nil
 }
 
 func (d executableNeonBranchDriver) EnsureBranch(ctx context.Context, pin worktreeDBPin) (neonBranchBackendStatus, error) {
@@ -155,12 +167,15 @@ func (d executableNeonBranchDriver) run(ctx context.Context, action string, pin 
 	args = append(args, "--json")
 	cmd := exec.CommandContext(ctx, d.path, args...)
 	cmd.Env = envpolicy.Environ()
-	out, err := cmd.Output()
+	if root, err := neonSubstrateRoot(); err == nil {
+		cmd.Env = append(cmd.Env, "ONLAVA_NEON_SELFHOST_ROOT="+root)
+	}
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return executableNeonBranchDriverResult{}, fmt.Errorf("%s %q timed out", d.name, action)
 		}
-		return executableNeonBranchDriverResult{}, fmt.Errorf("%s %q failed: %w", d.name, action, err)
+		return executableNeonBranchDriverResult{}, fmt.Errorf("%s %q failed: %w: %s", d.name, action, err, strings.TrimSpace(string(out)))
 	}
 	var result executableNeonBranchDriverResult
 	dec := json.NewDecoder(bytes.NewReader(out))

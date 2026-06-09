@@ -1,37 +1,59 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
 
-func TestCanonicalTopLevelUsage(t *testing.T) {
-	usage := usageError().Error()
+func TestRootHelpIsOrienting(t *testing.T) {
+	help := rootHelpString()
+	if !strings.Contains(help, "Onlava - build, run, and inspect app services.") {
+		t.Fatalf("root help missing product line:\n%s", help)
+	}
+	if !strings.Contains(help, "onlava help <command>") || !strings.Contains(help, "Local session:") || !strings.Contains(help, "App resources:") {
+		t.Fatalf("root help missing orientation sections:\n%s", help)
+	}
+	if strings.Contains(help, "--app-root") || strings.Contains(help, "onlava logs query") {
+		t.Fatalf("root help should not include full grammar:\n%s", help)
+	}
+	for _, line := range strings.Split(help, "\n") {
+		if len(line) > 80 {
+			t.Fatalf("root help line over 80 columns (%d): %q\n%s", len(line), line, help)
+		}
+	}
+}
+
+func TestHelpAllContainsCanonicalCommands(t *testing.T) {
+	var buf bytes.Buffer
+	writeHelpAll(&buf)
+	usage := buf.String()
 	for _, want := range []string{
-		"onlava up ",
-		"onlava ps ",
-		"onlava logs ",
-		"onlava console ",
-		"onlava down ",
-		"onlava prune ",
-		"onlava serve ",
-		"onlava worker ",
-		"onlava build ",
-		"onlava check ",
-		"onlava test ",
-		"onlava inspect ",
-		"onlava generate ",
-		"onlava db ",
-		"onlava task ",
-		"onlava traces ",
-		"onlava metrics ",
-		"onlava doctor ",
-		"onlava version ",
-		"onlava system ",
-		"onlava harness ",
+		"onlava up",
+		"onlava ps",
+		"onlava logs",
+		"onlava console",
+		"onlava down",
+		"onlava prune",
+		"onlava serve",
+		"onlava worker",
+		"onlava build",
+		"onlava check",
+		"onlava test",
+		"onlava inspect",
+		"onlava generate",
+		"onlava db",
+		"onlava task",
+		"onlava traces",
+		"onlava metrics",
+		"onlava doctor",
+		"onlava version",
+		"onlava system",
+		"onlava harness",
 	} {
 		if !strings.Contains(usage, want) {
-			t.Fatalf("usage missing %q:\n%s", want, usage)
+			t.Fatalf("help all missing %q:\n%s", want, usage)
 		}
 	}
 	for _, removed := range []string{
@@ -52,8 +74,71 @@ func TestCanonicalTopLevelUsage(t *testing.T) {
 		"onlava inspect metrics ",
 	} {
 		if strings.Contains(usage, removed) {
-			t.Fatalf("usage contains removed spelling %q:\n%s", removed, usage)
+			t.Fatalf("help all contains removed spelling %q:\n%s", removed, usage)
 		}
+	}
+}
+
+func TestCommandHelpAndJSONManifest(t *testing.T) {
+	logs, ok := findHelpCommand([]string{"logs"})
+	if !ok {
+		t.Fatal("logs help not found")
+	}
+	var logsHelp bytes.Buffer
+	writeCommandHelp(&logsHelp, logs)
+	if got := logsHelp.String(); !strings.Contains(got, "onlava logs query --query <logsql>") || !strings.Contains(got, "--jsonl") {
+		t.Fatalf("logs help missing usage or flags:\n%s", got)
+	}
+	dbBranch, ok := findHelpCommand([]string{"db", "branch", "status"})
+	if !ok || dbBranch.Command != "db branch" {
+		t.Fatalf("db branch topic resolved to %+v, %v", dbBranch, ok)
+	}
+	var manifest helpManifest
+	var jsonOut bytes.Buffer
+	if err := writeHelpJSON(&jsonOut); err != nil {
+		t.Fatalf("writeHelpJSON: %v", err)
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &manifest); err != nil {
+		t.Fatalf("help json: %v\n%s", err, jsonOut.String())
+	}
+	if manifest.SchemaVersion != helpManifestSchemaVersion {
+		t.Fatalf("schema version = %q", manifest.SchemaVersion)
+	}
+	foundPS := false
+	for _, command := range manifest.Commands {
+		if command.Command == "ps" && command.JSON && strings.Contains(strings.Join(command.Usage, "\n"), "onlava ps [--json]") {
+			foundPS = true
+		}
+	}
+	if !foundPS {
+		t.Fatalf("help manifest missing ps json command: %+v", manifest.Commands)
+	}
+}
+
+func TestRunHelpCommands(t *testing.T) {
+	out := captureStdout(t, func() error {
+		return run(nil)
+	})
+	if !strings.Contains(out, "Onlava - build, run, and inspect app services.") {
+		t.Fatalf("bare run help = %q", out)
+	}
+	out = captureStdout(t, func() error {
+		return run([]string{"help", "all"})
+	})
+	if !strings.Contains(out, "Onlava command reference") || !strings.Contains(out, "onlava db neon start") {
+		t.Fatalf("help all output = %q", out)
+	}
+	out = captureStdout(t, func() error {
+		return run([]string{"help", "logs"})
+	})
+	if !strings.Contains(out, "onlava logs tail --query <logsql>") {
+		t.Fatalf("help logs output = %q", out)
+	}
+	out = captureStdout(t, func() error {
+		return run([]string{"help", "--json"})
+	})
+	if !strings.Contains(out, `"schema_version": "onlava.help.v1"`) {
+		t.Fatalf("help json output = %q", out)
 	}
 }
 
@@ -73,7 +158,7 @@ func TestRemovedTopLevelCommandsFail(t *testing.T) {
 		"script",
 	} {
 		err := run([]string{command})
-		if err == nil || err.Error() != `unknown command "`+command+`"` {
+		if err == nil || err.Error() != `unknown command "`+command+`"; use `+"`onlava help`" {
 			t.Fatalf("run(%q) error = %v", command, err)
 		}
 	}
