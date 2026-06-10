@@ -74,6 +74,7 @@ local Neon cell.
 - [x] 2026-06-09: Updated `README.md`, `SKILL.md`, `docs/agent-guide.md`, and `docs/local-contract.md` to mark real selfhost branch compute creation and default harness coverage as implemented while keeping Electric slot lifecycle hardening and release-grade driver distribution as experimental.
 - [x] 2026-06-09: Added advisory file locking for concurrent local Neon mutation paths. The built-in driver now holds `<neon-root>/backend.lock` across backend read/port allocation/mutation/write/compute startup, and Onlava lease registry mutations hold `<neon-root>/branches.lock`.
 - [x] 2026-06-09: Removed the public `--with-neon-selfhost` self-harness flag. Default, race, and release self-harness modes now run the Docker-backed Neon lifecycle proof; `--quick` remains the smaller non-Docker loop.
+- [x] 2026-06-09: Closed the remaining Electric isolation proof in the real Neon self-harness. The harness now checks that parallel branch worktrees resolve distinct Neon branch `DatabaseURL`s and distinct managed Electric replication stream IDs, replication slot names, and Postgres application names.
 
 ## Surprises & Discoveries
 
@@ -119,7 +120,17 @@ local Neon cell.
 
 ## Outcomes & Retrospective
 
-Not yet completed.
+Completed on 2026-06-09.
+
+The self-hosted Neon driver is now built into the main `onlava` CLI, recorded by
+`onlava db neon install --json`, and used by normal branch checkout/worktree/app
+session flows without manually setting `ONLAVA_DEV_NEON_SELFHOST_DRIVER`.
+Generated local storage-cell state starts through Onlava-owned Docker Compose,
+while branch compute endpoints remain driver-owned and SQL-ready before app
+consumption. Reset, restore, delete, and schema diff operate behind the existing
+Onlava branch safety gates. Default, race, and release self-harness modes run
+the real Docker-backed Neon lifecycle proof; `--quick` keeps the smaller
+non-Docker path.
 
 ## Context and Orientation
 
@@ -177,7 +188,7 @@ driver implementation state.
 4. Branch Ensure and Runtime Consumption: driver `ensure` creates branch timelines and compute endpoints, returns ready endpoint metadata, and lets `onlava up`, DB lifecycle, `db psql`, and Electric consume non-parent ready branches.
 5. Branch Mutations: driver implements reset, delete, restore, and schema diff behind the existing Onlava guards.
 6. Status and Debugging: `onlava db neon status --json` reports driver installation, capabilities, backend counts, and actionable degraded states without leaking raw connection URLs.
-7. Harness Promotion: default harness keeps fake-driver coverage; opt-in self-harness proves real Docker Neon branch isolation and Electric slot isolation before any default promotion.
+7. Harness Promotion: default, race, and release self-harness modes prove real Docker Neon branch isolation and Electric stream/slot isolation; `--quick` keeps fake-driver coverage for the smaller non-Docker loop.
 
 ## Plan of Work
 
@@ -278,10 +289,10 @@ Finally harden status, docs, and harnesses. `onlava db neon status --json`
 should stop saying backend branch integration is pending when the real driver is
 installed and healthy. It should report driver status, capabilities, path,
 version, tenant ID, branch count, compute count, component health, and next
-action. Default self-harness should run the real Docker Neon lifecycle proof,
-while `--quick` keeps the fake-driver path fast. Cover two worktrees,
-two branches, two Electric instances, no slot/publication collision, isolated
-writes, and safe cleanup.
+action. Default self-harness runs the real Docker Neon lifecycle proof, while
+`--quick` keeps the fake-driver path fast. Cover two worktrees, two branches,
+managed Electric branch URL resolution, distinct Electric stream/slot identity,
+isolated writes, and safe cleanup.
 
 ## Concrete Steps
 
@@ -349,7 +360,7 @@ The implementation is accepted when:
 - `onlava up`, DB apply/seed/setup, `onlava db psql`, and Electric consume the branch endpoint and refuse protected parent branches.
 - Two worktrees can run against separate Neon branches without database or Electric slot/publication collision.
 - Reset, restore, delete, and schema diff work behind existing destructive guards.
-- Default self-harness remains deterministic, and the real Neon harness path is available but opt-in until proven fast and stable.
+- Default self-harness remains deterministic with the real Neon proof enabled; `--quick` remains available for the smaller non-Docker loop.
 
 ## Idempotence and Recovery
 

@@ -13,10 +13,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	appcfg "github.com/pbrazdil/onlava/internal/app"
+)
+
+var (
+	neonBranchReadyTimeout      = 90 * time.Second
+	neonBranchReadyPollInterval = 1 * time.Second
 )
 
 func resolveNeonBranchConnection(ctx context.Context, appRoot string, cfg appcfg.Config) (worktreeDBPin, neonBranchConnectionInfo, error) {
@@ -42,7 +48,7 @@ func resolveNeonBranchDatabaseURL(ctx context.Context, appRoot string, cfg appcf
 		}
 		return connection.DatabaseURL, nil
 	}
-	resolution, err := ensureNeonBranchPinForSession(ctx, appRoot, cfg, session)
+	resolution, err := ensureReadyNeonBranchPinForSession(ctx, appRoot, cfg, session)
 	if err != nil {
 		return "", err
 	}
@@ -54,7 +60,7 @@ func resolveNeonBranchDatabaseURL(ctx context.Context, appRoot string, cfg appcf
 }
 
 func neonManagedPostgresEnv(ctx context.Context, appRoot string, cfg appcfg.Config, session *localagent.Session) ([]string, neonBranchResolution, neonBranchConnectionInfo, error) {
-	resolution, err := ensureNeonBranchPinForSession(ctx, appRoot, cfg, session)
+	resolution, err := ensureReadyNeonBranchPinForSession(ctx, appRoot, cfg, session)
 	if err != nil {
 		return nil, neonBranchResolution{}, neonBranchConnectionInfo{}, err
 	}
@@ -68,6 +74,40 @@ func neonManagedPostgresEnv(ctx context.Context, appRoot string, cfg appcfg.Conf
 		"ONLAVA_MANAGED_DATABASE_URL=" + connection.DatabaseURL,
 		"ONLAVA_MANAGED_DATABASE_NAME=" + connection.DatabaseName,
 	}, resolution, connection, nil
+}
+
+func ensureReadyNeonBranchPinForSession(ctx context.Context, appRoot string, cfg appcfg.Config, session *localagent.Session) (neonBranchResolution, error) {
+	resolution, err := ensureNeonBranchPinForSession(ctx, appRoot, cfg, session)
+	if err != nil || resolution.BackendStatus.Status == "ready" || !neonBranchStatusCanBecomeReady(resolution.BackendStatus) {
+		return resolution, err
+	}
+	if _, ok, driverErr := configuredNeonBranchDriver(); driverErr != nil {
+		return neonBranchResolution{}, driverErr
+	} else if !ok {
+		return resolution, nil
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, neonBranchReadyTimeout)
+	defer cancel()
+	ticker := time.NewTicker(neonBranchReadyPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-waitCtx.Done():
+			return resolution, fmt.Errorf("local Neon branch lease %q did not become ready within %s; last backend status: %s", resolution.Pin.Branch, neonBranchReadyTimeout, firstNonEmpty(resolution.BackendStatus.Status, "unknown"))
+		case <-ticker.C:
+			resolution, err = ensureNeonBranchPinForSession(waitCtx, appRoot, cfg, session)
+			if err != nil {
+				return neonBranchResolution{}, err
+			}
+			if resolution.BackendStatus.Status == "ready" || !neonBranchStatusCanBecomeReady(resolution.BackendStatus) {
+				return resolution, nil
+			}
+		}
+	}
+}
+
+func neonBranchStatusCanBecomeReady(status neonBranchBackendStatus) bool {
+	return strings.TrimSpace(status.Status) == "pending"
 }
 
 func normalizedNeonEndpoint(endpoint neonEndpoint, pin worktreeDBPin) neonEndpoint {

@@ -240,12 +240,37 @@ func runHarnessNeonSelfhostCheck(parent context.Context, repoRoot string) (map[s
 	if err != nil {
 		return nil, diagnostics, err
 	}
-	electricURLA, err := managedElectricDatabaseURL(ctx, createdA.Path, cfgA, &localagent.Session{SessionID: "selfhost-a"}, &managedElectricPlan{ServiceName: "electric"}, nil, nil)
+	sessionA := &localagent.Session{SessionID: "selfhost-a", BaseAppID: "neon-selfhost-harness", RuntimeAppID: "neon-selfhost-harness--selfhost-a"}
+	sessionB := &localagent.Session{SessionID: "selfhost-b", BaseAppID: "neon-selfhost-harness", RuntimeAppID: "neon-selfhost-harness--selfhost-b"}
+	electricURLA, err := managedElectricDatabaseURL(ctx, createdA.Path, cfgA, sessionA, &managedElectricPlan{ServiceName: "electric"}, nil, nil)
 	if err != nil {
 		return nil, diagnostics, err
 	}
 	check(envValueFromList(managedEnvA, appDatabaseURLEnv) == connectionA.DatabaseURL, "managed env must expose the ready selfhost branch DatabaseURL")
 	check(electricURLA == connectionA.DatabaseURL, "managed Electric must resolve the ready selfhost branch DatabaseURL")
+	_, cfgB, err := discoverConfiguredApp(createdB.Path)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	_, _, connectionB, err := neonManagedPostgresEnv(ctx, createdB.Path, cfgB, sessionB)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	electricURLB, err := managedElectricDatabaseURL(ctx, createdB.Path, cfgB, sessionB, &managedElectricPlan{ServiceName: "electric"}, nil, nil)
+	if err != nil {
+		return nil, diagnostics, err
+	}
+	streamA := managedElectricReplicationStreamID(sessionA)
+	streamB := managedElectricReplicationStreamID(sessionB)
+	slotA := managedElectricSlotName(streamA)
+	slotB := managedElectricSlotName(streamB)
+	applicationA := managedElectricPostgresApplicationName(createdA.Path, sessionA, streamA)
+	applicationB := managedElectricPostgresApplicationName(createdB.Path, sessionB, streamB)
+	check(electricURLB == connectionB.DatabaseURL, "managed Electric must resolve branch B's ready selfhost DatabaseURL")
+	check(electricURLA != electricURLB, "parallel managed Electric services must point at distinct Neon branch DatabaseURLs")
+	check(streamA != "" && streamB != "" && streamA != streamB, "parallel managed Electric services must use distinct replication stream IDs")
+	check(slotA != "" && slotB != "" && slotA != slotB, "parallel managed Electric services must use distinct replication slots")
+	check(applicationA != "" && applicationB != "" && applicationA != applicationB, "parallel managed Electric services must use distinct Postgres application names")
 
 	if err := harnessManagedPSQL(ctx, createdA.Path, "-v", "ON_ERROR_STOP=1", "-c", "create table if not exists onlava_harness_reset(id integer primary key)"); err != nil {
 		return nil, diagnostics, fmt.Errorf("create reset probe table: %w", err)
@@ -312,6 +337,7 @@ func runHarnessNeonSelfhostCheck(parent context.Context, repoRoot string) (map[s
 		"branches_ready":     statusA.BackendStatus == "ready" && statusB.BackendStatus == "ready",
 		"branch_isolation":   strings.TrimSpace(branchBProbe) == "t",
 		"electric_db_url":    electricURLA == connectionA.DatabaseURL,
+		"electric_isolation": streamA != "" && streamB != "" && streamA != streamB && slotA != "" && slotB != "" && slotA != slotB && electricURLA != electricURLB,
 		"reset_restore":      resetStatus.BackendStatus == "ready" && restoreStatus.BackendStatus == "ready",
 		"schema_diff":        strings.Contains(diffOut.String(), `"schema_version": "onlava.db.branch.diff.v1"`),
 		"delete":             createdB.DBPin != nil,

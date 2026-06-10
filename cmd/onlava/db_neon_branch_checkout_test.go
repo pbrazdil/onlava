@@ -355,7 +355,7 @@ func TestDBBranchStatusProtectsReadyParentBranch(t *testing.T) {
 	}
 }
 
-func TestDBBranchCheckoutReportsPendingWhenDevCellInstalled(t *testing.T) {
+func TestDBBranchCheckoutFailsFastWhenBuiltinCellIsNotReady(t *testing.T) {
 	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
 	useMissingNeonDocker(t)
 	root := t.TempDir()
@@ -366,18 +366,12 @@ func TestDBBranchCheckoutReportsPendingWhenDevCellInstalled(t *testing.T) {
 	forceNeonCellPortsForTest(t, closedLoopbackPortForTest(t))
 	forceNeonBackendBranchPortForTest(t, "branchapp", "feature/pending", closedLoopbackPortForTest(t))
 
-	var out bytes.Buffer
-	if err := runDBBranchCommand(t.Context(), &out, []string{"checkout", "feature/pending", "--app-root", root, "--json"}); err != nil {
-		t.Fatalf("checkout returned error: %v", err)
-	}
-	var payload dbBranchStatusResult
-	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
-		t.Fatalf("decode checkout JSON: %v\n%s", err, out.String())
-	}
-	if payload.BackendStatus != "pending" ||
-		!strings.Contains(payload.BackendMessage, "Neon dev-cell is installed") ||
-		strings.Contains(payload.BackendMessage, "not implemented") {
-		t.Fatalf("payload = %+v", payload)
+	err := runDBBranchCommand(t.Context(), io.Discard, []string{"checkout", "feature/pending", "--app-root", root, "--json"})
+	if err == nil ||
+		!strings.Contains(err.Error(), "requires generated Neon dev-cell readiness") ||
+		!strings.Contains(err.Error(), "onlava db neon start --json") ||
+		strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("checkout stopped-cell error = %v", err)
 	}
 }
 
@@ -619,7 +613,11 @@ printf '{"status":"ready","message":"local driver should not be selected","endpo
 	t.Setenv(localPostgresBranchDriverEnv, localDriver)
 
 	neonRoot := filepath.Join(home, "agent", "substrates", "neon")
+	port := useReadyNeonDocker(t)
 	state := defaultNeonCellState(neonRoot, "installed")
+	for key := range state.Ports {
+		state.Ports[key] = port
+	}
 	state.Driver = &neonCellDriver{
 		Kind:    "toolchain",
 		Tool:    neonSelfhostDriverTool,
@@ -629,6 +627,12 @@ printf '{"status":"ready","message":"local driver should not be selected","endpo
 	}
 	if err := writeNeonCellState(state); err != nil {
 		t.Fatalf("write cell state: %v", err)
+	}
+	if err := ensureNeonStorageDirs(neonRoot); err != nil {
+		t.Fatalf("ensure storage dirs: %v", err)
+	}
+	if err := writeGeneratedNeonFiles(state); err != nil {
+		t.Fatalf("write generated Neon files: %v", err)
 	}
 
 	var out bytes.Buffer

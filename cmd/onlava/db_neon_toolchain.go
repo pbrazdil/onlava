@@ -48,6 +48,7 @@ func configuredManagedNeonSelfhostBranchDriver() (neonBranchDriver, bool, error)
 	}
 	if strings.TrimSpace(state.Driver.Path) != "" {
 		driver, err := executableNeonBranchDriverFromPath(state.Driver.Path, "neon-selfhost driver", "cell.json driver.path", neonSelfhostBranchDriverEndpointSource)
+		driver.meta.requiresReadyCell = true
 		return driver, err == nil, err
 	}
 	return nil, false, nil

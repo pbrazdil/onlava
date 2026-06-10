@@ -118,7 +118,7 @@ explicitly in the local contract in the same implementation step.
 - [x] 2026-06-08: Split the branch executable boundary into truthful backend names. `ONLAVA_DEV_NEON_SELFHOST_DRIVER` now selects the actual `neon-selfhost` branch driver and is preferred when configured; `ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER` remains the local Postgres-shaped development fallback; tests use explicitly named fake drivers.
 - [x] 2026-06-08: Addressed cleanup-safety review feedback. Neon uninstall now falls back to removing Onlava-labeled containers when `cell.json` is corrupt or Compose is missing and keeps local state if teardown fails; branch prune is scoped to the current Neon project; Neon `down --db` removes the selected session lease when session metadata exists; `worktree create` rolls back Git worktrees if Neon pin creation fails; and `worktree remove --db` verifies the target is a registered Git worktree before deleting local `.onlava` state.
 - [x] 2026-06-09: Follow-on plan `docs/plans/0070-toolchain-managed-neon-selfhost-driver.md` absorbed the real-provider milestone. The built-in `neon-selfhost-driver` can now bootstrap pageserver tenant/timeline metadata and start or reuse branch compute containers from generated templates, while real Docker-backed readiness and Electric isolation proof remain tracked in plan 0070.
-- [ ] Harden harness coverage for real branch-local DB lifecycle and Electric slot isolation once the Neon branch provider can create ready branches.
+- [x] 2026-06-09: Hardened default self-harness coverage for real branch-local DB lifecycle and Electric isolation. The Docker-backed Neon proof now checks ready branch worktrees, isolated branch writes, reset, restore, schema diff, delete, managed app env, managed Electric branch URL resolution, and distinct Electric replication stream IDs, slot names, and Postgres application names across branch worktrees.
 
 ## Surprises & Discoveries
 
@@ -166,7 +166,15 @@ explicitly in the local contract in the same implementation step.
 
 ## Outcomes & Retrospective
 
-Not yet completed.
+Completed on 2026-06-09.
+
+The local Neon dev-cell surface now has the end-to-end shape described by this
+plan: config, generated cell state, branch pins and leases, worktree commands,
+ready branch endpoint consumption by app sessions and Electric, parent/foreign
+lease safety, branch lifecycle mutations, and default self-harness coverage.
+Follow-on plans 0070, 0071, and 0072 completed the built-in driver, bind-mounted
+storage, and project-tenant mapping slices that absorbed this plan's remaining
+real-provider milestone.
 
 ## Context and Orientation
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -26,6 +27,45 @@ func useFakeNeonDocker(t *testing.T, path string) {
 func useMissingNeonDocker(t *testing.T) {
 	t.Helper()
 	useFakeNeonDocker(t, filepath.Join(t.TempDir(), "missing-docker"))
+}
+
+func useReadyNeonDocker(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+	port := listener.Addr().(*net.TCPAddr).Port
+	fakeDocker := filepath.Join(t.TempDir(), "docker")
+	if err := os.WriteFile(fakeDocker, []byte(`#!/bin/sh
+if [ "$1" = "version" ]; then
+  echo "29.0.0"
+  exit 0
+fi
+if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then
+  echo "[]"
+  exit 0
+fi
+if [ "$1" = "ps" ]; then
+  printf 'onlava-neon-minio\tUp 2 minutes (health: healthy)\n'
+  printf 'onlava-neon-bucket-init\tExited (0) 1 minute ago\n'
+  printf 'onlava-neon-pageserver\tUp 2 minutes\n'
+  printf 'onlava-neon-safekeeper-1\tUp 2 minutes\n'
+  printf 'onlava-neon-safekeeper-2\tUp 2 minutes\n'
+  printf 'onlava-neon-safekeeper-3\tUp 2 minutes\n'
+  printf 'onlava-neon-storage-broker\tUp 2 minutes\n'
+  exit 0
+fi
+echo "unexpected docker $*" >&2
+exit 1
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	useFakeNeonDocker(t, fakeDocker)
+	return port
 }
 
 func closedLoopbackPortForTest(t *testing.T) int {

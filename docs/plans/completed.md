@@ -6,6 +6,256 @@ Completed means implemented or shipped at least once. It does not imply stable
 v0 support. Use [../local-contract.md](../local-contract.md) as the source of
 truth for stable, beta, dev-only, and compatibility-mode classification.
 
+## Remove Legacy Agent Transport
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-01
+- Quality: B
+- ExecPlan: [0062 Remove Legacy Agent Transport](0062-remove-legacy-agent-transport.md)
+
+Shipped:
+
+- Removed the obsolete agent transport from runtime startup, generated config, local proxy routes, agent session manifests, dashboard handlers, UI service labels, current docs, schemas, and tests.
+- Strict config decoding rejects stale removed-transport keys.
+- Self-harness residue checks prevent the removed transport surface from returning in tracked product/source/docs.
+
+Validation:
+
+- See the ExecPlan Outcomes for the full validation set recorded at completion.
+
+## onlava Doctor Command
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-01
+- Quality: B
+- ExecPlan: [0060 onlava Doctor Command](0060-onlava-doctor-command.md)
+
+Shipped:
+
+- `onlava doctor` and `onlava doctor --json` for read-only host readiness diagnostics.
+- OS, CPU, memory, disk, version, Go, optional dependency, and app-sensitive checks.
+- JSON schema coverage, docs, README/agent guidance, and focused command tests.
+
+Validation:
+
+- See the ExecPlan Outcomes for focused, full-suite, cross-platform compile, smoke, docs, and self-harness validation recorded at completion.
+
+## Dev Event Backend Cutover and Parity
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-01
+- Quality: B
+- ExecPlan: [0056 Dev Event Backend Cutover and Parity](0056-dev-event-backend-cutover-and-parity.md)
+
+Shipped:
+
+- VictoriaLogs is the current dev-event read path for logs, attach, TUI, and console.
+- Dev-event IDs are assigned before VictoriaLogs export.
+- Dashboard/session metadata moved to `devdash.json`.
+- The embedded local SQL driver dependency and current-source docs references were removed.
+
+Validation:
+
+- See the ExecPlan Outcomes and Validation sections for focused tests, full Go tests, install, dependency scans, and active-tree residue checks.
+
+## Structured Dev Events and Console
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-05-31
+- Quality: B
+- ExecPlan: [0055 Structured Dev Events and Console](0055-structured-dev-events-and-console.md)
+
+Shipped:
+
+- Source-aware `onlava.dev.event.v1` records for app output, TypeScript worker output, managed frontends, build phases, supervisor lifecycle, and substrate readiness/status.
+- `onlava logs` and `onlava attach` filtering by source, kind, level, grep, and since.
+- JSONL structured output plus observing-only `onlava attach --tui`, `onlava console`, grouped errors, and non-TTY fallback.
+
+Validation:
+
+- See the ExecPlan Outcomes for focused tests, full Go tests, install, diff checks, and self-harness evidence recorded at completion.
+
+## Remove Objectstore Functionality
+
+- Status: completed
+- Owner: onlava runtime
+- Completed: 2026-05-30
+- Quality: B
+- ExecPlan: [0054 Remove Objectstore Functionality](0054-remove-objectstore-functionality.md)
+
+Shipped:
+
+- Removed the beta data/objectstore Go packages, CLI subject, dashboard RPC/UI, registry item, schemas, examples, fixtures, and current docs.
+- `onlava inspect data` is gone rather than preserved as a dormant compatibility path.
+- Current-source residue checks exclude only historical plan references.
+
+Validation:
+
+- See the ExecPlan Outcomes for Go, UI, install, self-harness, and residue-search validation recorded at completion.
+
+## Harness Self Agent Oracle
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-05-29
+- Quality: B
+- ExecPlan: [0051 Harness Self Agent Oracle](0051-harness-self-agent-oracle.md)
+
+Shipped:
+
+- Default self-harness runs the full Go suite once, writes oracle artifacts, validates JSON surfaces, and enforces the total Go-suite budget.
+- Changed-area, toolchain, drift, timing, fixture matrix, schema-validation, and agent-context artifacts are written under `.onlava/harness/`.
+- Package and slow-test timing overages remain warnings for agent guidance.
+
+Validation:
+
+- See the ExecPlan Outcomes for the final oracle behavior and validation evidence.
+
+## Agent Dev Safety Hardening
+
+- Status: completed
+- Owner: onlava runtime
+- Completed: 2026-05-27
+- Quality: B
+- ExecPlan: [0046 Agent Dev Safety Hardening](0046-prd5-dev-safety-hardening.md)
+
+Shipped:
+
+- Explicit session control, cleanup/prune commands, stronger process ownership checks, and legacy escape-hatch warnings.
+- Shared Victoria dashboard wiring and a self-harness parallel-session check for routes, DBs, task queues, logs, traces, frontend routes, and cleanup behavior.
+
+Validation:
+
+- See the ExecPlan Outcomes for the recorded self-harness evidence.
+
+## ONLV Agent Native Dev Migration
+
+- Status: completed
+- Owner: onlava runtime / ONLV integration
+- Completed: 2026-05-27
+- Quality: B
+- ExecPlan: [0045 ONLV Agent Native Dev Migration](0045-onlv-agent-native-dev-migration.md)
+
+Shipped:
+
+- ONLV defaults to the onlava agent path for local development.
+- ONLV declares managed Postgres/Electric dev services and setup hooks, with session-routed API, dashboard, Electric, Grafana, Temporal, and frontend URLs.
+- Parallel ONLV worktree validation proved isolated hidden ports, databases, Electric slots, and Temporal task queues.
+
+Validation:
+
+- See the ExecPlan Outcomes for ONLV harness, onlava check/inspect, live-session smoke, and parallel-session validation.
+
+## Temporal Worker Production Hardening
+
+- Status: completed
+- Owner: onlava runtime / ONLV integration
+- Completed: 2026-05-26
+- Quality: B
+- ExecPlan: [0035 Temporal Worker Production Hardening](0035-temporal-worker-production-hardening.md)
+
+Shipped:
+
+- Strict worker task-queue selection, explicit activity queues, compile-time workflow identity, typed workflow operations, local-only worker deployment promotion, cron policy controls, manifest v2 registration hashes, and production Temporal connection validation.
+- ONLV deterministic starts, parent workflows for staged flows, workflow-result waits, durable jobs log streaming, explicit Temporal config, and RabbitMQ residue removal.
+
+Validation:
+
+- See the ExecPlan Outcomes for onlava and ONLV validation recorded at completion.
+
+## Neon Selfhost Project-Tenant Mapping
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-09
+- Quality: B+
+- ExecPlan: [0072 Neon Selfhost Project-Tenant Mapping](0072-neon-project-tenants.md)
+
+Shipped:
+
+- `backend.json` writes `onlava.db.neon.selfhost.backend.v2`.
+- Legacy top-level tenant/branch backend state migrates to project-local tenant and branch maps on read.
+- The built-in selfhost driver scopes ensure, reset, restore, delete, and diff to the selected `dev.services.postgres.project`.
+- Status JSON reports backend project summaries without changing the status envelope version.
+- The default real Neon self-harness proves two projects can use the same branch label without sharing tenant, compute, port, data, delete scope, or diff lookup.
+
+Validation:
+
+- Focused `internal/neonselfhost` and `cmd/onlava` tests passed during implementation.
+- `go test ./...` passed.
+- The Docker-backed `onlava harness self --json --write` Neon proof passed during implementation.
+
+## Bind-Mounted Neon Storage
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-09
+- Quality: B+
+- ExecPlan: [0071 Bind-Mounted Neon Storage](0071-neon-bind-mounted-storage.md)
+
+Shipped:
+
+- Self-hosted Neon durable `/data` paths are bind-mounted under the shared agent-home Neon substrate root.
+- Generated Compose no longer relies on Docker anonymous volumes for MinIO, pageserver, safekeepers, or storage broker state.
+- Existing anonymous-volume cells fail closed at start with an explicit fresh-start recovery path.
+- `onlava db neon uninstall` preserves bind-mounted data by default; `--destroy-data` removes it.
+- Worktrees continue to isolate through branch pins, leases, timelines, and compute endpoints rather than per-worktree storage roots.
+
+Validation:
+
+- Focused Neon/worktree tests passed during implementation.
+- `go test ./cmd/onlava` and `go test ./...` passed.
+- `onlava inspect docs --json`, JSON parsing, and whitespace checks passed.
+
+## Built-In Neon Selfhost Driver
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-09
+- Quality: B+
+- ExecPlan: [0070 Built-In Neon Selfhost Driver](0070-toolchain-managed-neon-selfhost-driver.md)
+
+Shipped:
+
+- `onlava db neon install --json` records the built-in `onlava internal neon-selfhost-driver`.
+- The branch driver is built into the main CLI, with external-driver env overrides preserved for development and tests.
+- The generated storage-cell topology boots against real Docker Neon images.
+- The driver creates project-scoped tenants/timelines, starts SQL-ready branch compute containers, creates the requested database, and returns redacted ready endpoint metadata.
+- Reset, restore, delete, and schema diff run behind existing Onlava branch guards.
+- Default, race, and release self-harness modes run the real Docker-backed Neon lifecycle proof; `--quick` keeps the smaller non-Docker path.
+
+Validation:
+
+- Focused `internal/neonselfhost` and `cmd/onlava` tests passed during implementation.
+- `go test ./...` passed.
+- `onlava harness self --json --write` passed with warnings only during implementation.
+
+## Onlava-Managed Neon Dev Cell and Branch Isolation
+
+- Status: completed
+- Owner: onlava runtime / agent DX
+- Completed: 2026-06-09
+- Quality: B+
+- ExecPlan: [0065 Onlava-Managed Neon Dev Cell and Branch Isolation](0065-onlava-managed-neon-dev-cell.md)
+
+Shipped:
+
+- `.onlava.json` accepts self-hosted Neon branch isolation under `dev.services.postgres`.
+- `onlava db neon`, `onlava db branch`, and `onlava worktree` expose the local dev-cell, branch pin, lease, and worktree workflows.
+- `onlava up`, DB lifecycle commands, `onlava db psql`, and managed Electric consume non-parent ready Neon branch leases.
+- Parent branches, foreign leases, current-branch deletion, and destructive reset/restore operations have explicit safety gates.
+- Self-harness coverage now proves real branch-local DB lifecycle, branch data isolation, branch mutations, and Electric branch/stream/slot isolation.
+
+Validation:
+
+- Focused Neon, branch, worktree, and Electric tests passed during implementation.
+- `go test ./cmd/onlava` and `go test ./...` passed.
+- The default Docker-backed `onlava harness self --json --write` Neon proof passed during implementation.
+
 ## CLI Observability Query Surface
 
 - Status: completed

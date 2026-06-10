@@ -340,6 +340,9 @@ func runDBNeonInstall(ctx context.Context, stdout io.Writer, opts dbNeonOptions)
 	if err := ensureNeonStorageDirs(root); err != nil {
 		return err
 	}
+	if err := ensureNeonBackendLockFile(root); err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	state.CreatedAt = now
 	state.UpdatedAt = now
@@ -391,6 +394,9 @@ func runDBNeonStart(ctx context.Context, stdout io.Writer, opts dbNeonOptions) e
 			return &silentCLIError{err: errors.New(result.Message)}
 		}
 		return errors.New(result.Message)
+	}
+	if err := ensureNeonBackendLockFile(root); err != nil {
+		return err
 	}
 	if fileStatus(state.ComposePath) != "present" {
 		result, statusErr := buildDBNeonStatus(ctx)
@@ -803,6 +809,14 @@ func removeNeonGeneratedStatePreservingData(root string) error {
 		}
 	}
 	return nil
+}
+
+func ensureNeonBackendLockFile(root string) error {
+	file, err := os.OpenFile(filepath.Join(root, "backend.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	return file.Close()
 }
 
 func defaultNeonCellState(root, status string) neonCellState {

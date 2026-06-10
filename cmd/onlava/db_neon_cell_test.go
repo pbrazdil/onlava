@@ -59,7 +59,7 @@ func TestDBNeonInstallWritesGeneratedState(t *testing.T) {
 	if diagnostics := validateHarnessJSONSchemaFile(filepath.Join(repoRootForTest(t), "docs", "schemas", "onlava.db.neon.status.v1.schema.json"), payload); len(diagnostics) != 0 {
 		t.Fatalf("neon status schema diagnostics = %+v", diagnostics)
 	}
-	for _, rel := range []string{"cell.json", "compose.generated.yml", "pageserver_config/pageserver.toml", "pageserver_config/identity.toml", "compute_templates/config.json", "compute_templates/compute.sh", "backend.json"} {
+	for _, rel := range []string{"cell.json", "compose.generated.yml", "pageserver_config/pageserver.toml", "pageserver_config/identity.toml", "compute_templates/config.json", "compute_templates/compute.sh", "backend.json", "backend.lock"} {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
 			t.Fatalf("generated %s missing: %v", rel, err)
 		}

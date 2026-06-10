@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	localagent "github.com/pbrazdil/onlava/internal/agent"
 	"github.com/pbrazdil/onlava/internal/app"
@@ -807,6 +808,60 @@ func TestManagedElectricDatabaseURLUsesReadyNeonBranch(t *testing.T) {
 		appDatabaseURLEnv + "=postgres://localhost/stale",
 		legacyDatabaseURLEnv + "=postgres://localhost/poison",
 	}, nil)
+	if err != nil {
+		t.Fatalf("managedElectricDatabaseURL returned error: %v", err)
+	}
+	if got != "postgres://cloud_admin:cloud_admin@127.0.0.1:55436/demo?sslmode=disable" {
+		t.Fatalf("database URL = %q", got)
+	}
+}
+
+func TestManagedElectricDatabaseURLWaitsForPendingNeonBranch(t *testing.T) {
+	t.Setenv("ONLAVA_AGENT_HOME", t.TempDir())
+	prevTimeout := neonBranchReadyTimeout
+	prevInterval := neonBranchReadyPollInterval
+	neonBranchReadyTimeout = 2 * time.Second
+	neonBranchReadyPollInterval = 10 * time.Millisecond
+	defer func() {
+		neonBranchReadyTimeout = prevTimeout
+		neonBranchReadyPollInterval = prevInterval
+	}()
+
+	root := t.TempDir()
+	cfg := app.Config{
+		Name: "demo",
+		Dev: app.DevConfig{Services: map[string]app.DevServiceConfig{
+			"postgres": {Kind: "neon", Mode: "self-hosted", Isolation: "branch", Project: "demo"},
+			"electric": {Kind: "electric"},
+		}},
+	}
+	pin, err := buildWorktreeDBPin(root, cfg, "demo/review-a")
+	if err != nil {
+		t.Fatalf("build pin: %v", err)
+	}
+	if err := writeWorktreeDBPin(root, pin); err != nil {
+		t.Fatalf("write pin: %v", err)
+	}
+	binDir := t.TempDir()
+	driverState := filepath.Join(binDir, "state")
+	driver := filepath.Join(binDir, "fake-driver")
+	if err := os.WriteFile(driver, []byte(`#!/bin/sh
+if [ ! -f "$DRIVER_STATE" ]; then
+  printf pending > "$DRIVER_STATE"
+  printf '{"status":"pending","message":"compute is still warming"}\n'
+  exit 0
+fi
+printf '{"status":"ready","message":"driver marked branch ready","endpoint":{"host":"127.0.0.1","port":55436,"database":"demo","role":"cloud_admin","sslmode":"disable","source":"fake-driver"}}\n'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DRIVER_STATE", driverState)
+	t.Setenv(localPostgresBranchDriverEnv, driver)
+
+	got, err := managedElectricDatabaseURL(t.Context(), root, cfg, &localagent.Session{
+		SessionID: "review-a",
+		BaseAppID: "demo",
+	}, &managedElectricPlan{ServiceName: "electric"}, nil, nil)
 	if err != nil {
 		t.Fatalf("managedElectricDatabaseURL returned error: %v", err)
 	}

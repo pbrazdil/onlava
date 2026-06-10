@@ -41,6 +41,7 @@ type neonBranchDriver interface {
 type neonBranchDriverMetadata struct {
 	name                  string
 	defaultEndpointSource string
+	requiresReadyCell     bool
 }
 
 type executableNeonBranchDriver struct {
@@ -86,6 +87,7 @@ func newBuiltinNeonSelfhostBranchDriver() builtinNeonSelfhostBranchDriver {
 		meta: neonBranchDriverMetadata{
 			name:                  "built-in neon-selfhost driver",
 			defaultEndpointSource: neonSelfhostBranchDriverEndpointSource,
+			requiresReadyCell:     true,
 		},
 	}
 }

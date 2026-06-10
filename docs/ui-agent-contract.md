@@ -4,6 +4,8 @@ Agents must compose UI from onlava layouts and primitives.
 
 Agents must not use shadcn directly in app or dashboard screens. shadcn is an implementation input for the onlava registry and promotion flow, not a screen-authoring API.
 
+This contract applies to dashboard routes, app screens that consume onlava UI, and registry/promoted component work under `ui/`.
+
 ## Allowed
 
 - Import primitives from `@/components/primitives/*`.
@@ -20,7 +22,7 @@ Agents must not use shadcn directly in app or dashboard screens. shadcn is an im
 - Do not install from registry namespaces other than `@onlava`.
 - Do not import from `@/components/vendor/shadcn/*` in routes, pages, or feature screens.
 - Do not import from `@/components/ui/*`.
-- Do not import Radix, `class-variance-authority`, `clsx`, `tailwind-merge`, or lucide icons directly in screens.
+- Do not import Radix, `class-variance-authority`, `clsx`, `tailwind-merge`, or lucide icons directly in screens. Put those dependencies behind onlava primitives, layouts, registry sources, or small onlava-owned helpers.
 - Do not edit generated or vendor shadcn files directly from app screens.
 - Do not add long Tailwind-style `className` strings in routes or pages when a primitive or layout should own the behavior.
 
@@ -143,3 +145,11 @@ Not allowed: direct @radix-ui/react-dialog imports in routes
 ## Enforcement
 
 `onlava harness self --json --write` runs UI static architecture checks. The first checks hard-fail direct shadcn/script/registry/import boundary violations. Existing className-heavy dashboard code is reported as warnings while it is migrated into layouts and primitives; new work should reduce those warnings, not add to them.
+
+For dashboard behavior changes, also run:
+
+```sh
+onlava harness ui --json --write
+```
+
+The browser UI harness visits core dashboard routes, runs route-specific semantic journeys, checks stable `data-onlava-ui` markers, and writes screenshots, DOM snapshots, console logs, and network artifacts under `.onlava/harness/ui/`.

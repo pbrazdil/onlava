@@ -30,6 +30,14 @@ func (p neonSelfhostBranchProvider) EnsureBranch(ctx context.Context, pin worktr
 		}, err
 	}
 	if ok {
+		if neonBranchDriverRequiresReadyCell(driver) {
+			if err := neonSelfhostReadyPreflight(ctx, "ensure"); err != nil {
+				return neonBranchBackendStatus{
+					Status:  "pending",
+					Message: err.Error(),
+				}, err
+			}
+		}
 		return driver.EnsureBranch(ctx, pin)
 	}
 	return p.InspectBranch(ctx, pin), nil
@@ -266,11 +274,38 @@ func (neonSelfhostBranchProvider) DiffBranch(ctx context.Context, pin worktreeDB
 }
 
 func neonSelfhostMutationPreflight(ctx context.Context, action string) error {
+	return neonSelfhostReadyPreflight(ctx, action)
+}
+
+func neonSelfhostReadyPreflight(ctx context.Context, action string) error {
+	cell, err := buildDBNeonStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if cell.Status != "ready" {
+		message := firstNonEmpty(strings.TrimSpace(cell.Message), "Neon dev-cell is not ready.")
+		required := strings.TrimSpace(cell.RequiredAction)
+		if required != "" {
+			message += " " + required
+		}
+		return fmt.Errorf("db branch %s requires generated Neon dev-cell readiness: %s", action, message)
+	}
 	status := neonSelfhostPendingBranchStatus(ctx)
 	if status.Status == "missing" {
 		return fmt.Errorf("db branch %s requires generated Neon dev-cell readiness: %s", action, status.Message)
 	}
 	return nil
+}
+
+func neonBranchDriverRequiresReadyCell(driver neonBranchDriver) bool {
+	switch d := driver.(type) {
+	case builtinNeonSelfhostBranchDriver:
+		return d.meta.requiresReadyCell
+	case executableNeonBranchDriver:
+		return d.meta.requiresReadyCell
+	default:
+		return false
+	}
 }
 
 func findNeonBranchLease(pin worktreeDBPin) (neonBranchLease, bool, error) {
