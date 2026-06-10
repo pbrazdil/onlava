@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`,
 
 ## Purpose / Big Picture
 
-`onlava harness self --json --write` currently behaves like a full evidence archive
+`scenery harness self --json --write` currently behaves like a full evidence archive
 printed to stdout. That is the wrong default for agents: a green run can still
 paste drift inventories, environment-variable references, large-file debt,
 timing diagnostics, stdout tails, absolute paths, and artifact evidence into the
@@ -26,23 +26,23 @@ attention, what changed, and where is full evidence.
 ## Progress
 
 - [x] 2026-06-08: Created ExecPlan `0066-harness-self-summary-output.md` from the requested harness-output cleanup brief.
-- [x] 2026-06-08: Implemented compact self-harness summary response and `onlava.harness.self.summary.v1` schema.
+- [x] 2026-06-08: Implemented compact self-harness summary response and `scenery.harness.self.summary.v1` schema.
 - [x] 2026-06-08: Added focused harness artifact, diagnostics, and timing drill-down commands.
 - [x] 2026-06-08: Updated agent-facing docs to prefer summary mode and avoid pasting full archives.
 - [x] 2026-06-08: Validated summary size, full artifact availability, changed-area noise filtering, and version parsing.
 
 ## Surprises & Discoveries
 
-- 2026-06-08: `onlava inspect docs --json` reports one review-due document, `docs/ui-agent-contract.md`; this plan should preserve that signal as compact attention, not bury it in full diagnostics.
-- 2026-06-08: `docs/local-contract.md` currently documents `onlava harness self --json` as a single JSON document conforming to `onlava.harness.self.v1`, with `--write` persisting the same result to `.onlava/harness/self-latest.json`. The implementation must update this public contract when changing stdout behavior.
+- 2026-06-08: `scenery inspect docs --json` reports one review-due document, `docs/ui-agent-contract.md`; this plan should preserve that signal as compact attention, not bury it in full diagnostics.
+- 2026-06-08: `docs/local-contract.md` currently documents `scenery harness self --json` as a single JSON document conforming to `scenery.harness.self.v1`, with `--write` persisting the same result to `.scenery/harness/self-latest.json`. The implementation must update this public contract when changing stdout behavior.
 
-- 2026-06-08: Local `onlava-harness-self-*.json` captures were being scanned as runtime env references; changed-area and drift scans now classify them as ignored local artifacts instead of source.
-- 2026-06-08: A first full self-harness rerun exposed a transient `TestOnlavaDevDashboardNotificationsAndRoutes` failure; the targeted test passed immediately after and a subsequent full self-harness run passed with only warnings.
+- 2026-06-08: Local `scenery-harness-self-*.json` captures were being scanned as runtime env references; changed-area and drift scans now classify them as ignored local artifacts instead of source.
+- 2026-06-08: A first full self-harness rerun exposed a transient `TestSceneryDevDashboardNotificationsAndRoutes` failure; the targeted test passed immediately after and a subsequent full self-harness run passed with only warnings.
 ## Decision Log
 
-- 2026-06-08: Use a clean summary-default cutover for self-harness stdout. `onlava harness self --json --write`, `onlava harness self --summary --write`, and `onlava harness self --json=summary --write` should print the compact summary; `onlava harness self --json=full --write` prints the existing full archive.
-- 2026-06-08: Keep full evidence available as checked local artifacts, not as stdout. The self-harness should still write `.onlava/harness/self-latest.json` and the topic artifacts needed for audit, debugging, and release review.
-- 2026-06-08: Add a new summary schema, `onlava.harness.self.summary.v1`, rather than shrinking `onlava.harness.self.v1` in place. The full archive schema remains the contract for `--json=full` and for the full artifact.
+- 2026-06-08: Use a clean summary-default cutover for self-harness stdout. `scenery harness self --json --write`, `scenery harness self --summary --write`, and `scenery harness self --json=summary --write` should print the compact summary; `scenery harness self --json=full --write` prints the existing full archive.
+- 2026-06-08: Keep full evidence available as checked local artifacts, not as stdout. The self-harness should still write `.scenery/harness/self-latest.json` and the topic artifacts needed for audit, debugging, and release review.
+- 2026-06-08: Add a new summary schema, `scenery.harness.self.summary.v1`, rather than shrinking `scenery.harness.self.v1` in place. The full archive schema remains the contract for `--json=full` and for the full artifact.
 - 2026-06-08: Treat unchanged historical architecture debt as debt summary unless it intersects `changed_area` or is new relative to the previous baseline. Agent attention should be about current risk, not every known warning.
 
 ## Outcomes & Retrospective
@@ -50,40 +50,40 @@ attention, what changed, and where is full evidence.
 Completed 2026-06-08.
 
 Shipped summary-first self-harness stdout: `--summary`, `--json`, and
-`--json=summary` now print `onlava.harness.self.summary.v1`, while
-`--json=full` preserves the full `onlava.harness.self.v1` archive stdout. Full
-evidence remains in `.onlava/harness/self-latest.json`; the compact summary is
-also written to `.onlava/harness/self-summary-latest.json`.
+`--json=summary` now print `scenery.harness.self.summary.v1`, while
+`--json=full` preserves the full `scenery.harness.self.v1` archive stdout. Full
+evidence remains in `.scenery/harness/self-latest.json`; the compact summary is
+also written to `.scenery/harness/self-summary-latest.json`.
 
-Added bounded drill-downs under `onlava inspect harness`: artifact payloads,
+Added bounded drill-downs under `scenery inspect harness`: artifact payloads,
 diagnostics by severity, and top-N timing. Added local harness/report artifact
 ignore rules, repo-relative architecture diagnostics, and JSON-aware installed
-`onlava version --json` parsing.
+`scenery version --json` parsing.
 
 Validation passed:
 
-- `go test ./cmd/onlava`
+- `go test ./cmd/scenery`
 - `go test ./...`
-- `go build -o .onlava/harness/bin/onlava ./cmd/onlava`
-- `onlava harness self --summary --write`
-- `onlava harness self --json=summary --write`
-- `onlava harness self --json=full --write`
-- `onlava inspect harness --json`
-- `onlava inspect harness artifact test-timing --json`
-- `onlava inspect harness diagnostics --severity warning --json`
-- `onlava inspect harness timing --top 10 --json`
+- `go build -o .scenery/harness/bin/scenery ./cmd/scenery`
+- `scenery harness self --summary --write`
+- `scenery harness self --json=summary --write`
+- `scenery harness self --json=full --write`
+- `scenery inspect harness --json`
+- `scenery inspect harness artifact test-timing --json`
+- `scenery inspect harness diagnostics --severity warning --json`
+- `scenery inspect harness timing --top 10 --json`
 
 ## Context and Orientation
 
 Start with these files and surfaces:
 
-- `cmd/onlava` command parsing for `onlava harness self` and `onlava inspect harness`.
-- The self-harness implementation that builds the current `onlava.harness.self.v1` response and writes `.onlava/harness/self-latest.json`.
+- `cmd/scenery` command parsing for `scenery harness self` and `scenery inspect harness`.
+- The self-harness implementation that builds the current `scenery.harness.self.v1` response and writes `.scenery/harness/self-latest.json`.
 - The changed-area oracle that reports changed files, ignored files, affected packages, risk flags, and recommended commands.
 - The drift report writer that produces environment-variable and contract-drift evidence.
-- The Go test timing report writer that produces `.onlava/harness/test-timing-latest.json` and Go test JSONL artifacts.
-- `docs/schemas/onlava.harness.self.v1.schema.json` for the full archive schema.
-- `docs/schemas/onlava.inspect.harness.v1.schema.json` and `docs/schemas/onlava.harness.artifact.v1.schema.json` for inspector and evidence shapes.
+- The Go test timing report writer that produces `.scenery/harness/test-timing-latest.json` and Go test JSONL artifacts.
+- `docs/schemas/scenery.harness.self.v1.schema.json` for the full archive schema.
+- `docs/schemas/scenery.inspect.harness.v1.schema.json` and `docs/schemas/scenery.harness.artifact.v1.schema.json` for inspector and evidence shapes.
 - `docs/local-contract.md` for CLI grammar, JSON modes, artifact paths, and stability labels.
 - `docs/harness-engineering.md`, `AGENTS.md`, and `SKILL.md` for the agent validation loop.
 
@@ -94,10 +94,10 @@ or repeated absolute paths.
 
 ## Milestones
 
-1. Summary Contract: add `onlava.harness.self.summary.v1`, a builder from the
+1. Summary Contract: add `scenery.harness.self.summary.v1`, a builder from the
    existing full result, status classification, attention buckets, compact steps,
    artifact references, drill-down commands, and size caps.
-2. CLI Cutover: teach `onlava harness self` to print summary for `--json`,
+2. CLI Cutover: teach `scenery harness self` to print summary for `--json`,
    `--summary`, and `--json=summary`, and to print the full archive only for
    `--json=full`.
 3. Focused Inspection: add topic drill-downs for harness artifacts,
@@ -105,7 +105,7 @@ or repeated absolute paths.
    archive.
 4. Noise Fixes: ignore local harness/report artifacts in changed-area analysis,
    make architecture warnings changed-area-sensitive, omit successful output
-   tails in summary mode, normalize paths, and fix `onlava version --json`
+   tails in summary mode, normalize paths, and fix `scenery version --json`
    parsing.
 5. Documentation and Validation: update contracts, schemas, agent docs, and
    tests so compact stdout is enforced as a harness contract.
@@ -123,9 +123,9 @@ surface for agents. Full mode is explicit. `--write` continues to write the full
 archive and topic artifacts; it may also write a summary snapshot if useful, but
 stdout must stay compact.
 
-Then add focused inspector commands. `onlava inspect harness --json` can remain
+Then add focused inspector commands. `scenery inspect harness --json` can remain
 the manifest view, but agents also need `artifact <name>`, diagnostics filtering,
-and timing top-N queries. These commands should read existing `.onlava/harness/`
+and timing top-N queries. These commands should read existing `.scenery/harness/`
 artifacts and return bounded JSON.
 
 Finally update docs and tests. The size limits and forbidden embedded fields are
@@ -175,8 +175,8 @@ part of the contract, not preferences.
 10. Add changed-area ignore/classification rules for local diagnostics and cache
     artifacts:
     - `*.harness*.json`
-    - `onlava-harness-self-*.json`
-    - `.onlava/**`
+    - `scenery-harness-self-*.json`
+    - `.scenery/**`
     - `coverage/**`
     - `test-results/**`
     Ignored-only changes must not recommend `go test ./...` or self-harness as
@@ -184,20 +184,20 @@ part of the contract, not preferences.
 11. Promote large-file warnings to attention only when their file is in
     `changed_area` or when the warning is new compared with the previous
     baseline. Otherwise report them under debt summary.
-12. Fix `onlava version --json` parsing in the toolchain report. Parse JSON and
+12. Fix `scenery version --json` parsing in the toolchain report. Parse JSON and
     expose concise version/build fields; never report the version as the first
     byte of JSON such as `"{"`.
 13. Add CLI support:
-    - `onlava harness self --summary --write`
-    - `onlava harness self --json=summary --write`
-    - `onlava harness self --json=full --write`
-    - `onlava harness self --json --write` as summary mode after the clean cutover.
+    - `scenery harness self --summary --write`
+    - `scenery harness self --json=summary --write`
+    - `scenery harness self --json=full --write`
+    - `scenery harness self --json --write` as summary mode after the clean cutover.
 14. Add inspect support:
-    - `onlava inspect harness --json`
-    - `onlava inspect harness artifact <name> --json`
-    - `onlava inspect harness diagnostics --severity error|warning --json`
-    - `onlava inspect harness timing --top 10 --json`
-15. Add `docs/schemas/onlava.harness.self.summary.v1.schema.json` and update any
+    - `scenery inspect harness --json`
+    - `scenery inspect harness artifact <name> --json`
+    - `scenery inspect harness diagnostics --severity error|warning --json`
+    - `scenery inspect harness timing --top 10 --json`
+15. Add `docs/schemas/scenery.harness.self.summary.v1.schema.json` and update any
     schema registry or docs knowledge metadata needed by self-harness validation.
 16. Update `docs/local-contract.md` with the new CLI grammar, summary/full mode
     semantics, artifact paths, stability labels, and size budgets.
@@ -205,8 +205,8 @@ part of the contract, not preferences.
     focused drill-down commands, and the rule that full archives are evidence,
     not prompt context.
 18. Update `AGENTS.md` and `SKILL.md` so agents run
-    `onlava harness self --summary --write` and avoid pasting full
-    `.onlava/harness/self-latest.json` into chat.
+    `scenery harness self --summary --write` and avoid pasting full
+    `.scenery/harness/self-latest.json` into chat.
 19. Update `docs/knowledge.json` for the new summary schema and any changed docs.
 20. Add tests for summary shape, size, forbidden embedded fields, changed-area
     ignored artifacts, architecture debt promotion, version parsing, and CLI mode
@@ -216,12 +216,12 @@ part of the contract, not preferences.
 
 Acceptance criteria:
 
-- `onlava harness self --summary --write` prints `onlava.harness.self.summary.v1`
+- `scenery harness self --summary --write` prints `scenery.harness.self.summary.v1`
   and writes full evidence artifacts.
-- `onlava harness self --json=summary --write` prints the same summary shape.
-- `onlava harness self --json --write` prints compact summary after the cutover.
-- `onlava harness self --json=full --write` prints the full
-  `onlava.harness.self.v1` archive.
+- `scenery harness self --json=summary --write` prints the same summary shape.
+- `scenery harness self --json --write` prints compact summary after the cutover.
+- `scenery harness self --json=full --write` prints the full
+  `scenery.harness.self.v1` archive.
 - A green self-harness summary is no larger than 12 KB.
 - A failed self-harness summary is no larger than 32 KB while preserving the first
   actionable failure and artifact references.
@@ -233,11 +233,11 @@ Acceptance criteria:
   changed-area recommendations and reported separately as ignored local artifacts.
 - Large-file warnings outside the changed area and not new relative to baseline
   stay in debt summary, not attention.
-- The toolchain report parses installed `onlava version --json` into meaningful
+- The toolchain report parses installed `scenery version --json` into meaningful
   version/build fields and never reports `"{"` as the version.
-- `onlava inspect harness artifact <name> --json`,
-  `onlava inspect harness diagnostics --severity warning --json`, and
-  `onlava inspect harness timing --top 10 --json` return bounded focused detail.
+- `scenery inspect harness artifact <name> --json`,
+  `scenery inspect harness diagnostics --severity warning --json`, and
+  `scenery inspect harness timing --top 10 --json` return bounded focused detail.
 - `docs/local-contract.md`, `docs/harness-engineering.md`, `AGENTS.md`,
   `SKILL.md`, schemas, and docs knowledge metadata agree on summary-first usage.
 
@@ -245,15 +245,15 @@ Validation commands:
 
 ```sh
 go test ./...
-go build -o .onlava/harness/bin/onlava ./cmd/onlava
-onlava harness self --summary --write
-onlava harness self --json=summary --write
-onlava harness self --json=full --write
-onlava inspect harness --json
-onlava inspect harness artifact test-timing --json
-onlava inspect harness diagnostics --severity warning --json
-onlava inspect harness timing --top 10 --json
-onlava inspect docs --json
+go build -o .scenery/harness/bin/scenery ./cmd/scenery
+scenery harness self --summary --write
+scenery harness self --json=summary --write
+scenery harness self --json=full --write
+scenery inspect harness --json
+scenery inspect harness artifact test-timing --json
+scenery inspect harness diagnostics --severity warning --json
+scenery inspect harness timing --top 10 --json
+scenery inspect docs --json
 ```
 
 Also add unit tests equivalent to:
@@ -293,7 +293,7 @@ Changed-area ignore rules should only classify local diagnostic artifacts. If th
 oracle accidentally ignores a source, docs, schema, or test file, remove or
 narrow the pattern and add a regression test with that path.
 
-No `.onlava/` cache output, coverage output, test-results output, or generated
+No `.scenery/` cache output, coverage output, test-results output, or generated
 local harness artifacts should be committed.
 
 ## Artifacts and Notes
@@ -301,28 +301,28 @@ local harness artifacts should be committed.
 Expected summary artifacts and drill-downs:
 
 ```text
-.onlava/harness/self-latest.json
-.onlava/harness/agent-context.json
-.onlava/harness/drift-latest.json
-.onlava/harness/test-timing-latest.json
-.onlava/harness/fixture-matrix-latest.json
-.onlava/harness/schema-validation-latest.json
-.onlava/harness/artifacts/<run-id>/go-test.jsonl
+.scenery/harness/self-latest.json
+.scenery/harness/agent-context.json
+.scenery/harness/drift-latest.json
+.scenery/harness/test-timing-latest.json
+.scenery/harness/fixture-matrix-latest.json
+.scenery/harness/schema-validation-latest.json
+.scenery/harness/artifacts/<run-id>/go-test.jsonl
 ```
 
 Expected agent-facing drill-down commands:
 
 ```text
-onlava inspect harness --json
-onlava inspect harness artifact test-timing --json
-onlava inspect harness artifact drift --json
-onlava inspect harness diagnostics --severity warning --json
-onlava inspect harness timing --top 10 --json
+scenery inspect harness --json
+scenery inspect harness artifact test-timing --json
+scenery inspect harness artifact drift --json
+scenery inspect harness diagnostics --severity warning --json
+scenery inspect harness timing --top 10 --json
 ```
 
 A representative summary should include:
 
-- `schema_version: "onlava.harness.self.summary.v1"`
+- `schema_version: "scenery.harness.self.summary.v1"`
 - `ok`
 - `status`
 - `generated_at`
@@ -342,18 +342,18 @@ and ignored local harness JSON outside changed-area recommendations.
 
 ## Interfaces and Dependencies
 
-This plan changes public CLI and JSON contract surfaces for the onlava repo
+This plan changes public CLI and JSON contract surfaces for the scenery repo
 self-harness:
 
-- `onlava harness self --json` changes from full archive stdout to summary stdout.
-- `onlava harness self --summary` is added as an explicit summary spelling.
-- `onlava harness self --json=summary` is added as an explicit summary JSON mode.
-- `onlava harness self --json=full` is added as the explicit full archive stdout
+- `scenery harness self --json` changes from full archive stdout to summary stdout.
+- `scenery harness self --summary` is added as an explicit summary spelling.
+- `scenery harness self --json=summary` is added as an explicit summary JSON mode.
+- `scenery harness self --json=full` is added as the explicit full archive stdout
   mode.
-- `onlava.inspect.harness` gains focused artifact, diagnostics, and timing
+- `scenery.inspect.harness` gains focused artifact, diagnostics, and timing
   drill-down commands.
-- `onlava.harness.self.summary.v1` is added as a new compact schema.
-- `onlava.harness.self.v1` remains the full archive schema for explicit full mode
+- `scenery.harness.self.summary.v1` is added as a new compact schema.
+- `scenery.harness.self.v1` remains the full archive schema for explicit full mode
   and full evidence artifacts.
 
 The implementation depends on the existing self-harness full result, evidence

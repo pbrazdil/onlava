@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/runtimeapi"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/runtimeapi"
 )
 
 func TestTypeScriptClientIncludesTxidSyncObservationDiagnostics(t *testing.T) {

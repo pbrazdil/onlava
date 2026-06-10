@@ -37,7 +37,7 @@ fixture apps and tests become easier
 
 ## Decision Log
 
-- Use `onlava.data.export.v1` as the portable JSON schema.
+- Use `scenery.data.export.v1` as the portable JSON schema.
 - Export logical objects, fields/options, indexes, saved views, and records.
 - Import recreates metadata through existing create APIs and creates new record IDs; the response returns `record_id_map` for exported ID to imported ID reconciliation.
 - Import writes normal outbox rows and publishes imported record events only after the outer import transaction commits.
@@ -98,7 +98,7 @@ CSV UI
 Add schema:
 
 ```text
-docs/schemas/onlava.data.export.v1.schema.json
+docs/schemas/scenery.data.export.v1.schema.json
 ```
 
 ### Milestone 2: Export API
@@ -125,7 +125,7 @@ Define the portable JSON format first, then implement export, then import, then 
 
 ## Concrete Steps
 
-1. Add `onlava.data.export.v1` schema.
+1. Add `scenery.data.export.v1` schema.
 2. Add export types and implementation.
 3. Add import types and implementation.
 4. Decide outbox behavior for import.
@@ -135,10 +135,10 @@ Define the portable JSON format first, then implement export, then import, then 
 ## Validation and Acceptance
 
 ```sh
-ONLAVA_TEST_DATABASE_URL=... go test ./internal/objectstore
+SCENERY_TEST_DATABASE_URL=... go test ./internal/objectstore
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

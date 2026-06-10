@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/pbrazdil/onlava/errs"
-	onlavamiddleware "github.com/pbrazdil/onlava/middleware"
+	"scenery.sh/errs"
+	scenerymiddleware "scenery.sh/middleware"
 )
 
 func executeTypedEndpoint(ep *Endpoint, ctx context.Context, pathArgs []any, payload any) (any, int, http.Header, error) {
-	resp := runMiddlewareChain(ep, ctx, func(req onlavamiddleware.Request) onlavamiddleware.Response {
+	resp := runMiddlewareChain(ep, ctx, func(req scenerymiddleware.Request) scenerymiddleware.Response {
 		callCtx := req.Context()
 		if callCtx == nil {
 			callCtx = context.Background()
@@ -21,15 +21,15 @@ func executeTypedEndpoint(ep *Endpoint, ctx context.Context, pathArgs []any, pay
 			out, err = ep.Invoke(callCtx, pathArgs, payload)
 		}
 		if err != nil {
-			return onlavamiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
+			return scenerymiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
 		}
-		return onlavamiddleware.Response{Payload: out}
+		return scenerymiddleware.Response{Payload: out}
 	})
 	return finalizeTypedMiddlewareResponse(ep, resp)
 }
 
 func executeRawEndpoint(ep *Endpoint, req *http.Request) (int, http.Header, []byte, error) {
-	resp := runMiddlewareChain(ep, req.Context(), func(mwReq onlavamiddleware.Request) onlavamiddleware.Response {
+	resp := runMiddlewareChain(ep, req.Context(), func(mwReq scenerymiddleware.Request) scenerymiddleware.Response {
 		capture := newRawResponseCapture()
 		httpReq := req
 		if ctx := mwReq.Context(); ctx != nil && ctx != req.Context() {
@@ -37,13 +37,13 @@ func executeRawEndpoint(ep *Endpoint, req *http.Request) (int, http.Header, []by
 		}
 		if mocked, err := invokeRawEndpointMock(ep, capture, httpReq); mocked {
 			if err != nil {
-				return onlavamiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
+				return scenerymiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
 			}
 		} else {
 			ep.RawHandler(capture, httpReq)
 		}
 
-		resp := onlavamiddleware.Response{HTTPStatus: capture.StatusCode()}
+		resp := scenerymiddleware.Response{HTTPStatus: capture.StatusCode()}
 		copyHeaders(resp.Header(), capture.Header())
 		resp.Payload = rawMiddlewarePayload{body: append([]byte(nil), capture.body.Bytes()...)}
 		return resp
@@ -64,19 +64,19 @@ func executeRawEndpoint(ep *Endpoint, req *http.Request) (int, http.Header, []by
 	return resp.HTTPStatus, headers, body, nil
 }
 
-func runMiddlewareChain(ep *Endpoint, ctx context.Context, leaf func(onlavamiddleware.Request) onlavamiddleware.Response) onlavamiddleware.Response {
+func runMiddlewareChain(ep *Endpoint, ctx context.Context, leaf func(scenerymiddleware.Request) scenerymiddleware.Response) scenerymiddleware.Response {
 	middlewares, err := getMiddlewares(ep.MiddlewareIDs)
 	if err != nil {
-		return onlavamiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
+		return scenerymiddleware.Response{Err: err, HTTPStatus: errs.HTTPStatus(err)}
 	}
-	req := onlavamiddleware.NewLazyRequest(ctx, CurrentRequest)
+	req := scenerymiddleware.NewLazyRequest(ctx, CurrentRequest)
 	if len(middlewares) == 0 {
 		return leaf(req)
 	}
 
 	var counter int
-	var next onlavamiddleware.Next
-	next = func(req onlavamiddleware.Request) (resp onlavamiddleware.Response) {
+	var next scenerymiddleware.Next
+	next = func(req scenerymiddleware.Request) (resp scenerymiddleware.Response) {
 		defer func() {
 			if resp.HTTPStatus == 0 && resp.Err != nil {
 				resp.HTTPStatus = errs.HTTPStatus(resp.Err)
@@ -91,7 +91,7 @@ func runMiddlewareChain(ep *Endpoint, ctx context.Context, leaf func(onlavamiddl
 			recordMiddlewareEvent(mw.ID, "start", nil)
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					resp = onlavamiddleware.Response{
+					resp = scenerymiddleware.Response{
 						Err:        errs.B().Code(errs.Internal).Msgf("panic executing middleware %s: %v", mw.ID, recovered).Err(),
 						HTTPStatus: http.StatusInternalServerError,
 					}
@@ -103,7 +103,7 @@ func runMiddlewareChain(ep *Endpoint, ctx context.Context, leaf func(onlavamiddl
 		case idx == len(middlewares):
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					resp = onlavamiddleware.Response{
+					resp = scenerymiddleware.Response{
 						Err:        errs.B().Code(errs.Internal).Msgf("panic handling request: %v", recovered).Err(),
 						HTTPStatus: http.StatusInternalServerError,
 					}
@@ -111,7 +111,7 @@ func runMiddlewareChain(ep *Endpoint, ctx context.Context, leaf func(onlavamiddl
 			}()
 			return leaf(req)
 		default:
-			return onlavamiddleware.Response{
+			return scenerymiddleware.Response{
 				Err:        errs.B().Code(errs.Internal).Msg("middleware called next() too many times").Err(),
 				HTTPStatus: http.StatusInternalServerError,
 			}
@@ -121,7 +121,7 @@ func runMiddlewareChain(ep *Endpoint, ctx context.Context, leaf func(onlavamiddl
 	return next(req)
 }
 
-func finalizeTypedMiddlewareResponse(ep *Endpoint, resp onlavamiddleware.Response) (any, int, http.Header, error) {
+func finalizeTypedMiddlewareResponse(ep *Endpoint, resp scenerymiddleware.Response) (any, int, http.Header, error) {
 	headers := cloneHeaders(resp.GetHeaders())
 	if resp.Err != nil {
 		return nil, resp.HTTPStatus, headers, resp.Err

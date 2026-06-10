@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pbrazdil/onlava/internal/clientgen"
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/parse"
+	"scenery.sh/internal/clientgen"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/parse"
 )
 
 func TestBasicAppParseAndClientgen(t *testing.T) {
@@ -76,11 +76,11 @@ func TestBasicAppParseAndClientgen(t *testing.T) {
 		`title: encodeQueryValue(params.Title),`,
 		`"X-Echo": encodeHeaderValue(params.Header),`,
 		`body: encodeQueryValue(params.body),`,
-		`transport?: OnlavaTransport`,
+		`transport?: SceneryTransport`,
 		`export type CallParameters = Omit<RequestInit, "method" | "body" | "headers"> & {`,
 		`export interface APIResponse<T> {`,
-		`export type OnlavaTransport = "auto" | "json" | "binary" | "binary-strict" | "wire-json" | "wire-json-strict"`,
-		`const ONLAVA_WIRE_SCHEMA_HASH = `,
+		`export type SceneryTransport = "auto" | "json" | "binary" | "binary-strict" | "wire-json" | "wire-json-strict"`,
+		`const SCENERY_WIRE_SCHEMA_HASH = `,
 		`const resp = await this.baseClient.callTypedEndpoint({ endpointID: "service.Echo"`,
 		`const resp = await this.baseClient.callTypedEndpointWithMeta({ endpointID: "service.Echo"`,
 		`wirePath: "/_wire/service.Echo"`,
@@ -110,38 +110,38 @@ func TestParseRuntimeDeclarationsNestedServiceAndMiddleware(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentParseTestApp(t, "runtimedecls", map[string]string{
-		"go.mod":       "module example.com/runtimedecls\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"runtimedecls"}`,
+		"go.mod":        "module example.com/runtimedecls\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"runtimedecls"}`,
 		"solar/projects/api.go": `package projects
 
 import "context"
 
-//onlava:service
+//scenery:service
 type Service struct{}
 
 type ListProjectsResponse struct {
 	Items []string
 }
 
-//onlava:api public method=GET path=/tenants/:tenant_id/projects tag:foo
+//scenery:api public method=GET path=/tenants/:tenant_id/projects tag:foo
 func (s *Service) ListProjects(ctx context.Context, tenant_id string) (*ListProjectsResponse, error) {
 	return &ListProjectsResponse{}, nil
 }
 `,
 		"solar/projects/mw/mw.go": `package mw
 
-import "github.com/pbrazdil/onlava/middleware"
+import "scenery.sh/middleware"
 
-//onlava:middleware target=tag:foo
+//scenery:middleware target=tag:foo
 func ServiceTag(req middleware.Request, next middleware.Next) middleware.Response {
 	return next(req)
 }
 `,
 		"globalmw/mw.go": `package globalmw
 
-import "github.com/pbrazdil/onlava/middleware"
+import "scenery.sh/middleware"
 
-//onlava:middleware global target=all
+//scenery:middleware global target=all
 func Global(req middleware.Request, next middleware.Next) middleware.Response {
 	return next(req)
 }
@@ -152,8 +152,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/pbrazdil/onlava/cron"
-	"github.com/pbrazdil/onlava/temporal"
+	"scenery.sh/cron"
+	"scenery.sh/temporal"
 )
 
 type In struct{ ID string }
@@ -245,15 +245,15 @@ func TestParseRejectsInvalidRuntimeAndEndpointDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentParseTestApp(t, "invalidruntime", map[string]string{
-		"go.mod":       "module example.com/invalidruntime\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"invalidruntime"}`,
+		"go.mod":        "module example.com/invalidruntime\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"invalidruntime"}`,
 		"svc/api.go": `package svc
 
 import (
 	"context"
 	"net/http"
 
-	"github.com/pbrazdil/onlava/temporal"
+	"scenery.sh/temporal"
 )
 
 type In struct{}
@@ -275,29 +275,29 @@ var wf = temporal.NewWorkflow[In, Out]("orders.Fulfill/v1", temporal.WorkflowCon
 	return Out{}, nil
 })
 
-//onlava:api public
+//scenery:api public
 func Ping(ctx context.Context) error {
 	_, err := temporal.Start(ctx, wf, In{})
 	return err
 }
 
-//onlava:api public raw
+//scenery:api public raw
 func Raw(w http.ResponseWriter, req *http.Request) {}
 
-//onlava:api public
+//scenery:api public
 func CallRaw(w http.ResponseWriter, req *http.Request) {
 	Raw(w, req)
 }
 
-//onlava:api public path=/hello/:name
+//scenery:api public path=/hello/:name
 func Hello(ctx context.Context, wrong string) error { return nil }
 
-//onlava:service
+//scenery:service
 type Service struct{}
 
 func (s *Service) Shutdown() {}
 
-//onlava:api public
+//scenery:api public
 func (s *Service) ServiceHello(ctx context.Context) error { return nil }
 `,
 	})
@@ -324,12 +324,12 @@ func (s *Service) ServiceHello(ctx context.Context) error { return nil }
 	}
 }
 
-func TestParseRejectsNonOnlavaDirectives(t *testing.T) {
+func TestParseRejectsNonSceneryDirectives(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentParseTestApp(t, "otherdirective", map[string]string{
-		"go.mod":       "module example.com/otherdirective\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"otherdirective"}`,
+		"go.mod":        "module example.com/otherdirective\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"otherdirective"}`,
 		"svc/api.go": `package svc
 
 import "context"
@@ -340,26 +340,26 @@ func Hello(ctx context.Context) error { return nil }
 	})
 
 	_, err := parse.App(dir, "otherdirective")
-	if err == nil || !strings.Contains(err.Error(), "no onlava directives found in application") {
-		t.Fatalf("expected no onlava directives error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no scenery directives found in application") {
+		t.Fatalf("expected no scenery directives error, got %v", err)
 	}
 }
 
-func TestParseRejectsAppsWithoutOnlavaDirectives(t *testing.T) {
+func TestParseRejectsAppsWithoutSceneryDirectives(t *testing.T) {
 	t.Parallel()
 
-	dir := persistentParseTestApp(t, "noonlava", map[string]string{
-		"go.mod":       "module example.com/noonlava\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"noonlava"}`,
+	dir := persistentParseTestApp(t, "noscenery", map[string]string{
+		"go.mod":        "module example.com/noscenery\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"noscenery"}`,
 		"svc/api.go": `package svc
 
 func Helper() {}
 `,
 	})
 
-	_, err := parse.App(dir, "noonlava")
-	if err == nil || !strings.Contains(err.Error(), "no onlava directives found in application") {
-		t.Fatalf("expected no onlava directives error, got %v", err)
+	_, err := parse.App(dir, "noscenery")
+	if err == nil || !strings.Contains(err.Error(), "no scenery directives found in application") {
+		t.Fatalf("expected no scenery directives error, got %v", err)
 	}
 }
 
@@ -389,9 +389,9 @@ func persistentParseTestApp(t *testing.T, name string, files map[string]string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join(cacheDir, "onlava", "internal-parse-tests", name)
+	root := filepath.Join(cacheDir, "scenery", "internal-parse-tests", name)
 	fingerprint := parseTestAppFingerprint(files)
-	marker := filepath.Join(root, ".onlava-test-fingerprint")
+	marker := filepath.Join(root, ".scenery-test-fingerprint")
 	if data, err := os.ReadFile(marker); err != nil || strings.TrimSpace(string(data)) != fingerprint {
 		if err := os.RemoveAll(root); err != nil {
 			t.Fatal(err)
@@ -405,7 +405,7 @@ func persistentParseTestApp(t *testing.T, name string, files map[string]string) 
 	for _, rel := range paths {
 		writeFileIfChanged(t, root, rel, files[rel])
 	}
-	writeFileIfChanged(t, root, ".onlava-test-fingerprint", fingerprint+"\n")
+	writeFileIfChanged(t, root, ".scenery-test-fingerprint", fingerprint+"\n")
 	return root
 }
 

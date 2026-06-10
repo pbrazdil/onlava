@@ -118,7 +118,7 @@ func OpenStore(cacheRoot string) (*Store, error) {
 		if err != nil {
 			return nil, err
 		}
-		cacheRoot = filepath.Join(dir, "onlava")
+		cacheRoot = filepath.Join(dir, "scenery")
 	}
 	if err := os.MkdirAll(cacheRoot, 0o755); err != nil {
 		return nil, err

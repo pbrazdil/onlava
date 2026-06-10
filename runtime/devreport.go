@@ -20,11 +20,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pbrazdil/onlava/errs"
-	"github.com/pbrazdil/onlava/internal/devreport"
-	"github.com/pbrazdil/onlava/internal/envpolicy"
-	"github.com/pbrazdil/onlava/internal/redact"
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/errs"
+	"scenery.sh/internal/devreport"
+	"scenery.sh/internal/envpolicy"
+	"scenery.sh/internal/redact"
+	"scenery.sh/runtime/shared"
 )
 
 type traceSpan struct {
@@ -72,13 +72,13 @@ var globalReporter *devReporter
 
 func startDevelopmentReporting(cfg AppConfig) func() {
 	_ = cfg
-	url := stringsTrim(osGetenv("ONLAVA_DEV_REPORT_URL"))
-	token := stringsTrim(osGetenv("ONLAVA_DEV_REPORT_TOKEN"))
-	appID := stringsTrim(osGetenv("ONLAVA_APP_ID"))
-	sessionID := stringsTrim(osGetenv("ONLAVA_SESSION_ID"))
-	appRootHash := stringsTrim(osGetenv("ONLAVA_APP_ROOT_HASH"))
-	branch := stringsTrim(osGetenv("ONLAVA_BRANCH"))
-	worktree := stringsTrim(osGetenv("ONLAVA_WORKTREE"))
+	url := stringsTrim(osGetenv("SCENERY_DEV_REPORT_URL"))
+	token := stringsTrim(osGetenv("SCENERY_DEV_REPORT_TOKEN"))
+	appID := stringsTrim(osGetenv("SCENERY_APP_ID"))
+	sessionID := stringsTrim(osGetenv("SCENERY_SESSION_ID"))
+	appRootHash := stringsTrim(osGetenv("SCENERY_APP_ROOT_HASH"))
+	branch := stringsTrim(osGetenv("SCENERY_BRANCH"))
+	worktree := stringsTrim(osGetenv("SCENERY_WORKTREE"))
 	if url == "" || token == "" || appID == "" {
 		return func() {}
 	}
@@ -134,7 +134,7 @@ func startDevelopmentReporting(cfg AppConfig) func() {
 
 func reportingBaseHandler(prev slog.Handler) slog.Handler {
 	_ = prev
-	return newOnlavaConsoleHandler(osStderr())
+	return newSceneryConsoleHandler(osStderr())
 }
 
 func activeReporter() *devReporter {
@@ -160,7 +160,7 @@ func (r *devReporter) loop() {
 					r.disabled.Store(true)
 					return
 				}
-				fmt.Fprintf(osStderr(), "onlava: dev report failed: %v\n", err)
+				fmt.Fprintf(osStderr(), "scenery: dev report failed: %v\n", err)
 				continue
 			}
 			r.failures.Store(0)

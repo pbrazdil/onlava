@@ -39,7 +39,7 @@ export function Button({
   return (
     <button
       type={type}
-      data-onlava-ui="Button"
+      data-scenery-ui="Button"
       data-tone={tone}
       data-size={size}
       className={cn(

@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-onlava already generates TypeScript clients for app endpoints. The data platform should eventually have a typed helper client for dynamic data APIs exposed by apps or the dashboard.
+scenery already generates TypeScript clients for app endpoints. The data platform should eventually have a typed helper client for dynamic data APIs exposed by apps or the dashboard.
 
 The goal:
 
@@ -120,8 +120,8 @@ Add generic data helper types first, then filter builders, then SSE helpers. Kee
 ```sh
 go test ./internal/clientgen ./...
 cd ui && bun run typecheck && bun run build
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

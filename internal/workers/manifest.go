@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	ManifestSchemaVersion   = "onlava.worker.manifest.v1"
-	ManifestSchemaVersionV2 = "onlava.worker.manifest.v2"
+	ManifestSchemaVersion   = "scenery.worker.manifest.v1"
+	ManifestSchemaVersionV2 = "scenery.worker.manifest.v2"
 )
 
 type Manifest struct {
@@ -115,7 +115,7 @@ func manifestPaths(appRoot string) ([]string, error) {
 	if strings.TrimSpace(appRoot) == "" {
 		return nil, nil
 	}
-	matches, err := filepath.Glob(filepath.Join(appRoot, ".onlava", "workers", "*.json"))
+	matches, err := filepath.Glob(filepath.Join(appRoot, ".scenery", "workers", "*.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func validateManifest(manifest Manifest, appName string) []Diagnostic {
 	if strings.TrimSpace(manifest.App) == "" {
 		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "app must not be empty"})
 	} else if appName != "" && manifest.App != appName {
-		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: fmt.Sprintf("app %q does not match onlava app %q", manifest.App, appName)})
+		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: fmt.Sprintf("app %q does not match scenery app %q", manifest.App, appName)})
 	}
 	if strings.TrimSpace(manifest.Language) == "" {
 		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "language must not be empty"})
@@ -160,8 +160,8 @@ func validateManifest(manifest Manifest, appName string) []Diagnostic {
 	}
 	if strings.TrimSpace(manifest.PayloadCodec) == "" {
 		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "payload_codec must not be empty"})
-	} else if manifest.PayloadCodec != "onlava-json-v1" {
-		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "payload_codec must be onlava-json-v1"})
+	} else if manifest.PayloadCodec != "scenery-json-v1" {
+		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "payload_codec must be scenery-json-v1"})
 	}
 	if strings.TrimSpace(manifest.Temporal.Namespace) == "" {
 		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "temporal.namespace must not be empty"})
@@ -222,7 +222,7 @@ func validateManifestV1Queues(manifest Manifest) []Diagnostic {
 func validateManifestV2Queues(manifest Manifest) []Diagnostic {
 	var diagnostics []Diagnostic
 	if len(manifest.Temporal.TaskQueues) > 0 {
-		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "onlava.worker.manifest.v2 uses top-level task_queues, not temporal.task_queues"})
+		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "scenery.worker.manifest.v2 uses top-level task_queues, not temporal.task_queues"})
 	}
 	if len(manifest.TaskQueues) == 0 {
 		diagnostics = append(diagnostics, Diagnostic{Path: manifest.Path, Message: "task_queues must not be empty"})
@@ -357,7 +357,7 @@ func validateKnownActivities(manifests []Summary, knownActivities []string) []Di
 			if _, ok := known[activity]; !ok {
 				diagnostics = append(diagnostics, Diagnostic{
 					Path:    manifest.Path,
-					Message: fmt.Sprintf("activity %q is not declared by this onlava app", activity),
+					Message: fmt.Sprintf("activity %q is not declared by this scenery app", activity),
 				})
 			}
 		}

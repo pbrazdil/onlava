@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/runtimeapi"
-	"github.com/pbrazdil/onlava/internal/wire"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/runtimeapi"
+	"scenery.sh/internal/wire"
 )
 
 func AppCapabilities(app *model.App) wire.Capabilities {

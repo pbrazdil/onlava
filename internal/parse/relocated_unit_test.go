@@ -15,28 +15,28 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	stdpgxpool "github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pbrazdil/onlava/errs"
-	appcfg "github.com/pbrazdil/onlava/internal/app"
-	"github.com/pbrazdil/onlava/internal/clientgen"
-	"github.com/pbrazdil/onlava/internal/devmeta"
-	"github.com/pbrazdil/onlava/internal/devtools"
-	"github.com/pbrazdil/onlava/internal/envfile"
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/parse"
-	"github.com/pbrazdil/onlava/internal/redact"
-	"github.com/pbrazdil/onlava/internal/stdlog"
-	"github.com/pbrazdil/onlava/internal/termstyle"
-	"github.com/pbrazdil/onlava/internal/wire"
-	"github.com/pbrazdil/onlava/internal/wiremodel"
-	onlavapgxpool "github.com/pbrazdil/onlava/pgxpool"
-	"github.com/pbrazdil/onlava/rlog"
+	"scenery.sh/errs"
+	appcfg "scenery.sh/internal/app"
+	"scenery.sh/internal/clientgen"
+	"scenery.sh/internal/devmeta"
+	"scenery.sh/internal/devtools"
+	"scenery.sh/internal/envfile"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/parse"
+	"scenery.sh/internal/redact"
+	"scenery.sh/internal/stdlog"
+	"scenery.sh/internal/termstyle"
+	"scenery.sh/internal/wire"
+	"scenery.sh/internal/wiremodel"
+	scenerypgxpool "scenery.sh/pgxpool"
+	"scenery.sh/rlog"
 )
 
 func TestAppDiscoverRootAcceptsLegacyID(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"id":"legacy-app","proxy":{"workspace":"acme","api_host":"api.acme.localhost","console_host":"console.acme.localhost","temporal_host":"temporal.acme.localhost","grafana_host":"grafana.acme.localhost","frontends":{"web":{"host":"web.acme.localhost","root":"apps/web","upstream":"127.0.0.1:5173"}}},"observability":{"logs":{"exclude_endpoints":["sync.*"]},"tracing":{"include_endpoints":["tenants.Config"]}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".scenery.json"), []byte(`{"id":"legacy-app","proxy":{"workspace":"acme","api_host":"api.acme.localhost","console_host":"console.acme.localhost","temporal_host":"temporal.acme.localhost","grafana_host":"grafana.acme.localhost","frontends":{"web":{"host":"web.acme.localhost","root":"apps/web","upstream":"127.0.0.1:5173"}}},"observability":{"logs":{"exclude_endpoints":["sync.*"]},"tracing":{"include_endpoints":["tenants.Config"]}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,14 +79,14 @@ func TestAppDiscoverRootRejectsRemovedProxyKey(t *testing.T) {
 	dir := t.TempDir()
 	removedKey := "m" + "cp_host"
 	data := `{"name":"badapp","proxy":{"` + removedKey + `":"unused.localhost"}}`
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(data), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".scenery.json"), []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	_, _, err := appcfg.DiscoverRoot(dir)
 	if err == nil ||
-		!strings.Contains(err.Error(), filepath.Join(dir, ".onlava.json")) ||
-		!strings.Contains(err.Error(), `unknown .onlava.json field "proxy.`+removedKey+`"`) ||
+		!strings.Contains(err.Error(), filepath.Join(dir, ".scenery.json")) ||
+		!strings.Contains(err.Error(), `unknown .scenery.json field "proxy.`+removedKey+`"`) ||
 		!strings.Contains(err.Error(), "proxy."+removedKey+" was removed") ||
 		!strings.Contains(err.Error(), "proxy.api_host/proxy.console_host/proxy.frontends") {
 		t.Fatalf("DiscoverRoot error = %v, want unknown field for %s", err, removedKey)
@@ -97,7 +97,7 @@ func TestAppDiscoverRootAcceptsTemporalConfig(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"name":"temporalapp","temporal":{"enabled":true,"mode":"local","namespace":"default","address_env":"TEMPORAL_ADDRESS","task_queue_prefix":"onlava.temporalapp","payload_codec":"onlava-json-v1","api_key_env":"TEMPORAL_API_KEY","tls":{"enabled":true,"server_name_env":"TEMPORAL_TLS_SERVER_NAME","ca_cert_file_env":"TEMPORAL_TLS_CA_CERT_FILE","client_cert_file_env":"TEMPORAL_TLS_CERT_FILE","client_key_file_env":"TEMPORAL_TLS_KEY_FILE"},"local":{"auto_start":true,"db_filename":".onlava/temporal/dev.db"},"typescript":{"enabled":true,"runtime":"bun","auto_start":true}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".scenery.json"), []byte(`{"name":"temporalapp","temporal":{"enabled":true,"mode":"local","namespace":"default","address_env":"TEMPORAL_ADDRESS","task_queue_prefix":"scenery.temporalapp","payload_codec":"scenery-json-v1","api_key_env":"TEMPORAL_API_KEY","tls":{"enabled":true,"server_name_env":"TEMPORAL_TLS_SERVER_NAME","ca_cert_file_env":"TEMPORAL_TLS_CA_CERT_FILE","client_cert_file_env":"TEMPORAL_TLS_CERT_FILE","client_key_file_env":"TEMPORAL_TLS_KEY_FILE"},"local":{"auto_start":true,"db_filename":".scenery/temporal/dev.db"},"typescript":{"enabled":true,"runtime":"bun","auto_start":true}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,16 +111,16 @@ func TestAppDiscoverRootAcceptsTemporalConfig(t *testing.T) {
 	if cfg.Temporal.Mode != "local" || cfg.Temporal.Namespace != "default" {
 		t.Fatalf("temporal mode/namespace = %+v", cfg.Temporal)
 	}
-	if cfg.Temporal.AddressEnv != "TEMPORAL_ADDRESS" || cfg.Temporal.TaskQueuePrefix != "onlava.temporalapp" {
+	if cfg.Temporal.AddressEnv != "TEMPORAL_ADDRESS" || cfg.Temporal.TaskQueuePrefix != "scenery.temporalapp" {
 		t.Fatalf("temporal env/task queue = %+v", cfg.Temporal)
 	}
-	if cfg.Temporal.PayloadCodec != "onlava-json-v1" || cfg.Temporal.APIKeyEnv != "TEMPORAL_API_KEY" || !cfg.Temporal.TLS.Enabled {
+	if cfg.Temporal.PayloadCodec != "scenery-json-v1" || cfg.Temporal.APIKeyEnv != "TEMPORAL_API_KEY" || !cfg.Temporal.TLS.Enabled {
 		t.Fatalf("temporal security = %+v", cfg.Temporal)
 	}
 	if !cfg.Temporal.Local.AutoStart {
 		t.Fatalf("temporal booleans = %+v", cfg.Temporal)
 	}
-	if cfg.Temporal.Local.DBFilename != ".onlava/temporal/dev.db" {
+	if cfg.Temporal.Local.DBFilename != ".scenery/temporal/dev.db" {
 		t.Fatalf("temporal local db = %q", cfg.Temporal.Local.DBFilename)
 	}
 	if !cfg.Temporal.TypeScript.Enabled || cfg.Temporal.TypeScript.Runtime != "bun" || !cfg.Temporal.TypeScript.AutoStart {
@@ -132,7 +132,7 @@ func TestAppDiscoverRootTemporalRequiresExplicitEnabled(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"name":"temporaloff","temporal":{"mode":"local","local":{"auto_start":true},"typescript":{"enabled":true,"runtime":"bun","auto_start":true}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".scenery.json"), []byte(`{"name":"temporaloff","temporal":{"mode":"local","local":{"auto_start":true},"typescript":{"enabled":true,"runtime":"bun","auto_start":true}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -171,7 +171,7 @@ func TestAppDiscoverRootAcceptsDevServicesConfig(t *testing.T) {
     }
   }
 }`
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(data), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".scenery.json"), []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -212,7 +212,7 @@ func TestAppDiscoverRootRequiresNameOrID(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(`{"proxy":{}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".scenery.json"), []byte(`{"proxy":{}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -220,7 +220,7 @@ func TestAppDiscoverRootRequiresNameOrID(t *testing.T) {
 	if err == nil {
 		t.Fatal("DiscoverRoot returned nil error")
 	}
-	if got, want := err.Error(), ".onlava.json must define a non-empty name or id"; got != want {
+	if got, want := err.Error(), ".scenery.json must define a non-empty name or id"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
@@ -229,7 +229,7 @@ func TestAppDiscoverRootRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".onlava.json")
+	configPath := filepath.Join(dir, ".scenery.json")
 	if err := os.WriteFile(configPath, []byte(`{"name":"app","proxy":{"extra":"value"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestAppDiscoverRootRejectsUnknownFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("DiscoverRoot returned nil error")
 	}
-	if got, want := err.Error(), configPath+`: unknown .onlava.json field "proxy.extra"`; got != want {
+	if got, want := err.Error(), configPath+`: unknown .scenery.json field "proxy.extra"`; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
@@ -247,7 +247,7 @@ func TestAppDiscoverRootRejectsUnknownTemporalFields(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".onlava.json")
+	configPath := filepath.Join(dir, ".scenery.json")
 	if err := os.WriteFile(configPath, []byte(`{"name":"app","temporal":{"enabled":true,"extra":"value"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestAppDiscoverRootRejectsUnknownTemporalFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("DiscoverRoot returned nil error")
 	}
-	if got, want := err.Error(), configPath+`: unknown .onlava.json field "temporal.extra"`; got != want {
+	if got, want := err.Error(), configPath+`: unknown .scenery.json field "temporal.extra"`; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
@@ -286,7 +286,7 @@ func TestAppDiscoverRootRejectsUnknownFieldsInConfigCollections(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
-			configPath := filepath.Join(dir, ".onlava.json")
+			configPath := filepath.Join(dir, ".scenery.json")
 			if err := os.WriteFile(configPath, []byte(tt.json), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -295,7 +295,7 @@ func TestAppDiscoverRootRejectsUnknownFieldsInConfigCollections(t *testing.T) {
 			if err == nil {
 				t.Fatal("DiscoverRoot returned nil error")
 			}
-			if got, want := err.Error(), configPath+`: unknown .onlava.json field "`+tt.path+`"`; got != want {
+			if got, want := err.Error(), configPath+`: unknown .scenery.json field "`+tt.path+`"`; got != want {
 				t.Fatalf("error = %q, want %q", got, want)
 			}
 		})
@@ -307,7 +307,7 @@ func TestAppDiscoverRootKeepsStringMapsOpen(t *testing.T) {
 
 	dir := t.TempDir()
 	data := `{"name":"app","tasks":{"harness":{"env":{"EXTRA":"value"}}},"dev":{"services":{"electric":{"kind":"electric","env":{"ELECTRIC_INSECURE":"true"}}}}}`
-	if err := os.WriteFile(filepath.Join(dir, ".onlava.json"), []byte(data), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".scenery.json"), []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -327,7 +327,7 @@ func TestAppDiscoverRootReportsConfigPathForInvalidJSON(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".onlava.json")
+	configPath := filepath.Join(dir, ".scenery.json")
 	if err := os.WriteFile(configPath, []byte(`{"name":`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestAppDiscoverRootReportsConfigPathForInvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("DiscoverRoot returned nil error")
 	}
-	if !strings.Contains(err.Error(), configPath+": decode .onlava.json:") {
+	if !strings.Contains(err.Error(), configPath+": decode .scenery.json:") {
 		t.Fatalf("error = %q, want config path and decode prefix", err.Error())
 	}
 }
@@ -457,7 +457,7 @@ func TestDevtoolsPinnedVersionsRejectsMissingValues(t *testing.T) {
 	t.Parallel()
 
 	_, err := devtools.ParsePinnedVersions([]byte(`{
-		"schema_version": "onlava.internal.devtools.versions.v1",
+		"schema_version": "scenery.internal.devtools.versions.v1",
 		"grafana": {
 			"version": "",
 			"plugins": []
@@ -477,8 +477,8 @@ func TestClientgenNamedAliasesAndWireCapabilities(t *testing.T) {
 	t.Parallel()
 
 	appRoot := persistentParseTestApp(t, "clientwireapp", map[string]string{
-		"go.mod":       "module example.com/clientwireapp\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + appcfg.RepoRoot() + "\n",
-		".onlava.json": `{"name":"clientwireapp"}`,
+		"go.mod":        "module example.com/clientwireapp\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + appcfg.RepoRoot() + "\n",
+		".scenery.json": `{"name":"clientwireapp"}`,
 		"point/point.go": `package point
 
 type Point3 struct {
@@ -506,12 +506,12 @@ type UnsupportedResponse struct {
 	Meta map[string]any ` + "`json:\"meta\"`" + `
 }
 
-//onlava:api public
+//scenery:api public
 func Get(ctx context.Context) (*Response, error) {
 	return &Response{}, nil
 }
 
-//onlava:api public
+//scenery:api public
 func Unsupported(ctx context.Context) (*UnsupportedResponse, error) {
 	return &UnsupportedResponse{}, nil
 }
@@ -624,7 +624,7 @@ func TestErrsHTTPErrorRedactsSensitiveMeta(t *testing.T) {
 	t.Parallel()
 
 	type credentials struct {
-		Token string `json:"token" onlava:"sensitive"`
+		Token string `json:"token" scenery:"sensitive"`
 		Name  string `json:"name"`
 	}
 
@@ -648,27 +648,27 @@ func TestErrsHTTPErrorRedactsSensitiveMeta(t *testing.T) {
 	}
 }
 
-func TestPGXPoolParseConfigInjectsOnlavaTracer(t *testing.T) {
+func TestPGXPoolParseConfigInjectsSceneryTracer(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := onlavapgxpool.ParseConfig("postgres://onlava:onlava@localhost/onlava?sslmode=disable")
+	cfg, err := scenerypgxpool.ParseConfig("postgres://scenery:scenery@localhost/scenery?sslmode=disable")
 	if err != nil {
 		t.Fatalf("ParseConfig returned error: %v", err)
 	}
 	if cfg.ConnConfig.Tracer == nil {
-		t.Fatal("expected onlava query tracer")
+		t.Fatal("expected scenery query tracer")
 	}
 }
 
 func TestPGXPoolInstrumentConfigIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := onlavapgxpool.ParseConfig("postgres://onlava:onlava@localhost/onlava?sslmode=disable")
+	cfg, err := scenerypgxpool.ParseConfig("postgres://scenery:scenery@localhost/scenery?sslmode=disable")
 	if err != nil {
 		t.Fatalf("ParseConfig returned error: %v", err)
 	}
 	first := cfg.ConnConfig.Tracer
-	pool, err := onlavapgxpool.NewWithConfig(context.Background(), cfg)
+	pool, err := scenerypgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewWithConfig returned error: %v", err)
 	}
@@ -681,13 +681,13 @@ func TestPGXPoolInstrumentConfigIsIdempotent(t *testing.T) {
 func TestPGXPoolQueryTracerDelegatesToBaseTracer(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := stdpgxpool.ParseConfig("postgres://onlava:onlava@localhost/onlava?sslmode=disable")
+	cfg, err := stdpgxpool.ParseConfig("postgres://scenery:scenery@localhost/scenery?sslmode=disable")
 	if err != nil {
 		t.Fatalf("standard ParseConfig returned error: %v", err)
 	}
 	base := &fakeQueryTracer{}
 	cfg.ConnConfig.Tracer = base
-	pool, err := onlavapgxpool.NewWithConfig(context.Background(), cfg)
+	pool, err := scenerypgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewWithConfig returned error: %v", err)
 	}
@@ -714,14 +714,14 @@ func TestPGXPoolQueryTracerDelegatesToBaseTracer(t *testing.T) {
 	}
 }
 
-func TestRedactValueRedactsOnlavaSensitiveFields(t *testing.T) {
+func TestRedactValueRedactsScenerySensitiveFields(t *testing.T) {
 	t.Parallel()
 
 	type nested struct {
-		Token string `json:"token" onlava:"sensitive"`
+		Token string `json:"token" scenery:"sensitive"`
 	}
 	type payload struct {
-		Password string `json:"password" onlava:"sensitive"`
+		Password string `json:"password" scenery:"sensitive"`
 		Nested   nested `json:"nested"`
 		Name     string `json:"name"`
 	}
@@ -796,7 +796,7 @@ func TestRlogInfoLogsWithKeyValues(t *testing.T) {
 	slog.SetDefault(logger)
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	rlog.Info("hello", "service", "onlava", "count", 3)
+	rlog.Info("hello", "service", "scenery", "count", 3)
 
 	var entry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
@@ -805,8 +805,8 @@ func TestRlogInfoLogsWithKeyValues(t *testing.T) {
 	if entry["msg"] != "hello" {
 		t.Fatalf("msg = %v, want %q", entry["msg"], "hello")
 	}
-	if entry["service"] != "onlava" {
-		t.Fatalf("service = %v, want %q", entry["service"], "onlava")
+	if entry["service"] != "scenery" {
+		t.Fatalf("service = %v, want %q", entry["service"], "scenery")
 	}
 	if entry["count"] != float64(3) {
 		t.Fatalf("count = %v, want %v", entry["count"], 3)

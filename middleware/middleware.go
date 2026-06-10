@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/runtime/shared"
 )
 
 // Signature documents the function signature middleware must implement.

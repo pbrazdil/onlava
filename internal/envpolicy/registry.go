@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	SchemaVersion = "onlava.environment.registry.v1"
+	SchemaVersion = "scenery.environment.registry.v1"
 	RedactedValue = "<redacted>"
 )
 

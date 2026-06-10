@@ -1,6 +1,6 @@
 # Dashboard Rewrite Inventory
 
-The old runtime dashboard bundle in `cmd/onlava/devdash_static` remains a reference corpus only.
+The old runtime dashboard bundle in `cmd/scenery/devdash_static` remains a reference corpus only.
 
 The first source rewrite slice covers:
 - app shell and navigation

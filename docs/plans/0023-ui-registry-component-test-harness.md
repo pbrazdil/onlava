@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The onlava UI registry should not only exist; every primitive and layout should have a small test fixture proving that it renders, exposes DOM markers, and can be used by agents.
+The scenery UI registry should not only exist; every primitive and layout should have a small test fixture proving that it renders, exposes DOM markers, and can be used by agents.
 
 The goal:
 
@@ -46,11 +46,11 @@ Fill when complete.
 Relevant files:
 
 ```text
-ui/registry/onlava/*.json
-ui/scripts/onlava-shadcn.mjs
+ui/registry/scenery/*.json
+ui/scripts/scenery-shadcn.mjs
 ui/src/components/primitives/*
 ui/src/components/layouts/*
-cmd/onlava/harness_ui.go
+cmd/scenery/harness_ui.go
 ```
 
 ## Scope
@@ -85,7 +85,7 @@ Use Testing Library.
 Assert:
 
 ```text
-data-onlava-ui
+data-scenery-ui
 data-slot
 slot contents render
 optional slots behave correctly
@@ -93,7 +93,7 @@ optional slots behave correctly
 
 ### Milestone 4: Wrapper tests
 
-Test `onlava-shadcn.mjs` rejection behavior without requiring network.
+Test `scenery-shadcn.mjs` rejection behavior without requiring network.
 
 ## Interfaces and Dependencies
 
@@ -119,10 +119,10 @@ Start by asserting registry metadata points to real components, then add render 
 cd ui && bun run test
 cd ui && bun run typecheck
 cd ui && bun run build
-go test ./cmd/onlava
+go test ./cmd/scenery
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

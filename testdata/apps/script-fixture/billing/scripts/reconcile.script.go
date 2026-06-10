@@ -9,5 +9,5 @@ import (
 )
 
 func main() {
-	fmt.Printf("reconcile args=%s app=%s\n", strings.Join(os.Args[1:], ","), os.Getenv("ONLAVA_APP_ID"))
+	fmt.Printf("reconcile args=%s app=%s\n", strings.Join(os.Args[1:], ","), os.Getenv("SCENERY_APP_ID"))
 }

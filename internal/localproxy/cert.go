@@ -18,14 +18,14 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 const (
-	localProxyCACertFile   = "onlava-local-ca.crt.pem"
-	localProxyCAKeyFile    = "onlava-local-ca.key.pem"
-	localProxyLeafCertFile = "onlava-local-leaf.crt.pem"
-	localProxyLeafKeyFile  = "onlava-local-leaf.key.pem"
+	localProxyCACertFile   = "scenery-local-ca.crt.pem"
+	localProxyCAKeyFile    = "scenery-local-ca.key.pem"
+	localProxyLeafCertFile = "scenery-local-leaf.crt.pem"
+	localProxyLeafKeyFile  = "scenery-local-leaf.key.pem"
 )
 
 type localCertificates struct {
@@ -80,7 +80,7 @@ func LocalLeafCertificate(ca LocalCA, subjects []string) (tls.Certificate, error
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: "onlava Local Agent",
+			CommonName: "scenery Local Agent",
 		},
 		NotBefore:   now.Add(-time.Hour),
 		NotAfter:    now.Add(90 * 24 * time.Hour),
@@ -159,7 +159,7 @@ type certificatePaths struct {
 }
 
 func localProxyCacheDir() (string, error) {
-	root := envpolicy.Get("ONLAVA_DEV_CACHE_DIR")
+	root := envpolicy.Get("SCENERY_DEV_CACHE_DIR")
 	if root == "" {
 		var err error
 		root, err = os.UserCacheDir()
@@ -167,7 +167,7 @@ func localProxyCacheDir() (string, error) {
 			return "", fmt.Errorf("locate user cache directory: %w", err)
 		}
 	}
-	return filepath.Join(root, "onlava", "localproxy"), nil
+	return filepath.Join(root, "scenery", "localproxy"), nil
 }
 
 func loadOrCreateCA(paths certificatePaths) (*x509.Certificate, crypto.Signer, error) {
@@ -186,7 +186,7 @@ func loadOrCreateCA(paths certificatePaths) (*x509.Certificate, crypto.Signer, e
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: "onlava Development Local Proxy CA",
+			CommonName: "scenery Development Local Proxy CA",
 		},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(10 * 365 * 24 * time.Hour),
@@ -244,7 +244,7 @@ func loadOrCreateLeaf(paths certificatePaths, caCert *x509.Certificate, caKey cr
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: "onlava Local Proxy",
+			CommonName: "scenery Local Proxy",
 		},
 		NotBefore:   now.Add(-time.Hour),
 		NotAfter:    now.Add(90 * 24 * time.Hour),

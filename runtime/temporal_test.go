@@ -19,7 +19,7 @@ func TestResolveTemporalConfigDefaults(t *testing.T) {
 	t.Setenv(DefaultTemporalTLSCertFileEnv, "")
 	t.Setenv(DefaultTemporalTLSKeyFileEnv, "")
 	t.Setenv(DefaultTemporalHostReportingEnv, "")
-	t.Setenv(DefaultOnlavaSessionIDEnv, "")
+	t.Setenv(DefaultScenerySessionIDEnv, "")
 
 	info := ResolveTemporalConfig("demo_app", TemporalConfig{})
 	if info.Enabled {
@@ -34,13 +34,13 @@ func TestResolveTemporalConfigDefaults(t *testing.T) {
 	if info.Namespace != DefaultTemporalNamespace {
 		t.Fatalf("namespace = %q, want %q", info.Namespace, DefaultTemporalNamespace)
 	}
-	if info.TaskQueuePrefix != "onlava.demo.app" {
+	if info.TaskQueuePrefix != "scenery.demo.app" {
 		t.Fatalf("task queue prefix = %q", info.TaskQueuePrefix)
 	}
 	if info.PayloadCodec != DefaultTemporalPayloadCodec {
 		t.Fatalf("payload codec = %q", info.PayloadCodec)
 	}
-	if info.DeploymentName != "onlava-demo-app" || info.DeploymentEnvSet {
+	if info.DeploymentName != "scenery-demo-app" || info.DeploymentEnvSet {
 		t.Fatalf("deployment = %q/%v", info.DeploymentName, info.DeploymentEnvSet)
 	}
 	if info.WorkerBuildID != DefaultTemporalBuildID || info.WorkerBuildIDSet {
@@ -55,7 +55,7 @@ func TestResolveTemporalConfigDefaults(t *testing.T) {
 	if !info.HostReporting || info.HostReportingEnv != DefaultTemporalHostReportingEnv || info.HostReportingSet {
 		t.Fatalf("host reporting = %v env=%q set=%v", info.HostReporting, info.HostReportingEnv, info.HostReportingSet)
 	}
-	if info.SessionID != "" || info.SessionIDEnv != DefaultOnlavaSessionIDEnv || info.SessionIDEnvSet {
+	if info.SessionID != "" || info.SessionIDEnv != DefaultScenerySessionIDEnv || info.SessionIDEnvSet {
 		t.Fatalf("session = %q env=%q set=%v", info.SessionID, info.SessionIDEnv, info.SessionIDEnvSet)
 	}
 }
@@ -63,14 +63,14 @@ func TestResolveTemporalConfigDefaults(t *testing.T) {
 func TestResolveTemporalConfigUsesEnvFallbacks(t *testing.T) {
 	t.Setenv(DefaultTemporalAddressEnv, "temporal.example:7233")
 	t.Setenv(DefaultTemporalNamespaceEnv, "prod")
-	t.Setenv(DefaultTemporalTaskQueueEnv, "onlava.orders.session")
+	t.Setenv(DefaultTemporalTaskQueueEnv, "scenery.orders.session")
 	t.Setenv(DefaultTemporalBuildIDEnv, "git-sha")
 	t.Setenv(DefaultTemporalDeploymentEnv, "orders-api")
 	t.Setenv(DefaultTemporalVersioningEnv, "auto-upgrade")
 	t.Setenv(DefaultTemporalAPIKeyEnv, "secret")
 	t.Setenv(DefaultTemporalTLSServerNameEnv, "orders.tmprl.cloud")
 	t.Setenv(DefaultTemporalHostReportingEnv, "0")
-	t.Setenv(DefaultOnlavaSessionIDEnv, "session-a")
+	t.Setenv(DefaultScenerySessionIDEnv, "session-a")
 
 	info := ResolveTemporalConfig("demo", TemporalConfig{Enabled: true})
 	if !info.Enabled {
@@ -82,7 +82,7 @@ func TestResolveTemporalConfigUsesEnvFallbacks(t *testing.T) {
 	if info.Namespace != "prod" || !info.NamespaceEnvSet {
 		t.Fatalf("namespace/env = %q/%v", info.Namespace, info.NamespaceEnvSet)
 	}
-	if info.TaskQueuePrefix != "onlava.orders.session" || !info.TaskQueueEnvSet {
+	if info.TaskQueuePrefix != "scenery.orders.session" || !info.TaskQueueEnvSet {
 		t.Fatalf("task queue env = %q/%v", info.TaskQueuePrefix, info.TaskQueueEnvSet)
 	}
 	if info.DeploymentName != "orders-api" || !info.DeploymentEnvSet {
@@ -167,7 +167,7 @@ func TestTemporalWorkerIdentityIncludesDeploymentRoleQueueAndBuild(t *testing.T)
 		WorkerBuildID:  "sha.123",
 	}
 	got := TemporalWorkerIdentity(info, "worker", "orders.go")
-	for _, want := range []string{"onlava:", "orders-api", "worker", "orders.go", "build-sha.123"} {
+	for _, want := range []string{"scenery:", "orders-api", "worker", "orders.go", "build-sha.123"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("TemporalWorkerIdentity = %q, want it to contain %q", got, want)
 		}
@@ -176,7 +176,7 @@ func TestTemporalWorkerIdentityIncludesDeploymentRoleQueueAndBuild(t *testing.T)
 
 func TestSessionScopedTemporalTaskQueue(t *testing.T) {
 	info := TemporalRuntimeInfo{
-		TaskQueuePrefix: "onlava.orders.session-a",
+		TaskQueuePrefix: "scenery.orders.session-a",
 		SessionID:       "session-a",
 	}
 	for _, tt := range []struct {
@@ -184,10 +184,10 @@ func TestSessionScopedTemporalTaskQueue(t *testing.T) {
 		queue string
 		want  string
 	}{
-		{name: "explicit", queue: "orders.go", want: "onlava.orders.session-a.orders.go"},
-		{name: "already scoped", queue: "onlava.orders.session-a.orders.go", want: "onlava.orders.session-a.orders.go"},
+		{name: "explicit", queue: "orders.go", want: "scenery.orders.session-a.orders.go"},
+		{name: "already scoped", queue: "scenery.orders.session-a.orders.go", want: "scenery.orders.session-a.orders.go"},
 		{name: "empty", queue: "", want: ""},
-		{name: "sanitize", queue: "House/Process Queue", want: "onlava.orders.session-a.House.Process.Queue"},
+		{name: "sanitize", queue: "House/Process Queue", want: "scenery.orders.session-a.House.Process.Queue"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := SessionScopedTemporalTaskQueue(info, tt.queue); got != tt.want {
@@ -195,15 +195,15 @@ func TestSessionScopedTemporalTaskQueue(t *testing.T) {
 			}
 		})
 	}
-	if got := SessionScopedTemporalTaskQueue(TemporalRuntimeInfo{TaskQueuePrefix: "onlava.orders"}, "orders.go"); got != "orders.go" {
+	if got := SessionScopedTemporalTaskQueue(TemporalRuntimeInfo{TaskQueuePrefix: "scenery.orders"}, "orders.go"); got != "orders.go" {
 		t.Fatalf("without session = %q", got)
 	}
 }
 
 func TestSessionScopedTemporalTaskQueueFromEnv(t *testing.T) {
-	t.Setenv(DefaultTemporalTaskQueueEnv, "onlava.orders.session-a")
-	t.Setenv(DefaultOnlavaSessionIDEnv, "session-a")
-	if got := SessionScopedTemporalTaskQueueFromEnv("orders.go"); got != "onlava.orders.session-a.orders.go" {
+	t.Setenv(DefaultTemporalTaskQueueEnv, "scenery.orders.session-a")
+	t.Setenv(DefaultScenerySessionIDEnv, "session-a")
+	if got := SessionScopedTemporalTaskQueueFromEnv("orders.go"); got != "scenery.orders.session-a.orders.go" {
 		t.Fatalf("SessionScopedTemporalTaskQueueFromEnv = %q", got)
 	}
 }

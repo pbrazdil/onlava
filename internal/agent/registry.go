@@ -85,7 +85,7 @@ func (r *Registry) UpsertSubstrate(req UpsertSubstrateRequest) (Substrate, error
 	if owner.PID == 0 && current != nil && current.Owner.PID > 0 {
 		owner = current.Owner
 	}
-	owner = OwnerFromRequest(ownerPID, owner, "onlava substrate")
+	owner = OwnerFromRequest(ownerPID, owner, "scenery substrate")
 	pids := copyIntMap(req.PIDs)
 	owners := ownersForSubstrate(kind, pids, req.Owners, current)
 	lastExit := copySubstrateExit(req.LastExit)
@@ -167,7 +167,7 @@ func (r *Registry) Upsert(req RegisterRequest) (Session, error) {
 	}
 	if existing != nil && !requestMayClaimSession(req, *existing, session) {
 		existingPID := firstPositive(existing.OwnerPID, existing.Owner.PID)
-		return Session{}, fmt.Errorf("onlava up session %q is already running for app root %s under owner PID %d", sessionID, existing.AppRoot, existingPID)
+		return Session{}, fmt.Errorf("scenery up session %q is already running for app root %s under owner PID %d", sessionID, existing.AppRoot, existingPID)
 	}
 	session.Aliases, session.AliasConflicts = r.claimAliasesLocked(session, req.ClaimAliases)
 	r.sessions[session.SessionID] = session
@@ -656,7 +656,7 @@ func ownersForSubstrate(kind string, pids map[string]int, requested map[string]O
 				owner = existing
 			}
 		}
-		owner = OwnerFromRequest(pid, owner, "onlava substrate "+kind+"."+name)
+		owner = OwnerFromRequest(pid, owner, "scenery substrate "+kind+"."+name)
 		if owner.PID > 0 {
 			owners[name] = owner
 		}

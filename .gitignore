@@ -15,9 +15,9 @@ node_modules/
 
 # Local build and test outputs
 /dist/
-/onlava
-/onlava.test
-/onlava_internal_main/
+/scenery
+/scenery.test
+/scenery_internal_main/
 coverage.out
 *.log
 *.db
@@ -27,5 +27,5 @@ coverage.out
 *.sqlite-wal
 *.sqlite-shm
 .playwright-*/
-.onlava/
+.scenery/
 .codex-tmp/

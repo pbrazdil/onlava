@@ -11,7 +11,7 @@ export type AppShellProps = {
 export function AppShell({ topbar, children, compileError, className }: AppShellProps) {
   return (
     <div
-      data-onlava-ui="AppShell"
+      data-scenery-ui="AppShell"
       className={cn("h-screen overflow-hidden bg-background text-foreground", className)}
       style={{ "--header-height": "52px" } as CSSProperties}
     >

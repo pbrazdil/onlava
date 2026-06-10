@@ -15,7 +15,7 @@ body:
     id: proposal
     attributes:
       label: Proposal
-      description: What should Onlava do?
+      description: What should Scenery do?
     validations:
       required: true
   - type: textarea

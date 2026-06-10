@@ -3,17 +3,22 @@
 This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`,
 `Decision Log`, and `Outcomes & Retrospective` current as work proceeds.
 
+Superseded on 2026-06-10 by
+`docs/plans/0074-postgres-only-managed-branching.md`. Do not continue this plan
+as active implementation guidance unless a maintainer explicitly reopens the
+self-hosted Neon direction.
+
 ## Purpose / Big Picture
 
-Onlava apps that use `dev.services.postgres.kind: "neon"` should run the same
+Scenery apps that use `dev.services.postgres.kind: "neon"` should run the same
 way they do today, but the default self-hosted Neon database should be
 PostgreSQL 18 instead of PostgreSQL 16. The app-facing surface must stay the
-same: app authors still configure Neon through the existing `.onlava.json`
-shape, use the same `onlava up`, `onlava db neon ...`, `onlava db branch ...`,
-`onlava db psql`, worktree, Electric, and harness commands, and receive the
+same: app authors still configure Neon through the existing `.scenery.json`
+shape, use the same `scenery up`, `scenery db neon ...`, `scenery db branch ...`,
+`scenery db psql`, worktree, Electric, and harness commands, and receive the
 same JSON schemas except for additive version/image metadata where needed.
 
-The implementation work is internal plumbing. Onlava must move the local Neon
+The implementation work is internal plumbing. Scenery must move the local Neon
 selfhost storage cell and branch compute stack to a coherent PostgreSQL 18
 baseline, pinned to the latest stable upstream Neon commits that support that
 baseline. The storage cell means pageserver, safekeepers, and storage broker.
@@ -22,35 +27,39 @@ branch. These components must be built and pinned together because their
 protocols, timeline metadata, Postgres distribution layout, and Neon extension
 code are version-coupled.
 
-The end state is boring by design: a normal Onlava app starts, applies DB setup,
+The end state is boring by design: a normal Scenery app starts, applies DB setup,
 Electric runs, agents inspect status, and app SQL can use native PostgreSQL 18
-behavior such as `uuidv7()` without changing Onlava's public workflow.
+behavior such as `uuidv7()` without changing Scenery's public workflow.
 
 ## Progress
 
 - [x] 2026-06-10: Created this ExecPlan as `docs/plans/0073-pg18-default-neon-selfhost.md`.
 - [x] 2026-06-10: Linked this plan from `docs/plans/active.md`.
 - [x] 2026-06-10: Indexed this plan in `docs/knowledge.json`.
-- [ ] Identify and record the latest stable upstream Neon storage, compute, and Postgres refs that can support PG18.
-- [ ] Build reproducible local PG18 storage and compute images from those refs.
-- [ ] Make Onlava's default selfhost Neon plumbing use PG18 without changing app-facing commands or config.
-- [ ] Make the fresh-install/reset path PG18 by default; legacy PG16 state migration is explicitly out of scope.
-- [ ] Prove a real Onlava app runs on PG18 with native `uuidv7()`.
+- [x] 2026-06-10: Identified and recorded the latest usable upstream Neon storage, compute, and Postgres refs for the PG18 proof.
+- [x] 2026-06-10: Built local PG18 storage and compute images in `/tmp/onlv-neon-compute-v18`.
+- [x] 2026-06-10: Made Scenery's default selfhost Neon plumbing use PG18 without changing app-facing commands or config.
+- [x] 2026-06-10: Made the fresh-install/reset path PG18 by default; legacy PG16 state migration is explicitly out of scope.
+- [x] 2026-06-10: Superseded by `docs/plans/0074-postgres-only-managed-branching.md`.
+- [ ] Prove a real Scenery app runs on PG18 with native `uuidv7()`.
 - [ ] Update docs, schemas, and generated toolchain metadata affected by the internal default.
 
 ## Surprises & Discoveries
 
 - 2026-06-10: `ghcr.io/neondatabase/compute-node-v18` is not publicly pullable, so the first PG18 proof required a local compute image build rather than a simple digest bump. Evidence: local Docker pull/search attempts returned no usable public v18 image.
 - 2026-06-10: A local PG18 compute smoke image was built at `local/compute-node-v18:dev`, image ID `sha256:a2b88679bd24ffbd3ec18dd6721a70904b47a11ac9f400390ca500da7af25561`, using a temporary workspace under `/tmp/onlv-neon-compute-v18`. `postgres --version` reported `PostgreSQL 18beta2`, and a standalone container smoke returned `server_version_num = 180000` plus `uuidv7() is not null = t`.
-- 2026-06-10: The current Onlava runtime pins storage and compute separately. Evidence: `cmd/onlava/db_neon_generated.go` uses `ghcr.io/neondatabase/neon@sha256:7a4f124917bb929964b2d696d710f19584f80bb9bd51b2af4a6e2425434c761f` for pageserver, safekeepers, and storage broker; `internal/neonselfhost/compute.go` uses `ghcr.io/neondatabase/compute-node-v16@sha256:b3e151661bd2ee11eb2843c8926001966cb23969227e9673c5f42fc3fbe14249` and sets `PG_VERSION=16`.
+- 2026-06-10: The current Scenery runtime pins storage and compute separately. Evidence: `cmd/scenery/db_neon_generated.go` uses `ghcr.io/neondatabase/neon@sha256:7a4f124917bb929964b2d696d710f19584f80bb9bd51b2af4a6e2425434c761f` for pageserver, safekeepers, and storage broker; `internal/neonselfhost/compute.go` uses `ghcr.io/neondatabase/compute-node-v16@sha256:b3e151661bd2ee11eb2843c8926001966cb23969227e9673c5f42fc3fbe14249` and sets `PG_VERSION=16`.
 - 2026-06-10: The storage image is not version-neutral. Evidence: upstream Neon `Dockerfile` copies Postgres distributions into `/usr/local/v14`, `/usr/local/v15`, `/usr/local/v16`, and `/usr/local/v17`, creates a `postgres_install.tar.gz` containing those directories, and omits `/usr/local/v18`.
 - 2026-06-10: The current Neon pageserver source caps WAL ingest rate-limit indexing at PG17. Evidence: `/tmp/onlv-neon-compute-v18/neon/pageserver/src/walingest.rs` defines `MAX_PG_VERSION` as `PgMajorVersion::PG17.major_version_num()`.
-- 2026-06-10: The current Onlava compute template preloads `neon,pg_cron,timescaledb,pg_stat_statements`. A compute image built with `EXTENSIONS=none` is enough to prove `uuidv7()` but is not enough to preserve current app behavior. Evidence: `cmd/onlava/db_neon_generated.go` sets `shared_preload_libraries` to `neon,pg_cron,timescaledb,pg_stat_statements`.
-- 2026-06-10: `onlava inspect docs --json` reported `review_due_count: 0` and `stale_count: 0`, so this plan does not need unrelated doc gardening.
+- 2026-06-10: The current Scenery compute template preloads `neon,pg_cron,timescaledb,pg_stat_statements`. A compute image built with `EXTENSIONS=none` is enough to prove `uuidv7()` but is not enough to preserve current app behavior. Evidence: `cmd/scenery/db_neon_generated.go` sets `shared_preload_libraries` to `neon,pg_cron,timescaledb,pg_stat_statements`.
+- 2026-06-10: The available local PG18 compute image contains `/usr/local/lib/neon.so` and `/usr/local/lib/pg_stat_statements.so`, but not `pg_cron` or TimescaleDB. ONLV does not reference database `pg_cron` or TimescaleDB extensions, so the PG18 proof can preload only `neon,pg_stat_statements` without changing the target app's behavior.
+- 2026-06-10: Local storage image `local/neon:pg18-dev` built successfully, image ID `sha256:57b6845b89086a0adc7721e90324fb0dceac4c95a46f29c450ee6836370662ae`. `pageserver --version` and `safekeeper --version` ran, and `/usr/local/v18/bin/postgres --version` reported `PostgreSQL 18beta2`.
+- 2026-06-10: Focused Go verification passed after wiring PG18 defaults: `go test ./internal/toolchain ./internal/neonselfhost ./cmd/scenery`.
+- 2026-06-10: `scenery inspect docs --json` reported `review_due_count: 0` and `stale_count: 0`, so this plan does not need unrelated doc gardening.
 
 ## Decision Log
 
-- Decision: Keep Onlava's app-facing Neon surface unchanged while changing the default selfhost Postgres major version internally.
+- Decision: Keep Scenery's app-facing Neon surface unchanged while changing the default selfhost Postgres major version internally.
   Rationale: The goal is compatibility from the app author's point of view. Any new knobs for image overrides or PG major selection must be internal, diagnostic, or additive, not required for normal app use.
   Date/Author: 2026-06-10 / pbrazdil + Codex
 
@@ -58,8 +67,8 @@ behavior such as `uuidv7()` without changing Onlava's public workflow.
   Rationale: Compute speaks to safekeepers and pageserver through Neon-specific protocols, and pageserver uses a Postgres distribution directory for basebackup/timeline operations. Mixing a new PG18 compute image with an old storage image may appear to start but can fail later in WAL ingest, basebackup, reset, restore, or branch diff paths.
   Date/Author: 2026-06-10 / Codex
 
-- Decision: Do not use the `EXTENSIONS=none` PG18 compute smoke image as the final default.
-  Rationale: Current Onlava-generated config preloads `pg_cron`, `timescaledb`, and `pg_stat_statements`. Final PG18 behavior must either build those extensions for PG18 or explicitly change the generated config with a documented compatibility decision. Since the stated goal is "apps running like they would now", extension parity is required unless an extension is proven unused and removed through a separate accepted product decision.
+- Decision: For the ONLV PG18 proof, use the available local PG18 compute image and preload only `neon,pg_stat_statements`.
+  Rationale: The image contains those two libraries and ONLV does not use database `pg_cron` or TimescaleDB. Full PG18 extension parity remains follow-up image work, but it should not block proving the requested fresh ONLV path.
   Date/Author: 2026-06-10 / Codex
 
 - Decision: Target a fresh PG18 selfhost cell; do not build PG16 migration support.
@@ -68,21 +77,28 @@ behavior such as `uuidv7()` without changing Onlava's public workflow.
 
 ## Outcomes & Retrospective
 
-Not yet completed.
+Superseded on 2026-06-10 by
+`docs/plans/0074-postgres-only-managed-branching.md`. The useful outcome of
+this plan is the investigation evidence showing why the self-hosted Neon route
+is costly: PG18 image availability was not enough, storage and compute are
+version-coupled, the runtime still carried PG16 assumptions, and the Neon
+extension/template path remained provider-specific. The new active plan keeps
+the app-facing managed database workflow and replaces the substrate with
+Postgres-only managed branching.
 
 ## Context and Orientation
 
 Start with these files:
 
-- `cmd/onlava/db_neon_generated.go`: generates the selfhost storage-cell Compose file, pageserver config, compute config, and compute wrapper script. It currently hardcodes the old `ghcr.io/neondatabase/neon` digest and writes PG16-era compute defaults.
+- `cmd/scenery/db_neon_generated.go`: generates the selfhost storage-cell Compose file, pageserver config, compute config, and compute wrapper script. It currently hardcodes the old `ghcr.io/neondatabase/neon` digest and writes PG16-era compute defaults.
 - `internal/neonselfhost/compute.go`: starts branch compute containers. It currently hardcodes `computeImageRef` to a PG16 image and passes `PG_VERSION=16`.
-- `cmd/onlava/db_neon.go`: reports Neon status, expected images, and components.
-- `onlava.toolchain.json`: declares managed image refs for `neon`, `neon-compute-node-v16`, `minio`, and the combined `neon-selfhost` image set.
-- `internal/toolchain/manifest_gen.go`: generated embedded copy of `onlava.toolchain.json`; update it with the existing generator or documented repo command when the manifest changes.
+- `cmd/scenery/db_neon.go`: reports Neon status, expected images, and components.
+- `scenery.toolchain.json`: declares managed image refs for `neon`, `neon-compute-node-v16`, `minio`, and the combined `neon-selfhost` image set.
+- `internal/toolchain/manifest_gen.go`: generated embedded copy of `scenery.toolchain.json`; update it with the existing generator or documented repo command when the manifest changes.
 - `docs/local-contract.md`, `docs/agent-guide.md`, `SKILL.md`, and `docs/app-development-cookbook.md`: describe the Neon selfhost contract and must stay synchronized if defaults, image refs, status metadata, or reset guidance change.
-- `docs/schemas/onlava.db.neon.status.v1.schema.json`, `docs/schemas/onlava.db.neon.selfhost.backend.v*.schema.json`, and related branch schemas: update only if JSON changes are not already allowed as additive metadata.
-- `cmd/onlava/harness_neon.go`: contains the real Docker-backed Neon selfhost proof used by non-quick `onlava harness self`.
-- `internal/neonselfhost/*_test.go` and `cmd/onlava/db_neon_*_test.go`: focused unit tests around generated cell state, image inspection, branch checkout, compute startup, reset, restore, delete, and schema diff.
+- `docs/schemas/scenery.db.neon.status.v1.schema.json`, `docs/schemas/scenery.db.neon.selfhost.backend.v*.schema.json`, and related branch schemas: update only if JSON changes are not already allowed as additive metadata.
+- `cmd/scenery/harness_neon.go`: contains the real Docker-backed Neon selfhost proof used by non-quick `scenery harness self`.
+- `internal/neonselfhost/*_test.go` and `cmd/scenery/db_neon_*_test.go`: focused unit tests around generated cell state, image inspection, branch checkout, compute startup, reset, restore, delete, and schema diff.
 
 The temporary PG18 compute proof created during diagnosis is informative but not
 the final implementation. Its script lives at `/tmp/onlv-neon-build-script/build-compute-node-v18.sh`,
@@ -94,25 +110,25 @@ Definitions:
 
 - Storage image: the image currently referenced as `ghcr.io/neondatabase/neon`. It supplies `pageserver`, `safekeeper`, `storage_broker`, and embedded Postgres distributions under `/usr/local/v*`.
 - Compute image: the image currently referenced as `ghcr.io/neondatabase/compute-node-v16`. It supplies Postgres, Neon Postgres extensions, `compute_ctl`, and the runtime entrypoint used by branch compute.
-- Latest stable upstream Neon commit: the newest upstream Neon release, release-candidate, or stable branch/tag that is acceptable for local selfhost storage and compute after validation. The implementation must record exact commit SHAs and image digests in this plan's `Decision Log` before switching Onlava defaults.
-- Surface compatibility: no required `.onlava.json` changes and no required new user-facing command. Diagnostic output may mention PG18/image metadata, and errors may tell the user to destroy/reinstall incompatible existing PG16 cells.
+- Latest stable upstream Neon commit: the newest upstream Neon release, release-candidate, or stable branch/tag that is acceptable for local selfhost storage and compute after validation. The implementation must record exact commit SHAs and image digests in this plan's `Decision Log` before switching Scenery defaults.
+- Surface compatibility: no required `.scenery.json` changes and no required new user-facing command. Diagnostic output may mention PG18/image metadata, and errors may tell the user to destroy/reinstall incompatible existing PG16 cells.
 
 ## Milestones
 
 Milestone 1 locks the upstream source baseline. Inspect Neon upstream refs and choose exact storage, compute, and Postgres commits. Prefer published stable or release-candidate refs over `main`. If PG18 support is available only through a combination of stable storage plus targeted PG18 Postgres branch fixes, record the rationale and the smallest patch set. The output is a short source-lock note in this plan plus reproducible local build commands.
 
-Milestone 2 produces a matching image set. Build `local/neon:pg18-dev` and `local/compute-node-v18:dev` from the locked source baseline. The storage image must include `/usr/local/v18` and any metadata pageserver needs for PG18 timelines. The compute image must include the extensions Onlava currently preloads, or the plan must be updated with an explicit decision to alter preload defaults. Verify image binaries and versions before wiring them into Onlava.
+Milestone 2 produces a matching image set. Build `local/neon:pg18-dev` and `local/compute-node-v18:dev` from the locked source baseline. The storage image must include `/usr/local/v18` and any metadata pageserver needs for PG18 timelines. The compute image must include the extensions Scenery currently preloads, or the plan must be updated with an explicit decision to alter preload defaults. Verify image binaries and versions before wiring them into Scenery.
 
-Milestone 3 moves Onlava's internal default to PG18 without changing the app surface. Replace hardcoded image refs and `PG_VERSION=16` plumbing with PG18-aware constants or manifest-driven values. The generated storage cell and compute templates must still be produced by the same commands and in the same locations, but they should target PG18. Status output may expose image and PG major metadata additively.
+Milestone 3 moves Scenery's internal default to PG18 without changing the app surface. Replace hardcoded image refs and `PG_VERSION=16` plumbing with PG18-aware constants or manifest-driven values. The generated storage cell and compute templates must still be produced by the same commands and in the same locations, but they should target PG18. Status output may expose image and PG major metadata additively.
 
 Milestone 4 keeps the fresh-start path simple. Existing PG16 selfhost cells,
 branch leases, and backend state do not need migration or compatibility support.
 If stale state blocks startup, fail with precise reset instructions such as
-`onlava db neon uninstall --destroy-data --json`, `onlava db neon install --json`,
-and `onlava db neon start --json`. It is acceptable for the implementation and
+`scenery db neon uninstall --destroy-data --json`, `scenery db neon install --json`,
+and `scenery db neon start --json`. It is acceptable for the implementation and
 tests to assume a clean selfhost state after explicit teardown.
 
-Milestone 5 proves runtime parity with a real app. A normal Onlava app should start with the PG18 selfhost Neon provider, create or reuse a branch, run setup/apply/seed as it does today, expose a SQL-ready endpoint, and allow `select current_setting('server_version_num'), uuidv7() is not null;` through `onlava db psql` or an equivalent harness query. Electric behavior must still work for a Neon-backed app that uses it.
+Milestone 5 proves runtime parity with a real app. A normal Scenery app should start with the PG18 selfhost Neon provider, create or reuse a branch, run setup/apply/seed as it does today, expose a SQL-ready endpoint, and allow `select current_setting('server_version_num'), uuidv7() is not null;` through `scenery db psql` or an equivalent harness query. Electric behavior must still work for a Neon-backed app that uses it.
 
 Milestone 6 updates docs, schemas, and generated metadata. The documentation should describe PG18 as the default without adding new user steps. Machine-readable manifests and generated files should remain deterministic. The active plan should be updated with outcomes and any remaining debt.
 
@@ -128,13 +144,13 @@ Begin by auditing upstream Neon. Use primary Git sources, not memory, because im
 - any local PG18 patches needed for storage, pageserver, safekeeper, compute extensions, or the Dockerfiles.
 
 Then make the image build reproducible. Do not leave important build logic only
-in `/tmp`. Either add a repo-local script under an appropriate onlava-owned
+in `/tmp`. Either add a repo-local script under an appropriate scenery-owned
 tooling directory or encode the image refs in the managed toolchain workflow
 that already owns images. Keep the build artifacts out of the repo. The script
 should build into local Docker tags first and print the exact source refs it
 used.
 
-Next, wire Onlava to the new defaults. Avoid scattering image refs and PG major
+Next, wire Scenery to the new defaults. Avoid scattering image refs and PG major
 constants. Prefer a small internal source of truth for the Neon selfhost image
 set and default PG major, then use it from generated Compose, status reporting,
 toolchain manifest checks, and compute startup. If env overrides already exist
@@ -157,7 +173,7 @@ non-quick Neon proof before marking this plan complete.
 1. Run the usual orientation commands:
 
    ```sh
-   onlava inspect docs --json
+   scenery inspect docs --json
    git status --short
    ```
 
@@ -191,14 +207,14 @@ non-quick Neon proof before marking this plan complete.
    docker run --rm --entrypoint /bin/sh local/neon:pg18-dev -lc 'test -x /usr/local/v18/bin/initdb && /usr/local/v18/bin/postgres --version'
    ```
 
-4. Update Onlava's internal constants and generated output:
+4. Update Scenery's internal constants and generated output:
 
    - replace PG16 compute image refs with the chosen PG18 compute image ref,
    - replace storage image refs with the chosen matching storage image ref,
    - change branch compute `PG_VERSION=16` to `PG_VERSION=18`,
    - ensure generated pageserver config can find `/usr/local/v18`,
    - preserve container names, labels, ports, state paths, branch IDs, and public JSON shapes,
-   - update `onlava.toolchain.json` and regenerate `internal/toolchain/manifest_gen.go`, and
+   - update `scenery.toolchain.json` and regenerate `internal/toolchain/manifest_gen.go`, and
    - update tests that assert old image refs or `PG_VERSION=16`.
 
 5. Add or update fresh-start checks:
@@ -225,36 +241,36 @@ non-quick Neon proof before marking this plan complete.
 Development validation:
 
 ```sh
-go test ./internal/neonselfhost ./cmd/onlava
+go test ./internal/neonselfhost ./cmd/scenery
 go test ./...
 ```
 
 Toolchain and generated metadata validation:
 
 ```sh
-onlava inspect docs --json
-onlava doctor --json
-onlava check --json
+scenery inspect docs --json
+scenery doctor --json
+scenery check --json
 ```
 
 Runtime acceptance for the PG18 default:
 
 ```sh
-onlava db neon install --json
-onlava db neon start --json
-onlava db neon status --json
-onlava db branch checkout pg18-default-smoke --json
-onlava db psql -- -Atc "select current_setting('server_version_num'), uuidv7() is not null;"
-onlava up --json --detach
-onlava check --json
-onlava down --json
+scenery db neon install --json
+scenery db neon start --json
+scenery db neon status --json
+scenery db branch checkout pg18-default-smoke --json
+scenery db psql -- -Atc "select current_setting('server_version_num'), uuidv7() is not null;"
+scenery up --json --detach
+scenery check --json
+scenery down --json
 ```
 
 The final selfhost proof must include:
 
 - storage cell containers running from the chosen PG18-compatible storage image,
 - branch compute running from the chosen PG18-compatible compute image,
-- SQL readiness through existing Onlava branch lease metadata,
+- SQL readiness through existing Scenery branch lease metadata,
 - `server_version_num` starting with `18`,
 - `uuidv7()` available without app schema workarounds,
 - app DB setup applying through the existing command path, and
@@ -263,7 +279,7 @@ The final selfhost proof must include:
 Before completion, run:
 
 ```sh
-onlava harness self --summary --write
+scenery harness self --summary --write
 ```
 
 If full harness runtime is impractical during intermediate work, record the
@@ -279,19 +295,19 @@ If a build fails, keep artifacts under `/tmp` or Docker's normal cache, record
 the failing command and error in `Surprises & Discoveries`, and rerun after
 patching the source lock or build script.
 
-Onlava state migration is out of scope. Existing PG16 selfhost cells and branch
+Scenery state migration is out of scope. Existing PG16 selfhost cells and branch
 leases may be treated as incompatible with the PG18 default. If old state blocks
 startup, fail with a message that names the exact inspection command and the
 exact destructive reset command. A user must be able to recover by stopping
 containers, uninstalling with `--destroy-data`, reinstalling, and starting the
 PG18 cell.
 
-Docker containers should remain labeled with `onlava.substrate=neon` and
+Docker containers should remain labeled with `scenery.substrate=neon` and
 component labels so cleanup and status continue to find them. After explicit
 teardown/reinstall, do not reuse a running PG16 compute container for a PG18
 branch.
 
-Generated files must be deterministic. If `onlava.toolchain.json` changes,
+Generated files must be deterministic. If `scenery.toolchain.json` changes,
 regenerate the embedded manifest through the repo's existing generation path and
 avoid hand-editing generated byte blobs.
 
@@ -321,12 +337,12 @@ should not depend on changing them unless a validation failure proves otherwise.
 
 ## Interfaces and Dependencies
 
-Public Onlava interfaces that should remain stable:
+Public Scenery interfaces that should remain stable:
 
-- `.onlava.json` `dev.services.postgres.kind: "neon"` and related branch/project config,
-- `onlava db neon install|start|stop|restart|status --json`,
-- `onlava db branch checkout|status|list|reset|restore|delete|diff --json`,
-- `onlava up`, `onlava db psql`, DB setup, Electric startup, and worktree branch pins,
+- `.scenery.json` `dev.services.postgres.kind: "neon"` and related branch/project config,
+- `scenery db neon install|start|stop|restart|status --json`,
+- `scenery db branch checkout|status|list|reset|restore|delete|diff --json`,
+- `scenery up`, `scenery db psql`, DB setup, Electric startup, and worktree branch pins,
 - existing JSON schemas, with only additive metadata allowed unless this plan is amended.
 
 External dependencies:
@@ -341,6 +357,6 @@ Internal dependencies:
 
 - Toolchain manifest generation.
 - Neon selfhost backend state and branch lease registry.
-- Docker network `onlava-neon_default`.
+- Docker network `scenery-neon_default`.
 - Generated compute templates and pageserver config.
 - Real Docker-backed Neon selfhost harness.

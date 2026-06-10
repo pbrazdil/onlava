@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pbrazdil/onlava/errs"
-	"github.com/pbrazdil/onlava/internal/wire"
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/errs"
+	"scenery.sh/internal/wire"
+	"scenery.sh/runtime/shared"
 )
 
 type wireRecoveryRecord struct {

@@ -8,11 +8,11 @@ import (
 	"slices"
 	"sort"
 
-	appcfg "github.com/pbrazdil/onlava/internal/app"
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/standardauthmeta"
-	"github.com/pbrazdil/onlava/internal/wire"
-	"github.com/pbrazdil/onlava/internal/wiremodel"
+	appcfg "scenery.sh/internal/app"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/standardauthmeta"
+	"scenery.sh/internal/wire"
+	"scenery.sh/internal/wiremodel"
 )
 
 type AppRef struct {
@@ -131,7 +131,7 @@ type WireInfo struct {
 
 func BuildAppResponse(appRoot string, cfg appcfg.Config, app *model.App) AppResponse {
 	resp := AppResponse{
-		SchemaVersion: "onlava.inspect.app.v1",
+		SchemaVersion: "scenery.inspect.app.v1",
 		App:           appInfo(appRoot, cfg, app),
 		Config:        cfg,
 		Counts: AppCounts{
@@ -204,7 +204,7 @@ func BuildServicesResponse(appRoot string, cfg appcfg.Config, app *model.App) Se
 		return services[i].Name < services[j].Name
 	})
 	return ServicesResponse{
-		SchemaVersion: "onlava.inspect.services.v1",
+		SchemaVersion: "scenery.inspect.services.v1",
 		App:           appInfo(appRoot, cfg, app),
 		Services:      services,
 	}
@@ -250,8 +250,8 @@ func BuildRoutesResponse(appRoot string, cfg appcfg.Config, app *model.App) Rout
 				ID:         ep.Service + "." + ep.Name,
 				Service:    ep.Service,
 				Endpoint:   ep.Name,
-				Package:    "github.com/pbrazdil/onlava/auth",
-				File:       "github.com/pbrazdil/onlava/auth",
+				Package:    "scenery.sh/auth",
+				File:       "scenery.sh/auth",
 				Access:     string(ep.Access),
 				Raw:        ep.Raw,
 				Path:       ep.Path,
@@ -271,7 +271,7 @@ func BuildRoutesResponse(appRoot string, cfg appcfg.Config, app *model.App) Rout
 		return routes[i].Path < routes[j].Path
 	})
 	return RoutesResponse{
-		SchemaVersion: "onlava.inspect.routes.v1",
+		SchemaVersion: "scenery.inspect.routes.v1",
 		App:           appInfo(appRoot, cfg, app),
 		Routes:        routes,
 	}
@@ -331,7 +331,7 @@ func BuildEndpointsResponse(appRoot string, cfg appcfg.Config, app *model.App) E
 		return endpoints[i].Endpoint < endpoints[j].Endpoint
 	})
 	return EndpointsResponse{
-		SchemaVersion: "onlava.inspect.endpoints.v1",
+		SchemaVersion: "scenery.inspect.endpoints.v1",
 		App:           appInfo(appRoot, cfg, app),
 		Endpoints:     endpoints,
 		Wire: WireSummary{
@@ -361,21 +361,21 @@ func standardAuthServiceDetails() []ServiceDetails {
 	byService := map[string]*ServiceDetails{
 		"auth": {
 			Name:       "auth",
-			RootRelDir: "github.com/pbrazdil/onlava/auth",
-			RootAbsDir: "github.com/pbrazdil/onlava/auth",
+			RootRelDir: "scenery.sh/auth",
+			RootAbsDir: "scenery.sh/auth",
 			PackageDirs: []string{
-				"github.com/pbrazdil/onlava/auth",
+				"scenery.sh/auth",
 			},
 			Endpoints:   []string{},
 			Middleware:  []string{},
-			AuthHandler: &AuthHandlerRef{Name: "AuthHandler", Package: "github.com/pbrazdil/onlava/auth"},
+			AuthHandler: &AuthHandlerRef{Name: "AuthHandler", Package: "scenery.sh/auth"},
 		},
 		"users": {
 			Name:       "users",
-			RootRelDir: "github.com/pbrazdil/onlava/auth",
-			RootAbsDir: "github.com/pbrazdil/onlava/auth",
+			RootRelDir: "scenery.sh/auth",
+			RootAbsDir: "scenery.sh/auth",
 			PackageDirs: []string{
-				"github.com/pbrazdil/onlava/auth",
+				"scenery.sh/auth",
 			},
 			Endpoints:  []string{},
 			Middleware: []string{},
@@ -398,7 +398,7 @@ func appInfo(appRoot string, cfg appcfg.Config, app *model.App) AppRef {
 		Name:       cfg.Name,
 		ID:         cfg.ID,
 		Root:       appRoot,
-		ConfigPath: filepath.Join(appRoot, ".onlava.json"),
+		ConfigPath: filepath.Join(appRoot, ".scenery.json"),
 	}
 	if app != nil {
 		ref.ModulePath = app.ModulePath
@@ -415,23 +415,23 @@ func relOrSelf(root, target string) string {
 }
 
 func GeneratedAppPath(appRoot string) string {
-	return filepath.Join(appRoot, ".onlava", "gen", "app.json")
+	return filepath.Join(appRoot, ".scenery", "gen", "app.json")
 }
 
 func GeneratedRoutesPath(appRoot string) string {
-	return filepath.Join(appRoot, ".onlava", "gen", "routes.json")
+	return filepath.Join(appRoot, ".scenery", "gen", "routes.json")
 }
 
 func GeneratedServicesPath(appRoot string) string {
-	return filepath.Join(appRoot, ".onlava", "gen", "services.json")
+	return filepath.Join(appRoot, ".scenery", "gen", "services.json")
 }
 
 func GeneratedEndpointsPath(appRoot string) string {
-	return filepath.Join(appRoot, ".onlava", "gen", "endpoints.json")
+	return filepath.Join(appRoot, ".scenery", "gen", "endpoints.json")
 }
 
 func GeneratedWireCapabilitiesPath(appRoot string) string {
-	return filepath.Join(appRoot, ".onlava", "gen", "wire", "capabilities.json")
+	return filepath.Join(appRoot, ".scenery", "gen", "wire", "capabilities.json")
 }
 
 func ReadGeneratedApp(appRoot string) (*AppResponse, bool, error) {

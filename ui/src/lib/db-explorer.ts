@@ -8,7 +8,7 @@ export interface StoredDBQuery {
 const limit = 12;
 
 export function dbQueryStorageKey(appId: string, dbName: string): string {
-  return `onlava:db-explorer:${appId}:${dbName}`;
+  return `scenery:db-explorer:${appId}:${dbName}`;
 }
 
 export function loadStoredDBQueries(appId: string, dbName: string): StoredDBQuery[] {

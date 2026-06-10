@@ -46,13 +46,13 @@ export function DatabasePage() {
   if (!selectedDB) {
     return (
       <div
-        data-onlava-ui="DBExplorer"
-        data-onlava-database-count={databases.length}
+        data-scenery-ui="DBExplorer"
+        data-scenery-database-count={databases.length}
         className="w-full h-[calc(100vh-var(--header-height))] flex items-center justify-center px-8"
       >
         <div
-          data-onlava-ui="DBUnavailableState"
-          data-onlava-state="intentional-empty"
+          data-scenery-ui="DBUnavailableState"
+          data-scenery-state="intentional-empty"
           className="rounded-md border border-border p-6 text-sm text-muted-foreground"
         >
           No databases found for this app.
@@ -63,14 +63,14 @@ export function DatabasePage() {
 
   return (
     <div
-      data-onlava-ui="DBExplorer"
-      data-onlava-database-count={databases.length}
+      data-scenery-ui="DBExplorer"
+      data-scenery-database-count={databases.length}
       className="w-full h-[calc(100vh-var(--header-height))]"
     >
       <div className="flex items-center gap-4 px-3 h-[60px] border-b border-border">
         <div className="w-fit">
           <select
-            data-onlava-ui="DatabaseList"
+            data-scenery-ui="DatabaseList"
             className="h-9 min-w-64 rounded-md border border-border bg-background px-3 text-sm"
             value={selectedDB.name}
             onChange={(event) => {

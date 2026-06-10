@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The dashboard should gradually migrate from route-level className-heavy markup to onlava-owned slot layouts and primitives.
+The dashboard should gradually migrate from route-level className-heavy markup to scenery-owned slot layouts and primitives.
 
 This is not a visual redesign. The goal is to reduce agent mistakes by moving page structure into named layouts:
 
@@ -33,13 +33,13 @@ route file
 ## Decision Log
 
 - Moved repeated top navigation class recipes into `ui/src/components/layouts/AppShell.tsx`, keeping route/shell composition code free of long className literals.
-- Replaced route-owned action buttons in API Explorer and Pub/Sub with the onlava `Button` primitive instead of adding new one-off components.
+- Replaced route-owned action buttons in API Explorer and Pub/Sub with the scenery `Button` primitive instead of adding new one-off components.
 - Added a focused `AppShell` render test to cover stable slot markers and layout-owned styling helpers.
 
 ## Outcomes & Retrospective
 
 - Completed the first dashboard slot-layout migration pass without a visual redesign.
-- `onlava harness self --json --write` reports `class_warnings: 0` for `ui static architecture`.
+- `scenery harness self --json --write` reports `class_warnings: 0` for `ui static architecture`.
 - The migration leaves broader route decomposition for future work, but the current guardrail warning baseline is clean.
 
 ## Context and Orientation
@@ -48,7 +48,7 @@ Relevant files:
 
 ```text
 docs/ui-agent-contract.md
-cmd/onlava/harness_ui.go
+cmd/scenery/harness_ui.go
 ui/src/routes/*
 ui/src/components/layouts/*
 ui/src/components/primitives/*
@@ -107,7 +107,7 @@ After warnings are close to zero, upgrade some warning categories to errors.
 
 ## Concrete Steps
 
-1. Run `onlava harness self --json --write` and record the className warning baseline.
+1. Run `scenery harness self --json --write` and record the className warning baseline.
 2. Pick two or three low-risk route files.
 3. Add missing layout primitives only when an existing primitive cannot express the route.
 4. Move route-level structure into named slots.
@@ -121,8 +121,8 @@ go test ./...
 cd ui && bun run typecheck
 cd ui && bun run test
 cd ui && bun run build
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

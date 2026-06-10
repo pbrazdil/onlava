@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/pbrazdil/onlava/internal/runtimeapi"
+	"scenery.sh/internal/runtimeapi"
 )
 
 type App struct {

@@ -31,7 +31,7 @@ func StartTemporalRuntime(ctx context.Context, cfg AppConfig) (func(context.Cont
 		return func(context.Context) error { return nil }, nil
 	}
 	if temporalRuntimeStarter == nil {
-		return nil, fmt.Errorf("runtime: temporal.enabled requires github.com/pbrazdil/onlava/temporal runtime registration")
+		return nil, fmt.Errorf("runtime: temporal.enabled requires scenery.sh/temporal runtime registration")
 	}
 	return temporalRuntimeStarter(ctx, cfg)
 }
@@ -49,7 +49,7 @@ func startTemporalWorkerRuntime(ctx context.Context, cfg AppConfig) (func(contex
 
 func startTemporalCronScheduler(ctx context.Context, cfg AppConfig, jobs []*CronJob) (*cronScheduler, error) {
 	if temporalCronStarter == nil {
-		return nil, fmt.Errorf("runtime: temporal cron jobs require github.com/pbrazdil/onlava/temporal runtime registration")
+		return nil, fmt.Errorf("runtime: temporal cron jobs require scenery.sh/temporal runtime registration")
 	}
 	stop, err := temporalCronStarter(ctx, cfg, jobs)
 	if err != nil {

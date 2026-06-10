@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 const (

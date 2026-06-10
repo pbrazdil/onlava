@@ -16,7 +16,7 @@ describe("AppShell", () => {
       </AppShell>,
     );
 
-    expect(container.querySelector('[data-onlava-ui="AppShell"]')).not.toBeNull();
+    expect(container.querySelector('[data-scenery-ui="AppShell"]')).not.toBeNull();
     expect(container.querySelector('[data-slot="topbar"]')).not.toBeNull();
     expect(container.querySelector('[data-slot="body"]')).not.toBeNull();
     expect(container.querySelector('[data-slot="compile-error"]')).not.toBeNull();

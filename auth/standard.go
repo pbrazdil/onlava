@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	authdb "github.com/pbrazdil/onlava/auth/db/gen"
-	"github.com/pbrazdil/onlava/internal/envpolicy"
-	onlavapgxpool "github.com/pbrazdil/onlava/pgxpool"
-	"github.com/pbrazdil/onlava/runtime"
+	authdb "scenery.sh/auth/db/gen"
+	"scenery.sh/internal/envpolicy"
+	scenerypgxpool "scenery.sh/pgxpool"
+	"scenery.sh/runtime"
 )
 
 //go:embed db/gen/schema.sql
@@ -150,16 +150,16 @@ func normalizeStandardConfig(config StandardConfig) StandardConfig {
 
 func applyStandardSecrets(config StandardConfig) {
 	refreshCookieName = strings.TrimSpace(config.RefreshCookieName)
-	secrets.JWTSecret = firstEnv(config.JWTSecretEnv, "JWT_SECRET", "ONLAVA_AUTH_JWT_SECRET")
+	secrets.JWTSecret = firstEnv(config.JWTSecretEnv, "JWT_SECRET", "SCENERY_AUTH_JWT_SECRET")
 	if strings.TrimSpace(secrets.JWTSecret) == "" && isLocalRuntime() {
-		secrets.JWTSecret = "onlava-local-development-secret"
+		secrets.JWTSecret = "scenery-local-development-secret"
 	}
 	secrets.GoogleOAuthClientID = firstEnv(config.GoogleOAuth.ClientIDEnv, "GOOGLE_OAUTH_CLIENT_ID")
 	secrets.GoogleOAuthClientSecret = firstEnv(config.GoogleOAuth.ClientSecretEnv, "GOOGLE_OAUTH_CLIENT_SECRET")
-	secrets.PublicAppURL = firstEnv(config.PublicAppURLEnv, "PUBLIC_APP_URL", "ONLAVA_PUBLIC_APP_URL")
-	secrets.APIBaseURL = firstEnv(config.APIBaseURLEnv, "API_BASE_URL", "ONLAVA_API_BASE_URL")
-	secrets.AuthCookieDomain = firstEnv(config.AuthCookieDomainEnv, "AUTH_COOKIE_DOMAIN", "ONLAVA_AUTH_COOKIE_DOMAIN")
-	secrets.AuthEmailFrom = firstEnv(config.EmailFromEnv, "AUTH_EMAIL_FROM", "ONLAVA_AUTH_EMAIL_FROM")
+	secrets.PublicAppURL = firstEnv(config.PublicAppURLEnv, "PUBLIC_APP_URL", "SCENERY_PUBLIC_APP_URL")
+	secrets.APIBaseURL = firstEnv(config.APIBaseURLEnv, "API_BASE_URL", "SCENERY_API_BASE_URL")
+	secrets.AuthCookieDomain = firstEnv(config.AuthCookieDomainEnv, "AUTH_COOKIE_DOMAIN", "SCENERY_AUTH_COOKIE_DOMAIN")
+	secrets.AuthEmailFrom = firstEnv(config.EmailFromEnv, "AUTH_EMAIL_FROM", "SCENERY_AUTH_EMAIL_FROM")
 }
 
 func firstEnv(names ...string) string {
@@ -180,12 +180,12 @@ func standardAuthService(ctx context.Context) (*Service, error) {
 	defer standardAuthState.mu.Unlock()
 	standardAuthState.once.Do(func() {
 		cfg := standardAuthState.cfg
-		databaseURL := firstEnv(cfg.DatabaseURLEnv, "DATABASE_URL", "ONLAVA_AUTH_DATABASE_URL")
+		databaseURL := firstEnv(cfg.DatabaseURLEnv, "DATABASE_URL", "SCENERY_AUTH_DATABASE_URL")
 		if strings.TrimSpace(databaseURL) == "" {
 			standardAuthState.err = fmt.Errorf("standard auth database URL is not configured (%s)", cfg.DatabaseURLEnv)
 			return
 		}
-		pool, err := onlavapgxpool.New(ctx, databaseURL)
+		pool, err := scenerypgxpool.New(ctx, databaseURL)
 		if err != nil {
 			standardAuthState.err = fmt.Errorf("connect standard auth database: %w", err)
 			return
@@ -339,8 +339,8 @@ func bootstrapStandardAuthSchema(ctx context.Context, pool interface {
 		old string
 		new string
 	}{
-		{`CREATE SCHEMA "onlava_auth";`, `CREATE SCHEMA IF NOT EXISTS "onlava_auth";`},
-		{`CREATE TABLE "onlava_auth".`, `CREATE TABLE IF NOT EXISTS "onlava_auth".`},
+		{`CREATE SCHEMA "scenery_auth";`, `CREATE SCHEMA IF NOT EXISTS "scenery_auth";`},
+		{`CREATE TABLE "scenery_auth".`, `CREATE TABLE IF NOT EXISTS "scenery_auth".`},
 		{`CREATE UNIQUE INDEX "`, `CREATE UNIQUE INDEX IF NOT EXISTS "`},
 		{`CREATE INDEX "`, `CREATE INDEX IF NOT EXISTS "`},
 	}
@@ -365,15 +365,15 @@ func clarifyStandardAuthTenantError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if isStandardAuthTenantReference(pgErr) {
-			return fmt.Errorf("%w (standard auth owns framework tenant state in PostgreSQL schema onlava_auth, including onlava_auth.tenants; this is standard auth state, not an app-local tenants service)", err)
+			return fmt.Errorf("%w (standard auth owns framework tenant state in PostgreSQL schema scenery_auth, including scenery_auth.tenants; this is standard auth state, not an app-local tenants service)", err)
 		}
 		if isAppDomainTenantReference(pgErr) {
-			return fmt.Errorf("%w (this references an app-domain tenants relation; standard auth tenant state lives in onlava_auth.tenants and does not require an app-local tenants service)", err)
+			return fmt.Errorf("%w (this references an app-domain tenants relation; standard auth tenant state lives in scenery_auth.tenants and does not require an app-local tenants service)", err)
 		}
 	}
 	message := strings.ToLower(err.Error())
-	if strings.Contains(message, "onlava_auth.tenants") || strings.Contains(message, `"onlava_auth"."tenants"`) {
-		return fmt.Errorf("%w (standard auth owns framework tenant state in PostgreSQL schema onlava_auth, including onlava_auth.tenants; this is standard auth state, not an app-local tenants service)", err)
+	if strings.Contains(message, "scenery_auth.tenants") || strings.Contains(message, `"scenery_auth"."tenants"`) {
+		return fmt.Errorf("%w (standard auth owns framework tenant state in PostgreSQL schema scenery_auth, including scenery_auth.tenants; this is standard auth state, not an app-local tenants service)", err)
 	}
 	return err
 }
@@ -388,10 +388,10 @@ func isStandardAuthTenantReference(pgErr *pgconn.PgError) bool {
 	if !strings.EqualFold(table, "tenants") && !strings.Contains(message, "tenants") {
 		return false
 	}
-	return strings.EqualFold(schema, "onlava_auth") ||
-		strings.Contains(message, "onlava_auth.tenants") ||
-		strings.Contains(message, `"onlava_auth"."tenants"`) ||
-		(strings.EqualFold(table, "tenants") && strings.Contains(message, "onlava_auth"))
+	return strings.EqualFold(schema, "scenery_auth") ||
+		strings.Contains(message, "scenery_auth.tenants") ||
+		strings.Contains(message, `"scenery_auth"."tenants"`) ||
+		(strings.EqualFold(table, "tenants") && strings.Contains(message, "scenery_auth"))
 }
 
 func isAppDomainTenantReference(pgErr *pgconn.PgError) bool {
@@ -401,7 +401,7 @@ func isAppDomainTenantReference(pgErr *pgconn.PgError) bool {
 	schema := strings.TrimSpace(pgErr.SchemaName)
 	table := strings.TrimSpace(pgErr.TableName)
 	message := strings.ToLower(pgErr.Message)
-	if strings.EqualFold(schema, "onlava_auth") || strings.Contains(message, "onlava_auth") {
+	if strings.EqualFold(schema, "scenery_auth") || strings.Contains(message, "scenery_auth") {
 		return false
 	}
 	return strings.EqualFold(table, "tenants") ||

@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	ManifestSchemaVersion = "onlava.toolchain.v1"
-	StatusSchemaVersion   = "onlava.toolchain.status.v1"
-	InstallSchemaVersion  = "onlava.toolchain.install.v1"
+	ManifestSchemaVersion = "scenery.toolchain.v1"
+	StatusSchemaVersion   = "scenery.toolchain.status.v1"
+	InstallSchemaVersion  = "scenery.toolchain.install.v1"
 )
 
 type Manifest struct {

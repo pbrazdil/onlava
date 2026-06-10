@@ -4,9 +4,9 @@ This ExecPlan is a living document. Update `Progress`, `Surprises & Discoveries`
 
 ## Purpose / Big Picture
 
-Remove the beta dynamic data/objectstore feature from onlava without keeping compatibility aliases or hidden runtime code.
+Remove the beta dynamic data/objectstore feature from scenery without keeping compatibility aliases or hidden runtime code.
 
-After this change, onlava should no longer expose `github.com/pbrazdil/onlava/data`, `internal/objectstore`, `internal/datainspect`, `onlava inspect data`, dashboard Data Explorer RPC/UI, data-platform schemas, examples, or fixture apps. Historical plan files may remain as project history, but current docs, harness checks, CLI grammar, dashboard routes, and public package lists must not advertise the removed surface.
+After this change, scenery should no longer expose `scenery.sh/data`, `internal/objectstore`, `internal/datainspect`, `scenery inspect data`, dashboard Data Explorer RPC/UI, data-platform schemas, examples, or fixture apps. Historical plan files may remain as project history, but current docs, harness checks, CLI grammar, dashboard routes, and public package lists must not advertise the removed surface.
 
 ## Progress
 
@@ -15,12 +15,12 @@ After this change, onlava should no longer expose `github.com/pbrazdil/onlava/da
 - [x] 2026-05-30: Removed CLI, dashboard RPC, harness, and inspect wiring.
 - [x] 2026-05-30: Removed dashboard Data Explorer route, page, tests, and registry item.
 - [x] 2026-05-30: Removed current docs/schema/knowledge references that advertise the feature.
-- [x] 2026-05-30: Ran Go and UI validation, rebuilt `onlava`, and started self-harness cleanup.
-- [x] 2026-05-30: Reran `onlava harness self --json --write`; it passed and wrote `.onlava/harness/self-latest.json`.
+- [x] 2026-05-30: Ran Go and UI validation, rebuilt `scenery`, and started self-harness cleanup.
+- [x] 2026-05-30: Reran `scenery harness self --json --write`; it passed and wrote `.scenery/harness/self-latest.json`.
 
 ## Surprises & Discoveries
 
-- 2026-05-30: `onlava harness self --json --write` exposed two cleanup issues after the first removal pass: `docs/knowledge.json` had invalid JSON from removed entries, and this ExecPlan was missing the required structural headings enforced by `PLANS.md`.
+- 2026-05-30: `scenery harness self --json --write` exposed two cleanup issues after the first removal pass: `docs/knowledge.json` had invalid JSON from removed entries, and this ExecPlan was missing the required structural headings enforced by `PLANS.md`.
 
 ## Decision Log
 
@@ -32,7 +32,7 @@ After this change, onlava should no longer expose `github.com/pbrazdil/onlava/da
 
 Completed on 2026-05-30. The objectstore/data surface was removed rather than hidden behind a disabled compatibility path. Current code, docs, harness knowledge, dashboard routes, UI registry, examples, fixtures, and schemas no longer advertise the feature.
 
-Validation passed with `go test -count=1 ./...`, dashboard UI typecheck/test/build, `go install ./cmd/onlava`, and `onlava harness self --json --write`. The current-source reference search for objectstore/data terms outside historical `docs/plans/**` returned no matches.
+Validation passed with `go test -count=1 ./...`, dashboard UI typecheck/test/build, `go install ./cmd/scenery`, and `scenery harness self --json --write`. The current-source reference search for objectstore/data terms outside historical `docs/plans/**` returned no matches.
 
 ## Context and Orientation
 
@@ -41,16 +41,16 @@ The feature spans:
 - Public Go package: `data/`.
 - Internal implementation: `internal/objectstore/`.
 - Inspect implementation: `internal/datainspect/`.
-- CLI command: `onlava inspect data`.
+- CLI command: `scenery inspect data`.
 - Dashboard RPC: `data/inspect`, `data/query-records`, and `data/outbox-events`.
-- Dashboard UI: `ui/src/features/data-explorer`, `ui/src/components/layouts/DataExplorerLayout.tsx`, and `@onlava/data-explorer-layout` registry metadata.
-- Docs/schemas/examples/fixtures: `docs/data-platform*.md`, `docs/schemas/onlava.data.export.v1.schema.json`, `docs/schemas/onlava.inspect.data.v1.schema.json`, `examples/data-platform`, and `testdata/apps/data-platform`.
+- Dashboard UI: `ui/src/features/data-explorer`, `ui/src/components/layouts/DataExplorerLayout.tsx`, and `@scenery/data-explorer-layout` registry metadata.
+- Docs/schemas/examples/fixtures: `docs/data-platform*.md`, `docs/schemas/scenery.data.export.v1.schema.json`, `docs/schemas/scenery.inspect.data.v1.schema.json`, `examples/data-platform`, and `testdata/apps/data-platform`.
 
 ## Milestones
 
 Milestone 1 removes the Go surface. Delete the public `data` package, internal implementation packages, data-platform fixture and example apps, and any parser tests that only validate the removed public API.
 
-Milestone 2 removes command and dashboard wiring. Delete `onlava inspect data`, dashboard data RPC handlers, harness browser routes, and generated/freshness references that treated objectstore as a current surface.
+Milestone 2 removes command and dashboard wiring. Delete `scenery inspect data`, dashboard data RPC handlers, harness browser routes, and generated/freshness references that treated objectstore as a current surface.
 
 Milestone 3 removes UI and documentation. Delete the Data Explorer route, components, registry item, schemas, and current docs or machine-readable knowledge entries that advertised the feature.
 
@@ -62,9 +62,9 @@ First, remove the Go packages and command wiring so the compiler becomes the sou
 
 ## Concrete Steps
 
-From `/Users/petrbrazdil/Repos/onlava`, remove the directories and files listed in Context and Orientation. Then run `rg` for objectstore/data public-surface terms outside `docs/plans/**` and remove any current references that remain.
+From `/Users/petrbrazdil/Repos/scenery`, remove the directories and files listed in Context and Orientation. Then run `rg` for objectstore/data public-surface terms outside `docs/plans/**` and remove any current references that remain.
 
-Update Go command parsing so `onlava inspect data` is not recognized and there is no disabled compatibility path. Update tests to expect an unknown subject or unknown flag where they previously exercised data inspect options.
+Update Go command parsing so `scenery inspect data` is not recognized and there is no disabled compatibility path. Update tests to expect an unknown subject or unknown flag where they previously exercised data inspect options.
 
 Update UI router and registry metadata so the dashboard has no Data Explorer route, layout, or RPC client. Run the UI typecheck, tests, and build after the deletion.
 
@@ -76,14 +76,14 @@ Run:
 
 ```sh
 go test -count=1 ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:
 
-- `go list ./...` no longer includes `github.com/pbrazdil/onlava/data`, `internal/objectstore`, or `internal/datainspect`.
-- `onlava inspect data` is not listed in usage and returns an unknown inspect subject/flag path rather than a dormant compatibility path.
+- `go list ./...` no longer includes `scenery.sh/data`, `internal/objectstore`, or `internal/datainspect`.
+- `scenery inspect data` is not listed in usage and returns an unknown inspect subject/flag path rather than a dormant compatibility path.
 - Dashboard Data Explorer route and RPC methods are gone.
 - Current docs and harness knowledge do not advertise the removed data/objectstore surface.
 
@@ -93,18 +93,18 @@ This is a deletion refactor. If a later test exposes a missed current reference,
 
 ## Artifacts and Notes
 
-Validation artifacts are written by the harness under `.onlava/harness/`. The deletion intentionally leaves historical plan references alone, but current docs, schemas, examples, fixtures, UI registry entries, and command usage must be clean.
+Validation artifacts are written by the harness under `.scenery/harness/`. The deletion intentionally leaves historical plan references alone, but current docs, schemas, examples, fixtures, UI registry entries, and command usage must be clean.
 
-The first self-harness run after the removal wrote `.onlava/harness/self-latest.json` with failures for `docs/knowledge.json` and this ExecPlan structure; those are cleanup items in this same plan.
+The first self-harness run after the removal wrote `.scenery/harness/self-latest.json` with failures for `docs/knowledge.json` and this ExecPlan structure; those are cleanup items in this same plan.
 
 ## Interfaces and Dependencies
 
 Removed public interfaces:
 
-- Go import path `github.com/pbrazdil/onlava/data`.
-- CLI subject `onlava inspect data`.
+- Go import path `scenery.sh/data`.
+- CLI subject `scenery inspect data`.
 - Dashboard RPC methods `data/inspect`, `data/query-records`, and `data/outbox-events`.
 - Dashboard route and registry item for Data Explorer.
-- JSON schemas `onlava.data.export.v1` and `onlava.inspect.data.v1`.
+- JSON schemas `scenery.data.export.v1` and `scenery.inspect.data.v1`.
 
 Remaining dependencies such as Postgres helpers and `pgxpool` are not objectstore-specific and stay available for auth, dev services, and other runtime features.

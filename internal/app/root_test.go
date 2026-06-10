@@ -7,24 +7,26 @@ import (
 	"testing"
 )
 
-func TestDiscoverRootAcceptsNeonPostgresConfig(t *testing.T) {
+func TestDiscoverRootAcceptsPostgresBranchConfig(t *testing.T) {
 	root := t.TempDir()
-	writeAppTestFile(t, root, ".onlava.json", `{
-		"name": "neonapp",
+	writeAppTestFile(t, root, ".scenery.json", `{
+		"name": "pgapp",
 		"dev": {
 			"services": {
 				"postgres": {
-					"kind": "neon",
-					"mode": "self-hosted",
-					"version": "17",
-					"isolation": "branch",
-					"project": "neonapp",
+					"kind": "postgres",
+					"mode": "local",
+					"version": "18",
+					"isolation": "database",
+					"project": "pgapp",
 					"parent_branch": "main",
+					"parent_database": "pgapp_main",
 					"branch_policy": "worktree",
 					"branch_name_template": "{app}/{git_branch}",
+					"branch_strategy": "template_database",
 					"ttl": "168h",
-					"database": "neonapp",
-					"role": "cloud_admin",
+					"database": "pgapp",
+					"role": "scenery",
 					"database_url_env": "DatabaseURL"
 				}
 			}
@@ -36,29 +38,30 @@ func TestDiscoverRootAcceptsNeonPostgresConfig(t *testing.T) {
 		t.Fatalf("DiscoverRoot returned error: %v", err)
 	}
 	svc := cfg.Dev.Services["postgres"]
-	if svc.Kind != "neon" || svc.Mode != "self-hosted" || svc.Isolation != "branch" || svc.Project != "neonapp" ||
-		svc.ParentBranch != "main" || svc.BranchPolicy != "worktree" || svc.BranchNameTemplate != "{app}/{git_branch}" ||
-		svc.TTL != "168h" || svc.Database != "neonapp" || svc.Role != "cloud_admin" || svc.DatabaseURLEnv != "DatabaseURL" {
+	if svc.Kind != "postgres" || svc.Mode != "local" || svc.Isolation != "database" || svc.Project != "pgapp" ||
+		svc.ParentBranch != "main" || svc.ParentDatabase != "pgapp_main" || svc.BranchPolicy != "worktree" ||
+		svc.BranchNameTemplate != "{app}/{git_branch}" || svc.BranchStrategy != "template_database" ||
+		svc.TTL != "168h" || svc.Database != "pgapp" || svc.Role != "scenery" || svc.DatabaseURLEnv != "DatabaseURL" {
 		t.Fatalf("service = %+v", svc)
 	}
 }
 
-func TestDiscoverRootRejectsUnknownNeonField(t *testing.T) {
+func TestDiscoverRootRejectsUnknownPostgresBranchField(t *testing.T) {
 	root := t.TempDir()
-	writeAppTestFile(t, root, ".onlava.json", `{
-		"name": "neonapp",
+	writeAppTestFile(t, root, ".scenery.json", `{
+		"name": "pgapp",
 		"dev": {
 			"services": {
 				"postgres": {
-					"kind": "neon",
-					"unknown_neon_field": true
+					"kind": "postgres",
+					"unknown_postgres_field": true
 				}
 			}
 		}
 	}`)
 
 	_, _, err := DiscoverRoot(root)
-	if err == nil || !strings.Contains(err.Error(), `unknown .onlava.json field "dev.services.postgres.unknown_neon_field"`) {
+	if err == nil || !strings.Contains(err.Error(), `unknown .scenery.json field "dev.services.postgres.unknown_postgres_field"`) {
 		t.Fatalf("DiscoverRoot unknown field error = %v", err)
 	}
 }

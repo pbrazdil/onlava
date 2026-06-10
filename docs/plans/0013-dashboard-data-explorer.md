@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-onlava should expose the native data platform through the local dashboard. The first UI is not a full CRM and not a polished product builder. It is a developer-facing data explorer that lets humans and agents inspect tenants, objects, fields, records, migrations, triggers, and outbox events.
+scenery should expose the native data platform through the local dashboard. The first UI is not a full CRM and not a polished product builder. It is a developer-facing data explorer that lets humans and agents inspect tenants, objects, fields, records, migrations, triggers, and outbox events.
 
 The goal is to prove:
 
@@ -15,10 +15,10 @@ data platform exists
 dashboard can inspect/query it
         |
         v
-agents can compose the UI from onlava layouts/primitives instead of ad hoc shadcn/Tailwind code
+agents can compose the UI from scenery layouts/primitives instead of ad hoc shadcn/Tailwind code
 ```
 
-This plan should use the onlava UI contract: primitives from `ui/src/components/primitives`, layouts from `ui/src/components/layouts`, and stable DOM markers for future browser harness checks.
+This plan should use the scenery UI contract: primitives from `ui/src/components/primitives`, layouts from `ui/src/components/layouts`, and stable DOM markers for future browser harness checks.
 
 ## Progress
 
@@ -38,7 +38,7 @@ This plan should use the onlava UI contract: primitives from `ui/src/components/
 
 ## Decision Log
 
-- Decision: use dashboard JSON-RPC methods instead of shelling out to `onlava inspect data`.
+- Decision: use dashboard JSON-RPC methods instead of shelling out to `scenery inspect data`.
   Rationale: the dashboard already has an app-aware RPC channel and can discover the app database URL through the supervisor.
 - Decision: query records through `internal/objectstore` rather than adding dashboard-only SQL.
   Rationale: this preserves metadata validation, permission hooks, field reassembly, and query compiler behavior.
@@ -47,7 +47,7 @@ This plan should use the onlava UI contract: primitives from `ui/src/components/
 
 ## Outcomes & Retrospective
 
-The dashboard now has a developer-facing Data Explorer reachable at `/$appId/data`. It shows data tenants and objects, infrastructure state, records for a selected object, and recent outbox events while composing the page from onlava layouts and primitives.
+The dashboard now has a developer-facing Data Explorer reachable at `/$appId/data`. It shows data tenants and objects, infrastructure state, records for a selected object, and recent outbox events while composing the page from scenery layouts and primitives.
 
 This is intentionally not a CRM UI. The useful next step is the browser/UI harness so the new layout markers can be verified by an agent-run browser check instead of only static tests.
 
@@ -61,18 +61,18 @@ ui/src/components/layouts/DataExplorerLayout.tsx
 ui/src/components/primitives/*
 internal/objectstore/*
 internal/datainspect/*
-cmd/onlava/*inspect*
-docs/schemas/onlava.inspect.data.v1.schema.json
+cmd/scenery/*inspect*
+docs/schemas/scenery.inspect.data.v1.schema.json
 testdata/apps/data-platform
 ```
 
-Existing `onlava inspect data --json --database-url <postgres-url>` reports data tenants, objects, fields, migrations, outbox, and trigger state. The dashboard should reuse that knowledge where possible instead of inventing a divergent data-inspection model.
+Existing `scenery inspect data --json --database-url <postgres-url>` reports data tenants, objects, fields, migrations, outbox, and trigger state. The dashboard should reuse that knowledge where possible instead of inventing a divergent data-inspection model.
 
 ## Interfaces and Dependencies
 
 - Reuse existing dashboard routing and data-fetching patterns.
 - Prefer `internal/datainspect` output shapes over a new dashboard-only metadata model.
-- Use onlava UI primitives/layouts only; do not add direct shadcn, Radix, or low-level styling imports in route files.
+- Use scenery UI primitives/layouts only; do not add direct shadcn, Radix, or low-level styling imports in route files.
 - No new external UI dependencies are expected for the first data explorer.
 
 ## Scope
@@ -126,7 +126,7 @@ Acceptance:
 
 ```text
 - route renders
-- stable data-onlava-ui markers exist
+- stable data-scenery-ui markers exist
 - no direct shadcn/vendor imports
 - no new long className soup outside layouts/primitives
 ```
@@ -230,18 +230,18 @@ Land the route shell first, then wire data inspect output, then add record query
 
 ```sh
 go test ./...
-go install ./cmd/onlava
+go install ./cmd/scenery
 cd ui && bun run typecheck
 cd ui && bun run test
 cd ui && bun run build
-onlava harness self --json --write
+scenery harness self --json --write
 ```
 
 Acceptance criteria:
 
 ```text
 - data explorer route renders
-- route uses onlava layout/primitives
+- route uses scenery layout/primitives
 - no forbidden imports
 - data inspect information is visible
 - records can be queried for fixture data
@@ -254,4 +254,4 @@ The route and feature components should be safe to reload without mutating data.
 
 ## Artifacts and Notes
 
-Expected artifacts are source files under `ui/src/features/data-explorer`, a dashboard route, tests, and the updated `.onlava/harness/self-latest.json` snapshot.
+Expected artifacts are source files under `ui/src/features/data-explorer`, a dashboard route, tests, and the updated `.scenery/harness/self-latest.json` snapshot.

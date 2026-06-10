@@ -3,7 +3,7 @@ package standardauthmeta
 import (
 	"net/http"
 
-	"github.com/pbrazdil/onlava/internal/runtimeapi"
+	"scenery.sh/internal/runtimeapi"
 )
 
 type Endpoint struct {

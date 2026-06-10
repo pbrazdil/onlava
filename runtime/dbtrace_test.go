@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/pbrazdil/onlava/internal/devreport"
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/internal/devreport"
+	"scenery.sh/runtime/shared"
 )
 
 func TestTraceDBQueryRecordsChildSpan(t *testing.T) {

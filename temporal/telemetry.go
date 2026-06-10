@@ -12,26 +12,26 @@ import (
 	temporalinterceptor "go.temporal.io/sdk/interceptor"
 	temporallog "go.temporal.io/sdk/log"
 
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	sceneryruntime "scenery.sh/runtime"
 )
 
-const onlavaTemporalTraceHeader = "onlava-temporal-trace"
+const sceneryTemporalTraceHeader = "scenery-temporal-trace"
 
-var onlavaTemporalSpanContextKey = &struct{ name string }{"onlava-temporal-span"}
+var sceneryTemporalSpanContextKey = &struct{ name string }{"scenery-temporal-span"}
 
-type onlavaTemporalTracer struct {
+type sceneryTemporalTracer struct {
 	temporalinterceptor.BaseTracer
-	info onlavaruntime.TemporalRuntimeInfo
+	info sceneryruntime.TemporalRuntimeInfo
 }
 
-type onlavaTemporalSpanRef struct {
+type sceneryTemporalSpanRef struct {
 	traceID string
 	spanID  string
 }
 
-type onlavaTemporalSpan struct {
-	*onlavaTemporalSpanRef
-	tracer       *onlavaTemporalTracer
+type sceneryTemporalSpan struct {
+	*sceneryTemporalSpanRef
+	tracer       *sceneryTemporalTracer
 	parentSpanID string
 	operation    string
 	name         string
@@ -39,28 +39,28 @@ type onlavaTemporalSpan struct {
 	started      time.Time
 }
 
-func newOnlavaTemporalTracer(info onlavaruntime.TemporalRuntimeInfo) *onlavaTemporalTracer {
-	return &onlavaTemporalTracer{info: info}
+func newSceneryTemporalTracer(info sceneryruntime.TemporalRuntimeInfo) *sceneryTemporalTracer {
+	return &sceneryTemporalTracer{info: info}
 }
 
-func (t *onlavaTemporalTracer) Options() temporalinterceptor.TracerOptions {
+func (t *sceneryTemporalTracer) Options() temporalinterceptor.TracerOptions {
 	return temporalinterceptor.TracerOptions{
-		SpanContextKey:          onlavaTemporalSpanContextKey,
-		HeaderKey:               onlavaTemporalTraceHeader,
+		SpanContextKey:          sceneryTemporalSpanContextKey,
+		HeaderKey:               sceneryTemporalTraceHeader,
 		AllowInvalidParentSpans: true,
 	}
 }
 
-func (t *onlavaTemporalTracer) UnmarshalSpan(data map[string]string) (temporalinterceptor.TracerSpanRef, error) {
+func (t *sceneryTemporalTracer) UnmarshalSpan(data map[string]string) (temporalinterceptor.TracerSpanRef, error) {
 	traceID := strings.ToLower(strings.TrimSpace(data["trace_id"]))
 	spanID := strings.ToLower(strings.TrimSpace(data["span_id"]))
 	if !isTemporalTraceID(traceID) || !isTemporalSpanID(spanID) {
 		return nil, nil
 	}
-	return &onlavaTemporalSpanRef{traceID: traceID, spanID: spanID}, nil
+	return &sceneryTemporalSpanRef{traceID: traceID, spanID: spanID}, nil
 }
 
-func (t *onlavaTemporalTracer) MarshalSpan(span temporalinterceptor.TracerSpan) (map[string]string, error) {
+func (t *sceneryTemporalTracer) MarshalSpan(span temporalinterceptor.TracerSpan) (map[string]string, error) {
 	ref := temporalSpanRef(span)
 	if ref == nil || !isTemporalTraceID(ref.traceID) || !isTemporalSpanID(ref.spanID) {
 		return nil, nil
@@ -71,25 +71,25 @@ func (t *onlavaTemporalTracer) MarshalSpan(span temporalinterceptor.TracerSpan) 
 	}, nil
 }
 
-func (t *onlavaTemporalTracer) SpanFromContext(ctx context.Context) temporalinterceptor.TracerSpan {
+func (t *sceneryTemporalTracer) SpanFromContext(ctx context.Context) temporalinterceptor.TracerSpan {
 	if ctx == nil {
 		return nil
 	}
-	span, _ := ctx.Value(onlavaTemporalSpanContextKey).(*onlavaTemporalSpan)
+	span, _ := ctx.Value(sceneryTemporalSpanContextKey).(*sceneryTemporalSpan)
 	return span
 }
 
-func (t *onlavaTemporalTracer) ContextWithSpan(ctx context.Context, span temporalinterceptor.TracerSpan) context.Context {
+func (t *sceneryTemporalTracer) ContextWithSpan(ctx context.Context, span temporalinterceptor.TracerSpan) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if span == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, onlavaTemporalSpanContextKey, span)
+	return context.WithValue(ctx, sceneryTemporalSpanContextKey, span)
 }
 
-func (t *onlavaTemporalTracer) StartSpan(options *temporalinterceptor.TracerStartSpanOptions) (temporalinterceptor.TracerSpan, error) {
+func (t *sceneryTemporalTracer) StartSpan(options *temporalinterceptor.TracerStartSpanOptions) (temporalinterceptor.TracerSpan, error) {
 	if options == nil {
 		options = &temporalinterceptor.TracerStartSpanOptions{}
 	}
@@ -108,8 +108,8 @@ func (t *onlavaTemporalTracer) StartSpan(options *temporalinterceptor.TracerStar
 	if started.IsZero() {
 		started = time.Now()
 	}
-	return &onlavaTemporalSpan{
-		onlavaTemporalSpanRef: &onlavaTemporalSpanRef{
+	return &sceneryTemporalSpan{
+		sceneryTemporalSpanRef: &sceneryTemporalSpanRef{
 			traceID: traceID,
 			spanID:  spanID,
 		},
@@ -122,11 +122,11 @@ func (t *onlavaTemporalTracer) StartSpan(options *temporalinterceptor.TracerStar
 	}, nil
 }
 
-func (t *onlavaTemporalTracer) GetLogger(logger temporallog.Logger, ref temporalinterceptor.TracerSpanRef) temporallog.Logger {
+func (t *sceneryTemporalTracer) GetLogger(logger temporallog.Logger, ref temporalinterceptor.TracerSpanRef) temporallog.Logger {
 	return logger
 }
 
-func (t *onlavaTemporalTracer) SpanName(options *temporalinterceptor.TracerStartSpanOptions) string {
+func (t *sceneryTemporalTracer) SpanName(options *temporalinterceptor.TracerStartSpanOptions) string {
 	if options == nil {
 		return "temporal.operation"
 	}
@@ -136,7 +136,7 @@ func (t *onlavaTemporalTracer) SpanName(options *temporalinterceptor.TracerStart
 	return "temporal." + strings.TrimSpace(options.Operation) + ":" + strings.TrimSpace(options.Name)
 }
 
-func (s *onlavaTemporalSpan) Finish(options *temporalinterceptor.TracerFinishSpanOptions) {
+func (s *sceneryTemporalSpan) Finish(options *temporalinterceptor.TracerFinishSpanOptions) {
 	if s == nil || s.tracer == nil {
 		return
 	}
@@ -144,7 +144,7 @@ func (s *onlavaTemporalSpan) Finish(options *temporalinterceptor.TracerFinishSpa
 	if options != nil {
 		err = options.Error
 	}
-	onlavaruntime.ReportTemporalTrace(onlavaruntime.TemporalTraceReport{
+	sceneryruntime.ReportTemporalTrace(sceneryruntime.TemporalTraceReport{
 		TraceID:      s.traceID,
 		SpanID:       s.spanID,
 		ParentSpanID: s.parentSpanID,
@@ -156,14 +156,14 @@ func (s *onlavaTemporalSpan) Finish(options *temporalinterceptor.TracerFinishSpa
 	})
 }
 
-func temporalSpanRef(value any) *onlavaTemporalSpanRef {
+func temporalSpanRef(value any) *sceneryTemporalSpanRef {
 	switch span := value.(type) {
-	case *onlavaTemporalSpan:
+	case *sceneryTemporalSpan:
 		if span == nil {
 			return nil
 		}
-		return span.onlavaTemporalSpanRef
-	case *onlavaTemporalSpanRef:
+		return span.sceneryTemporalSpanRef
+	case *sceneryTemporalSpanRef:
 		return span
 	default:
 		return nil

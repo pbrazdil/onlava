@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pbrazdil/onlava/internal/toolchain"
+	"scenery.sh/internal/toolchain"
 )
 
 func main() {
@@ -15,7 +15,7 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	manifestPath := filepath.Join(repoRoot, "onlava.toolchain.json")
+	manifestPath := filepath.Join(repoRoot, "scenery.toolchain.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		fatal(fmt.Errorf("read %s: %w", manifestPath, err))
@@ -44,13 +44,13 @@ func findRepoRoot() (string, error) {
 	}
 	for dir := wd; ; dir = filepath.Dir(dir) {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			if _, err := os.Stat(filepath.Join(dir, "onlava.toolchain.json")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "scenery.toolchain.json")); err == nil {
 				return dir, nil
 			}
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("could not find onlava repo root from %s", wd)
+			return "", fmt.Errorf("could not find scenery repo root from %s", wd)
 		}
 	}
 }

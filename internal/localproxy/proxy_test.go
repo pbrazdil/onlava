@@ -32,16 +32,16 @@ func TestDiscoverWorkspace(t *testing.T) {
 }
 
 func TestProxyAndTrustDefaultsAreOptIn(t *testing.T) {
-	t.Setenv("ONLAVA_LOCAL_PROXY", "")
-	t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", "")
+	t.Setenv("SCENERY_LOCAL_PROXY", "")
+	t.Setenv("SCENERY_LOCAL_PROXY_SKIP_TRUST_INSTALL", "")
 	if Enabled() {
 		t.Fatal("local proxy enabled by default")
 	}
 	if !SkipInstallTrust() {
 		t.Fatal("trust installation should be skipped by default")
 	}
-	t.Setenv("ONLAVA_LOCAL_PROXY", "1")
-	t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", "0")
+	t.Setenv("SCENERY_LOCAL_PROXY", "1")
+	t.Setenv("SCENERY_LOCAL_PROXY_SKIP_TRUST_INSTALL", "0")
 	if !Enabled() {
 		t.Fatal("local proxy not enabled by explicit env")
 	}
@@ -52,38 +52,38 @@ func TestProxyAndTrustDefaultsAreOptIn(t *testing.T) {
 
 func TestEnvironmentParsing(t *testing.T) {
 	for _, value := range []string{"0", "false", "no", "off"} {
-		t.Setenv("ONLAVA_LOCAL_PROXY", value)
+		t.Setenv("SCENERY_LOCAL_PROXY", value)
 		if Enabled() {
 			t.Fatalf("Enabled() = true for %q", value)
 		}
-		t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", value)
+		t.Setenv("SCENERY_LOCAL_PROXY_SKIP_TRUST_INSTALL", value)
 		if SkipInstallTrust() {
 			t.Fatalf("SkipInstallTrust() = true for %q", value)
 		}
 	}
 	for _, value := range []string{"1", "true", "yes", "on"} {
-		t.Setenv("ONLAVA_LOCAL_PROXY", value)
+		t.Setenv("SCENERY_LOCAL_PROXY", value)
 		if !Enabled() {
 			t.Fatalf("Enabled() = false for %q", value)
 		}
-		t.Setenv("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", value)
+		t.Setenv("SCENERY_LOCAL_PROXY_SKIP_TRUST_INSTALL", value)
 		if !SkipInstallTrust() {
 			t.Fatalf("SkipInstallTrust() = false for %q", value)
 		}
 	}
-	t.Setenv("ONLAVA_LOCAL_PROXY_HTTP_PORT", "9080")
-	t.Setenv("ONLAVA_LOCAL_PROXY_HTTPS_PORT", "9443")
+	t.Setenv("SCENERY_LOCAL_PROXY_HTTP_PORT", "9080")
+	t.Setenv("SCENERY_LOCAL_PROXY_HTTPS_PORT", "9443")
 	if HTTPPort() != 9080 {
 		t.Fatalf("HTTPPort() = %d", HTTPPort())
 	}
 	if HTTPSPort() != 9443 {
 		t.Fatalf("HTTPSPort() = %d", HTTPSPort())
 	}
-	t.Setenv("ONLAVA_FRONTEND_"+strings.ToUpper("web")+"_ADDR", "http://0.0.0.0:5178")
+	t.Setenv("SCENERY_FRONTEND_"+strings.ToUpper("web")+"_ADDR", "http://0.0.0.0:5178")
 	if got := FrontendOverride("web"); got != "127.0.0.1:5178" {
 		t.Fatalf("FrontendOverride() = %q", got)
 	}
-	t.Setenv("ONLAVA_DISABLE_FRONTEND_PROXY", "1")
+	t.Setenv("SCENERY_DISABLE_FRONTEND_PROXY", "1")
 	if got := DiscoverFrontendUpstream(t.TempDir(), FrontendConfig{Name: "web"}); got != "" {
 		t.Fatalf("DiscoverFrontendUpstream disabled = %q", got)
 	}
@@ -199,9 +199,9 @@ func TestRouteTableIncludesExpectedHosts(t *testing.T) {
 		{host: "console.acme.localhost", upstream: "127.0.0.1:9401"},
 		{host: "temporal.acme.localhost", upstream: "127.0.0.1:8233"},
 		{host: "grafana.acme.localhost", upstream: "127.0.0.1:10429"},
-		{host: "blog.acme.localhost", path: "/__onlava/config", upstream: "127.0.0.1:4000"},
+		{host: "blog.acme.localhost", path: "/__scenery/config", upstream: "127.0.0.1:4000"},
 		{host: "blog.acme.localhost", upstream: "127.0.0.1:5179", rewriteHost: true},
-		{host: "web.acme.localhost", path: "/__onlava/config", upstream: "127.0.0.1:4000"},
+		{host: "web.acme.localhost", path: "/__scenery/config", upstream: "127.0.0.1:4000"},
 		{host: "web.acme.localhost", upstream: "127.0.0.1:5178", rewriteHost: true},
 	}
 	if len(table) != len(want) {
@@ -371,7 +371,7 @@ func TestDiscoverReachableLoopbackUpstream(t *testing.T) {
 
 func TestProxyRoutesAndRedirects(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 
 	api := newEchoServer(t, "api")
 	dashboard := newEchoServer(t, "dashboard")
@@ -425,12 +425,12 @@ func TestProxyRoutesAndRedirects(t *testing.T) {
 	if temporalEcho.Server != "temporal" || temporalEcho.Host != fmt.Sprintf("temporal.acme.localhost:%d", httpsPort) {
 		t.Fatalf("temporal echo = %+v", temporalEcho)
 	}
-	grafanaEcho := getEcho(t, client, fmt.Sprintf("https://grafana.acme.localhost:%d/d/onlava-dev-overview", httpsPort))
+	grafanaEcho := getEcho(t, client, fmt.Sprintf("https://grafana.acme.localhost:%d/d/scenery-dev-overview", httpsPort))
 	if grafanaEcho.Server != "grafana" || grafanaEcho.Host != fmt.Sprintf("grafana.acme.localhost:%d", httpsPort) {
 		t.Fatalf("grafana echo = %+v", grafanaEcho)
 	}
 
-	configEcho := getEcho(t, client, fmt.Sprintf("https://web.acme.localhost:%d/__onlava/config", httpsPort))
+	configEcho := getEcho(t, client, fmt.Sprintf("https://web.acme.localhost:%d/__scenery/config", httpsPort))
 	if configEcho.Server != "api" || configEcho.Host != fmt.Sprintf("web.acme.localhost:%d", httpsPort) {
 		t.Fatalf("frontend config echo = %+v", configEcho)
 	}
@@ -476,7 +476,7 @@ func TestProxyRoutesAndRedirects(t *testing.T) {
 
 func TestProxyServesHTTP2(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 
 	api := newEchoServer(t, "api")
 	defer api.Close()
@@ -509,7 +509,7 @@ func TestProxyServesHTTP2(t *testing.T) {
 
 func TestCloseIsIdempotentAndReleasesPorts(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 	api := newEchoServer(t, "api")
 	defer api.Close()
 
@@ -542,7 +542,7 @@ func TestCloseIsIdempotentAndReleasesPorts(t *testing.T) {
 
 func TestStartContinuesWhenHTTPRedirectPortUnavailable(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 	api := newEchoServer(t, "api")
 	defer api.Close()
 
@@ -576,7 +576,7 @@ func TestStartContinuesWhenHTTPRedirectPortUnavailable(t *testing.T) {
 
 func TestStartInstallsTrustWhenNotSkipped(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 	api := newEchoServer(t, "api")
 	defer api.Close()
 
@@ -614,7 +614,7 @@ func TestStartInstallsTrustWhenNotSkipped(t *testing.T) {
 
 func TestStartSkipsTrustInstallerWhenAlreadyTrusted(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 	api := newEchoServer(t, "api")
 	defer api.Close()
 
@@ -650,7 +650,7 @@ func TestStartSkipsTrustInstallerWhenAlreadyTrusted(t *testing.T) {
 
 func TestLocalCertificatesIncludeExpectedSANsAndReuseCA(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 
 	first, err := prepareLocalCertificates([]string{"api.acme.localhost", "console.acme.localhost"})
 	if err != nil {
@@ -708,20 +708,20 @@ func TestLocalCertificatesIncludeExpectedSANsAndReuseCA(t *testing.T) {
 
 func TestLocalLeafCertificateCoversAgentSessionHost(t *testing.T) {
 	cacheDir := t.TempDir()
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", cacheDir)
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
 
 	ca, err := LoadOrCreateLocalCA()
 	if err != nil {
 		t.Fatalf("LoadOrCreateLocalCA() error = %v", err)
 	}
-	leaf, err := LocalLeafCertificate(ca, []string{"api.session-123.onlava.localhost"})
+	leaf, err := LocalLeafCertificate(ca, []string{"api.session-123.scenery.localhost"})
 	if err != nil {
 		t.Fatalf("LocalLeafCertificate() error = %v", err)
 	}
 	if leaf.Leaf == nil {
 		t.Fatal("expected parsed leaf certificate")
 	}
-	if err := leaf.Leaf.VerifyHostname("api.session-123.onlava.localhost"); err != nil {
+	if err := leaf.Leaf.VerifyHostname("api.session-123.scenery.localhost"); err != nil {
 		t.Fatalf("leaf does not cover agent session host: %v", err)
 	}
 	if err := leaf.Leaf.CheckSignatureFrom(ca.Cert); err != nil {
@@ -755,7 +755,7 @@ func newEchoServer(t *testing.T, name string) *httptest.Server {
 
 func newProxyClient(t *testing.T, cacheDir string) *http.Client {
 	t.Helper()
-	caPEM, err := os.ReadFile(filepath.Join(cacheDir, "onlava", "localproxy", localProxyCACertFile))
+	caPEM, err := os.ReadFile(filepath.Join(cacheDir, "scenery", "localproxy", localProxyCACertFile))
 	if err != nil {
 		t.Fatalf("read local CA: %v", err)
 	}

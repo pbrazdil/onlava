@@ -14,7 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	authdb "github.com/pbrazdil/onlava/auth/db/gen"
+	authdb "scenery.sh/auth/db/gen"
 )
 
 const (
@@ -296,7 +296,7 @@ func (s *Service) finishGoogleSignIn(ctx context.Context, claims *googleIDClaims
 		_ = tx.Rollback(ctx)
 	}()
 
-	var user authdb.OnlavaAuthUser
+	var user authdb.SceneryAuthUser
 	identity, err := q.GetAuthIdentityByProviderSubject(ctx, authdb.GetAuthIdentityByProviderSubjectParams{
 		Provider:        identityProviderGoogle,
 		ProviderSubject: strings.TrimSpace(claims.Subject),
@@ -387,7 +387,7 @@ func googleRedirectURI(req *http.Request) string {
 		}
 	}
 	if base == "" {
-		base = "https://api.onlava.localhost"
+		base = "https://api.scenery.localhost"
 	}
 	return base + "/auth/google/callback"
 }
@@ -395,7 +395,7 @@ func googleRedirectURI(req *http.Request) string {
 func appRedirectURL(path string) string {
 	base := strings.TrimRight(strings.TrimSpace(secrets.PublicAppURL), "/")
 	if base == "" {
-		base = "https://app.onlava.localhost"
+		base = "https://app.scenery.localhost"
 	}
 	return base + safeRedirectPath(path)
 }

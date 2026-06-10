@@ -15,13 +15,13 @@ import (
 	temporalworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	"scenery.sh/internal/envpolicy"
+	sceneryruntime "scenery.sh/runtime"
 )
 
 type temporalRuntimeState struct {
 	client temporalclient.Client
-	info   onlavaruntime.TemporalRuntimeInfo
+	info   sceneryruntime.TemporalRuntimeInfo
 }
 
 var activeTemporal struct {
@@ -29,14 +29,14 @@ var activeTemporal struct {
 	state *temporalRuntimeState
 }
 
-var temporalTracingEnabled = onlavaruntime.TemporalTracingEnabled
+var temporalTracingEnabled = sceneryruntime.TemporalTracingEnabled
 
-func StartRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(context.Context) error, error) {
-	info := onlavaruntime.ResolveTemporalConfig(cfg.Name, cfg.Temporal)
+func StartRuntime(ctx context.Context, cfg sceneryruntime.AppConfig) (func(context.Context) error, error) {
+	info := sceneryruntime.ResolveTemporalConfig(cfg.Name, cfg.Temporal)
 	if !info.Enabled {
 		return func(context.Context) error { return nil }, nil
 	}
-	if err := onlavaruntime.ValidateTemporalVersioning(info); err != nil {
+	if err := sceneryruntime.ValidateTemporalVersioning(info); err != nil {
 		return nil, err
 	}
 	client, err := Dial(ctx, info)
@@ -61,35 +61,35 @@ func StartRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(contex
 	}, nil
 }
 
-func ActiveClient() (temporalclient.Client, onlavaruntime.TemporalRuntimeInfo, bool) {
+func ActiveClient() (temporalclient.Client, sceneryruntime.TemporalRuntimeInfo, bool) {
 	activeTemporal.mu.RLock()
 	defer activeTemporal.mu.RUnlock()
 	if activeTemporal.state == nil {
-		return nil, onlavaruntime.TemporalRuntimeInfo{}, false
+		return nil, sceneryruntime.TemporalRuntimeInfo{}, false
 	}
 	return activeTemporal.state.client, activeTemporal.state.info, true
 }
 
-func CheckConnection(ctx context.Context, appName string, cfg onlavaruntime.TemporalConfig) (onlavaruntime.TemporalRuntimeInfo, onlavaruntime.TemporalConnectionStatus) {
-	info := onlavaruntime.ResolveTemporalConfig(appName, cfg)
+func CheckConnection(ctx context.Context, appName string, cfg sceneryruntime.TemporalConfig) (sceneryruntime.TemporalRuntimeInfo, sceneryruntime.TemporalConnectionStatus) {
+	info := sceneryruntime.ResolveTemporalConfig(appName, cfg)
 	if !info.Enabled {
-		return info, onlavaruntime.TemporalConnectionStatus{}
+		return info, sceneryruntime.TemporalConnectionStatus{}
 	}
 	client, err := Dial(ctx, info)
 	if err != nil {
-		return info, onlavaruntime.TemporalConnectionStatus{
+		return info, sceneryruntime.TemporalConnectionStatus{
 			Checked: true,
 			Error:   err.Error(),
 		}
 	}
 	client.Close()
-	return info, onlavaruntime.TemporalConnectionStatus{
+	return info, sceneryruntime.TemporalConnectionStatus{
 		Checked:   true,
 		Reachable: true,
 	}
 }
 
-func Dial(ctx context.Context, info onlavaruntime.TemporalRuntimeInfo) (temporalclient.Client, error) {
+func Dial(ctx context.Context, info sceneryruntime.TemporalRuntimeInfo) (temporalclient.Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -97,7 +97,7 @@ func Dial(ctx context.Context, info onlavaruntime.TemporalRuntimeInfo) (temporal
 	if err != nil {
 		return nil, err
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, onlavaruntime.DefaultTemporalConnectWait)
+	dialCtx, cancel := context.WithTimeout(ctx, sceneryruntime.DefaultTemporalConnectWait)
 	defer cancel()
 	client, err := temporalclient.DialContext(dialCtx, options)
 	if err != nil {
@@ -106,8 +106,8 @@ func Dial(ctx context.Context, info onlavaruntime.TemporalRuntimeInfo) (temporal
 	return client, nil
 }
 
-func temporalClientOptions(info onlavaruntime.TemporalRuntimeInfo) (temporalclient.Options, error) {
-	if err := onlavaruntime.ValidateTemporalPayloadCodec(info.PayloadCodec); err != nil {
+func temporalClientOptions(info sceneryruntime.TemporalRuntimeInfo) (temporalclient.Options, error) {
+	if err := sceneryruntime.ValidateTemporalPayloadCodec(info.PayloadCodec); err != nil {
 		return temporalclient.Options{}, err
 	}
 	options := temporalclient.Options{
@@ -126,12 +126,12 @@ func temporalClientOptions(info onlavaruntime.TemporalRuntimeInfo) (temporalclie
 		options.ConnectionOptions.TLS = tlsConfig
 	}
 	if temporalTracingEnabled() {
-		options.Interceptors = append(options.Interceptors, temporalinterceptor.NewTracingInterceptor(newOnlavaTemporalTracer(info)))
+		options.Interceptors = append(options.Interceptors, temporalinterceptor.NewTracingInterceptor(newSceneryTemporalTracer(info)))
 	}
 	return options, nil
 }
 
-func temporalTLSConfig(info onlavaruntime.TemporalRuntimeInfo) (*tls.Config, bool, error) {
+func temporalTLSConfig(info sceneryruntime.TemporalRuntimeInfo) (*tls.Config, bool, error) {
 	caPath, caSet := envValue(info.TLSCACertFileEnv)
 	certPath, certSet := envValue(info.TLSCertFileEnv)
 	keyPath, keySet := envValue(info.TLSKeyFileEnv)
@@ -167,58 +167,58 @@ func temporalTLSConfig(info onlavaruntime.TemporalRuntimeInfo) (*tls.Config, boo
 	return cfg, true, nil
 }
 
-func temporalIdentity(info onlavaruntime.TemporalRuntimeInfo) string {
+func temporalIdentity(info sceneryruntime.TemporalRuntimeInfo) string {
 	pid := os.Getpid()
 	if info.TaskQueuePrefix == "" {
-		return fmt.Sprintf("onlava:%d", pid)
+		return fmt.Sprintf("scenery:%d", pid)
 	}
 	return fmt.Sprintf("%s:%d", info.TaskQueuePrefix, pid)
 }
 
-func TemporalWorkerOptions(info onlavaruntime.TemporalRuntimeInfo, role, taskQueue string) temporalworker.Options {
-	buildID := onlavaruntime.TemporalWorkerBuildID(info)
+func TemporalWorkerOptions(info sceneryruntime.TemporalRuntimeInfo, role, taskQueue string) temporalworker.Options {
+	buildID := sceneryruntime.TemporalWorkerBuildID(info)
 	opts := temporalworker.Options{
 		DisableRegistrationAliasing: true,
-		Identity:                    onlavaruntime.TemporalWorkerIdentity(info, role, taskQueue),
+		Identity:                    sceneryruntime.TemporalWorkerIdentity(info, role, taskQueue),
 		BuildID:                     buildID,
 		DeploymentOptions: temporalworker.DeploymentOptions{
 			UseVersioning: true,
 			Version: temporalworker.WorkerDeploymentVersion{
-				DeploymentName: onlavaruntime.TemporalDeploymentName(info),
+				DeploymentName: sceneryruntime.TemporalDeploymentName(info),
 				BuildID:        buildID,
 			},
 			DefaultVersioningBehavior: TemporalWorkflowVersioningBehavior(info),
 		},
 	}
-	if onlavaruntime.TemporalHostResourceReportingEnabled(info) {
+	if sceneryruntime.TemporalHostResourceReportingEnabled(info) {
 		opts.SysInfoProvider = sysinfo.SysInfoProvider()
 	}
 	if temporalTracingEnabled() {
-		opts.Interceptors = append(opts.Interceptors, temporalinterceptor.NewTracingInterceptor(newOnlavaTemporalTracer(info)))
+		opts.Interceptors = append(opts.Interceptors, temporalinterceptor.NewTracingInterceptor(newSceneryTemporalTracer(info)))
 	}
 	return opts
 }
 
-func TemporalWorkflowVersioningBehavior(info onlavaruntime.TemporalRuntimeInfo) workflow.VersioningBehavior {
-	switch onlavaruntime.NormalizeTemporalVersioning(info.Versioning) {
-	case onlavaruntime.TemporalVersioningAutoUpgrade:
+func TemporalWorkflowVersioningBehavior(info sceneryruntime.TemporalRuntimeInfo) workflow.VersioningBehavior {
+	switch sceneryruntime.NormalizeTemporalVersioning(info.Versioning) {
+	case sceneryruntime.TemporalVersioningAutoUpgrade:
 		return workflow.VersioningBehaviorAutoUpgrade
 	default:
 		return workflow.VersioningBehaviorPinned
 	}
 }
 
-func EnsureWorkerDeploymentCurrentVersion(ctx context.Context, client temporalclient.Client, info onlavaruntime.TemporalRuntimeInfo) error {
+func EnsureWorkerDeploymentCurrentVersion(ctx context.Context, client temporalclient.Client, info sceneryruntime.TemporalRuntimeInfo) error {
 	if client == nil {
 		return fmt.Errorf("temporal: missing client for worker deployment versioning")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	updateCtx, cancel := context.WithTimeout(ctx, onlavaruntime.DefaultTemporalConnectWait)
+	updateCtx, cancel := context.WithTimeout(ctx, sceneryruntime.DefaultTemporalConnectWait)
 	defer cancel()
-	deploymentName := onlavaruntime.TemporalDeploymentName(info)
-	buildID := onlavaruntime.TemporalWorkerBuildID(info)
+	deploymentName := sceneryruntime.TemporalDeploymentName(info)
+	buildID := sceneryruntime.TemporalWorkerBuildID(info)
 	_, err := client.WorkerDeploymentClient().GetHandle(deploymentName).SetCurrentVersion(updateCtx, temporalclient.WorkerDeploymentSetCurrentVersionOptions{
 		BuildID:                 buildID,
 		Identity:                temporalIdentity(info),

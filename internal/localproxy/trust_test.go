@@ -8,7 +8,7 @@ keychain: "/Users/example/Library/Keychains/login.keychain-db"
 version: 512
 class: 0x80001000
 attributes:
-    "alis"<blob>="onlava Development Local Proxy CA"
+    "alis"<blob>="scenery Development Local Proxy CA"
 SHA-256 hash: 0261A834E2A7B25A191A62EC6197C7A6EBD41A77509657808D33B59CF97152D4
 -----BEGIN CERTIFICATE-----
 MIIB

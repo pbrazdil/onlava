@@ -4,18 +4,18 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/devreport"
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/devreport"
+	"scenery.sh/internal/envpolicy"
 )
 
 const (
 	DashboardAddr = "127.0.0.1:9401"
-	WebSocketPath = "/__onlava"
-	ReportPath    = "/__onlava/report"
+	WebSocketPath = "/__scenery"
+	ReportPath    = "/__scenery/report"
 )
 
 func ListenAddr() string {
-	if value := envpolicy.Get("ONLAVA_DEV_DASHBOARD_ADDR"); value != "" {
+	if value := envpolicy.Get("SCENERY_DEV_DASHBOARD_ADDR"); value != "" {
 		return value
 	}
 	return DashboardAddr

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/runtime/shared"
 )
 
 func TestNewExternalStateAppliesSeparateLogAndTraceFilters(t *testing.T) {
@@ -58,9 +58,9 @@ func TestStartRequestTraceStillCreatesSpanWhenOnlyLogsAreEnabled(t *testing.T) {
 	}
 }
 
-func TestOnlavaConsoleHandlerSkipsLogsForFilteredEndpoint(t *testing.T) {
+func TestSceneryConsoleHandlerSkipsLogsForFilteredEndpoint(t *testing.T) {
 	var out bytes.Buffer
-	handler := newOnlavaConsoleHandler(&out)
+	handler := newSceneryConsoleHandler(&out)
 	state := &requestState{
 		request: sharedRequest("sync", "SyncGet", "/sync"),
 		trace: &traceSpan{
@@ -100,7 +100,7 @@ func TestAuthHandlerLogsUseAuthEndpointFilter(t *testing.T) {
 
 	var out bytes.Buffer
 	prevLogger := slog.Default()
-	slog.SetDefault(slog.New(newOnlavaConsoleHandler(&out)))
+	slog.SetDefault(slog.New(newSceneryConsoleHandler(&out)))
 	defer slog.SetDefault(prevLogger)
 
 	state := &requestState{
@@ -136,7 +136,7 @@ func TestAuthHandlerLogsStillWriteWhenNotFiltered(t *testing.T) {
 
 	var out bytes.Buffer
 	prevLogger := slog.Default()
-	slog.SetDefault(slog.New(newOnlavaConsoleHandler(&out)))
+	slog.SetDefault(slog.New(newSceneryConsoleHandler(&out)))
 	defer slog.SetDefault(prevLogger)
 
 	state := &requestState{

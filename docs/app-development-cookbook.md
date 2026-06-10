@@ -1,10 +1,10 @@
-# onlava App Development Cookbook
+# scenery App Development Cookbook
 
 This cookbook is the practical "how do I build this?" companion to `docs/local-contract.md`. The local contract is the source of truth for exact CLI and JSON contracts; this file gives agents and developers common recipes.
 
 ## Minimal App
 
-Create `.onlava.json`:
+Create `.scenery.json`:
 
 ```json
 {"name":"hello"}
@@ -17,7 +17,7 @@ module example.com/hello
 
 go 1.26.3
 
-require github.com/pbrazdil/onlava v0.0.0
+require scenery.sh v0.0.0
 ```
 
 Create `service/api.go`:
@@ -31,7 +31,7 @@ type HelloResponse struct {
 	Message string `json:"message"`
 }
 
-//onlava:api public path=/hello/:name method=GET
+//scenery:api public path=/hello/:name method=GET
 func Hello(ctx context.Context, name string) (*HelloResponse, error) {
 	return &HelloResponse{Message: "hello " + name}, nil
 }
@@ -40,12 +40,12 @@ func Hello(ctx context.Context, name string) (*HelloResponse, error) {
 Validate:
 
 ```sh
-onlava check --json
-onlava serve
+scenery check --json
+scenery serve
 curl http://127.0.0.1:4000/hello/world
 ```
 
-Common failure: `onlava check` cannot find the app. Run it from the app root or pass `--app-root`.
+Common failure: `scenery check` cannot find the app. Run it from the app root or pass `--app-root`.
 
 ## Typed Public Endpoint
 
@@ -60,7 +60,7 @@ type CreateThingResponse struct {
 	ID string `json:"id"`
 }
 
-//onlava:api public path=/things method=POST
+//scenery:api public path=/things method=POST
 func CreateThing(ctx context.Context, req *CreateThingRequest) (*CreateThingResponse, error) {
 	return &CreateThingResponse{ID: req.Name}, nil
 }
@@ -69,15 +69,15 @@ func CreateThing(ctx context.Context, req *CreateThingRequest) (*CreateThingResp
 Validate:
 
 ```sh
-onlava check --json
+scenery check --json
 curl -X POST http://127.0.0.1:4000/things -d '{"name":"alpha"}'
 ```
 
-Common failure: missing pointer request or unsupported signature. Check `onlava inspect endpoints --json`.
+Common failure: missing pointer request or unsupported signature. Check `scenery inspect endpoints --json`.
 
 ## Auth Endpoint
 
-Enable standard auth in `.onlava.json`:
+Enable standard auth in `.scenery.json`:
 
 ```json
 {
@@ -98,14 +98,14 @@ package service
 import (
 	"context"
 
-	"github.com/pbrazdil/onlava/auth"
+	"scenery.sh/auth"
 )
 
 type MeResponse struct {
 	UserID string `json:"user_id"`
 }
 
-//onlava:api auth path=/me method=GET
+//scenery:api auth path=/me method=GET
 func Me(ctx context.Context) (*MeResponse, error) {
 	uid, _ := auth.UserID()
 	return &MeResponse{UserID: string(uid)}, nil
@@ -115,21 +115,21 @@ func Me(ctx context.Context) (*MeResponse, error) {
 Validate:
 
 ```sh
-onlava check --json
-onlava serve
+scenery check --json
+scenery serve
 curl -X POST http://127.0.0.1:4000/users/dev-bootstrap
 ```
 
 Common failure: `DatabaseURL` is missing. Put it in process env or an app-root `.env.local` for local development.
 
-Standard auth owns its tenant state in `onlava_auth.tenants`. You do not need an app-local `tenants` service or table to use standard auth; create one only for product-domain tenant APIs or schema.
+Standard auth owns its tenant state in `scenery_auth.tenants`. You do not need an app-local `tenants` service or table to use standard auth; create one only for product-domain tenant APIs or schema.
 
 ## Private Endpoint Call
 
-Private endpoints are internal-only and should be called through generated helpers from other onlava endpoints. Do not expose private APIs over external HTTP.
+Private endpoints are internal-only and should be called through generated helpers from other scenery endpoints. Do not expose private APIs over external HTTP.
 
 ```go
-//onlava:api private
+//scenery:api private
 func Compute(ctx context.Context) (*ComputeResponse, error) {
 	return &ComputeResponse{Value: 42}, nil
 }
@@ -138,18 +138,18 @@ func Compute(ctx context.Context) (*ComputeResponse, error) {
 Validate:
 
 ```sh
-onlava check --json
-onlava inspect routes --json
+scenery check --json
+scenery inspect routes --json
 ```
 
 Common failure: raw endpoints cannot be called through internal service-to-service helpers in the current contract.
 
 ## Service Struct Initialization
 
-Use `//onlava:service` when endpoints are methods on a struct with dependencies.
+Use `//scenery:service` when endpoints are methods on a struct with dependencies.
 
 ```go
-//onlava:service
+//scenery:service
 type Service struct {
 	prefix string
 }
@@ -158,7 +158,7 @@ func initService() (*Service, error) {
 	return &Service{prefix: "hello"}, nil
 }
 
-//onlava:api public path=/hello method=GET
+//scenery:api public path=/hello method=GET
 func (s *Service) Hello(ctx context.Context) (*HelloResponse, error) {
 	return &HelloResponse{Message: s.prefix}, nil
 }
@@ -167,7 +167,7 @@ func (s *Service) Hello(ctx context.Context) (*HelloResponse, error) {
 Validate:
 
 ```sh
-onlava check --json
+scenery check --json
 go test ./...
 ```
 
@@ -175,16 +175,16 @@ Common failure: nested services are invalid. Keep one service root per package/s
 
 ## Middleware
 
-Use `github.com/pbrazdil/onlava/middleware` for app middleware. Start from `testdata/apps/middleware` before writing new patterns.
+Use `scenery.sh/middleware` for app middleware. Start from `testdata/apps/middleware` before writing new patterns.
 
 Validate:
 
 ```sh
-onlava check --app-root testdata/apps/middleware --json
+scenery check --app-root testdata/apps/middleware --json
 go test ./internal/parse ./internal/codegen ./runtime
 ```
 
-Common failure: middleware order or scope is unclear. Inspect the generated app model with `onlava inspect app --json`.
+Common failure: middleware order or scope is unclear. Inspect the generated app model with `scenery inspect app --json`.
 
 ## Request Decoding Tags
 
@@ -196,7 +196,7 @@ header
 query
 qs
 cookie
-onlava:"optional"
+scenery:"optional"
 ```
 
 Example:
@@ -204,25 +204,25 @@ Example:
 ```go
 type SearchRequest struct {
 	Query string `query:"q"`
-	Token string `header:"authorization" onlava:"optional"`
+	Token string `header:"authorization" scenery:"optional"`
 }
 ```
 
 Validate:
 
 ```sh
-onlava inspect endpoints --json
+scenery inspect endpoints --json
 ```
 
-Common failure: forgetting `onlava:"optional"` for values that may be absent.
+Common failure: forgetting `scenery:"optional"` for values that may be absent.
 
 ## HTTP Status Responses
 
-Use `onlava:"httpstatus"` on a response field:
+Use `scenery:"httpstatus"` on a response field:
 
 ```go
 type CreatedResponse struct {
-	Status int    `json:"-" onlava:"httpstatus"`
+	Status int    `json:"-" scenery:"httpstatus"`
 	ID     string `json:"id"`
 }
 ```
@@ -231,7 +231,7 @@ Common failure: returning a status field in JSON accidentally. Use `json:"-"` wh
 
 ## Coded Errors
 
-Use `github.com/pbrazdil/onlava/errs` for HTTP-aware coded errors.
+Use `scenery.sh/errs` for HTTP-aware coded errors.
 
 ```go
 return nil, errs.NotFound("thing not found")
@@ -244,7 +244,7 @@ Validate error mappings with endpoint tests or `curl`.
 Use:
 
 ```go
-meta := onlava.CurrentRequest()
+meta := scenery.CurrentRequest()
 uid, ok := auth.UserID()
 standard, ok := auth.CurrentAuthData()
 ```
@@ -253,11 +253,11 @@ Common failure: relying on globals outside request handling. Pass context or act
 
 ## Temporal Workflow Or Activity
 
-Use `github.com/pbrazdil/onlava/temporal` for beta workflow and activity declarations. Packages that call `temporal.NewWorkflow` or `temporal.NewActivity` are imported by generated main so worker processes can register them. Set `temporal.enabled: true` in `.onlava.json` to opt in; Temporal remains off when the field is omitted, even if declarations or TypeScript worker settings are present. Use `onlava up` for local combined API/worker execution, and use `onlava worker` for worker-only processes. Set `ActivityConfig.MaxConcurrency` when a dedicated task queue should cap concurrent activity executions for resource-heavy work, and pass `temporal.WithHeartbeatTimeout(...)` when a workflow activity needs a heartbeat timeout.
+Use `scenery.sh/temporal` for beta workflow and activity declarations. Packages that call `temporal.NewWorkflow` or `temporal.NewActivity` are imported by generated main so worker processes can register them. Set `temporal.enabled: true` in `.scenery.json` to opt in; Temporal remains off when the field is omitted, even if declarations or TypeScript worker settings are present. Use `scenery up` for local combined API/worker execution, and use `scenery worker` for worker-only processes. Set `ActivityConfig.MaxConcurrency` when a dedicated task queue should cap concurrent activity executions for resource-heavy work, and pass `temporal.WithHeartbeatTimeout(...)` when a workflow activity needs a heartbeat timeout.
 
 ## Cron Job
 
-Use `github.com/pbrazdil/onlava/cron` and see `testdata/apps/cron`. When Temporal is enabled, cron jobs run through Temporal Schedules. Set `OverlapPolicy`, `CatchupWindow`, `PauseOnFailure`, `ActivityStartToClose`, and `ActivityRetryPolicy` on `cron.JobConfig` when missed-run, overlap, timeout, or retry behavior must be explicit.
+Use `scenery.sh/cron` and see `testdata/apps/cron`. When Temporal is enabled, cron jobs run through Temporal Schedules. Set `OverlapPolicy`, `CatchupWindow`, `PauseOnFailure`, `ActivityStartToClose`, and `ActivityRetryPolicy` on `cron.JobConfig` when missed-run, overlap, timeout, or retry behavior must be explicit.
 
 ```go
 package jobs
@@ -266,7 +266,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/pbrazdil/onlava/cron"
+	"scenery.sh/cron"
 )
 
 var _ = cron.NewJob("nightly-sync", cron.JobConfig{
@@ -290,7 +290,7 @@ func syncNightly(ctx context.Context) error {
 Validate:
 
 ```sh
-onlava check --app-root testdata/apps/cron --json
+scenery check --app-root testdata/apps/cron --json
 go test ./cron ./internal/parse ./internal/codegen
 ```
 
@@ -298,14 +298,14 @@ Common failure: relying on wall-clock behavior in unit tests. Keep cron tests de
 
 ## pgxpool Tracing
 
-Use `github.com/pbrazdil/onlava/pgxpool` when you want PostgreSQL operations to appear in onlava local traces.
+Use `scenery.sh/pgxpool` when you want PostgreSQL operations to appear in scenery local traces.
 
 Validate:
 
 ```sh
-onlava traces list --json --since 15m
-onlava metrics list --json --since 1h
-onlava metrics query --json --since 15m --step 5s --promql 'onlava_request_duration_seconds'
+scenery traces list --json --since 15m
+scenery metrics list --json --since 1h
+scenery metrics query --json --since 15m --step 5s --promql 'scenery_request_duration_seconds'
 ```
 
 Common failure: using a raw pool in app code and then expecting DB spans in the dashboard.
@@ -315,28 +315,28 @@ Common failure: using a raw pool in app code and then expecting DB spans in the 
 Generate a client:
 
 ```sh
-onlava generate client --lang typescript --output ./src/onlava-client.ts
+scenery generate client --lang typescript --output ./src/scenery-client.ts
 ```
 
-If `.onlava.json` declares `generators.clients`, inspect and run the configured graph:
+If `.scenery.json` declares `generators.clients`, inspect and run the configured graph:
 
 ```sh
-onlava inspect generators --json
-onlava generate --dry-run --json
-onlava generate client
+scenery inspect generators --json
+scenery generate --dry-run --json
+scenery generate client
 ```
 
 Inspect wire support:
 
 ```sh
-onlava inspect wire --json
+scenery inspect wire --json
 ```
 
 Common failure: committing generated clients without regenerating after endpoint changes.
 
 ## Code Tasks
 
-Use `onlava task` for app-local code tasks that should run from the app root without requiring the app model to parse cleanly.
+Use `scenery task` for app-local code tasks that should run from the app root without requiring the app model to parse cleanly.
 
 Code task targets use `<domain>:<name>`, and both segments must match `[A-Za-z0-9_][A-Za-z0-9_-]*`.
 
@@ -361,7 +361,7 @@ billing/tasks/reconcile.task.go
 Run it:
 
 ```sh
-onlava task run billing:reconcile -- --dry-run
+scenery task run billing:reconcile -- --dry-run
 ```
 
 Use a directory for larger Go tasks:
@@ -381,15 +381,15 @@ billing/tasks/reconcile/index.ts
 List and inspect tasks:
 
 ```sh
-onlava task list --json
-onlava task inspect billing:reconcile --json
+scenery task list --json
+scenery task inspect billing:reconcile --json
 ```
 
-Common failure: putting two single-file Go tasks with `package main` in the same directory without `//go:build ignore`. Normal Go package loading may see both files before onlava can filter anything. Use the build tag for `*.task.go`, or use a per-task directory.
+Common failure: putting two single-file Go tasks with `package main` in the same directory without `//go:build ignore`. Normal Go package loading may see both files before scenery can filter anything. Use the build tag for `*.task.go`, or use a per-task directory.
 
 ## Validation Profiles
 
-Use `validation` profiles in `.onlava.json` when an app has quality gates beyond the core framework harness:
+Use `validation` profiles in `.scenery.json` when an app has quality gates beyond the core framework harness:
 
 ```json
 {
@@ -424,40 +424,40 @@ Use `validation` profiles in `.onlava.json` when an app has quality gates beyond
 Agents can inspect and run these gates without scraping repo-specific prose:
 
 ```sh
-onlava inspect validation --json
-onlava validate quick --json --write
-onlava validate changed --base origin/main --json --write
-onlava validate full --dry-run --json
+scenery inspect validation --json
+scenery validate quick --json --write
+scenery validate changed --base origin/main --json --write
+scenery validate full --dry-run --json
 ```
 
 ## Configured SQLC And DB Lifecycle
 
-Use `onlava generate sqlc` for file generation. It reads `sqlc.yaml`, refreshes convention-matched Atlas schema SQL such as `auth/db/gen/schema.sql` from `auth/db/schema.hcl`, and then runs `sqlc generate`.
+Use `scenery generate sqlc` for file generation. It reads `sqlc.yaml`, refreshes convention-matched Atlas schema SQL such as `auth/db/gen/schema.sql` from `auth/db/schema.hcl`, and then runs `sqlc generate`.
 
 SQLC generation does not mutate a database and does not read seed files as inputs.
 
 The DB lifecycle split is:
 
 ```text
-onlava db apply
-onlava db seed
-onlava db setup
-onlava db neon status --json
-onlava db branch status --json
-onlava db branch checkout feature/my-branch --json
-onlava db branch list --json
-onlava db branch expire feature/my-branch --after 24h --json
-onlava db branch prune --older-than 336h --json
-onlava worktree create feature-my-branch --from main --json
+scenery db apply
+scenery db seed
+scenery db setup
+scenery db postgres status --json
+scenery db branch status --json
+scenery db branch checkout feature/my-branch --json
+scenery db branch list --json
+scenery db branch expire feature/my-branch --after 24h --json
+scenery db branch prune --older-than 336h --json
+scenery worktree create feature-my-branch --from main --json
 ```
 
-`onlava db apply` mutates schema or app-owned database setup only. It does not run SQLC generation or seed files. `onlava db seed` applies initial data such as `SERVICE/db/seed.sql` only, records successful runs in a small internal ledger, skips unchanged seeds, and fails closed if a previously-applied seed changes or if seed SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, or broad `DELETE`. `onlava db setup` runs apply, then seed.
+`scenery db apply` mutates schema or app-owned database setup only. It does not run SQLC generation or seed files. `scenery db seed` applies initial data such as `SERVICE/db/seed.sql` only, records successful runs in a small internal ledger, skips unchanged seeds, and fails closed if a previously-applied seed changes or if seed SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, or broad `DELETE`. `scenery db setup` runs apply, then seed.
 
-During `onlava up`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
+During `scenery up`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
 
 `SERVICE/db/seed.sql` is data, not Atlas schema input and not SQLC input. The first seed implementation fails closed when a previously-applied seed changes or destructive seed SQL is detected, rather than offering force or reseed escape hatches.
 
-For Neon configs, `.onlava.json` can declare `dev.services.postgres.kind: "neon"` with `mode: "self-hosted"` and `isolation: "branch"`. `onlava db neon install --json` writes generated dev-cell state files and shared bind-mounted storage directories under the agent home, and records the built-in `neon-selfhost-driver`; `onlava db neon start --json` and `stop --json` manage the generated storage-cell Docker Compose project; `onlava db neon status --json` probes Docker/image/container health, reserved listeners for running components, and the storage root at `~/.onlava/agent/substrates/neon/data/`. Existing Onlava Neon containers with Docker-managed `/data` volumes require a fresh `onlava db neon uninstall --destroy-data --json`, install, and start; this path does not migrate anonymous-volume data. `onlava db neon uninstall --json` preserves bind-mounted data, while `--destroy-data` removes it. `onlava db branch checkout <name> --json` writes `.onlava/worktree-db.json` and delegates to the built-in driver, which can bootstrap pageserver tenant/timeline metadata and start or reuse a branch compute container from generated templates when the storage cell is reachable. The public lease remains pending until `psql` verifies the Postgres endpoint and creates the requested database when missing, then stores redacted endpoint metadata. Built-in and cell-recorded selfhost driver ensure paths require the generated storage cell to be ready and fail fast with `onlava db neon start --json` guidance when it is stopped or degraded. Built-in driver reset/restore actions remove the old compute endpoint, create a replacement pageserver timeline from the parent branch or requested restore LSN/timestamp, and recreate branch compute on the persisted loopback port when Docker and compute templates are available. `onlava db branch list --json` reads Onlava-owned local leases from `branches.json`, and `onlava db branch status --json` can report pending, missing, expired, protected, or ready local leases. A ready lease may expose redacted endpoint metadata so `onlava up`, session-aware `onlava db psql`, DB setup, and Electric can synthesize a process-local `DatabaseURL`; these paths rerun configured branch ensure and wait briefly for pending leases before failing. Missing, expired, protected, or endpoint-less leases still fail explicitly. `expire`, `prune`, and `onlava down --db` update only local registry metadata, `onlava down --state` removes the local worktree pin, and `onlava worktree create <name> --json` creates a Git worktree, writes the target pin, and runs branch-provider ensure without creating a per-worktree Neon data root. The default `onlava harness self --json --write` path includes the real Docker-backed Neon proof; use `--quick` when that live proof is intentionally out of scope.
+For managed branch configs, `.scenery.json` can declare `dev.services.postgres.kind: "postgres"` with `mode: "local"`, `isolation: "database"`, and `branch_strategy: "template_database"`. `scenery db postgres start --json` prepares the shared local Postgres dev cell, `scenery db postgres status --json` inspects it, and `scenery db branch checkout <name> --json` writes `.scenery/worktree-db.json`, ensures the parent template database exists, creates or reuses the branch database, and records redacted endpoint metadata. `scenery db branch list --json` reads Scenery-owned local leases from `branches.json`, and `scenery db branch status --json` can report missing, expired, protected, or ready local leases. A ready lease may expose redacted endpoint metadata so `scenery up`, session-aware `scenery db psql`, DB setup, and Electric can synthesize a process-local `DatabaseURL`. Missing, expired, protected, or endpoint-less leases fail explicitly. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes the lease, `expire` updates local registry metadata, `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable, `scenery down --state` removes the local worktree pin, and `scenery worktree create <name> --json` creates a Git worktree, writes the target pin, and runs branch-provider ensure. The default `scenery harness self --json --write` path includes the live Postgres branch lifecycle proof; use `--quick` when that live proof is intentionally out of scope.
 
 ## Electric Txid Observation
 
@@ -465,7 +465,7 @@ For Electric-backed writes, call generated TypeScript `WithMeta` methods so the 
 
 ## Agent Routes And Frontends
 
-Use `.onlava.json` proxy config:
+Use `.scenery.json` proxy config:
 
 ```json
 {
@@ -485,16 +485,16 @@ Use `.onlava.json` proxy config:
 Run:
 
 ```sh
-onlava up
-onlava system edge dns install
-onlava system edge privileged install
-onlava system edge install
-onlava system edge trust
+scenery up
+scenery system edge dns install
+scenery system edge privileged install
+scenery system edge install
+scenery system edge trust
 ```
 
-The session-scoped URLs in `routes` are canonical. Generated routes default to `api.<session>.local.dev`, frontend routes under `<frontend>.<session>.local.dev`, and direct browser API calls should use the generated API route. Configured hosts appear as friendly aliases only for the live session that owns the free alias. Use `onlava up --claim-aliases` only when intentionally transferring live aliases to the current session.
+The session-scoped URLs in `routes` are canonical. Generated routes default to `api.<session>.local.dev`, frontend routes under `<frontend>.<session>.local.dev`, and direct browser API calls should use the generated API route. Configured hosts appear as friendly aliases only for the live session that owns the free alias. Use `scenery up --claim-aliases` only when intentionally transferring live aliases to the current session.
 
-Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is managed DNS plus the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `onlava system edge dns install` and `onlava system edge privileged install` once as the normal user, then `onlava system edge install` to prepare user-owned Caddy. Do not run `sudo onlava system edge install`. `onlava system edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
+Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is managed DNS plus the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `scenery system edge dns install` and `scenery system edge privileged install` once as the normal user, then `scenery system edge install` to prepare user-owned Caddy. Do not run `sudo scenery system edge install`. `scenery system edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
 
 The managed edge Caddy config flushes proxied responses immediately so Electric and other SSE streams stay live. Do not disable upstream caching globally; Electric uses cache headers for request collapsing.
 
@@ -503,23 +503,23 @@ The managed edge Caddy config flushes proxied responses immediately so Electric 
 Start here:
 
 ```sh
-onlava check --json
-onlava inspect app --json
-onlava inspect routes --json
-onlava inspect endpoints --json
-onlava logs --limit 200
-onlava inspect observability --json --session current
-onlava logs query --json --session current --since 15m --query 'error OR panic'
-onlava traces list --json --since 15m
-onlava metrics list --json --since 1h
-onlava metrics query --json --session current --since 15m --step 5s --promql 'onlava_request_duration_seconds'
+scenery check --json
+scenery inspect app --json
+scenery inspect routes --json
+scenery inspect endpoints --json
+scenery logs --limit 200
+scenery inspect observability --json --session current
+scenery logs query --json --session current --since 15m --query 'error OR panic'
+scenery traces list --json --since 15m
+scenery metrics list --json --since 1h
+scenery metrics query --json --session current --since 15m --step 5s --promql 'scenery_request_duration_seconds'
 ```
 
 For generated paths:
 
 ```sh
-onlava inspect build --json
-onlava inspect paths --json
+scenery inspect build --json
+scenery inspect paths --json
 ```
 
 ## Harness Workflow
@@ -527,35 +527,35 @@ onlava inspect paths --json
 For app changes:
 
 ```sh
-onlava check --json
+scenery check --json
 go test ./...
-onlava harness --json --write
+scenery harness --json --write
 ```
 
-For onlava repo changes:
+For scenery repo changes:
 
 ```sh
 go test ./...
-go test ./cmd/onlava
-onlava harness self --summary --write
+go test ./cmd/scenery
+scenery harness self --summary --write
 ```
 
-Do not run `go install ./cmd/onlava` unless a human explicitly asks; self-harness
-uses a worktree-local `.onlava/harness/bin/onlava` build for binary freshness.
+Do not run `go install ./cmd/scenery` unless a human explicitly asks; self-harness
+uses a worktree-local `.scenery/harness/bin/scenery` build for binary freshness.
 
 For dashboard/browser validation:
 
 ```sh
-onlava harness ui --json
+scenery harness ui --json
 ```
 
 ## Common Mistakes And Fixes
 
-- Missing `.onlava.json`: create it at the app root or pass `--app-root`.
-- Stale generated client: rerun `onlava generate client` or configured `onlava generate client`.
+- Missing `.scenery.json`: create it at the app root or pass `--app-root`.
+- Stale generated client: rerun `scenery generate client` or configured `scenery generate client`.
 - Auth endpoint returns unauthorized: inspect standard auth bootstrap and bearer token.
-- `tenants` migration or runtime error: if the relation is `onlava_auth.tenants`, it is framework-owned standard auth state; an unqualified app `tenants` relation is app-domain schema drift.
+- `tenants` migration or runtime error: if the relation is `scenery_auth.tenants`, it is framework-owned standard auth state; an unqualified app `tenants` relation is app-domain schema drift.
 - Private endpoint exposed over HTTP: change to public/auth only when it should be externally reachable.
-- No traces: confirm the app is running under onlava and uses onlava-aware wrappers for DB/client work.
-- Proxy upstream unavailable: confirm the child app process is listening on the API URL printed by `onlava up`.
+- No traces: confirm the app is running under scenery and uses scenery-aware wrappers for DB/client work.
+- Proxy upstream unavailable: confirm the child app process is listening on the API URL printed by `scenery up`.
 - Browser mutation hangs during local dev: check long-lived SSE streams and prefer local HTTPS/HTTP2 proxy paths when concurrency matters.

@@ -8,7 +8,7 @@ export type FilterPillProps = {
 export function FilterPill({ icon: Icon, label }: FilterPillProps) {
   return (
     <div
-      data-onlava-ui="FilterPill"
+      data-scenery-ui="FilterPill"
       className="inline-flex h-8 items-center gap-2 rounded-md border border-app-separator-subtle bg-app-field-surface px-3 text-[13px]"
     >
       {Icon ? <Icon className="size-4 text-app-icon-muted" /> : null}

@@ -8,16 +8,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 const (
-	envAgentHome       = "ONLAVA_AGENT_HOME"
-	envAgentSocket     = "ONLAVA_AGENT_SOCKET"
-	envAgentRouterAddr = "ONLAVA_AGENT_ROUTER_ADDR"
-	envAgentRouterTLS  = "ONLAVA_AGENT_ROUTER_TLS"
-	envAgentTrust      = "ONLAVA_AGENT_TRUST"
-	envAgentDisable    = "ONLAVA_AGENT_DISABLE"
+	envAgentHome       = "SCENERY_AGENT_HOME"
+	envAgentSocket     = "SCENERY_AGENT_SOCKET"
+	envAgentRouterAddr = "SCENERY_AGENT_ROUTER_ADDR"
+	envAgentRouterTLS  = "SCENERY_AGENT_ROUTER_TLS"
+	envAgentTrust      = "SCENERY_AGENT_TRUST"
+	envAgentDisable    = "SCENERY_AGENT_DISABLE"
 
 	defaultRouterAddr = "127.0.0.1:9440"
 )
@@ -45,7 +45,7 @@ func DefaultPaths() (Paths, error) {
 		if err != nil {
 			return Paths{}, err
 		}
-		home = filepath.Join(userHome, ".onlava")
+		home = filepath.Join(userHome, ".scenery")
 	}
 	home = filepath.Clean(home)
 	runDir := filepath.Join(home, "run")
@@ -56,7 +56,7 @@ func DefaultPaths() (Paths, error) {
 		socketPath = filepath.Join(runDir, "agent.sock")
 		if len(socketPath) > 100 {
 			sum := sha256.Sum256([]byte(home))
-			socketPath = filepath.Join(os.TempDir(), "onlava-agent-"+hex.EncodeToString(sum[:])[:12]+".sock")
+			socketPath = filepath.Join(os.TempDir(), "scenery-agent-"+hex.EncodeToString(sum[:])[:12]+".sock")
 		}
 	}
 	return Paths{
@@ -133,5 +133,5 @@ func EnsureDirs(paths Paths) error {
 }
 
 func StateRoot(appRoot, sessionID string) string {
-	return filepath.Join(appRoot, ".onlava", "sessions", sessionID)
+	return filepath.Join(appRoot, ".scenery", "sessions", sessionID)
 }

@@ -1,69 +1,69 @@
 # Grafana Dev Integration
 
-`onlava up` can supervise a local Grafana process alongside the local Victoria observability sidecars. When the local agent is active, the first dev session registers Grafana as a shared agent substrate and later sessions reuse it after verifying the expected datasource and dashboard UIDs. Grafana is dev-only: `onlava serve` does not start it.
+`scenery up` can supervise a local Grafana process alongside the local Victoria observability sidecars. When the local agent is active, the first dev session registers Grafana as a shared agent substrate and later sessions reuse it after verifying the expected datasource and dashboard UIDs. Grafana is dev-only: `scenery serve` does not start it.
 
-Generated files live under `.onlava/grafana/` by default when the agent is disabled. Shared agent Grafana state lives under the agent directory:
+Generated files live under `.scenery/grafana/` by default when the agent is disabled. Shared agent Grafana state lives under the agent directory:
 
 ```text
-.onlava/grafana/conf/grafana.ini
-.onlava/grafana/provisioning/datasources/onlava.yaml
-.onlava/grafana/provisioning/dashboards/onlava.yaml
-.onlava/grafana/dashboards/
-.onlava/grafana/data/
-.onlava/grafana/logs/
-.onlava/grafana/plugins/
+.scenery/grafana/conf/grafana.ini
+.scenery/grafana/provisioning/datasources/scenery.yaml
+.scenery/grafana/provisioning/dashboards/scenery.yaml
+.scenery/grafana/dashboards/
+.scenery/grafana/data/
+.scenery/grafana/logs/
+.scenery/grafana/plugins/
 ```
 
 Grafana is provisioned with stable datasource UIDs:
 
 ```text
-onlava-victoriametrics
-onlava-victorialogs
-onlava-victoriatraces-jaeger
+scenery-victoriametrics
+scenery-victorialogs
+scenery-victoriatraces-jaeger
 ```
 
 and stable dashboard UIDs:
 
 ```text
-onlava-dev-overview
-onlava-dev-logs
-onlava-dev-endpoint
+scenery-dev-overview
+scenery-dev-logs
+scenery-dev-endpoint
 ```
 
 Environment controls:
 
 ```sh
-ONLAVA_DEV_GRAFANA=auto|1|0
-ONLAVA_DEV_GRAFANA_DOWNLOAD=1|0
-ONLAVA_GRAFANA_BIN=/path/to/grafana
-ONLAVA_GRAFANA_VERSION=13.0.1+security-01
-ONLAVA_GRAFANA_PORT=10429
-ONLAVA_GRAFANA_DIR=.onlava/grafana
-ONLAVA_GRAFANA_PUBLIC_URL=https://grafana.<session>.local.dev
-ONLAVA_GRAFANA_REUSE_EXTERNAL=1
-ONLAVA_GRAFANA_PRESERVE_GF_ENV=1
-ONLAVA_GRAFANA_DOWNLOAD_SHA256=<hex>
-ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1
+SCENERY_DEV_GRAFANA=auto|1|0
+SCENERY_DEV_GRAFANA_DOWNLOAD=1|0
+SCENERY_GRAFANA_BIN=/path/to/grafana
+SCENERY_GRAFANA_VERSION=13.0.1+security-01
+SCENERY_GRAFANA_PORT=10429
+SCENERY_GRAFANA_DIR=.scenery/grafana
+SCENERY_GRAFANA_PUBLIC_URL=https://grafana.<session>.local.dev
+SCENERY_GRAFANA_REUSE_EXTERNAL=1
+SCENERY_GRAFANA_PRESERVE_GF_ENV=1
+SCENERY_GRAFANA_DOWNLOAD_SHA256=<hex>
+SCENERY_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1
 ```
 
-`auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `ONLAVA_DEV_GRAFANA=1` makes Grafana required for `onlava up` startup.
+`auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `SCENERY_DEV_GRAFANA=1` makes Grafana required for `scenery up` startup.
 
-When the local HTTPS proxy is enabled without the agent, onlava computes the Grafana browser URL before writing `grafana.ini` and uses that URL as Grafana's `root_url`. Shared agent Grafana uses its direct loopback URL for provisioning, then each dev session advertises the matching proxy route after the proxy starts. `ONLAVA_GRAFANA_PUBLIC_URL` can override the advertised browser URL.
+When the local HTTPS proxy is enabled without the agent, scenery computes the Grafana browser URL before writing `grafana.ini` and uses that URL as Grafana's `root_url`. Shared agent Grafana uses its direct loopback URL for provisioning, then each dev session advertises the matching proxy route after the proxy starts. `SCENERY_GRAFANA_PUBLIC_URL` can override the advertised browser URL.
 
-onlava starts a managed Grafana by default. If another Grafana process is already listening on the configured port, `auto` mode chooses another loopback port when the port was not explicitly set. Explicit external reuse requires `ONLAVA_GRAFANA_REUSE_EXTERNAL=1`, and any external or shared instance is only marked usable after onlava verifies the expected datasource and dashboard UIDs through Grafana's HTTP API.
+scenery starts a managed Grafana by default. If another Grafana process is already listening on the configured port, `auto` mode chooses another loopback port when the port was not explicitly set. Explicit external reuse requires `SCENERY_GRAFANA_REUSE_EXTERNAL=1`, and any external or shared instance is only marked usable after scenery verifies the expected datasource and dashboard UIDs through Grafana's HTTP API.
 
-The Grafana child process does not inherit ambient `GF_*` variables by default because they can override generated config. Set `ONLAVA_GRAFANA_PRESERVE_GF_ENV=1` only for local debugging.
+The Grafana child process does not inherit ambient `GF_*` variables by default because they can override generated config. Set `SCENERY_GRAFANA_PRESERVE_GF_ENV=1` only for local debugging.
 
-When automatic downloads are enabled, the manifest-pinned Grafana archive is extracted under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`. onlava prefers `ONLAVA_GRAFANA_BIN`, then the managed toolchain store, then a manifest-driven download. It does not use ambient `PATH` Grafana binaries. Custom download URLs are explicit local-testing escape hatches and can set `ONLAVA_GRAFANA_DOWNLOAD_SHA256`.
+When automatic downloads are enabled, the manifest-pinned Grafana archive is extracted under `.scenery/toolchain/` or `SCENERY_TOOLCHAIN_DIR`. scenery prefers `SCENERY_GRAFANA_BIN`, then the managed toolchain store, then a manifest-driven download. It does not use ambient `PATH` Grafana binaries. Custom download URLs are explicit local-testing escape hatches and can set `SCENERY_GRAFANA_DOWNLOAD_SHA256`.
 
-`onlava up` also writes local ignore markers so downloaded binaries and local state stay out of git.
+`scenery up` also writes local ignore markers so downloaded binaries and local state stay out of git.
 
-Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `onlava.toolchain.json`. Use `onlava system toolchain list --json`, `onlava system toolchain sync --tool grafana --json`, and `onlava system toolchain verify --json` to inspect or repair the managed store.
+Default Grafana, Grafana plugin, and Victoria sidecar versions are pinned in `scenery.toolchain.json`. Use `scenery system toolchain list --json`, `scenery system toolchain sync --tool grafana --json`, and `scenery system toolchain verify --json` to inspect or repair the managed store.
 
-The starter dashboards query onlava's emitted OTLP request-duration metric, `onlava_request_duration_seconds`, with labels such as `onlava_app`, `onlava_session_id`, `onlava_service`, `onlava_endpoint`, `onlava_trace_type`, and `onlava_is_error`. Generated dashboards include a `Session` variable populated from `onlava_session_id`.
+The starter dashboards query scenery's emitted OTLP request-duration metric, `scenery_request_duration_seconds`, with labels such as `scenery_app`, `scenery_session_id`, `scenery_service`, `scenery_endpoint`, `scenery_trace_type`, and `scenery_is_error`. Generated dashboards include a `Session` variable populated from `scenery_session_id`.
 
 Reset local Grafana state with:
 
 ```sh
-rm -rf .onlava/grafana
+rm -rf .scenery/grafana
 ```

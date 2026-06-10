@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pbrazdil/onlava/errs"
-	"github.com/pbrazdil/onlava/internal/wire"
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/errs"
+	"scenery.sh/internal/wire"
+	"scenery.sh/runtime/shared"
 )
 
 type server struct {
@@ -57,7 +57,7 @@ func newServer(listenAddr string) (*http.Server, error) {
 	s.wireCaps = buildWireCapabilities(endpoints)
 	s.registerWire()
 	if devEndpointsEnabled() {
-		s.registerOnlavaConfig()
+		s.registerSceneryConfig()
 		s.registerPlatformStats()
 		s.registerPProf()
 	}
@@ -78,8 +78,8 @@ type publicConfigResponse struct {
 	APIBaseURL   string `json:"apiBaseURL"`
 }
 
-func (s *server) registerOnlavaConfig() {
-	registerRoute(s.public, "/__onlava/config", []string{http.MethodGet}, func(w http.ResponseWriter, req *http.Request, _ routeParams) {
+func (s *server) registerSceneryConfig() {
+	registerRoute(s.public, "/__scenery/config", []string{http.MethodGet}, func(w http.ResponseWriter, req *http.Request, _ routeParams) {
 		meta := Meta()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
@@ -90,7 +90,7 @@ func (s *server) registerOnlavaConfig() {
 			SessionID:    meta.SessionID,
 			APIBaseURL:   meta.APIBaseURL,
 		}); err != nil {
-			errs.HTTPError(w, errs.Wrap(err, "encode onlava config"))
+			errs.HTTPError(w, errs.Wrap(err, "encode scenery config"))
 		}
 	})
 }
@@ -159,14 +159,14 @@ func applyCORSHeaders(headers http.Header, req *http.Request) {
 }
 
 func devEndpointsEnabled() bool {
-	return envBool("ONLAVA_DEV_ENDPOINTS") || envBool("ONLAVA_DEV_SUPERVISOR")
+	return envBool("SCENERY_DEV_ENDPOINTS") || envBool("SCENERY_DEV_SUPERVISOR")
 }
 
 func corsOriginAllowed(origin string) bool {
 	if devEndpointsEnabled() {
 		return true
 	}
-	for _, item := range strings.Split(osGetenv("ONLAVA_CORS_ALLOW_ORIGINS"), ",") {
+	for _, item := range strings.Split(osGetenv("SCENERY_CORS_ALLOW_ORIGINS"), ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
 			continue

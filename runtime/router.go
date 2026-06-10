@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/pbrazdil/onlava/errs"
+	"scenery.sh/errs"
 )
 
 type routeHandle func(http.ResponseWriter, *http.Request, routeParams)

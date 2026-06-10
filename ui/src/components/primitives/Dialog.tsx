@@ -39,7 +39,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      data-onlava-ui="Dialog"
+      data-scenery-ui="Dialog"
       className={cn("w-full max-w-md rounded-md border border-border bg-popover p-0 text-popover-foreground shadow-lg", className)}
       onCancel={(event) => {
         event.preventDefault();

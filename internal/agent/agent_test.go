@@ -46,7 +46,7 @@ func TestSessionIDUsesBranchAndRootHash(t *testing.T) {
 
 func TestDefaultPathsIgnoresDevCacheDir(t *testing.T) {
 	t.Setenv(envAgentHome, "")
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", filepath.Join(t.TempDir(), "dev-cache"))
+	t.Setenv("SCENERY_DEV_CACHE_DIR", filepath.Join(t.TempDir(), "dev-cache"))
 	paths, err := DefaultPaths()
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestDefaultPathsIgnoresDevCacheDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := paths.Home, filepath.Join(home, ".onlava"); got != want {
+	if got, want := paths.Home, filepath.Join(home, ".scenery"); got != want {
 		t.Fatalf("agent home = %q, want %q", got, want)
 	}
 }
@@ -85,7 +85,7 @@ func TestRegistryUpsertWritesSessionManifest(t *testing.T) {
 	if session.RouteNamespace.Workspace != "demo" || session.RouteNamespace.BaseDomain != DefaultRouteBaseDomain {
 		t.Fatalf("route namespace = %+v, want demo fallback namespace", session.RouteNamespace)
 	}
-	manifestPath := filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")
+	manifestPath := filepath.Join(root, ".scenery", "sessions", session.SessionID, "manifest.json")
 	if _, err := os.Stat(manifestPath); err != nil {
 		t.Fatalf("manifest not written at %s: %v", manifestPath, err)
 	}
@@ -231,7 +231,7 @@ func TestRegistryClaimsConfiguredRouteAliases(t *testing.T) {
 		t.Fatalf("canonical route and alias should differ: route=%q alias=%q", session.Routes[RouteAPI], session.Aliases[RouteAPI])
 	}
 
-	manifestPath := filepath.Join(root, ".onlava", "sessions", session.SessionID, "manifest.json")
+	manifestPath := filepath.Join(root, ".scenery", "sessions", session.SessionID, "manifest.json")
 	manifest, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)
@@ -367,7 +367,7 @@ func TestRegistryReclaimsStaleAliasLease(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
+	staleOwner := CaptureOwner(stale.Process.Pid, "scenery up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}
@@ -730,7 +730,7 @@ func TestRegistryCapturesSessionOwnerFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Owner.PID != os.Getpid() || session.Owner.CmdlineHash == "" || session.Owner.CreatedBy != "onlava up" {
+	if session.Owner.PID != os.Getpid() || session.Owner.CmdlineHash == "" || session.Owner.CreatedBy != "scenery up" {
 		t.Fatalf("owner = %+v", session.Owner)
 	}
 	if err := VerifyOwner(session.Owner); err != nil {
@@ -853,7 +853,7 @@ func TestRegistryClaimsDeadSessionOwner(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
+	staleOwner := CaptureOwner(stale.Process.Pid, "scenery up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}
@@ -895,7 +895,7 @@ func TestRegistryOwnedDeleteDoesNotRemoveReplacedOwnerSession(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
+	staleOwner := CaptureOwner(stale.Process.Pid, "scenery up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}
@@ -984,7 +984,7 @@ func TestRegistryRequiresClaimForDeadSessionOwner(t *testing.T) {
 	if err := stale.Start(); err != nil {
 		t.Fatalf("start stale owner fixture: %v", err)
 	}
-	staleOwner := CaptureOwner(stale.Process.Pid, "onlava up")
+	staleOwner := CaptureOwner(stale.Process.Pid, "scenery up")
 	if err := stale.Process.Kill(); err != nil {
 		t.Fatalf("kill stale owner fixture: %v", err)
 	}
@@ -1462,7 +1462,7 @@ func TestRouterTrustsForwardedHeadersOnlyFromEdgeToken(t *testing.T) {
 		req.Header.Set("X-Forwarded-Proto", "https")
 		req.Header.Set("X-Forwarded-Port", "443")
 		if token != "" {
-			req.Header.Set("X-Onlava-Edge-Token", token)
+			req.Header.Set("X-Scenery-Edge-Token", token)
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -1531,7 +1531,7 @@ func TestServerDeleteOwnedSkipsMismatchedOwnerPID(t *testing.T) {
 
 func TestServerRouterTLSGeneratesHTTPSRoutes(t *testing.T) {
 	t.Setenv(envAgentHome, t.TempDir())
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("SCENERY_DEV_CACHE_DIR", t.TempDir())
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		_, _ = io.WriteString(w, "tls backend ok")
 	}))
@@ -1600,7 +1600,7 @@ func TestServerRouterTLSGeneratesHTTPSRoutes(t *testing.T) {
 
 func TestServerRoutesOwnedAliasThroughTLS(t *testing.T) {
 	t.Setenv(envAgentHome, t.TempDir())
-	t.Setenv("ONLAVA_DEV_CACHE_DIR", t.TempDir())
+	t.Setenv("SCENERY_DEV_CACHE_DIR", t.TempDir())
 	var publicRequestHost string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Host != publicRequestHost {
@@ -1769,8 +1769,8 @@ func TestServerRoutesFrontendSPAFallback(t *testing.T) {
 	frontendAddr := strings.TrimPrefix(frontend.URL, "http://")
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/__onlava/config" {
-			t.Fatalf("api path = %q, want /__onlava/config", req.URL.Path)
+		if req.URL.Path != "/__scenery/config" {
+			t.Fatalf("api path = %q, want /__scenery/config", req.URL.Path)
 		}
 		_, _ = io.WriteString(w, "config ok")
 	}))
@@ -1854,11 +1854,11 @@ func TestServerRoutesFrontendSPAFallback(t *testing.T) {
 	if status != http.StatusNotFound || strings.Contains(body, "frontend shell") {
 		t.Fatalf("sync path response status=%d body=%q", status, body)
 	}
-	status, body = request("/__onlava/config", "text/html")
+	status, body = request("/__scenery/config", "text/html")
 	if status != http.StatusOK || body != "config ok" {
 		t.Fatalf("config response status=%d body=%q", status, body)
 	}
-	status, body = request("/__onlava/unknown", "text/html")
+	status, body = request("/__scenery/unknown", "text/html")
 	if status != http.StatusNotFound || strings.Contains(body, "frontend shell") {
 		t.Fatalf("control path response status=%d body=%q", status, body)
 	}

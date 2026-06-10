@@ -19,6 +19,6 @@
   },
   "iconLibrary": "lucide",
   "registries": {
-    "@onlava": "http://127.0.0.1:4873/r/{name}.json"
+    "@scenery": "http://127.0.0.1:4873/r/{name}.json"
   }
 }

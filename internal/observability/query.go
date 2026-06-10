@@ -16,12 +16,12 @@ import (
 )
 
 const (
-	InspectObservabilitySchema = "onlava.inspect.observability.v1"
-	LogsQuerySchema            = "onlava.logs.query.v1"
-	LogsTailEntrySchema        = "onlava.logs.tail.entry.v1"
-	MetricsQuerySchema         = "onlava.metrics.query.v1"
-	MetricsLabelsSchema        = "onlava.metrics.labels.v1"
-	MetricsSeriesSchema        = "onlava.metrics.series.v1"
+	InspectObservabilitySchema = "scenery.inspect.observability.v1"
+	LogsQuerySchema            = "scenery.logs.query.v1"
+	LogsTailEntrySchema        = "scenery.logs.tail.entry.v1"
+	MetricsQuerySchema         = "scenery.metrics.query.v1"
+	MetricsLabelsSchema        = "scenery.metrics.labels.v1"
+	MetricsSeriesSchema        = "scenery.metrics.series.v1"
 )
 
 type QueryScope struct {
@@ -381,10 +381,10 @@ func logTailValues(q LogsQuery) url.Values {
 func logScopeFilters(scope QueryScope) []string {
 	var out []string
 	if scope.AppID != "" {
-		out = append(out, fmt.Sprintf(`(onlava.application_id:%s OR onlava_app_id:%s)`, logsQLQuote(scope.AppID), logsQLQuote(scope.AppID)))
+		out = append(out, fmt.Sprintf(`(scenery.application_id:%s OR scenery_app_id:%s)`, logsQLQuote(scope.AppID), logsQLQuote(scope.AppID)))
 	}
 	if scope.SessionID != "" {
-		out = append(out, fmt.Sprintf(`(onlava.session_id:%s OR onlava_session_id:%s)`, logsQLQuote(scope.SessionID), logsQLQuote(scope.SessionID)))
+		out = append(out, fmt.Sprintf(`(scenery.session_id:%s OR scenery_session_id:%s)`, logsQLQuote(scope.SessionID), logsQLQuote(scope.SessionID)))
 	}
 	return out
 }
@@ -517,13 +517,13 @@ func firstRowString(row map[string]any, keys ...string) string {
 
 func addMetricScope(values url.Values, scope QueryScope) {
 	if scope.AppID != "" {
-		values.Add("extra_label", "onlava_app="+scope.AppID)
+		values.Add("extra_label", "scenery_app="+scope.AppID)
 	}
 	if scope.SessionID != "" {
-		values.Add("extra_label", "onlava_session_id="+scope.SessionID)
+		values.Add("extra_label", "scenery_session_id="+scope.SessionID)
 	}
 	if scope.AppRootHash != "" {
-		values.Add("extra_label", "onlava_app_root_hash="+scope.AppRootHash)
+		values.Add("extra_label", "scenery_app_root_hash="+scope.AppRootHash)
 	}
 }
 

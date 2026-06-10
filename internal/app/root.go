@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var ErrRootNotFound = errors.New("no .onlava.json found in current directory or any parent")
+var ErrRootNotFound = errors.New("no .scenery.json found in current directory or any parent")
 
 type Config struct {
 	Name          string                `json:"name"`
@@ -64,8 +64,10 @@ type DevServiceConfig struct {
 	Isolation          string            `json:"isolation"`
 	Project            string            `json:"project"`
 	ParentBranch       string            `json:"parent_branch"`
+	ParentDatabase     string            `json:"parent_database"`
 	BranchPolicy       string            `json:"branch_policy"`
 	BranchNameTemplate string            `json:"branch_name_template"`
+	BranchStrategy     string            `json:"branch_strategy"`
 	TTL                string            `json:"ttl"`
 	Role               string            `json:"role"`
 	DatabaseURLEnv     string            `json:"database_url_env"`
@@ -209,7 +211,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 		return "", Config{}, err
 	}
 	for {
-		path := filepath.Join(dir, ".onlava.json")
+		path := filepath.Join(dir, ".scenery.json")
 		if data, err := os.ReadFile(path); err == nil {
 			var cfg Config
 			if err := decodeConfig(path, data, &cfg); err != nil {
@@ -219,7 +221,7 @@ func DiscoverRoot(start string) (string, Config, error) {
 				cfg.Name = cfg.ID
 			}
 			if cfg.Name == "" {
-				return "", Config{}, errors.New(".onlava.json must define a non-empty name or id")
+				return "", Config{}, errors.New(".scenery.json must define a non-empty name or id")
 			}
 			return dir, cfg, nil
 		}
@@ -239,7 +241,7 @@ func decodeConfig(path string, data []byte, cfg *Config) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(cfg); err != nil {
-		return fmt.Errorf("%s: decode .onlava.json: %w", path, err)
+		return fmt.Errorf("%s: decode .scenery.json: %w", path, err)
 	}
 	return nil
 }
@@ -249,7 +251,7 @@ func rejectUnknownConfigFields(path string, data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	if err := dec.Decode(&raw); err != nil {
-		return fmt.Errorf("%s: decode .onlava.json: %w", path, err)
+		return fmt.Errorf("%s: decode .scenery.json: %w", path, err)
 	}
 	if err := rejectUnknownFieldsValue(raw, reflect.TypeOf(Config{}), nil); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
@@ -308,9 +310,9 @@ func unknownConfigFieldError(path []string) error {
 	jsonPath := strings.Join(path, ".")
 	removedProxyHostPath := "proxy." + removedProxyHostField()
 	if jsonPath == removedProxyHostPath {
-		return fmt.Errorf("unknown .onlava.json field %q; %s was removed and has no compatibility behavior; remove it and use dev session routes or proxy.api_host/proxy.console_host/proxy.frontends for local routing", jsonPath, removedProxyHostPath)
+		return fmt.Errorf("unknown .scenery.json field %q; %s was removed and has no compatibility behavior; remove it and use dev session routes or proxy.api_host/proxy.console_host/proxy.frontends for local routing", jsonPath, removedProxyHostPath)
 	}
-	return fmt.Errorf("unknown .onlava.json field %q", jsonPath)
+	return fmt.Errorf("unknown .scenery.json field %q", jsonPath)
 }
 
 func removedProxyHostField() string {

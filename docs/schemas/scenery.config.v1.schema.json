@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scenery.sh/schemas/scenery.config.v1.schema.json",
+  "title": "scenery.config.v1",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "proxy": {
+      "type": "object",
+      "description": "Local proxy and dev route configuration. The removed legacy proxy host key is intentionally unsupported; use dev session routes, api_host, console_host, and frontends instead.",
+      "properties": {
+        "workspace": { "type": "string" },
+        "route_base_domain": { "type": "string" },
+        "api_host": { "type": "string" },
+        "console_host": { "type": "string" },
+        "temporal_host": { "type": "string" },
+        "grafana_host": { "type": "string" },
+        "frontends": {
+          "type": ["object", "null"],
+          "additionalProperties": { "$ref": "#/$defs/frontend" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dev": {
+      "type": "object",
+      "properties": {
+        "services": {
+          "type": ["object", "null"],
+          "additionalProperties": { "$ref": "#/$defs/devService" }
+        },
+        "setup": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "generators": {
+      "type": "object",
+      "properties": {
+        "clients": {
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/clientGenerator" }
+        },
+        "sqlc": { "$ref": "#/$defs/sqlcGenerator" }
+      },
+      "additionalProperties": false
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "apply": { "$ref": "#/$defs/databaseApply" }
+      },
+      "additionalProperties": false
+    },
+    "tasks": {
+      "type": ["object", "null"],
+      "additionalProperties": { "$ref": "#/$defs/task" }
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "default": { "type": "string" },
+        "profiles": {
+          "type": ["object", "null"],
+          "additionalProperties": { "$ref": "#/$defs/validationProfile" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "database_url_env": { "type": "string" },
+        "jwt_secret_env": { "type": "string" },
+        "refresh_cookie_name": { "type": "string" },
+        "auth_cookie_domain_env": { "type": "string" },
+        "public_app_url_env": { "type": "string" },
+        "api_base_url_env": { "type": "string" },
+        "email_from_env": { "type": "string" },
+        "auto_bootstrap_database": { "type": "boolean" },
+        "google_oauth": { "$ref": "#/$defs/authGoogleOAuth" },
+        "dev_bootstrap": { "$ref": "#/$defs/authDevBootstrap" }
+      },
+      "additionalProperties": false
+    },
+    "observability": {
+      "type": "object",
+      "properties": {
+        "logs": { "$ref": "#/$defs/endpointFilter" },
+        "tracing": { "$ref": "#/$defs/endpointFilter" }
+      },
+      "additionalProperties": false
+    },
+    "temporal": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "type": "string", "enum": ["", "local", "production"] },
+        "namespace": { "type": "string" },
+        "address_env": { "type": "string" },
+        "task_queue_prefix": { "type": "string" },
+        "payload_codec": { "type": "string" },
+        "api_key_env": { "type": "string" },
+        "tls": { "$ref": "#/$defs/temporalTLS" },
+        "local": { "$ref": "#/$defs/temporalLocal" },
+        "typescript": { "$ref": "#/$defs/temporalTypeScript" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "anyOf": [
+    { "required": ["name"] },
+    { "required": ["id"] }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "endpointFilter": {
+      "type": "object",
+      "properties": {
+        "include_endpoints": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "exclude_endpoints": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "frontend": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string" },
+        "root": { "type": "string" },
+        "upstream": { "type": "string" },
+        "allow_shared_upstream": { "type": "boolean" }
+      },
+      "required": ["host"],
+      "additionalProperties": false
+    },
+    "devService": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "enum": ["postgres", "electric"] },
+        "mode": { "type": "string", "enum": ["", "local"], "description": "Managed provider mode. Postgres branch services use local mode; inspect output may include an empty value for services where mode is not used." },
+        "version": { "type": "string", "description": "Requested local service version, currently used by managed Postgres metadata." },
+        "isolation": { "type": "string", "enum": ["", "database", "schema", "container"], "description": "Requested isolation mode. Managed Postgres implements database isolation; inspect output may include an empty value for services where isolation is not used." },
+        "project": { "type": "string", "description": "Postgres branch project label for local development." },
+        "parent_branch": { "type": "string", "description": "Protected parent branch name for managed database branching." },
+        "parent_database": { "type": "string", "description": "Protected parent template database for Postgres branch databases." },
+        "branch_policy": { "type": "string", "enum": ["", "manual", "worktree", "session"], "description": "How Scenery derives or requires a managed database branch; inspect output may include an empty value for services where branch policy is not used." },
+        "branch_name_template": { "type": "string", "description": "Template for derived managed database branch names. Supported placeholders are {app}, {git_branch}, {worktree}, and {session}." },
+        "branch_strategy": { "type": "string", "enum": ["", "template_database", "dump_restore", "cluster_basebackup", "filesystem_snapshot", "external"], "description": "Postgres branch clone strategy. Phase one implements template_database." },
+        "ttl": { "type": "string", "description": "Branch lease TTL as a Go duration." },
+        "role": { "type": "string", "description": "Database role used for branch connections." },
+        "database_url_env": { "type": "string", "description": "App env var receiving the managed database URL. Defaults to DatabaseURL." },
+        "image": { "type": "string", "description": "Optional container image for services that support explicit container startup, such as Electric." },
+        "database": { "type": "string", "description": "Named database service dependency for a managed service, such as Electric using postgres." },
+        "route": { "type": "string", "description": "Agent route label for a managed session backend." },
+        "env": {
+          "type": ["object", "null"],
+          "description": "Service-process environment values. These are not automatically injected into the app process.",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "clientGenerator": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["", "typescript-client"] },
+        "target": { "type": "string" },
+        "lang": { "type": "string", "enum": ["", "typescript", "ts"] },
+        "output": { "type": "string" }
+      },
+      "required": ["output"],
+      "additionalProperties": false
+    },
+    "sqlcGenerator": {
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string", "enum": ["", "sqlc"] },
+        "config": { "type": "string" },
+        "dev_url": { "type": "string" },
+        "schemas": {
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/sqlcGeneratorSchema" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sqlcGeneratorSchema": {
+      "type": "object",
+      "properties": {
+        "sqlc_schema": { "type": "string" },
+        "atlas_schema": { "type": "string" },
+        "atlas_source": { "type": "string" },
+        "atlas_dev_url": { "type": "string" }
+      },
+      "required": ["sqlc_schema"],
+      "additionalProperties": false
+    },
+    "databaseApply": {
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string", "enum": ["", "exec"] },
+        "command": { "type": "string" },
+        "cwd": { "type": "string" },
+        "env": {
+          "type": ["object", "null"],
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "task": {
+      "type": "object",
+      "properties": {
+        "cwd": { "type": "string" },
+        "run": { "type": "string" },
+        "steps": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "env": {
+          "type": ["object", "null"],
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "validationProfile": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "cost": { "type": "string", "enum": ["", "low", "medium", "high"] },
+        "paths": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "steps": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "env": {
+          "type": ["object", "null"],
+          "additionalProperties": { "type": "string" }
+        },
+        "artifacts": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "authGoogleOAuth": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "client_id_env": { "type": "string" },
+        "client_secret_env": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "authDevBootstrap": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "default_user_email": { "type": "string" },
+        "default_user_id": { "type": "string" },
+        "default_tenant_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "temporalLocal": {
+      "type": "object",
+      "properties": {
+        "auto_start": { "type": "boolean" },
+        "db_filename": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "temporalTLS": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "server_name_env": { "type": "string" },
+        "ca_cert_file_env": { "type": "string" },
+        "client_cert_file_env": { "type": "string" },
+        "client_key_file_env": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "temporalTypeScript": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "runtime": { "type": "string", "enum": ["", "bun", "node"] },
+        "auto_start": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

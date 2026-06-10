@@ -1,0 +1,64 @@
+package main
+
+import (
+	"path/filepath"
+	"strings"
+
+	appcfg "scenery.sh/internal/app"
+	inspectdata "scenery.sh/internal/inspect"
+)
+
+func dockerHealthFromStatus(status string) string {
+	for _, health := range []string{"healthy", "unhealthy"} {
+		if strings.Contains(status, "("+health+")") {
+			return health
+		}
+	}
+	start := strings.Index(status, "(health: ")
+	if start == -1 {
+		return ""
+	}
+	rest := status[start+len("(health: "):]
+	end := strings.Index(rest, ")")
+	if end == -1 {
+		return ""
+	}
+	return rest[:end]
+}
+
+func dbPostgresService(cfg appcfg.Config) appcfg.DevServiceConfig {
+	_, svc, _ := managedPostgresDeclared(cfg)
+	return svc
+}
+
+func dbDatabaseURLEnv(cfg appcfg.Config) string {
+	return firstNonEmpty(dbPostgresService(cfg).DatabaseURLEnv, appDatabaseURLEnv)
+}
+
+func cloneDBBranchEndpoint(endpoint *dbBranchEndpoint) *dbBranchEndpoint {
+	if endpoint == nil {
+		return nil
+	}
+	out := *endpoint
+	return &out
+}
+
+func inspectAppRef(appRoot string, cfg appcfg.Config) inspectdata.AppRef {
+	return inspectdata.AppRef{
+		Name:       cfg.Name,
+		ID:         cfg.ID,
+		Root:       appRoot,
+		ConfigPath: filepath.Join(appRoot, ".scenery.json"),
+	}
+}
+
+func postgresServiceUsesBranching(svc appcfg.DevServiceConfig) bool {
+	if firstNonEmpty(strings.TrimSpace(svc.Kind), "postgres") != "postgres" {
+		return false
+	}
+	return strings.TrimSpace(svc.BranchPolicy) != "" ||
+		strings.TrimSpace(svc.BranchNameTemplate) != "" ||
+		strings.TrimSpace(svc.BranchStrategy) != "" ||
+		strings.TrimSpace(svc.ParentBranch) != "" ||
+		strings.TrimSpace(svc.ParentDatabase) != ""
+}

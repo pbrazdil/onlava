@@ -6,12 +6,12 @@ This ExecPlan is a living document and must be updated as work proceeds.
 
 ## Purpose / Big Picture
 
-Remove the legacy agent transport layer from onlava rather than disabling or hiding it. Agents should use onlava-native CLI JSON, dashboard routes, logs, traces, metrics, database commands, generated metadata, and harness outputs.
+Remove the legacy agent transport layer from scenery rather than disabling or hiding it. Agents should use scenery-native CLI JSON, dashboard routes, logs, traces, metrics, database commands, generated metadata, and harness outputs.
 
 The desired final state:
 
-- onlava does not start, route, configure, expose, document, test, or ship the removed transport.
-- Stale config keys for the removed transport fail validation through strict `.onlava.json` decoding.
+- scenery does not start, route, configure, expose, document, test, or ship the removed transport.
+- Stale config keys for the removed transport fail validation through strict `.scenery.json` decoding.
 - Session manifests and local proxy routes expose API, dashboard, frontends, Grafana, Temporal, Electric, and other real app/dev services only.
 - Self-harness fails on reintroduction of the removed transport surface.
 
@@ -30,7 +30,7 @@ The desired final state:
 ## Decision Log
 
 - Decision: Remove the transport completely rather than keeping a disabled or compatibility route.
-  Rationale: The product model should only show active onlava-native capabilities.
+  Rationale: The product model should only show active scenery-native capabilities.
   Date/Author: 2026-06-01 / Petr + agent
 - Decision: Reject stale config keys with the existing strict config decoder.
   Rationale: Silent ignore would preserve the old surface as implicit compatibility.
@@ -41,11 +41,11 @@ The desired final state:
 
 ## Outcomes & Retrospective
 
-The legacy agent transport was removed from runtime startup, generated config, local proxy routes, agent session manifests, dashboard handlers, UI service labels, docs, schemas, and tests. Self-harness now includes a residue rule that fails if the removed transport terms are reintroduced in tracked product/source/docs. Validation passed with `go test -count=1 ./...`, `go install ./cmd/onlava`, dashboard UI typecheck/test/build, and `onlava harness self --json --write`.
+The legacy agent transport was removed from runtime startup, generated config, local proxy routes, agent session manifests, dashboard handlers, UI service labels, docs, schemas, and tests. Self-harness now includes a residue rule that fails if the removed transport terms are reintroduced in tracked product/source/docs. Validation passed with `go test -count=1 ./...`, `go install ./cmd/scenery`, dashboard UI typecheck/test/build, and `scenery harness self --json --write`.
 
 ## Context and Orientation
 
-The removed transport previously touched config parsing, generated runtime configuration, local proxy routes, agent session routes, dashboard handlers, dashboard UI labels, integration tests, and agent docs. The replacement agent workflow uses direct onlava commands and dashboard JSON-RPC instead of a protocol adapter.
+The removed transport previously touched config parsing, generated runtime configuration, local proxy routes, agent session routes, dashboard handlers, dashboard UI labels, integration tests, and agent docs. The replacement agent workflow uses direct scenery commands and dashboard JSON-RPC instead of a protocol adapter.
 
 ## Milestones
 
@@ -71,14 +71,14 @@ Keep the removal in one slice so public JSON, docs, tests, and runtime behavior 
 Acceptance requires:
 
 - `go test ./...` passes.
-- `go install ./cmd/onlava` passes.
+- `go install ./cmd/scenery` passes.
 - Dashboard UI typecheck, tests, and build pass.
-- `onlava harness self --json --write` passes.
+- `scenery harness self --json --write` passes.
 - The residue search for removed-transport names returns no tracked product/source/doc hits.
 
 ## Idempotence and Recovery
 
-If stale generated cache files contain old route metadata, regenerate or delete the cache. If a test expected the old transport, rewrite it around current onlava-native inspection or delete it when it only tested the removed surface.
+If stale generated cache files contain old route metadata, regenerate or delete the cache. If a test expected the old transport, rewrite it around current scenery-native inspection or delete it when it only tested the removed surface.
 
 ## Artifacts and Notes
 
@@ -88,4 +88,4 @@ Expected touched areas are runtime config, local proxy, agent routing, dashboard
 
 Removed interface: the legacy agent transport route, config key, dashboard handler, and advertised session URL.
 
-Retained interfaces: `onlava inspect ... --json`, `onlava status --json`, `onlava logs`, `onlava db`, `onlava run`, `onlava check --json`, `onlava harness --json --write`, dashboard, and generated clients.
+Retained interfaces: `scenery inspect ... --json`, `scenery status --json`, `scenery logs`, `scenery db`, `scenery run`, `scenery check --json`, `scenery harness --json --write`, dashboard, and generated clients.

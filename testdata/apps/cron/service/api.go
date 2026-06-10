@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	onlava "github.com/pbrazdil/onlava"
+	scenery "scenery.sh"
 )
 
 var (
@@ -22,9 +22,9 @@ type StatusResponse struct {
 	Path  string `json:"path"`
 }
 
-//onlava:api private
+//scenery:api private
 func Run(ctx context.Context) error {
-	req := onlava.CurrentRequest()
+	req := scenery.CurrentRequest()
 
 	cronMu.Lock()
 	defer cronMu.Unlock()
@@ -70,10 +70,10 @@ func cronStatePath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(cwd, ".onlava-cron-state.json")
+	return filepath.Join(cwd, ".scenery-cron-state.json")
 }
 
-//onlava:api public path=/cron/status method=GET
+//scenery:api public path=/cron/status method=GET
 func Status(ctx context.Context) (*StatusResponse, error) {
 	cronMu.Lock()
 	defer cronMu.Unlock()

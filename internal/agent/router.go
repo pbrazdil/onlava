@@ -76,7 +76,7 @@ func sessionOwnerVerifies(session Session) bool {
 
 func (s *Server) handleFrontendRoute(w http.ResponseWriter, req *http.Request, session Session, backend Backend) {
 	requestPath := cleanRequestPath(req.URL.Path)
-	if requestPath == "/__onlava/config" {
+	if requestPath == "/__scenery/config" {
 		api, ok := session.Backends[RouteAPI]
 		if !ok {
 			http.NotFound(w, req)
@@ -114,7 +114,7 @@ func (s *Server) serveConsoleIndex(w http.ResponseWriter, req *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = io.WriteString(w, "<!doctype html><html><head><meta charset=\"utf-8\"><title>onlava Agent</title></head><body><main><h1>onlava Agent</h1><ul>")
+	_, _ = io.WriteString(w, "<!doctype html><html><head><meta charset=\"utf-8\"><title>scenery Agent</title></head><body><main><h1>scenery Agent</h1><ul>")
 	for _, session := range s.registry.List() {
 		href := "/s/" + session.SessionID
 		_, _ = fmt.Fprintf(w, "<li><a href=\"%s\">%s</a> <code>%s</code></li>", href, session.SessionID, session.AppRoot)
@@ -217,7 +217,7 @@ func isFrontendSessionBackend(kind string) bool {
 
 func isProtectedFrontendPath(value string) bool {
 	value = cleanRequestPath(value)
-	for _, prefix := range []string{"/__onlava", "/api", "/sync"} {
+	for _, prefix := range []string{"/__scenery", "/api", "/sync"} {
 		if value == prefix || strings.HasPrefix(value, prefix+"/") {
 			return true
 		}
@@ -294,7 +294,7 @@ func (s *Server) trustedEdgeRequest(req *http.Request) bool {
 	if s == nil || strings.TrimSpace(s.edgeToken) == "" || req == nil {
 		return false
 	}
-	if req.Header.Get("X-Onlava-Edge-Token") != s.edgeToken {
+	if req.Header.Get("X-Scenery-Edge-Token") != s.edgeToken {
 		return false
 	}
 	host, _, err := net.SplitHostPort(strings.TrimSpace(req.RemoteAddr))

@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The repo already has `onlava inspect docs --json` and self-harness knowledge checks, but `SKILL.md` drifted behind the implemented and documented platform. This plan strengthens docs validation so the installable skill, docs index, local contract, schemas, CLI help, and implemented high-level surfaces stay aligned.
+The repo already has `scenery inspect docs --json` and self-harness knowledge checks, but `SKILL.md` drifted behind the implemented and documented platform. This plan strengthens docs validation so the installable skill, docs index, local contract, schemas, CLI help, and implemented high-level surfaces stay aligned.
 
 The goal is:
 
@@ -38,23 +38,23 @@ Known starting discoveries:
 * `SKILL.md` was not strongly represented as a first-class contract in current docs checks.
 * `docs/knowledge.json` tracks review dates and freshness windows, but high-level capability coverage still needs explicit enforcement.
 * The harness already validates required ExecPlan sections and docs existence; this plan should extend that pattern, not build a separate lint framework.
-* Existing `onlava inspect docs --json` already exposes review-due and stale state, so the new implementation only needed to make SKILL and important-doc coverage first-class.
+* Existing `scenery inspect docs --json` already exposes review-due and stale state, so the new implementation only needed to make SKILL and important-doc coverage first-class.
 
 ## Decision Log
 
 * Decision: Enforce documentation drift through self-harness rather than a new standalone tool first.
-  Rationale: Agents and humans already run `onlava harness self --json --write`, and adding checks there keeps one validation path.
+  Rationale: Agents and humans already run `scenery harness self --json --write`, and adding checks there keeps one validation path.
   Date/Author: 2026-05-09 / Codex
 
 * Decision: Start with high-signal capability coverage strings.
-  Rationale: Exact prose validation is brittle, but missing high-level surfaces such as `onlava inspect data --json` or `@onlava` registry are concrete and worth catching.
+  Rationale: Exact prose validation is brittle, but missing high-level surfaces such as `scenery inspect data --json` or `@scenery` registry are concrete and worth catching.
   Date/Author: 2026-05-09 / Codex
 
 ## Outcomes & Retrospective
 
 Completed on 2026-05-09.
 
-`onlava harness self` now treats `SKILL.md`, the cookbook, the data runbook, data-platform docs, and the UI agent contract as knowledge entrypoints. The knowledge contract checks required `SKILL.md` capability mentions and verifies that important docs are indexed in `docs/knowledge.json`. A regression test covers stale skill detection.
+`scenery harness self` now treats `SKILL.md`, the cookbook, the data runbook, data-platform docs, and the UI agent contract as knowledge entrypoints. The knowledge contract checks required `SKILL.md` capability mentions and verifies that important docs are indexed in `docs/knowledge.json`. A regression test covers stale skill detection.
 
 ## Context and Orientation
 
@@ -68,8 +68,8 @@ docs/local-contract.md
 docs/schemas/*
 docs/plans/active.md
 docs/plans/completed.md
-cmd/onlava/*harness*
-cmd/onlava/*inspect*
+cmd/scenery/*harness*
+cmd/scenery/*inspect*
 internal/inspect/*
 docs/harness-engineering.md
 ```
@@ -77,14 +77,14 @@ docs/harness-engineering.md
 Existing command surfaces:
 
 ```sh
-onlava inspect docs --json
-onlava harness self --json --write
+scenery inspect docs --json
+scenery harness self --json --write
 ```
 
 Optional future command shape:
 
 ```sh
-onlava inspect docs --json --include-skill
+scenery inspect docs --json --include-skill
 ```
 
 Prefer self-harness-only integration unless a new inspect flag makes the implementation cleaner and useful to users.
@@ -106,14 +106,14 @@ Add harness checks for:
 Initial `SKILL.md` required capability mentions:
 
 ```text
-onlava harness ui --json
-onlava inspect data --json
-github.com/pbrazdil/onlava/data
+scenery harness ui --json
+scenery inspect data --json
+scenery.sh/data
 docs/data-platform.md
 docs/ui-agent-contract.md
-@onlava registry
-bun run shadcn:add @onlava/
-onlava harness self --json --write
+@scenery registry
+bun run shadcn:add @scenery/
+scenery harness self --json --write
 ```
 
 Initial `docs/knowledge.json` important entries:
@@ -191,7 +191,7 @@ Prefer warnings initially unless a check protects an existing hard contract.
 
 ## Concrete Steps
 
-1. Inspect `cmd/onlava` and `internal/inspect` docs/harness code.
+1. Inspect `cmd/scenery` and `internal/inspect` docs/harness code.
 2. Add a focused checker for `SKILL.md`.
 3. Add tests for missing skill strings.
 4. Add important-doc coverage checks for `docs/knowledge.json`.
@@ -202,13 +202,13 @@ Prefer warnings initially unless a check protects an existing hard contract.
 
 ## Validation and Acceptance
 
-Run from the onlava repo root:
+Run from the scenery repo root:
 
 ```sh
-go test ./cmd/onlava ./internal/inspect
-onlava inspect docs --json
-onlava harness self --json --write
-go install ./cmd/onlava
+go test ./cmd/scenery ./internal/inspect
+scenery inspect docs --json
+scenery harness self --json --write
+go install ./cmd/scenery
 ```
 
 Acceptance criteria:
@@ -232,12 +232,12 @@ If a check becomes noisy, narrow it to fewer high-signal required strings or mov
 Expected changed artifacts:
 
 ```text
-cmd/onlava/*harness*
+cmd/scenery/*harness*
 internal/inspect/*
 docs/harness-engineering.md
 docs/knowledge.json
 docs/schemas/*, only if an inspect shape changes
-.onlava/harness/self-latest.json
+.scenery/harness/self-latest.json
 ```
 
 ## Interfaces and Dependencies
@@ -247,8 +247,8 @@ No new external dependencies are expected.
 Relevant interfaces:
 
 ```text
-onlava inspect docs --json
-onlava harness self --json --write
+scenery inspect docs --json
+scenery harness self --json --write
 docs/knowledge.json
 SKILL.md
 docs/local-contract.md

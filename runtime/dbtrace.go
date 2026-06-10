@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/pbrazdil/onlava/internal/devreport"
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/internal/devreport"
+	"scenery.sh/runtime/shared"
 )
 
 type dbQueryTraceKey struct{}

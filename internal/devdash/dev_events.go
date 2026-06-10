@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const DevEventSchemaVersion = "onlava.dev.event.v1"
+const DevEventSchemaVersion = "scenery.dev.event.v1"
 
 func DevEventFromOutput(appID, sessionID string, source DevSource, output []byte, createdAt time.Time) DevEvent {
 	if createdAt.IsZero() {

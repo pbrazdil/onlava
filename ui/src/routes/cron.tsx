@@ -30,8 +30,8 @@ export function CronPage() {
 
   return (
     <div
-      data-onlava-ui="CronRoute"
-      data-onlava-job-count={jobs.length}
+      data-scenery-ui="CronRoute"
+      data-scenery-job-count={jobs.length}
       className="max-h-[calc(100vh-var(--header-height))] overflow-auto"
     >
       <div className="min-h-0 grow px-8 pt-6 pb-12 leading-6">
@@ -39,11 +39,11 @@ export function CronPage() {
           <div>
             <h1 className="text-lg font-medium">Cron</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Scheduled onlava jobs discovered from the current app graph, with recent local executions matched from traces.
+              Scheduled scenery jobs discovered from the current app graph, with recent local executions matched from traces.
             </p>
           </div>
 
-          <div data-onlava-ui="CronStatusCards" className="grid grid-cols-3 gap-4">
+          <div data-scenery-ui="CronStatusCards" className="grid grid-cols-3 gap-4">
             <StatCard label="Jobs" value={String(jobs.length)} />
             <StatCard
               label="Jobs with recent runs"
@@ -57,14 +57,14 @@ export function CronPage() {
 
           {items.length === 0 ? (
             <div
-              data-onlava-ui="CronEmptyState"
-              data-onlava-state="intentional-empty"
+              data-scenery-ui="CronEmptyState"
+              data-scenery-state="intentional-empty"
               className="rounded-md border border-border p-6 text-sm text-muted-foreground"
             >
               No cron jobs discovered in this app.
             </div>
           ) : (
-            <div data-onlava-ui="CronJobList" className="space-y-6">
+            <div data-scenery-ui="CronJobList" className="space-y-6">
               {items.map(({ job, last, recent }) => (
                 <section key={job.id} className="rounded-md border border-border p-6">
                   <div className="flex items-start justify-between gap-4">

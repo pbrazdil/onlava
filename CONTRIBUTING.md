@@ -1,6 +1,6 @@
-# Contributing To onlava
+# Contributing To scenery
 
-Thanks for helping improve onlava. Keep changes small, explicit, and easy to validate.
+Thanks for helping improve scenery. Keep changes small, explicit, and easy to validate.
 
 ## Setup
 
@@ -8,13 +8,13 @@ Requirements:
 
 - Go 1.26+
 - Bun, only for dashboard UI or benchmark changes
-- `psql`, only for `onlava psql` work
+- `psql`, only for `scenery psql` work
 
 Install the CLI from the repo root:
 
 ```sh
-go install ./cmd/onlava
-onlava version --json
+go install ./cmd/scenery
+scenery version --json
 ```
 
 ## Development Loop
@@ -28,13 +28,13 @@ go test ./...
 Rebuild the CLI after repository changes:
 
 ```sh
-go install ./cmd/onlava
+go install ./cmd/scenery
 ```
 
 For substantial changes, run the self-harness when practical:
 
 ```sh
-onlava harness self --json --write
+scenery harness self --json --write
 ```
 
 For dashboard UI changes:
@@ -53,7 +53,7 @@ Before opening a pull request:
 - update docs when user-facing behavior changes
 - add or update tests at stable boundaries
 - keep dependencies minimal and justify new dependencies clearly
-- avoid committing local artifacts such as `.DS_Store`, `.onlava/`, logs, databases, generated cache directories, or `ui/dist/`
+- avoid committing local artifacts such as `.DS_Store`, `.scenery/`, logs, databases, generated cache directories, or `ui/dist/`
 
 Good test boundaries include parser validation, generated code, runtime HTTP behavior, CLI JSON contracts, and fixture apps.
 

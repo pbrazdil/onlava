@@ -20,13 +20,13 @@ import (
 
 	"golang.org/x/mod/modfile"
 
-	"github.com/pbrazdil/onlava/internal/app"
-	"github.com/pbrazdil/onlava/internal/codegen"
-	"github.com/pbrazdil/onlava/internal/envpolicy"
-	inspectdata "github.com/pbrazdil/onlava/internal/inspect"
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/parse"
-	"github.com/pbrazdil/onlava/internal/wiremodel"
+	"scenery.sh/internal/app"
+	"scenery.sh/internal/codegen"
+	"scenery.sh/internal/envpolicy"
+	inspectdata "scenery.sh/internal/inspect"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/parse"
+	"scenery.sh/internal/wiremodel"
 )
 
 type Result struct {
@@ -65,7 +65,7 @@ type buildState struct {
 }
 
 const (
-	buildStateFile    = ".onlava-build-state.json"
+	buildStateFile    = ".scenery-build-state.json"
 	buildStateVersion = "2"
 )
 
@@ -268,7 +268,7 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 	if err := removeUnexpectedFilesFromLists(workspaceDir, sourceFiles, generatedFiles); err != nil {
 		return nil, err
 	}
-	if err := seedOnlavaGoSum(workspaceDir, app.RepoRoot()); err != nil {
+	if err := seedSceneryGoSum(workspaceDir, app.RepoRoot()); err != nil {
 		return nil, err
 	}
 	sourceFingerprint, err := currentAppSourceFingerprint(appRoot)
@@ -326,7 +326,7 @@ func writeGeneratedInspectArtifacts(appRoot string, cfg app.Config, appModel *mo
 		Endpoints:        inspectdata.BuildEndpointsResponse(appRoot, cfg, appModel),
 		WireCapabilities: wiremodel.AppCapabilities(appModel),
 	}
-	genDir := filepath.Join(appRoot, ".onlava", "gen")
+	genDir := filepath.Join(appRoot, ".scenery", "gen")
 	files := map[string]*[]byte{
 		"app.json":               &artifacts.AppJSON,
 		"routes.json":            &artifacts.RoutesJSON,
@@ -360,24 +360,24 @@ func writeGeneratedManifest(appRoot string, artifacts *generatedInspectArtifacts
 		return fmt.Errorf("nil generated inspect artifacts")
 	}
 	manifest := GeneratedManifest{
-		SchemaVersion: "onlava.gen.manifest.v1",
+		SchemaVersion: "scenery.gen.manifest.v1",
 		App:           artifacts.App.App,
 		Counts:        artifacts.App.Counts,
 		Artifacts: GeneratedManifestPaths{
-			App:              ".onlava/gen/app.json",
-			Routes:           ".onlava/gen/routes.json",
-			Services:         ".onlava/gen/services.json",
-			Endpoints:        ".onlava/gen/endpoints.json",
-			WireCapabilities: ".onlava/gen/wire/capabilities.json",
-			BuildLatest:      ".onlava/build/latest.json",
+			App:              ".scenery/gen/app.json",
+			Routes:           ".scenery/gen/routes.json",
+			Services:         ".scenery/gen/services.json",
+			Endpoints:        ".scenery/gen/endpoints.json",
+			WireCapabilities: ".scenery/gen/wire/capabilities.json",
+			BuildLatest:      ".scenery/build/latest.json",
 		},
 		Schemas: GeneratedManifestSchema{
 			App:              artifacts.App.SchemaVersion,
 			Routes:           artifacts.Routes.SchemaVersion,
 			Services:         artifacts.Services.SchemaVersion,
 			Endpoints:        artifacts.Endpoints.SchemaVersion,
-			WireCapabilities: "onlava.wire.capabilities.v1",
-			BuildLatest:      "onlava.build.latest.v1",
+			WireCapabilities: "scenery.wire.capabilities.v1",
+			BuildLatest:      "scenery.build.latest.v1",
 		},
 		Hashes: GeneratedManifestHashes{
 			App:              sha256Hex(artifacts.AppJSON),
@@ -392,7 +392,7 @@ func writeGeneratedManifest(appRoot string, artifacts *generatedInspectArtifacts
 		return err
 	}
 	data = append(data, '\n')
-	return writeFileIfChanged(filepath.Join(appRoot, ".onlava", "gen"), "manifest.json", data)
+	return writeFileIfChanged(filepath.Join(appRoot, ".scenery", "gen"), "manifest.json", data)
 }
 
 func Compile(result *Result) error {
@@ -697,9 +697,9 @@ func currentAppSourceFingerprint(appRoot string) (string, error) {
 		return "", err
 	}
 	h := sha256.New()
-	configPath := filepath.Join(appRoot, ".onlava.json")
+	configPath := filepath.Join(appRoot, ".scenery.json")
 	if data, err := os.ReadFile(configPath); err == nil {
-		_, _ = h.Write([]byte(".onlava.json"))
+		_, _ = h.Write([]byte(".scenery.json"))
 		_, _ = h.Write([]byte{0})
 		_, _ = h.Write(data)
 		_, _ = h.Write([]byte{0})
@@ -763,7 +763,7 @@ func currentGeneratorFingerprint() (string, error) {
 	return generatorFingerprint.value, generatorFingerprint.err
 }
 
-const generatorFingerprintCacheSchema = "onlava.generator-fingerprint.v1"
+const generatorFingerprintCacheSchema = "scenery.generator-fingerprint.v1"
 
 type generatorFingerprintCache struct {
 	SchemaVersion       string `json:"schema_version"`
@@ -862,7 +862,7 @@ func generatorFingerprintPaths() []string {
 }
 
 func generatorFingerprintCachePath(repoRoot string) (string, error) {
-	cacheRoot, err := onlavaCacheRoot()
+	cacheRoot, err := sceneryCacheRoot()
 	if err != nil {
 		return "", err
 	}
@@ -1212,7 +1212,7 @@ func shouldSkipDir(rel string) bool {
 		return true
 	}
 	switch base {
-	case "node_modules", "onlava_internal_main", "__MACOSX", "coverage":
+	case "node_modules", "scenery_internal_main", "__MACOSX", "coverage":
 		return true
 	default:
 		return false
@@ -1275,7 +1275,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	if filepath.Ext(src) == ".go" {
-		data, err = rewriteOnlavaImports(src, data)
+		data, err = rewriteSceneryImports(src, data)
 		if err != nil {
 			return err
 		}
@@ -1293,7 +1293,7 @@ func sourceFileData(path, rel string) ([]byte, error) {
 		return patchGoModData(data, app.RepoRoot())
 	}
 	if filepath.Ext(rel) == ".go" {
-		return rewriteOnlavaImports(path, data)
+		return rewriteSceneryImports(path, data)
 	}
 	return data, nil
 }
@@ -1318,11 +1318,11 @@ func patchGoModData(data []byte, repoRoot string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := file.AddRequire("github.com/pbrazdil/onlava", "v0.0.0"); err != nil && !strings.Contains(err.Error(), "already exists") {
+	if err := file.AddRequire("scenery.sh", "v0.0.0"); err != nil && !strings.Contains(err.Error(), "already exists") {
 		return nil, err
 	}
-	_ = file.DropReplace("github.com/pbrazdil/onlava", "")
-	if err := file.AddReplace("github.com/pbrazdil/onlava", "", repoRoot, ""); err != nil {
+	_ = file.DropReplace("scenery.sh", "")
+	if err := file.AddReplace("scenery.sh", "", repoRoot, ""); err != nil {
 		return nil, err
 	}
 	formatted, err := file.Format()
@@ -1332,7 +1332,7 @@ func patchGoModData(data []byte, repoRoot string) ([]byte, error) {
 	return formatted, nil
 }
 
-func seedOnlavaGoSum(workspaceDir, repoRoot string) error {
+func seedSceneryGoSum(workspaceDir, repoRoot string) error {
 	repoSum, err := os.ReadFile(filepath.Join(repoRoot, "go.sum"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -1391,11 +1391,11 @@ func runGoContext(ctx context.Context, dir string, args ...string) error {
 }
 
 func goBuildArgs(binary string) []string {
-	return []string{"build", "-buildvcs=false", "-o", binary, "./onlava_internal_main"}
+	return []string{"build", "-buildvcs=false", "-o", binary, "./scenery_internal_main"}
 }
 
 func workspaceDir(appRoot, appName string) (string, error) {
-	cacheRoot, err := onlavaCacheRoot()
+	cacheRoot, err := sceneryCacheRoot()
 	if err != nil {
 		return "", err
 	}
@@ -1415,31 +1415,31 @@ func workspaceBinaryName(appRoot, buildFingerprint string) string {
 	if buildFingerprint != "" {
 		const prefixLength = 16
 		if len(buildFingerprint) < prefixLength {
-			return "onlava-app-" + buildFingerprint
+			return "scenery-app-" + buildFingerprint
 		}
-		return "onlava-app-" + buildFingerprint[:prefixLength]
+		return "scenery-app-" + buildFingerprint[:prefixLength]
 	}
 	absRoot, err := filepath.Abs(appRoot)
 	if err != nil {
 		absRoot = appRoot
 	}
 	sum := sha256.Sum256([]byte(absRoot))
-	return "onlava-app-" + hex.EncodeToString(sum[:8])
+	return "scenery-app-" + hex.EncodeToString(sum[:8])
 }
 
-func onlavaCacheRoot() (string, error) {
-	if root := strings.TrimSpace(envpolicy.Get("ONLAVA_DEV_CACHE_DIR")); root != "" {
+func sceneryCacheRoot() (string, error) {
+	if root := strings.TrimSpace(envpolicy.Get("SCENERY_DEV_CACHE_DIR")); root != "" {
 		return root, nil
 	}
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "onlava"), nil
+	return filepath.Join(dir, "scenery"), nil
 }
 
 func CacheRoot() (string, error) {
-	return onlavaCacheRoot()
+	return sceneryCacheRoot()
 }
 
 func WorkspaceDir(appRoot, appName string) (string, error) {
@@ -1455,7 +1455,7 @@ func BuildStatePath(appRoot, appName string) (string, error) {
 }
 
 func LatestBuildPath(appRoot string) string {
-	return filepath.Join(appRoot, ".onlava", "build", "latest.json")
+	return filepath.Join(appRoot, ".scenery", "build", "latest.json")
 }
 
 type StateInfo struct {
@@ -1531,12 +1531,12 @@ func WriteLatestBuildManifest(result *Result, phase string) error {
 		return err
 	}
 	manifest := LatestBuildManifest{
-		SchemaVersion: "onlava.build.latest.v1",
+		SchemaVersion: "scenery.build.latest.v1",
 		App: LatestBuildManifestApp{
 			Name:       result.AppName,
 			ID:         result.AppID,
 			Root:       result.AppRoot,
-			ConfigPath: filepath.Join(result.AppRoot, ".onlava.json"),
+			ConfigPath: filepath.Join(result.AppRoot, ".scenery.json"),
 		},
 		Build: LatestBuildManifestRecord{
 			Phase:                 phase,
@@ -1607,8 +1607,8 @@ func removeUnexpectedFilesFromLists(root string, sourceFiles, generatedFiles []s
 			dir = filepath.Dir(dir)
 		}
 	}
-	keepFiles["onlava-app"] = struct{}{}
-	keepFiles[".onlava-workspace.lock"] = struct{}{}
+	keepFiles["scenery-app"] = struct{}{}
+	keepFiles[".scenery-workspace.lock"] = struct{}{}
 	keepFiles[buildStateFile] = struct{}{}
 	keepFiles["go.sum"] = struct{}{}
 
@@ -1630,7 +1630,7 @@ func removeUnexpectedFilesFromLists(root string, sourceFiles, generatedFiles []s
 			dirs = append(dirs, path)
 			return nil
 		}
-		if _, ok := keepFiles[rel]; ok || strings.HasPrefix(rel, "onlava-app-") {
+		if _, ok := keepFiles[rel]; ok || strings.HasPrefix(rel, "scenery-app-") {
 			return nil
 		}
 		files = append(files, path)

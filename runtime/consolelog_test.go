@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbrazdil/onlava/errs"
+	"scenery.sh/errs"
 )
 
-func TestOnlavaConsoleHandlerFormatsTraceRecords(t *testing.T) {
+func TestSceneryConsoleHandlerFormatsTraceRecords(t *testing.T) {
 	var out bytes.Buffer
-	handler := newOnlavaConsoleHandler(&out)
+	handler := newSceneryConsoleHandler(&out)
 	record := slog.NewRecord(time.Date(2026, time.April, 14, 15, 13, 0, 0, time.Local), levelTrace, "request completed", 0)
 	record.AddAttrs(
 		slog.Any("code", errs.OK),
@@ -40,10 +40,10 @@ func TestOnlavaConsoleHandlerFormatsTraceRecords(t *testing.T) {
 	}
 }
 
-func TestOnlavaConsoleHandlerFormatsSecretsWarning(t *testing.T) {
+func TestSceneryConsoleHandlerFormatsSecretsWarning(t *testing.T) {
 	var out bytes.Buffer
-	handler := newOnlavaConsoleHandler(&out)
-	record := slog.NewRecord(time.Now(), slog.LevelWarn, "onlava secrets missing", 0)
+	handler := newSceneryConsoleHandler(&out)
+	record := slog.NewRecord(time.Now(), slog.LevelWarn, "scenery secrets missing", 0)
 	record.AddAttrs(slog.Any("fields", []string{"DatabaseURL", "ResendAPIKey"}))
 	if err := handler.Handle(context.Background(), record); err != nil {
 		t.Fatalf("Handle returned error: %v", err)
@@ -52,7 +52,7 @@ func TestOnlavaConsoleHandlerFormatsSecretsWarning(t *testing.T) {
 	for _, want := range []string{
 		"warning: secrets not defined: DatabaseURL, ResendAPIKey",
 		"note: undefined secrets are left empty for local development only.",
-		"https://github.com/pbrazdil/onlava/docs/primitives/secrets",
+		"https://github.com/scenery-sh/scenery/docs/primitives/secrets",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output %q does not contain %q", got, want)
@@ -60,11 +60,11 @@ func TestOnlavaConsoleHandlerFormatsSecretsWarning(t *testing.T) {
 	}
 }
 
-func TestOnlavaConsoleHandlerColorsTraceWhenForced(t *testing.T) {
+func TestSceneryConsoleHandlerColorsTraceWhenForced(t *testing.T) {
 	t.Setenv("CLICOLOR_FORCE", "1")
 
 	var out bytes.Buffer
-	handler := newOnlavaConsoleHandler(&out)
+	handler := newSceneryConsoleHandler(&out)
 	record := slog.NewRecord(time.Date(2026, time.April, 14, 15, 13, 0, 0, time.Local), levelTrace, "request completed", 0)
 
 	if err := handler.Handle(context.Background(), record); err != nil {
@@ -77,9 +77,9 @@ func TestOnlavaConsoleHandlerColorsTraceWhenForced(t *testing.T) {
 	}
 }
 
-func TestOnlavaConsoleHandlerRedactsSensitiveAttrValues(t *testing.T) {
+func TestSceneryConsoleHandlerRedactsSensitiveAttrValues(t *testing.T) {
 	var out bytes.Buffer
-	handler := newOnlavaConsoleHandler(&out)
+	handler := newSceneryConsoleHandler(&out)
 	record := slog.NewRecord(time.Now(), slog.LevelInfo, "auth request", 0)
 	record.AddAttrs(slog.String("authorization", "Bearer secret"))
 

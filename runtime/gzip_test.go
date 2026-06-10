@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pbrazdil/onlava/internal/wire"
+	"scenery.sh/internal/wire"
 )
 
 func TestServerGzipCompressesAcceptedResponses(t *testing.T) {
@@ -41,7 +41,7 @@ func TestServerGzipCompressesAcceptedResponses(t *testing.T) {
 	if err := json.Unmarshal(body, &caps); err != nil {
 		t.Fatalf("decode capabilities: %v", err)
 	}
-	if caps.SchemaVersion != "onlava.wire.capabilities.v1" {
+	if caps.SchemaVersion != "scenery.wire.capabilities.v1" {
 		t.Fatalf("schema_version = %q", caps.SchemaVersion)
 	}
 }

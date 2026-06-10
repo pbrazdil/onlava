@@ -1,6 +1,6 @@
-# onlava Architecture
+# scenery Architecture
 
-This document is a stable map of the onlava repository. It should help a new
+This document is a stable map of the scenery repository. It should help a new
 contributor answer two questions quickly: where does a change belong, and which
 boundaries should the change preserve?
 
@@ -10,10 +10,10 @@ the names mentioned here.
 
 ## Bird's Eye View
 
-onlava is a Go-native local runtime and toolchain for applications that declare
-services with `//onlava:` directives and a `.onlava.json` root marker.
+scenery is a Go-native local runtime and toolchain for applications that declare
+services with `//scenery:` directives and a `.scenery.json` root marker.
 
-At a high level, onlava does four things:
+At a high level, scenery does four things:
 
 - discovers an app root and parses Go packages into an app model
 - generates a transient build workspace and synthetic runtime entrypoint
@@ -24,7 +24,7 @@ At a high level, onlava does four things:
 The central flow is:
 
 ```text
-.onlava.json + Go source
+.scenery.json + Go source
         |
         v
 internal/app + internal/parse
@@ -36,15 +36,15 @@ internal/model
 internal/codegen + internal/build
         |
         v
-generated workspace + github.com/pbrazdil/onlava/runtime
+generated workspace + scenery.sh/runtime
         |
         v
 single local server + dev/inspect/harness tooling
 ```
 
-Architecture invariant: the public onlava surface is onlava-named. User apps
-should depend on `github.com/pbrazdil/onlava/...` packages and `//onlava:` directives, without
-legacy compatibility packages, daemon layers, cloud layers, or non-onlava syntax.
+Architecture invariant: the public scenery surface is scenery-named. User apps
+should depend on `scenery.sh/...` packages and `//scenery:` directives, without
+legacy compatibility packages, daemon layers, cloud layers, or non-scenery syntax.
 
 Architecture invariant: app semantics should be captured as data in
 `internal/model` before code generation or runtime wiring. Avoid duplicating
@@ -52,38 +52,38 @@ parser-derived decisions downstream when the model can represent them once.
 
 ## Code Map
 
-### `cmd/onlava`
+### `cmd/scenery`
 
 This is the CLI entrypoint and orchestration layer. `main`, `run`, and the
 command-specific functions parse flags and connect internal packages into user
 commands such as `up`, `serve`, `worker`, `build`, `check`, `inspect`,
 `harness`, `logs`, `console`, `db`, `task`, and `generate`.
 
-`onlava serve` is the headless app execution path. `onlava up` starts the local
+`scenery serve` is the headless app execution path. `scenery up` starts the local
 app session around that runtime: dashboard, agent routing, live rebuild behavior,
 logs, traces, metrics, managed dev services, optional frontend routing, and
 process supervision.
 
-Architecture invariant: non-CLI packages must not import `cmd/onlava`. Shared
+Architecture invariant: non-CLI packages must not import `cmd/scenery`. Shared
 logic belongs in `internal/` or a public package, depending on whether user apps
 need it.
 
 Architecture invariant: the CLI stays hand-rolled unless a new dependency has a
-clear payoff. The command grammar is part of onlava's local contract and should
+clear payoff. The command grammar is part of scenery's local contract and should
 remain easy to audit.
 
 ### `internal/app`
 
 `internal/app` owns repository and app-root discovery. It walks upward to find
-`.onlava.json`, decodes app config, and provides repo-root helpers for self-harness
+`.scenery.json`, decodes app config, and provides repo-root helpers for self-harness
 work.
 
-Architecture invariant: `.onlava.json` is the app root marker for onlava apps. App
+Architecture invariant: `.scenery.json` is the app root marker for scenery apps. App
 loading should fail clearly when the marker is missing or invalid.
 
 ### `internal/parse`
 
-`internal/parse` loads Go packages with `go/packages`, reads `//onlava:`
+`internal/parse` loads Go packages with `go/packages`, reads `//scenery:`
 directives from AST comments, validates endpoint/service/auth/middleware shapes,
 and builds the app model.
 
@@ -107,7 +107,7 @@ wire modeling, and build. Important types include `App`, `Service`, `Package`,
 
 Architecture invariant: the model is an in-memory description of a parsed app,
 not a runtime registry and not a JSON schema. Public JSON responses live in
-`internal/inspect`; runtime registration lives in `github.com/pbrazdil/onlava/runtime`.
+`internal/inspect`; runtime registration lives in `scenery.sh/runtime`.
 
 ### `internal/codegen`
 
@@ -120,7 +120,7 @@ wrappers and registration over runtime reflection when the parser already knows
 the shape of the app.
 
 Architecture invariant: endpoint-to-endpoint calls should go through generated
-onlava call helpers when onlava semantics matter. Direct user function calls must
+scenery call helpers when scenery semantics matter. Direct user function calls must
 not bypass auth context, private access rules, routing metadata, or internal
 transport behavior.
 
@@ -138,7 +138,7 @@ workspace the source of truth.
 Architecture invariant: build metadata should be machine-readable enough for
 agents and humans to diagnose drift without scraping terminal output.
 
-### `github.com/pbrazdil/onlava/runtime`
+### `scenery.sh/runtime`
 
 `runtime` is linked into generated app binaries. It registers generated
 endpoints, service initializers, middleware, auth handlers, Temporal workers,
@@ -149,11 +149,11 @@ context, current request metadata, structured error responses, middleware,
 observability reports, secrets, DB tracing, Temporal workers, cron, and graceful shutdown.
 
 Architecture invariant: there is one local app server per generated app process.
-`onlava up` may run extra development services around it, but app API execution
+`scenery up` may run extra development services around it, but app API execution
 stays inside the generated app binary.
 
 Architecture invariant: runtime request state must be scoped to the current
-request or internal call. Public helpers such as `onlava.CurrentRequest()` and
+request or internal call. Public helpers such as `scenery.CurrentRequest()` and
 `auth.UserID()` should not rely on global mutable app state that leaks across
 requests.
 
@@ -161,13 +161,13 @@ requests.
 
 The public packages at the module root are what user apps import:
 
-- `github.com/pbrazdil/onlava` exposes `Meta` and `CurrentRequest`
-- `github.com/pbrazdil/onlava/auth` exposes request auth state helpers and the
+- `scenery.sh` exposes `Meta` and `CurrentRequest`
+- `scenery.sh/auth` exposes request auth state helpers and the
   standard auth module surface (`AuthData`, token helpers, standard auth
   registration, and pluggable email delivery)
-- `github.com/pbrazdil/onlava/errs` exposes coded errors and HTTP status mapping
-- `github.com/pbrazdil/onlava/middleware` exposes middleware types
-- `github.com/pbrazdil/onlava/temporal`, `github.com/pbrazdil/onlava/cron`, `github.com/pbrazdil/onlava/pgxpool`, and related small
+- `scenery.sh/errs` exposes coded errors and HTTP status mapping
+- `scenery.sh/middleware` exposes middleware types
+- `scenery.sh/temporal`, `scenery.sh/cron`, `scenery.sh/pgxpool`, and related small
   packages expose local runtime integrations
 
 Architecture invariant: public packages are boundaries. Keep them small,
@@ -199,17 +199,17 @@ These packages support the local development platform around a running app.
 
 `internal/devdash` stores dashboard-visible state and observability data.
 `internal/localproxy` owns the local proxy layer. Victoria sidecars and Grafana
-are supervised from `cmd/onlava` as local development companions, with generated
-Grafana configuration and provisioning rooted under `.onlava/grafana/`. The
-dashboard server and UI embedding are orchestrated from `cmd/onlava`.
+are supervised from `cmd/scenery` as local development companions, with generated
+Grafana configuration and provisioning rooted under `.scenery/grafana/`. The
+dashboard server and UI embedding are orchestrated from `cmd/scenery`.
 
 Architecture invariant: development services should be optional around the app
-runtime. They can improve local ergonomics, but `onlava serve` must remain a
+runtime. They can improve local ergonomics, but `scenery serve` must remain a
 headless execution path.
 
 ### `ui`
 
-`ui` is the onlava dashboard frontend. It is a TypeScript/React application that
+`ui` is the scenery dashboard frontend. It is a TypeScript/React application that
 is built and embedded for local development use.
 
 Architecture invariant: frontend state should come from CLI/dashboard APIs and
@@ -231,15 +231,15 @@ Architecture invariant: substantial implementation plans live under
 `testdata` contains fixture apps and golden generated files. It is the acceptance
 corpus for parser, codegen, runtime, and CLI behavior.
 
-Architecture invariant: fixture apps should speak onlava syntax directly. Use
+Architecture invariant: fixture apps should speak scenery syntax directly. Use
 Historical reference material only as a corpus when porting behavior into
-onlava-native tests.
+scenery-native tests.
 
 ## Cross-Cutting Concerns
 
 ### Dependencies
 
-onlava prefers the Go standard library. Direct Go dependencies are allowlisted by
+scenery prefers the Go standard library. Direct Go dependencies are allowlisted by
 the self-harness with a concrete rationale. New dependencies should be rare and
 should solve a specific maintenance, correctness, or interoperability problem.
 
@@ -254,9 +254,9 @@ Prefer tests at stable boundaries: directive parsing, app modeling, generated
 code, CLI JSON contracts, runtime HTTP behavior, and fixture apps. Use helper
 checks to keep tests data-driven and easy to update when internals move.
 
-After repository changes, rebuild the CLI with `go install ./cmd/onlava`. For
-substantial changes, run `onlava harness self --json --write` when practical so
-`.onlava/harness/self-latest.json` captures one stable validation snapshot.
+After repository changes, rebuild the CLI with `go install ./cmd/scenery`. For
+substantial changes, run `scenery harness self --json --write` when practical so
+`.scenery/harness/self-latest.json` captures one stable validation snapshot.
 
 ### Generated Artifacts
 
@@ -274,7 +274,7 @@ Local observability is part of the product surface. Runtime traces, logs,
 metrics, dashboard state, and inspect commands should give enough evidence to
 debug a local app without relying on external services.
 
-`onlava up` uses supervised VictoriaMetrics, VictoriaLogs, and VictoriaTraces
+`scenery up` uses supervised VictoriaMetrics, VictoriaLogs, and VictoriaTraces
 sidecars for local observability when their managed binaries are available.
 Dashboard session metadata and saved request state live in a small JSON store
 under the dev cache root; the project does not carry an embedded SQL driver for
@@ -283,7 +283,7 @@ the stable boundary is HTTP/OTLP, not Go library imports.
 
 ### File Size And Placement
 
-onlava favors code that can be found quickly. Keep related concepts adjacent in
+scenery favors code that can be found quickly. Keep related concepts adjacent in
 the tree, split very large files before they become hard to review, and prefer a
 flat package map over deeply nested internal hierarchies unless a boundary earns
 the extra structure.

@@ -1,6 +1,6 @@
 package et
 
-import "github.com/pbrazdil/onlava/runtime"
+import "scenery.sh/runtime"
 
 type helperT interface {
 	Helper()

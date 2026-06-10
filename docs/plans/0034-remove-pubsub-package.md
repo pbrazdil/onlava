@@ -4,11 +4,11 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-Remove `github.com/pbrazdil/onlava/pubsub` as a public package and as an onlava runtime concept. Apps that need background execution should use `github.com/pbrazdil/onlava/temporal` workflow and activity declarations directly.
+Remove `scenery.sh/pubsub` as a public package and as a Scenery runtime concept. Apps that need background execution should use `scenery.sh/temporal` workflow and activity declarations directly.
 
-The repository just moved Pub/Sub onto Temporal as a compatibility layer. The new direction is stricter: there are no app dependencies that must preserve the Pub/Sub API, so onlava should delete the compatibility package instead of keeping a second async programming model. This reduces parser/codegen/runtime surface area, removes Pub/Sub dashboard/admin/docs affordances, and makes Temporal the single background execution interface.
+The repository just moved Pub/Sub onto Temporal as a compatibility layer. The new direction is stricter: there are no app dependencies that must preserve the Pub/Sub API, so scenery should delete the compatibility package instead of keeping a second async programming model. This reduces parser/codegen/runtime surface area, removes Pub/Sub dashboard/admin/docs affordances, and makes Temporal the single background execution interface.
 
-The companion app repo `/Users/petrbrazdil/Repos/onlv` currently imports `github.com/pbrazdil/onlava/pubsub` for async work. That repo must be migrated to native Temporal workflows and activities before the package removal is considered complete.
+The companion app repo `/Users/petrbrazdil/Repos/onlv` currently imports `scenery.sh/pubsub` for async work. That repo must be migrated to native Temporal workflows and activities before the package removal is considered complete.
 
 ## Progress
 
@@ -17,15 +17,15 @@ The companion app repo `/Users/petrbrazdil/Repos/onlv` currently imports `github
 * [x] 2026-05-25: Add Temporal service-method activity support so service-struct handlers can replace `pubsub.MethodHandler`.
 * [x] 2026-05-25: Migrate `/Users/petrbrazdil/Repos/onlv` async jobs from `pubsub.NewTopic`/`NewSubscription` to native Temporal declarations.
 * [x] 2026-05-25: Add `temporal.ActivityConfig.MaxConcurrency` so dedicated Temporal task queues can preserve former subscription concurrency caps without retaining Pub/Sub.
-* [x] 2026-05-25: Validate onlava with `go test ./...`, UI typecheck/build, `go install ./cmd/onlava`, and `onlava harness self --json --write`.
-* [x] 2026-05-25: Validate ONLV where practical: `go test ./codexsvc ./jobs ./maps` passed, while `go test ./house` and `onlava check --json` are blocked by the pre-existing native roofmapnet dependency error `fatal error: 'torch/torch.h' file not found`.
+* [x] 2026-05-25: Validate scenery with `go test ./...`, UI typecheck/build, `go install ./cmd/scenery`, and `scenery harness self --json --write`.
+* [x] 2026-05-25: Validate ONLV where practical: `go test ./codexsvc ./jobs ./maps` passed, while `go test ./house` and `scenery check --json` are blocked by the pre-existing native roofmapnet dependency error `fatal error: 'torch/torch.h' file not found`.
 
 ## Surprises & Discoveries
 
 * `onlv` uses Pub/Sub in `codexsvc/exec_async.go`, `jobs/submissions_async.go`, `house/process_async.go`, and `maps/earth_async.go`.
-* The Pub/Sub package currently owns the only generated service accessor bridge for background service methods. Removing the package requires moving that helper into `github.com/pbrazdil/onlava/temporal`.
+* The Pub/Sub package currently owns the only generated service accessor bridge for background service methods. Removing the package requires moving that helper into `scenery.sh/temporal`.
 * ONLV's house package cannot be fully validated in this environment without the native torch headers used by roofmapnet. The failure occurs before the migrated Go async code is exercised.
-* A previous Grafana dev-server validation left ignored generated files under `testdata/apps/basic/.onlava/grafana`, which made the self-harness architecture check see vendored Grafana source as repository source. Removing that generated cache restored the harness to green.
+* A previous Grafana dev-server validation left ignored generated files under `testdata/apps/basic/.scenery/grafana`, which made the self-harness architecture check see vendored Grafana source as repository source. Removing that generated cache restored the harness to green.
 
 ## Decision Log
 
@@ -43,11 +43,11 @@ The companion app repo `/Users/petrbrazdil/Repos/onlv` currently imports `github
 
 ## Outcomes & Retrospective
 
-Completed for source migration. onlava no longer exports `github.com/pbrazdil/onlava/pubsub`, the active docs/dashboard/admin/schema surfaces no longer mention Pub/Sub, and ONLV async flows now declare native Temporal workflows and activities with dedicated task queues and preserved concurrency caps. Remaining validation risk is environmental in ONLV's native house dependencies, not in the onlava Pub/Sub removal itself.
+Completed for source migration. scenery no longer exports `scenery.sh/pubsub`, the active docs/dashboard/admin/schema surfaces no longer mention Pub/Sub, and ONLV async flows now declare native Temporal workflows and activities with dedicated task queues and preserved concurrency caps. Remaining validation risk is environmental in ONLV's native house dependencies, not in the scenery Pub/Sub removal itself.
 
 ## Context and Orientation
 
-Relevant onlava files:
+Relevant scenery files:
 
 ```text
 pubsub/
@@ -59,9 +59,9 @@ runtime/devreport.go
 internal/model/model.go
 internal/parse/parser.go
 internal/codegen/generator.go
-cmd/onlava/admin.go
-cmd/onlava/dashboard.go
-cmd/onlava/inspect.go
+cmd/scenery/admin.go
+cmd/scenery/dashboard.go
+cmd/scenery/inspect.go
 docs/local-contract.md
 docs/app-development-cookbook.md
 SKILL.md
@@ -84,7 +84,7 @@ Relevant ONLV files:
 
 ## Milestones
 
-Milestone 1 removes the public package and onlava runtime wiring. The repo should no longer contain `pubsub/` or parse `github.com/pbrazdil/onlava/pubsub` declarations.
+Milestone 1 removes the public package and scenery runtime wiring. The repo should no longer contain `pubsub/` or parse `scenery.sh/pubsub` declarations.
 
 Milestone 2 extends the native Temporal package with the small service-method bridge needed by existing apps.
 
@@ -119,12 +119,12 @@ ONLV replacements should define one workflow per former topic publish path. The 
 
 ## Validation and Acceptance
 
-Run from `/Users/petrbrazdil/Repos/onlava`:
+Run from `/Users/petrbrazdil/Repos/scenery`:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 git diff --check
 ```
 
@@ -132,24 +132,24 @@ Run from `/Users/petrbrazdil/Repos/onlv`:
 
 ```sh
 just repo-harness
-onlava check --json
+scenery check --json
 go test ./...
-onlava harness --json --write
+scenery harness --json --write
 git diff --check
 ```
 
 Acceptance:
 
 ```text
-- `rg "github.com/pbrazdil/onlava/pubsub|pubsub.New|onlava admin pubsub|/__onlava/pubsub|Pub/Sub" .` has no active onlava product/API hits outside historical completed plans where preserving history is acceptable.
-- `/Users/petrbrazdil/Repos/onlv` has no imports of `github.com/pbrazdil/onlava/pubsub`.
+- `rg "scenery.sh/pubsub|pubsub.New|scenery admin pubsub|/__scenery/pubsub|Pub/Sub" .` has no active scenery product/API hits outside historical completed plans where preserving history is acceptable.
+- `/Users/petrbrazdil/Repos/onlv` has no imports of `scenery.sh/pubsub`.
 - Async ONLV flows still compile against native Temporal declarations.
-- onlava no longer exports a `pubsub` package.
+- scenery no longer exports a `pubsub` package.
 ```
 
 ## Idempotence and Recovery
 
-Most steps are source edits and can be rerun. If ONLV migration fails, leave the Temporal helper API in onlava only if it has tests and no Pub/Sub dependency. Do not reintroduce the Pub/Sub package as a fallback.
+Most steps are source edits and can be rerun. If ONLV migration fails, leave the Temporal helper API in scenery only if it has tests and no Pub/Sub dependency. Do not reintroduce the Pub/Sub package as a fallback.
 
 If dashboard/admin removal causes frontend build failures, remove the route and navigation entries first, then delete now-unused component files.
 
@@ -175,7 +175,7 @@ docs/plans/0034-remove-pubsub-package.md
 
 ## Interfaces and Dependencies
 
-The public async interface after this plan is `github.com/pbrazdil/onlava/temporal`. The package must support:
+The public async interface after this plan is `scenery.sh/temporal`. The package must support:
 
 ```go
 temporal.NewWorkflow[I, O](name, cfg, handler)

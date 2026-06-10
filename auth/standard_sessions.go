@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	authdb "github.com/pbrazdil/onlava/auth/db/gen"
+	authdb "scenery.sh/auth/db/gen"
 )
 
 type EmailVerificationConfirmParams struct {
@@ -30,7 +30,7 @@ type LogoutResponse struct {
 
 // SignupEmail creates a first-party email/password user and sends an email verification token.
 //
-//onlava:api public method=POST path=/auth/signup/email
+//scenery:api public method=POST path=/auth/signup/email
 func (s *Service) SignupEmail(ctx context.Context, params *EmailSignupParams) (*EmailSignupResponse, error) {
 	if params == nil {
 		return nil, invalidArgument("request body is required")
@@ -125,7 +125,7 @@ func (s *Service) SignupEmail(ctx context.Context, params *EmailSignupParams) (*
 
 // ConfirmEmailVerification consumes an email verification token and starts a session.
 //
-//onlava:api public method=POST path=/auth/email-verification/confirm
+//scenery:api public method=POST path=/auth/email-verification/confirm
 func (s *Service) ConfirmEmailVerification(ctx context.Context, params *EmailVerificationConfirmParams) (*AuthSessionResponse, error) {
 	if params == nil || strings.TrimSpace(params.Token) == "" {
 		return nil, invalidArgument("token is required")
@@ -174,7 +174,7 @@ func (s *Service) ConfirmEmailVerification(ctx context.Context, params *EmailVer
 
 // ResendEmailVerification creates a new email verification token for an unverified user.
 //
-//onlava:api public method=POST path=/auth/email-verification/resend
+//scenery:api public method=POST path=/auth/email-verification/resend
 func (s *Service) ResendEmailVerification(ctx context.Context, params *EmailVerificationResendParams) (*EmailVerificationResendResponse, error) {
 	if params == nil {
 		return nil, invalidArgument("request body is required")
@@ -222,7 +222,7 @@ func (s *Service) ResendEmailVerification(ctx context.Context, params *EmailVeri
 
 // LoginEmail verifies an email/password identity and starts a refresh session.
 //
-//onlava:api public method=POST path=/auth/login/email
+//scenery:api public method=POST path=/auth/login/email
 func (s *Service) LoginEmail(ctx context.Context, params *EmailLoginParams) (*AuthSessionResponse, error) {
 	if params == nil {
 		return nil, invalidArgument("request body is required")
@@ -288,7 +288,7 @@ func (s *Service) LoginEmail(ctx context.Context, params *EmailLoginParams) (*Au
 
 // Refresh rotates the refresh cookie and returns a fresh access token.
 //
-//onlava:api public method=POST path=/auth/refresh
+//scenery:api public method=POST path=/auth/refresh
 func (s *Service) Refresh(ctx context.Context, params *RefreshParams) (*AuthSessionResponse, error) {
 	rawRefreshToken := refreshTokenFromParams(params)
 	if rawRefreshToken == "" {
@@ -340,7 +340,7 @@ func (s *Service) Refresh(ctx context.Context, params *RefreshParams) (*AuthSess
 
 // Logout revokes the current refresh session and clears the refresh cookie.
 //
-//onlava:api public method=POST path=/auth/logout
+//scenery:api public method=POST path=/auth/logout
 func (s *Service) Logout(ctx context.Context, params *RefreshParams) (*LogoutResponse, error) {
 	rawRefreshToken := refreshTokenFromParams(params)
 	if rawRefreshToken != "" {
@@ -371,7 +371,7 @@ func refreshTokenFromParams(params *RefreshParams) string {
 
 // Me returns the current auth bootstrap state for an access token.
 //
-//onlava:api auth method=GET path=/auth/me
+//scenery:api auth method=GET path=/auth/me
 func (s *Service) Me(ctx context.Context) (*AuthBootstrapResponse, error) {
 	authData, err := currentAuthData()
 	if err != nil {
@@ -389,7 +389,7 @@ func (s *Service) Me(ctx context.Context) (*AuthBootstrapResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	session := authdb.OnlavaAuthRefreshSession{}
+	session := authdb.SceneryAuthRefreshSession{}
 	if authData.SessionID != "" {
 		sessionID, parseErr := parseUUID(authData.SessionID)
 		if parseErr == nil {
@@ -406,7 +406,7 @@ func (s *Service) Me(ctx context.Context) (*AuthBootstrapResponse, error) {
 
 // RequestPasswordReset creates a one-time password reset token when the email exists.
 //
-//onlava:api public method=POST path=/auth/password-reset/request
+//scenery:api public method=POST path=/auth/password-reset/request
 func (s *Service) RequestPasswordReset(ctx context.Context, params *PasswordResetRequestParams) (*PasswordResetRequestResponse, error) {
 	if params == nil {
 		return nil, invalidArgument("request body is required")
@@ -449,7 +449,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, params *PasswordRese
 
 // ConfirmPasswordReset consumes a password reset token, updates the password, revokes old sessions, and starts a fresh session.
 //
-//onlava:api public method=POST path=/auth/password-reset/confirm
+//scenery:api public method=POST path=/auth/password-reset/confirm
 func (s *Service) ConfirmPasswordReset(ctx context.Context, params *PasswordResetConfirmParams) (*AuthSessionResponse, error) {
 	if params == nil || strings.TrimSpace(params.Token) == "" {
 		return nil, invalidArgument("token is required")
@@ -539,21 +539,21 @@ func (s *Service) createOneTimeToken(ctx context.Context, q authdb.Querier, purp
 	return rawToken, nil
 }
 
-func (s *Service) rotateRefreshSession(ctx context.Context, q authdb.Querier, rawRefreshToken string) (authdb.OnlavaAuthRefreshSession, string, error) {
+func (s *Service) rotateRefreshSession(ctx context.Context, q authdb.Querier, rawRefreshToken string) (authdb.SceneryAuthRefreshSession, string, error) {
 	sessionID, err := parseRefreshToken(rawRefreshToken)
 	if err != nil {
-		return authdb.OnlavaAuthRefreshSession{}, "", unauthenticated("refresh session is invalid")
+		return authdb.SceneryAuthRefreshSession{}, "", unauthenticated("refresh session is invalid")
 	}
 	session, err := q.GetRefreshSessionByID(ctx, sessionID)
 	if err != nil {
 		if isNoRows(err) {
-			return authdb.OnlavaAuthRefreshSession{}, "", unauthenticated("refresh session is invalid")
+			return authdb.SceneryAuthRefreshSession{}, "", unauthenticated("refresh session is invalid")
 		}
-		return authdb.OnlavaAuthRefreshSession{}, "", err
+		return authdb.SceneryAuthRefreshSession{}, "", err
 	}
 	now := s.clock()
 	if session.RevokedAt.Valid || !session.ExpiresAt.Valid || !session.ExpiresAt.Time.After(now) {
-		return authdb.OnlavaAuthRefreshSession{}, "", unauthenticated("refresh session is expired")
+		return authdb.SceneryAuthRefreshSession{}, "", unauthenticated("refresh session is expired")
 	}
 
 	hash := tokenHash(rawRefreshToken)
@@ -567,12 +567,12 @@ func (s *Service) rotateRefreshSession(ctx context.Context, q authdb.Querier, ra
 			ID:            session.ID,
 			RevokedReason: "refresh_replay",
 		})
-		return authdb.OnlavaAuthRefreshSession{}, "", unauthenticated("refresh session is invalid")
+		return authdb.SceneryAuthRefreshSession{}, "", unauthenticated("refresh session is invalid")
 	}
 
 	nextRawToken, err := newRefreshToken(session.ID)
 	if err != nil {
-		return authdb.OnlavaAuthRefreshSession{}, "", err
+		return authdb.SceneryAuthRefreshSession{}, "", err
 	}
 	rotated, err := q.RotateRefreshSession(ctx, authdb.RotateRefreshSessionParams{
 		ID:        session.ID,
@@ -580,7 +580,7 @@ func (s *Service) rotateRefreshSession(ctx context.Context, q authdb.Querier, ra
 		Column3:   int64(refreshTokenReplayGrace / time.Millisecond),
 	})
 	if err != nil {
-		return authdb.OnlavaAuthRefreshSession{}, "", err
+		return authdb.SceneryAuthRefreshSession{}, "", err
 	}
 	return rotated, nextRawToken, nil
 }

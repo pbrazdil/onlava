@@ -13,7 +13,7 @@ func lockWorkspace(root string) (func(), error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(filepath.Join(root, ".onlava-workspace.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	file, err := os.OpenFile(filepath.Join(root, ".scenery-workspace.lock"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}

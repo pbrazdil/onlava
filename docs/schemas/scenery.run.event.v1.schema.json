@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scenery.sh/schemas/scenery.run.event.v1.schema.json",
+  "title": "scenery.run.event.v1",
+  "description": "JSONL event schema emitted by `scenery up --json`.",
+  "type": "object",
+  "required": ["schema_version", "type", "time"],
+  "properties": {
+    "schema_version": { "const": "scenery.run.event.v1" },
+    "type": { "type": "string" },
+    "time": { "type": "string", "format": "date-time" },
+    "app": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "root": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

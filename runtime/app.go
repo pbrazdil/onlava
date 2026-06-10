@@ -16,18 +16,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 func ListenAddrFromEnv() string {
-	if value := envpolicy.Get("ONLAVA_LISTEN_ADDR"); value != "" {
+	if value := envpolicy.Get("SCENERY_LISTEN_ADDR"); value != "" {
 		return value
 	}
 	return "127.0.0.1:4000"
 }
 
 func ListenNetworkFromEnv() string {
-	switch value := strings.ToLower(strings.TrimSpace(envpolicy.Get("ONLAVA_LISTEN_NETWORK"))); value {
+	switch value := strings.ToLower(strings.TrimSpace(envpolicy.Get("SCENERY_LISTEN_NETWORK"))); value {
 	case "", "tcp":
 		return "tcp"
 	case "unix":
@@ -161,7 +161,7 @@ func listenRuntime(network, addr string) (net.Listener, error) {
 		}
 		return net.Listen("unix", addr)
 	default:
-		return nil, fmt.Errorf("runtime: unsupported ONLAVA_LISTEN_NETWORK %q", network)
+		return nil, fmt.Errorf("runtime: unsupported SCENERY_LISTEN_NETWORK %q", network)
 	}
 }
 
@@ -174,7 +174,7 @@ const (
 )
 
 func runtimeRoleFromEnv() (runtimeRole, error) {
-	value := strings.ToLower(strings.TrimSpace(envpolicy.Get("ONLAVA_ROLE")))
+	value := strings.ToLower(strings.TrimSpace(envpolicy.Get("SCENERY_ROLE")))
 	switch value {
 	case "", string(runtimeRoleAll):
 		return runtimeRoleAll, nil
@@ -183,7 +183,7 @@ func runtimeRoleFromEnv() (runtimeRole, error) {
 	case string(runtimeRoleWorker):
 		return runtimeRoleWorker, nil
 	default:
-		return "", fmt.Errorf("runtime: unsupported ONLAVA_ROLE %q", value)
+		return "", fmt.Errorf("runtime: unsupported SCENERY_ROLE %q", value)
 	}
 }
 
@@ -232,7 +232,7 @@ func shutdownRuntime(server *http.Server, stopTemporalWorkers func(context.Conte
 }
 
 func launchedBySupervisor() bool {
-	return envpolicy.Get("ONLAVA_DEV_SUPERVISOR") == "1"
+	return envpolicy.Get("SCENERY_DEV_SUPERVISOR") == "1"
 }
 
 func printRuntimeBanner(out io.Writer, listenAddr string, info StandaloneDevInfo) {
@@ -244,9 +244,9 @@ func printRuntimeBanner(out io.Writer, listenAddr string, info StandaloneDevInfo
 		apiURL = info.APIURL
 	}
 
-	title := "onlava server running!"
+	title := "scenery server running!"
 	if info.APIURL != "" || info.ConsoleURL != "" || len(info.FrontendURLs) > 0 {
-		title = "onlava development server running!"
+		title = "scenery development server running!"
 	}
 
 	lines := []string{

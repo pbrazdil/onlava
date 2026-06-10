@@ -4,12 +4,12 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The dev-event plane is now VictoriaLogs-backed for CLI and console reads. The local dashboard/session metadata store is JSON-backed, and onlava no longer carries an embedded SQL driver dependency for local dev state.
+The dev-event plane is now VictoriaLogs-backed for CLI and console reads. The local dashboard/session metadata store is JSON-backed, and scenery no longer carries an embedded SQL driver dependency for local dev state.
 
 ## Progress
 
 - [x] 2026-05-31: Created this ExecPlan and linked it from `docs/plans/active.md`.
-- [x] 2026-06-01: Added a shared dev-event reader path for `onlava logs`, `onlava attach`, `onlava attach --tui`, and `onlava console`.
+- [x] 2026-06-01: Added a shared dev-event reader path for `scenery logs`, `scenery attach`, `scenery attach --tui`, and `scenery console`.
 - [x] 2026-06-01: Removed the migration-only log comparison command and the legacy local dev-event read backend.
 - [x] 2026-06-01: Made `--backend auto` and `--backend victoria` select the VictoriaLogs read path.
 - [x] 2026-06-01: Moved dev-event ID assignment to the producer path before VictoriaLogs export.
@@ -49,12 +49,12 @@ The module graph and active source/docs no longer reference an embedded local SQ
 Relevant files:
 
 ```text
-cmd/onlava/logs.go
-cmd/onlava/dev_event_backend.go
-cmd/onlava/dev_event_ids.go
-cmd/onlava/dev_supervisor.go
-cmd/onlava/dev_frontends.go
-cmd/onlava/victoria_query.go
+cmd/scenery/logs.go
+cmd/scenery/dev_event_backend.go
+cmd/scenery/dev_event_ids.go
+cmd/scenery/dev_supervisor.go
+cmd/scenery/dev_frontends.go
+cmd/scenery/victoria_query.go
 internal/devdash/store.go
 internal/devdash/dev_events.go
 docs/local-contract.md
@@ -62,11 +62,11 @@ docs/local-contract.md
 
 Current contract:
 
-- `onlava logs`, `onlava attach`, `onlava attach --tui`, and `onlava console` read structured dev events from VictoriaLogs.
+- `scenery logs`, `scenery attach`, `scenery attach --tui`, and `scenery console` read structured dev events from VictoriaLogs.
 - `--backend auto` and `--backend victoria` are equivalent for the current read path.
 - Dev-event IDs are assigned before export.
 - Dashboard session metadata, process events, saved requests, and compatibility observability snapshots live in `devdash.json`.
-- `onlava prune` does not delete VictoriaLogs storage.
+- `scenery prune` does not delete VictoriaLogs storage.
 
 ## Milestones
 
@@ -96,10 +96,10 @@ The completed work removed the obsolete local dev-event backend, moved event IDs
 Latest validation on 2026-06-01:
 
 ```sh
-go test ./internal/devdash ./cmd/onlava
+go test ./internal/devdash ./cmd/scenery
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 git diff --check
 go list -m all | rg -n "sqlite|modernc"
 go list -deps ./... | rg -n "sqlite|modernc"
@@ -117,7 +117,7 @@ The test, install, and diff commands passed. The dependency and active-tree scan
 
 ## Artifacts and Notes
 
-- `.onlava/harness/self-latest.json` records the latest self-harness result.
+- `.scenery/harness/self-latest.json` records the latest self-harness result.
 - `devdash.json` is runtime cache state and must not be committed.
 - `docs/plans/0056-dev-event-backend-cutover-and-parity.md` is the completed plan record for this migration.
 
@@ -126,9 +126,9 @@ The test, install, and diff commands passed. The dependency and active-tree scan
 Public CLI surface:
 
 ```sh
-onlava logs --backend auto|victoria
-onlava console --backend auto|victoria
-onlava attach --tui --backend auto|victoria
+scenery logs --backend auto|victoria
+scenery console --backend auto|victoria
+scenery attach --tui --backend auto|victoria
 ```
 
 The implementation uses the Go standard library for local dashboard/session metadata persistence and does not add a replacement database dependency.

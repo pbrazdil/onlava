@@ -26,8 +26,8 @@ function TraceGrafanaHandoff({ traceId, spanId }: { traceId?: string; spanId?: s
 
   return (
     <div
-      data-onlava-ui="TracesRoute"
-      data-onlava-trace-count={traces.length}
+      data-scenery-ui="TracesRoute"
+      data-scenery-trace-count={traces.length}
       className="h-[calc(100vh-var(--header-height))] overflow-auto"
     >
       <div className="px-8 py-6">
@@ -65,18 +65,18 @@ function TraceGrafanaHandoff({ traceId, spanId }: { traceId?: string; spanId?: s
               <h2 className="text-base font-medium">Recent traces</h2>
               {traces.length === 0 ? (
                 <p
-                  data-onlava-ui="TraceEmptyState"
-                  data-onlava-state="intentional-empty"
+                  data-scenery-ui="TraceEmptyState"
+                  data-scenery-state="intentional-empty"
                   className="mt-4 text-sm text-muted-foreground"
                 >
                   No local traces recorded yet.
                 </p>
               ) : (
-                <div data-onlava-ui="TraceTable" className="mt-4 divide-y divide-border">
+                <div data-scenery-ui="TraceTable" className="mt-4 divide-y divide-border">
                   {traces.slice(0, 25).map((item) => (
                     <Link
                       key={`${item.trace_id}-${item.span_id}`}
-                      data-onlava-ui="TraceTableRow"
+                      data-scenery-ui="TraceTableRow"
                       to="/$appId/envs/local/traces/$traceId"
                       params={{ appId, traceId: item.trace_id }}
                       className="grid grid-cols-[minmax(180px,1fr)_120px_120px] gap-4 py-3 text-sm transition-colors hover:text-foreground"
@@ -101,7 +101,7 @@ function TraceGrafanaHandoff({ traceId, spanId }: { traceId?: string; spanId?: s
           ) : null}
 
           {traceId ? (
-            <section data-onlava-ui="TraceDetail" className="rounded-md border border-border p-6">
+            <section data-scenery-ui="TraceDetail" className="rounded-md border border-border p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h2 className="text-base font-medium">Selected Trace</h2>

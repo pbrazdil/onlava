@@ -4,18 +4,18 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-`SKILL.md` is the installable onlava entrypoint for agents, for example through:
+`SKILL.md` is the installable scenery entrypoint for agents, for example through:
 
 ```sh
-npx skills add https://github.com/pbrazdil/onlava
+npx skills add https://github.com/scenery-sh/scenery
 ```
 
-It must describe how to use the current onlava platform, not only the original core app/runtime slice. The skill should stay short enough to be usable as a skill, but it needs to route agents to the current source docs for data-platform, dashboard, harness, UI registry, standard auth, and ONLV layout migration workflows.
+It must describe how to use the current scenery platform, not only the original core app/runtime slice. The skill should stay short enough to be usable as a skill, but it needs to route agents to the current source docs for data-platform, dashboard, harness, UI registry, standard auth, and ONLV layout migration workflows.
 
 The goal is:
 
 ```text
-agent installs onlava skill
+agent installs scenery skill
         |
         v
 agent learns current capabilities and validation commands
@@ -41,7 +41,7 @@ Record discoveries here as work proceeds.
 Known starting discoveries:
 
 * `SKILL.md` still focuses on the older core app/runtime flow and does not cover the current data platform, dashboard Data Explorer, browser UI harness, UI registry guardrails, import/export, search, auth tenant permissions, or ONLV layout migration.
-* `docs/local-contract.md` already documents many newer surfaces, including `onlava harness ui --json`, `onlava inspect data --json`, `github.com/pbrazdil/onlava/data`, Data Explorer, UI static architecture checks, relationships, saved views, import/export, search, and standard-auth data tenant permissions.
+* `docs/local-contract.md` already documents many newer surfaces, including `scenery harness ui --json`, `scenery inspect data --json`, `scenery.sh/data`, Data Explorer, UI static architecture checks, relationships, saved views, import/export, search, and standard-auth data tenant permissions.
 * `docs/knowledge.json` and `docs/index.md` are the right source-of-truth entrypoints for routing agents to deeper docs.
 * `SKILL.md` was short enough to update in place. The new cookbook and runbook now carry deeper operational detail.
 
@@ -59,7 +59,7 @@ Known starting discoveries:
 
 Completed on 2026-05-09.
 
-`SKILL.md` now covers current onlava workflows: app runtime, data platform, standard auth tenant permissions, Data Explorer, browser UI harness, UI registry guardrails, ONLV layout migration expectations, and validation command matrices. It links to `docs/local-contract.md`, `docs/app-development-cookbook.md`, `docs/data-platform.md`, `docs/data-platform-runbook.md`, `docs/ui-agent-contract.md`, and `docs/plans/active.md`.
+`SKILL.md` now covers current scenery workflows: app runtime, data platform, standard auth tenant permissions, Data Explorer, browser UI harness, UI registry guardrails, ONLV layout migration expectations, and validation command matrices. It links to `docs/local-contract.md`, `docs/app-development-cookbook.md`, `docs/data-platform.md`, `docs/data-platform-runbook.md`, `docs/ui-agent-contract.md`, and `docs/plans/active.md`.
 
 ## Context and Orientation
 
@@ -74,28 +74,28 @@ docs/data-platform.md
 docs/ui-agent-contract.md
 docs/plans/active.md
 docs/plans/0026-onlv-layout-migration.md
-cmd/onlava/*harness*
+cmd/scenery/*harness*
 internal/datainspect/*
 data/*
 ui/components.json
-ui/scripts/onlava-shadcn.mjs
+ui/scripts/scenery-shadcn.mjs
 ```
 
 The skill should mention the current surfaces that agents actually use:
 
 ```text
-onlava run
-onlava dev
-onlava check --json
-onlava inspect *
-onlava inspect data --json
-onlava harness --json --write
-onlava harness self --json --write
-onlava harness ui --json
-github.com/pbrazdil/onlava/data
-github.com/pbrazdil/onlava/auth
-@onlava/* UI registry
-bun run shadcn:add @onlava/<item>
+scenery run
+scenery dev
+scenery check --json
+scenery inspect *
+scenery inspect data --json
+scenery harness --json --write
+scenery harness self --json --write
+scenery harness ui --json
+scenery.sh/data
+scenery.sh/auth
+@scenery/* UI registry
+bun run shadcn:add @scenery/<item>
 ```
 
 ## Scope
@@ -157,11 +157,11 @@ Add practical snippets for:
 ```text
 data.Open
 CreateObject/CreateField/CreateRecord/QueryRecords
-onlava inspect data --json
+scenery inspect data --json
 auth.CurrentAuthData
 data.StandardAuthPermissions
-onlava harness ui --json
-bun run shadcn:add @onlava/<item>
+scenery harness ui --json
+bun run shadcn:add @scenery/<item>
 ```
 
 Acceptance:
@@ -178,8 +178,8 @@ Add a command matrix for app work, repo work, UI work, data-platform work, and r
 Acceptance:
 
 ```text
-- onlava repo work includes go test ./..., go install ./cmd/onlava, and self-harness
-- target app work includes onlava check --json and onlava harness --json --write when practical
+- scenery repo work includes go test ./..., go install ./cmd/scenery, and self-harness
+- target app work includes scenery check --json and scenery harness --json --write when practical
 - UI work includes bun typecheck/test/build where applicable
 ```
 
@@ -190,7 +190,7 @@ Start by reading `SKILL.md` and the current contract docs. Update only the skill
 Prefer a structure like:
 
 ```text
-What onlava is
+What scenery is
 Core app workflow
 Data platform workflow
 Auth workflow
@@ -220,12 +220,12 @@ Where to read next
 
 ## Validation and Acceptance
 
-Run from the onlava repo root:
+Run from the scenery repo root:
 
 ```sh
-onlava inspect docs --json
-onlava harness self --json --write
-go install ./cmd/onlava
+scenery inspect docs --json
+scenery harness self --json --write
+go install ./cmd/scenery
 ```
 
 Acceptance criteria:
@@ -241,7 +241,7 @@ Acceptance criteria:
 
 This is a docs-only plan. If the skill becomes too long, split operational detail into `docs/app-development-cookbook.md` or `docs/data-platform-runbook.md` and link to those documents.
 
-Do not remove old core-runtime guidance unless it is wrong. Prefer updating it to modern onlava naming and adding a "read next" link.
+Do not remove old core-runtime guidance unless it is wrong. Prefer updating it to modern scenery naming and adding a "read next" link.
 
 ## Artifacts and Notes
 
@@ -249,7 +249,7 @@ Expected changed artifacts:
 
 ```text
 SKILL.md
-.onlava/harness/self-latest.json
+.scenery/harness/self-latest.json
 ```
 
 Potential follow-up artifacts from later plans:
@@ -267,9 +267,9 @@ No new runtime dependencies are expected.
 The skill must reference public or documented surfaces only:
 
 ```text
-cmd/onlava CLI
-github.com/pbrazdil/onlava/data
-github.com/pbrazdil/onlava/auth
+cmd/scenery CLI
+scenery.sh/data
+scenery.sh/auth
 docs/local-contract.md
 docs/data-platform.md
 docs/ui-agent-contract.md

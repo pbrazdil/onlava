@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/runtimeapi"
-	"github.com/pbrazdil/onlava/internal/wiremodel"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/runtimeapi"
+	"scenery.sh/internal/wiremodel"
 )
 
 type TypeScriptOptions struct {

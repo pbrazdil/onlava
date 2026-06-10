@@ -3,9 +3,9 @@ package agent
 import "time"
 
 const (
-	SessionSchemaVersion   = "onlava.dev.session.v1"
-	SubstrateSchemaVersion = "onlava.dev.substrate.v1"
-	StateSchemaVersion     = "onlava.agent.state.v1"
+	SessionSchemaVersion   = "scenery.dev.session.v1"
+	SubstrateSchemaVersion = "scenery.dev.substrate.v1"
+	StateSchemaVersion     = "scenery.agent.state.v1"
 
 	RouteAPI       = "api"
 	RouteDashboard = "dashboard"

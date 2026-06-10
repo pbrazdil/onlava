@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/pbrazdil/onlava/internal/redact"
+	"scenery.sh/internal/redact"
 )
 
 type ErrCode string

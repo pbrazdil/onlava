@@ -10,9 +10,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/runtimeapi"
-	"github.com/pbrazdil/onlava/internal/wiremodel"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/runtimeapi"
+	"scenery.sh/internal/wiremodel"
 )
 
 func BuildMetadataSnapshot(app *model.App) (json.RawMessage, error) {
@@ -532,7 +532,7 @@ func buildType(typ types.Type, seen map[types.Type]bool) map[string]any {
 				"doc":               "",
 				"typ":               buildType(field.Type(), seen),
 				"json_name":         jsonName(field.Name(), tag),
-				"optional":          tagContains(tag, `onlava:"optional"`),
+				"optional":          tagContains(tag, `scenery:"optional"`),
 				"query_string_name": "",
 				"raw_tag":           tag,
 				"tags":              parseTags(tag),
@@ -618,7 +618,7 @@ func jsonName(name, tag string) string {
 func parseTags(raw string) []map[string]any {
 	var tags []map[string]any
 	structTag := reflect.StructTag(raw)
-	for _, key := range []string{"json", "query", "qs", "header", "cookie", "onlava"} {
+	for _, key := range []string{"json", "query", "qs", "header", "cookie", "scenery"} {
 		value, ok := structTag.Lookup(key)
 		if !ok {
 			continue

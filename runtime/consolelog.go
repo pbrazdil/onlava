@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pbrazdil/onlava/errs"
-	"github.com/pbrazdil/onlava/internal/redact"
-	"github.com/pbrazdil/onlava/internal/stdlog"
-	"github.com/pbrazdil/onlava/internal/termstyle"
+	"scenery.sh/errs"
+	"scenery.sh/internal/redact"
+	"scenery.sh/internal/stdlog"
+	"scenery.sh/internal/termstyle"
 )
 
 const levelTrace = slog.Level(-8)
@@ -22,8 +22,8 @@ const levelTrace = slog.Level(-8)
 func init() {
 	stdlog.Install(osStderr())
 	log.SetFlags(log.LstdFlags)
-	// Install the onlava console logger before generated package init code runs.
-	slog.SetDefault(slog.New(newOnlavaConsoleHandler(osStderr())))
+	// Install the scenery console logger before generated package init code runs.
+	slog.SetDefault(slog.New(newSceneryConsoleHandler(osStderr())))
 }
 
 type consoleAttr struct {
@@ -31,7 +31,7 @@ type consoleAttr struct {
 	value string
 }
 
-type onlavaConsoleHandler struct {
+type sceneryConsoleHandler struct {
 	out      io.Writer
 	minLevel slog.Level
 	palette  termstyle.Palette
@@ -40,8 +40,8 @@ type onlavaConsoleHandler struct {
 	groups   []string
 }
 
-func newOnlavaConsoleHandler(out io.Writer) slog.Handler {
-	return &onlavaConsoleHandler{
+func newSceneryConsoleHandler(out io.Writer) slog.Handler {
+	return &sceneryConsoleHandler{
 		out:      out,
 		minLevel: levelTrace,
 		palette:  termstyle.New(out),
@@ -49,11 +49,11 @@ func newOnlavaConsoleHandler(out io.Writer) slog.Handler {
 	}
 }
 
-func (h *onlavaConsoleHandler) Enabled(_ context.Context, level slog.Level) bool {
+func (h *sceneryConsoleHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.minLevel
 }
 
-func (h *onlavaConsoleHandler) Handle(_ context.Context, record slog.Record) error {
+func (h *sceneryConsoleHandler) Handle(_ context.Context, record slog.Record) error {
 	if state := currentState(); state != nil && !state.logsEnabled {
 		return nil
 	}
@@ -68,13 +68,13 @@ func (h *onlavaConsoleHandler) Handle(_ context.Context, record slog.Record) err
 	return err
 }
 
-func (h *onlavaConsoleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *sceneryConsoleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	next := *h
 	next.attrs = append(append([]slog.Attr(nil), h.attrs...), attrs...)
 	return &next
 }
 
-func (h *onlavaConsoleHandler) WithGroup(name string) slog.Handler {
+func (h *sceneryConsoleHandler) WithGroup(name string) slog.Handler {
 	if strings.TrimSpace(name) == "" {
 		return h
 	}
@@ -83,7 +83,7 @@ func (h *onlavaConsoleHandler) WithGroup(name string) slog.Handler {
 	return &next
 }
 
-func (h *onlavaConsoleHandler) collectAttrs(record slog.Record) []consoleAttr {
+func (h *sceneryConsoleHandler) collectAttrs(record slog.Record) []consoleAttr {
 	attrs := make([]consoleAttr, 0, len(h.attrs)+record.NumAttrs())
 	for _, attr := range h.attrs {
 		h.appendAttr(&attrs, h.groups, attr)
@@ -95,7 +95,7 @@ func (h *onlavaConsoleHandler) collectAttrs(record slog.Record) []consoleAttr {
 	return attrs
 }
 
-func (h *onlavaConsoleHandler) appendAttr(dst *[]consoleAttr, groups []string, attr slog.Attr) {
+func (h *sceneryConsoleHandler) appendAttr(dst *[]consoleAttr, groups []string, attr slog.Attr) {
 	attr.Value = attr.Value.Resolve()
 	if attr.Equal(slog.Attr{}) {
 		return
@@ -128,12 +128,12 @@ func (h *onlavaConsoleHandler) appendAttr(dst *[]consoleAttr, groups []string, a
 	})
 }
 
-func (h *onlavaConsoleHandler) formatRecord(record slog.Record, attrs []consoleAttr) string {
-	if record.Message == "onlava secrets missing" {
+func (h *sceneryConsoleHandler) formatRecord(record slog.Record, attrs []consoleAttr) string {
+	if record.Message == "scenery secrets missing" {
 		return h.formatSecretsWarning(attrs)
 	}
 	level := h.levelLabel(record.Level)
-	message := strings.TrimSpace(strings.TrimPrefix(record.Message, "onlava "))
+	message := strings.TrimSpace(strings.TrimPrefix(record.Message, "scenery "))
 	if message == "" {
 		message = record.Message
 	}
@@ -158,7 +158,7 @@ func (h *onlavaConsoleHandler) formatRecord(record slog.Record, attrs []consoleA
 	return b.String()
 }
 
-func (h *onlavaConsoleHandler) formatSecretsWarning(attrs []consoleAttr) string {
+func (h *sceneryConsoleHandler) formatSecretsWarning(attrs []consoleAttr) string {
 	var fields []string
 	for _, attr := range attrs {
 		if attr.key == "fields" {
@@ -178,13 +178,13 @@ func (h *onlavaConsoleHandler) formatSecretsWarning(attrs []consoleAttr) string 
 	b.WriteString(" undefined secrets are left empty for local development only.")
 	b.WriteByte('\n')
 	b.WriteString(h.palette.Dim("see "))
-	b.WriteString(h.palette.Dim("https://github.com/pbrazdil/onlava/docs/primitives/secrets"))
+	b.WriteString(h.palette.Dim("https://github.com/scenery-sh/scenery/docs/primitives/secrets"))
 	b.WriteString(h.palette.Dim(" for more information"))
 	b.WriteByte('\n')
 	return b.String()
 }
 
-func (h *onlavaConsoleHandler) levelLabel(level slog.Level) string {
+func (h *sceneryConsoleHandler) levelLabel(level slog.Level) string {
 	switch {
 	case level <= levelTrace:
 		return h.palette.Blue("TRC")

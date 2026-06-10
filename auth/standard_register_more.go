@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/pbrazdil/onlava/runtime"
+	"scenery.sh/runtime"
 )
 
 func registerStandardOrganizations() {

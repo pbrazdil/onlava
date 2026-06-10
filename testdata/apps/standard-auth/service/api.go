@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	onlavaauth "github.com/pbrazdil/onlava/auth"
-	"github.com/pbrazdil/onlava/errs"
+	sceneryauth "scenery.sh/auth"
+	"scenery.sh/errs"
 )
 
 type MeResponse struct {
@@ -12,9 +12,9 @@ type MeResponse struct {
 	TenantID string `json:"tenant_id"`
 }
 
-//onlava:api auth method=GET path=/whoami
+//scenery:api auth method=GET path=/whoami
 func Whoami(ctx context.Context) (*MeResponse, error) {
-	data, ok := onlavaauth.CurrentAuthData()
+	data, ok := sceneryauth.CurrentAuthData()
 	if !ok {
 		return nil, errs.B().Code(errs.Unauthenticated).Msg("missing auth").Err()
 	}

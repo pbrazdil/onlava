@@ -22,8 +22,8 @@ export function HomePage() {
 
   return (
     <main
-      data-onlava-ui="DashboardHome"
-      data-onlava-service-count={cards.length}
+      data-scenery-ui="DashboardHome"
+      data-scenery-service-count={cards.length}
       className="h-[calc(100vh-var(--header-height))] overflow-auto"
     >
       <div className="mx-auto w-full max-w-7xl px-8 py-8">
@@ -41,7 +41,7 @@ export function HomePage() {
 
         {cards.length > 0 ? (
           <section
-            data-onlava-ui="DashboardHomeServiceRoutes"
+            data-scenery-ui="DashboardHomeServiceRoutes"
             className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
           >
             {cards.map((card) => (
@@ -71,8 +71,8 @@ export function HomePage() {
           </section>
         ) : (
           <section
-            data-onlava-ui="DashboardHomeNoServiceRoutes"
-            data-onlava-state="intentional-empty"
+            data-scenery-ui="DashboardHomeNoServiceRoutes"
+            data-scenery-state="intentional-empty"
             className="rounded-md border border-border px-5 py-6 text-sm text-muted-foreground"
           >
             No public service URLs are available.

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/runtime/shared"
 )
 
 func TestInitializeServicesRunsInParallel(t *testing.T) {
@@ -109,7 +109,7 @@ func TestShutdownServicesRunsInReverseInitializerOrder(t *testing.T) {
 }
 
 func TestDefaultEnvironmentUsesTestMode(t *testing.T) {
-	t.Setenv("ONLAVA_RUNTIME_ENV", "test")
+	t.Setenv("SCENERY_RUNTIME_ENV", "test")
 	env := defaultEnvironment()
 	if env.Name != "test" {
 		t.Fatalf("defaultEnvironment().Name = %q, want %q", env.Name, "test")
@@ -126,7 +126,7 @@ func TestSetAppConfigUsesTestEnvironment(t *testing.T) {
 	restore := replaceGlobalRegistryForTest()
 	defer restore()
 
-	t.Setenv("ONLAVA_RUNTIME_ENV", "test")
+	t.Setenv("SCENERY_RUNTIME_ENV", "test")
 	SetAppConfig(AppConfig{Name: "testapp", ListenAddr: "127.0.0.1:4000"})
 	meta := Meta()
 	if meta.Environment.Type != shared.EnvTest {
@@ -141,9 +141,9 @@ func TestSetAppConfigUsesSessionIdentityEnv(t *testing.T) {
 	restore := replaceGlobalRegistryForTest()
 	defer restore()
 
-	t.Setenv("ONLAVA_BASE_APP_ID", "demo")
-	t.Setenv("ONLAVA_RUNTIME_APP_ID", "demo--feature-a")
-	t.Setenv("ONLAVA_SESSION_ID", "feature-a-123abc")
+	t.Setenv("SCENERY_BASE_APP_ID", "demo")
+	t.Setenv("SCENERY_RUNTIME_APP_ID", "demo--feature-a")
+	t.Setenv("SCENERY_SESSION_ID", "feature-a-123abc")
 	SetAppConfig(AppConfig{Name: "demo", ListenAddr: "127.0.0.1:4000"})
 	meta := Meta()
 	if meta.AppID != "demo" {

@@ -32,15 +32,15 @@ func TestUseDefaultShardsOnlyForDefaultInvocation(t *testing.T) {
 	}
 }
 
-func TestShardedCmdOnlavaRegexesCoverNameBucketsOnce(t *testing.T) {
+func TestShardedCmdSceneryRegexesCoverNameBucketsOnce(t *testing.T) {
 	samples := []string{
 		"TestAgentRouterTLSDefaultsOn",
 		"TestEnsureTypeScriptWorkerDependenciesRunsBunInstallAndWritesMarker",
-		"TestFindOnlavaRepoRoot",
+		"TestFindSceneryRepoRoot",
 		"TestManagedElectricBackendsAndEnv",
-		"TestOnlavaTestRunsGoTestInGeneratedWorkspace",
+		"TestSceneryTestRunsGoTestInGeneratedWorkspace",
 		"TestPrepareDevAgentSessionDefaultsToUnixBackend",
-		"TestRunOnlavaCheckJSONSuccess",
+		"TestRunSceneryCheckJSONSuccess",
 		"TestStatusAndDownCommandsUseAgent",
 		"TestTypeScriptWorkerEnvUsesTemporalAndSessionOverrides",
 		"TestVictoriaEnabledDefaultsToTrue",
@@ -49,7 +49,7 @@ func TestShardedCmdOnlavaRegexesCoverNameBucketsOnce(t *testing.T) {
 	}
 	for _, sample := range samples {
 		matches := 0
-		for _, pattern := range shardedCmdOnlavaDefaultRegexes {
+		for _, pattern := range shardedCmdSceneryDefaultRegexes {
 			ok, err := regexp.MatchString(pattern, sample)
 			if err != nil {
 				t.Fatalf("invalid regex %q: %v", pattern, err)

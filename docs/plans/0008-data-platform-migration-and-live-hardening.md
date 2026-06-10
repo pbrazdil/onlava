@@ -24,7 +24,7 @@ record mutations + transactional outbox
 live query matching using before/after/delete semantics
 ```
 
-Success means the migration layer fails clearly and recovers predictably, live updates handle list-view edge cases, and the public `github.com/pbrazdil/onlava/data` API is cleaned up before accidental beta shapes become hard to change.
+Success means the migration layer fails clearly and recovers predictably, live updates handle list-view edge cases, and the public `scenery.sh/data` API is cleaned up before accidental beta shapes become hard to change.
 
 ## Progress
 
@@ -42,7 +42,7 @@ Success means the migration layer fails clearly and recovers predictably, live u
 ## Surprises & Discoveries
 
 - `0007` local PostgreSQL validation exposed that subscribing from seq 0 replays metadata outbox rows before `ready`. The vertical-slice test now subscribes from the record query watermark when it wants live-only behavior.
-- Root-level `go test ./testdata/...` does not cross into fixture app modules. Use `onlava check --app-root testdata/apps/data-platform --json` for fixture validation from the repository root.
+- Root-level `go test ./testdata/...` does not cross into fixture app modules. Use `scenery check --app-root testdata/apps/data-platform --json` for fixture validation from the repository root.
 - Repeated create semantics need to verify physical schema before returning existing metadata. Otherwise idempotent retries can hide manual schema drift.
 - SSE heartbeat is now covered by lowering the package heartbeat interval inside the integration test; production still uses the 25 second default.
 
@@ -174,7 +174,7 @@ Add tests for matching update delivery, non-matching update suppression, reconne
 
 Milestone 4: Public `data` API cleanup.
 
-Shape `github.com/pbrazdil/onlava/data` around app-facing concepts and hide internals. Keep physical names inspectable but not primary API. Add helpers for common filter construction and sort direction if they improve readability.
+Shape `scenery.sh/data` around app-facing concepts and hide internals. Keep physical names inspectable but not primary API. Add helpers for common filter construction and sort direction if they improve readability.
 
 Milestone 5: Fixture walkthrough and final validation.
 
@@ -245,9 +245,9 @@ Required validation:
 ```sh
 go test ./...
 go test ./internal/objectstore -count=1
-go run ./cmd/onlava check --app-root testdata/apps/data-platform --json
-go install ./cmd/onlava
-onlava harness self --json --write
+go run ./cmd/scenery check --app-root testdata/apps/data-platform --json
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Focused test acceptance:
@@ -268,7 +268,7 @@ Focused test acceptance:
 
 Public API acceptance:
 
-- `github.com/pbrazdil/onlava/data` exposes app-facing concepts, not implementation internals.
+- `scenery.sh/data` exposes app-facing concepts, not implementation internals.
 - Fixture app code reads cleanly and uses the public package rather than `internal/objectstore`.
 - Physical names remain available through inspect output, not as primary public API.
 
@@ -307,12 +307,12 @@ Do not add:
 
 ## Interfaces and Dependencies
 
-No new external runtime dependencies should be needed. Use existing PostgreSQL, pgx, and onlava test helpers.
+No new external runtime dependencies should be needed. Use existing PostgreSQL, pgx, and scenery test helpers.
 
 The public package remains:
 
 ```go
-import "github.com/pbrazdil/onlava/data"
+import "scenery.sh/data"
 ```
 
 Potential public helpers to add:

@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	onlava "github.com/pbrazdil/onlava"
-	"github.com/pbrazdil/onlava/errs"
+	scenery "scenery.sh"
+	"scenery.sh/errs"
 )
 
 const maxDevBootstrapClaimLength = 200
@@ -28,8 +28,8 @@ func DevBootstrap(ctx context.Context, params *DevBootstrapParams) (*AuthRespons
 	if !cfg.Enabled {
 		return nil, errs.B().Code(errs.NotFound).Msg("endpoint not found").Err()
 	}
-	meta := onlava.Meta()
-	if meta.Environment.Cloud != onlava.CloudLocal {
+	meta := scenery.Meta()
+	if meta.Environment.Cloud != scenery.CloudLocal {
 		return nil, errs.B().Code(errs.PermissionDenied).Msg("dev bootstrap is only allowed in local environments").Err()
 	}
 

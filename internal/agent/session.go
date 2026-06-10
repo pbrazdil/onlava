@@ -64,7 +64,7 @@ func NewSession(req RegisterRequest, routerAddr, routerScheme string, existing *
 	if owner.PID == 0 && existing != nil && existing.Owner.PID > 0 && (ownerPID == 0 || ownerPID == existing.Owner.PID || ownerPID == existing.OwnerPID) {
 		owner = existing.Owner
 	}
-	owner = OwnerFromRequest(ownerPID, owner, "onlava up")
+	owner = OwnerFromRequest(ownerPID, owner, "scenery up")
 	processes := processesForSession(req.Processes, currentProcesses(existing))
 	if strings.TrimSpace(req.AppPID) != "" {
 		pid := parseProcessPID(req.AppPID)
@@ -76,7 +76,7 @@ func NewSession(req RegisterRequest, routerAddr, routerScheme string, existing *
 			if process.PID != pid {
 				process = Process{PID: pid}
 			}
-			process.Owner = OwnerFromRequest(pid, process.Owner, "onlava up api")
+			process.Owner = OwnerFromRequest(pid, process.Owner, "scenery up api")
 			processes[RouteAPI] = process
 		}
 	}
@@ -279,7 +279,7 @@ func processesForSession(requested, existing map[string]Process) map[string]Proc
 		if existingProcess, ok := existing[name]; ok && existingProcess.PID == process.PID && process.Owner.PID == 0 {
 			process.Owner = existingProcess.Owner
 		}
-		process.Owner = OwnerFromRequest(process.PID, process.Owner, "onlava up "+name)
+		process.Owner = OwnerFromRequest(process.PID, process.Owner, "scenery up "+name)
 		processes[name] = process
 	}
 	if len(processes) == 0 {

@@ -11,7 +11,7 @@ import {
 } from "./AppSurface";
 
 describe("AppSurface", () => {
-  it("renders stable app layout markers with onlava app chrome classes", () => {
+  it("renders stable app layout markers with scenery app chrome classes", () => {
     const { container } = render(
       <div>
         <AppSidebar>Sidebar</AppSidebar>
@@ -25,12 +25,12 @@ describe("AppSurface", () => {
       </div>,
     );
 
-    const sidebar = container.querySelector('[data-onlava-ui="AppSidebar"]');
-    const main = container.querySelector('[data-onlava-ui="AppMain"]');
-    const header = container.querySelector('[data-onlava-ui="AppHeader"]');
-    const toolbar = container.querySelector('[data-onlava-ui="AppToolbar"]');
-    const panel = container.querySelector('[data-onlava-ui="AppPanel"]');
-    const meta = container.querySelector('[data-onlava-ui="AppMetaBox"]');
+    const sidebar = container.querySelector('[data-scenery-ui="AppSidebar"]');
+    const main = container.querySelector('[data-scenery-ui="AppMain"]');
+    const header = container.querySelector('[data-scenery-ui="AppHeader"]');
+    const toolbar = container.querySelector('[data-scenery-ui="AppToolbar"]');
+    const panel = container.querySelector('[data-scenery-ui="AppPanel"]');
+    const meta = container.querySelector('[data-scenery-ui="AppMetaBox"]');
 
     expect(sidebar?.tagName).toBe("ASIDE");
     expect(main?.tagName).toBe("MAIN");
@@ -59,8 +59,8 @@ describe("AppSurface", () => {
       </AppTwoPane>,
     );
 
-    expect(container.querySelector('[data-onlava-ui="AppTwoPane"]')).toBeTruthy();
-    expect(container.querySelector('[data-onlava-ui="AppFilterControl"]')).toBeTruthy();
+    expect(container.querySelector('[data-scenery-ui="AppTwoPane"]')).toBeTruthy();
+    expect(container.querySelector('[data-scenery-ui="AppFilterControl"]')).toBeTruthy();
     expect(screen.getByText("Stage")).toBeTruthy();
     expect(screen.getByText("Active")).toBeTruthy();
   });

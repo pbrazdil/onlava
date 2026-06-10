@@ -11,12 +11,12 @@ After this work, the runtime receives and exposes the agent session identity, de
 ## Progress
 
 * [x] 2026-05-26: Create this ExecPlan and link it from `docs/plans/active.md`.
-* [x] 2026-05-26: Pass `ONLAVA_SESSION_ID`, `ONLAVA_BASE_APP_ID`, and `ONLAVA_RUNTIME_APP_ID` into dev children.
-* [x] 2026-05-26: Expose session/base/runtime identity fields through `onlava.Meta()` and `/__onlava/config`.
-* [x] 2026-05-26: Add session fields to devdash app records and process output, expose `session_id` in logs JSONL, and support `onlava logs --session <id>`.
+* [x] 2026-05-26: Pass `SCENERY_SESSION_ID`, `SCENERY_BASE_APP_ID`, and `SCENERY_RUNTIME_APP_ID` into dev children.
+* [x] 2026-05-26: Expose session/base/runtime identity fields through `scenery.Meta()` and `/__scenery/config`.
+* [x] 2026-05-26: Add session fields to devdash app records and process output, expose `session_id` in logs JSONL, and support `scenery logs --session <id>`.
 * [x] 2026-05-26: Add session fields to trace/log observability records and JSON inspect surfaces.
 * [x] 2026-05-26: Attach session labels to traces and metrics emitted by the runtime and exported to Victoria.
-* [x] 2026-05-26: Add `--session current|<id>` filters to `onlava logs`, `inspect traces`, and `inspect metrics`.
+* [x] 2026-05-26: Add `--session current|<id>` filters to `scenery logs`, `inspect traces`, and `inspect metrics`.
 * [x] 2026-05-26: Scope local auth URLs and Temporal task queue/deployment/build IDs to the session.
 
 ## Surprises & Discoveries
@@ -25,7 +25,7 @@ Record implementation findings here with commands, test output, or file referenc
 
 * 2026-05-26: Kept `Meta().AppID` as the source app ID for this slice and added `BaseAppID`, `RuntimeAppID`, and `SessionID` as additive metadata. Switching stored devdash app IDs to runtime IDs belongs with the devdash/session filtering milestone so dashboard records do not split unexpectedly.
 * 2026-05-26: Standard auth reads app/API URLs through configurable env names plus fallbacks, so the dev supervisor now sets the configured env names and the fallback names. It also writes empty cookie-domain env overrides so local auth cookies stay host-only when a session URL is active.
-* 2026-05-26: Temporal task queue prefix did not previously have an environment override. Added `ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX` so `onlava dev` can make a session-scoped task queue without mutating `.onlava.json`.
+* 2026-05-26: Temporal task queue prefix did not previously have an environment override. Added `SCENERY_TEMPORAL_TASK_QUEUE_PREFIX` so `scenery dev` can make a session-scoped task queue without mutating `.scenery.json`.
 
 ## Decision Log
 
@@ -43,17 +43,17 @@ Completed on 2026-05-26.
 
 Shipped outcome:
 
-* `onlava dev` passes `ONLAVA_SESSION_ID`, `ONLAVA_BASE_APP_ID`, and `ONLAVA_RUNTIME_APP_ID` into app children and exposes the same identity through `onlava.Meta()` plus `/__onlava/config`.
+* `scenery dev` passes `SCENERY_SESSION_ID`, `SCENERY_BASE_APP_ID`, and `SCENERY_RUNTIME_APP_ID` into app children and exposes the same identity through `scenery.Meta()` plus `/__scenery/config`.
 * Devdash app records, process output, logs JSONL, trace summaries, trace events, log events, inspect traces, and inspect metrics now carry session identity where applicable.
-* `onlava logs --session current|<id>`, `onlava inspect traces --session current|<id> --json`, and `onlava inspect metrics --session current|<id> --json` filter session-scoped local records.
-* Runtime development reports propagate session identity into stored observability events and Victoria trace/log/metric labels, including `onlava.session_id` and `onlava_session_id`.
-* `onlava dev` sets session-scoped standard-auth URL env vars and clears local auth cookie-domain env vars for host-only local cookies.
-* `onlava dev` sets `ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX`, `ONLAVA_TEMPORAL_DEPLOYMENT_NAME`, and `ONLAVA_BUILD_ID` from the active session so local Temporal workers do not share default queues/build IDs.
+* `scenery logs --session current|<id>`, `scenery inspect traces --session current|<id> --json`, and `scenery inspect metrics --session current|<id> --json` filter session-scoped local records.
+* Runtime development reports propagate session identity into stored observability events and Victoria trace/log/metric labels, including `scenery.session_id` and `scenery_session_id`.
+* `scenery dev` sets session-scoped standard-auth URL env vars and clears local auth cookie-domain env vars for host-only local cookies.
+* `scenery dev` sets `SCENERY_TEMPORAL_TASK_QUEUE_PREFIX`, `SCENERY_TEMPORAL_DEPLOYMENT_NAME`, and `SCENERY_BUILD_ID` from the active session so local Temporal workers do not share default queues/build IDs.
 
 Validation:
 
 ```sh
-go test ./cmd/onlava ./internal/devdash ./runtime
+go test ./cmd/scenery ./internal/devdash ./runtime
 go test ./...
 ```
 
@@ -65,9 +65,9 @@ Relevant files:
 
 ```text
 internal/agent/session.go
-cmd/onlava/dev_supervisor.go
-cmd/onlava/logs.go
-cmd/onlava/inspect_observability.go
+cmd/scenery/dev_supervisor.go
+cmd/scenery/logs.go
+cmd/scenery/inspect_observability.go
 internal/devdash/*
 runtime/observability.go
 runtime/current.go
@@ -92,7 +92,7 @@ Keep contracts versioned where schemas already exist. Where schema files cover J
 ## Concrete Steps
 
 1. Extend agent/dev session registration so the supervisor has a stable `session_id` and `runtime_app_id` before launching child processes.
-2. Pass `ONLAVA_SESSION_ID`, `ONLAVA_BASE_APP_ID`, and `ONLAVA_RUNTIME_APP_ID` into app and worker children.
+2. Pass `SCENERY_SESSION_ID`, `SCENERY_BASE_APP_ID`, and `SCENERY_RUNTIME_APP_ID` into app and worker children.
 3. Add nullable session columns/fields to devdash app, process event, and process output records, preserving reads from older local stores.
 4. Add session labels to runtime observability records and update inspect/log schemas where JSON contracts expose those records.
 5. Add `--session current|<id>` filters to logs, traces, and metrics commands.
@@ -104,18 +104,18 @@ Keep contracts versioned where schemas already exist. Where schema files cover J
 Expected validation:
 
 ```sh
-go test ./cmd/onlava ./runtime ./internal/devdash
+go test ./cmd/scenery ./runtime ./internal/devdash
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 git diff --check
 ```
 
 Observable behavior:
 
 * Session manifests and runtime metadata agree on `session_id` and `runtime_app_id`.
-* `onlava logs --session current --json` only returns records for the current session.
-* `onlava inspect traces --session current --json` and `onlava inspect metrics --session current --json` include and filter session labels.
+* `scenery logs --session current --json` only returns records for the current session.
+* `scenery inspect traces --session current --json` and `scenery inspect metrics --session current --json` include and filter session labels.
 * Parallel local Temporal workers use distinct task queues/build IDs by default.
 
 ## Idempotence and Recovery
@@ -127,15 +127,15 @@ Session fields should be optional when reading older devdash stores so existing 
 Expected changed artifacts:
 
 ```text
-cmd/onlava/dev_supervisor.go
-cmd/onlava/logs.go
-cmd/onlava/inspect_observability.go
+cmd/scenery/dev_supervisor.go
+cmd/scenery/logs.go
+cmd/scenery/inspect_observability.go
 internal/devdash/*
 runtime/observability.go
 runtime/temporal*.go
-docs/schemas/onlava.logs.event.v1.schema.json
-docs/schemas/onlava.inspect.traces.v1.schema.json
-docs/schemas/onlava.inspect.metrics.v1.schema.json
+docs/schemas/scenery.logs.event.v1.schema.json
+docs/schemas/scenery.inspect.traces.v1.schema.json
+docs/schemas/scenery.inspect.metrics.v1.schema.json
 ```
 
 ## Interfaces and Dependencies

@@ -89,7 +89,7 @@ func appendResponseFields(body map[string]any, status *int, value reflect.Value,
 			headers.Set(headerName, formatHeaderValue(fieldValue))
 			continue
 		}
-		if hasOnlavaTag(field, "httpstatus") {
+		if hasSceneryTag(field, "httpstatus") {
 			if fieldValue.CanInt() {
 				*status = int(fieldValue.Int())
 			}
@@ -122,7 +122,7 @@ func hasResponseShapeTags(typ reflect.Type) bool {
 		if !field.IsExported() {
 			continue
 		}
-		if field.Tag.Get("header") != "" || hasOnlavaTag(field, "httpstatus") {
+		if field.Tag.Get("header") != "" || hasSceneryTag(field, "httpstatus") {
 			return true
 		}
 		fieldType := field.Type
@@ -181,8 +181,8 @@ func isEmptyJSONValue(value reflect.Value) bool {
 	}
 }
 
-func hasOnlavaTag(field reflect.StructField, want string) bool {
-	tag := field.Tag.Get("onlava")
+func hasSceneryTag(field reflect.StructField, want string) bool {
+	tag := field.Tag.Get("scenery")
 	if tag == "" {
 		return false
 	}

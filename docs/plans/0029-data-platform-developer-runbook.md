@@ -4,14 +4,14 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The beta data platform now spans dynamic metadata, real PostgreSQL schema, indexes, relationships, saved views, search, import/export, standard-auth data tenant permissions, trigger-backed outbox, SSE live updates, dashboard Data Explorer, and `onlava inspect data`.
+The beta data platform now spans dynamic metadata, real PostgreSQL schema, indexes, relationships, saved views, search, import/export, standard-auth data tenant permissions, trigger-backed outbox, SSE live updates, dashboard Data Explorer, and `scenery inspect data`.
 
 `docs/data-platform.md` should remain the conceptual overview. This plan adds an operational runbook that tells developers and agents how to use and debug the platform day to day.
 
 The goal is:
 
 ```text
-developer has DATABASE_URL and an onlava app
+developer has DATABASE_URL and a Scenery app
         |
         v
 developer follows runbook to create objects, query records, inspect schema, and debug outbox/migrations
@@ -38,8 +38,8 @@ Record discoveries here as work proceeds.
 Known starting discoveries:
 
 * `docs/local-contract.md` documents more data-platform behavior than a new agent can comfortably absorb at once.
-* The public package is `github.com/pbrazdil/onlava/data`; internal implementation details live under `internal/objectstore` and should not be the first reader-facing surface.
-* Data-platform workflows need database-specific debugging commands such as `onlava inspect data --json --database-url "$DATABASE_URL"`.
+* The public package is `scenery.sh/data`; internal implementation details live under `internal/objectstore` and should not be the first reader-facing surface.
+* Data-platform workflows need database-specific debugging commands such as `scenery inspect data --json --database-url "$DATABASE_URL"`.
 * `docs/data-platform.md` is already a useful overview, so the new runbook could focus on operations, failure recovery, and caveats.
 
 ## Decision Log
@@ -65,17 +65,17 @@ Relevant files:
 ```text
 docs/data-platform.md
 docs/local-contract.md
-docs/schemas/onlava.inspect.data.v1.schema.json
-docs/schemas/onlava.data.export.v1.schema.json
+docs/schemas/scenery.inspect.data.v1.schema.json
+docs/schemas/scenery.data.export.v1.schema.json
 data/*
 internal/objectstore/*
 internal/datainspect/*
 examples/data-platform/*
 testdata/apps/data-platform/*
-cmd/onlava/*inspect*
+cmd/scenery/*inspect*
 ```
 
-The runbook should document public behavior and debugging flows. It can mention internal packages when explaining validation or tests, but app code should use `github.com/pbrazdil/onlava/data`.
+The runbook should document public behavior and debugging flows. It can mention internal packages when explaining validation or tests, but app code should use `scenery.sh/data`.
 
 ## Scope
 
@@ -180,9 +180,9 @@ Begin with the public `data` package and existing examples. Use `docs/local-cont
 Write command examples that agents can paste:
 
 ```sh
-onlava inspect data --json --database-url "$DATABASE_URL"
-onlava inspect data --json --database-url "$DATABASE_URL" --tenant acme --object company
-ONLAVA_TEST_DATABASE_URL="$DATABASE_URL" go test ./internal/objectstore ./internal/datainspect
+scenery inspect data --json --database-url "$DATABASE_URL"
+scenery inspect data --json --database-url "$DATABASE_URL" --tenant acme --object company
+SCENERY_TEST_DATABASE_URL="$DATABASE_URL" go test ./internal/objectstore ./internal/datainspect
 ```
 
 ## Concrete Steps
@@ -199,13 +199,13 @@ ONLAVA_TEST_DATABASE_URL="$DATABASE_URL" go test ./internal/objectstore ./intern
 
 ## Validation and Acceptance
 
-Run from the onlava repo root:
+Run from the scenery repo root:
 
 ```sh
-onlava inspect docs --json
+scenery inspect docs --json
 go test ./data ./internal/objectstore ./internal/datainspect
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:
@@ -233,7 +233,7 @@ docs/data-platform-runbook.md
 docs/data-platform-recipes.md, optional
 docs/index.md
 docs/knowledge.json
-.onlava/harness/self-latest.json
+.scenery/harness/self-latest.json
 ```
 
 ## Interfaces and Dependencies
@@ -243,9 +243,9 @@ No new runtime dependencies are expected.
 Documented public surfaces:
 
 ```text
-github.com/pbrazdil/onlava/data
-github.com/pbrazdil/onlava/auth
-onlava inspect data --json
-onlava harness self --json --write
-onlava harness --json --write
+scenery.sh/data
+scenery.sh/auth
+scenery inspect data --json
+scenery harness self --json --write
+scenery harness --json --write
 ```

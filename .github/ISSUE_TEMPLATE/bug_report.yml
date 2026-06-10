@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in Onlava.
+description: Report a reproducible problem in Scenery.
 title: "[Bug]: "
 labels: ["bug", "needs-triage"]
 body:
@@ -12,7 +12,7 @@ body:
     attributes:
       label: Summary
       description: What went wrong?
-      placeholder: Onlava failed to...
+      placeholder: Scenery failed to...
     validations:
       required: true
   - type: textarea
@@ -22,7 +22,7 @@ body:
       description: Include commands, files, and URLs when relevant.
       placeholder: |
         1. Create an app with...
-        2. Run `onlava ...`
+        2. Run `scenery ...`
         3. Observe...
     validations:
       required: true
@@ -44,11 +44,11 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Paste the output of `onlava version --json` and include OS/architecture.
+      description: Paste the output of `scenery version --json` and include OS/architecture.
       render: json
       placeholder: |
         {
-          "schema_version": "onlava.version.v1",
+          "schema_version": "scenery.version.v1",
           "version": "...",
           "go_version": "...",
           "module_version": "..."
@@ -59,7 +59,7 @@ body:
     id: diagnostics
     attributes:
       label: Diagnostics
-      description: If possible, include relevant `onlava check --json`, `onlava inspect ... --json`, or `onlava logs` output.
+      description: If possible, include relevant `scenery check --json`, `scenery inspect ... --json`, or `scenery logs` output.
       render: shell
     validations:
       required: false

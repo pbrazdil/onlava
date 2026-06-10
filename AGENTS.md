@@ -1,26 +1,26 @@
-# onlava Agent Instructions
+# scenery Agent Instructions
 
-This file is the repo-local operating manual for AI agents changing `github.com/pbrazdil/onlava`.
+This file is the repo-local operating manual for AI agents changing `scenery.sh`.
 
 Optimize for agents: prefer concise rules, exact commands, and machine-readable contracts over long prose.
 
 ## Core Model
 
-- Onlava runs my app session.
-- Onlava gives me capabilities.
-- Onlava lets agents inspect and act safely.
-- Onlava hides the substrate unless I intentionally debug the substrate.
+- Scenery runs my app session.
+- Scenery gives me capabilities.
+- Scenery lets agents inspect and act safely.
+- Scenery hides the substrate unless I intentionally debug the substrate.
 
 ## Instruction Layers
 
 Use the narrowest current source of truth that applies:
 
-1. `AGENTS.md` gives repo-local rules for changing onlava itself.
-2. `SKILL.md` is the installable skill for agents working inside any onlava app.
+1. `AGENTS.md` gives repo-local rules for changing scenery itself.
+2. `SKILL.md` is the installable skill for agents working inside any scenery app.
 3. `docs/agent-guide.md` explains agent workflows, generated artifacts, and client-app integration.
 4. `docs/local-contract.md` is the contract for CLI grammar, JSON schemas, artifact paths, and stability labels.
 5. `docs/app-development-cookbook.md` gives practical app-building recipes.
-6. `onlava inspect ... --json`, schemas under `docs/schemas/`, and harness command outputs are stronger than old prose when they disagree. Generated files under `.onlava/gen/` are cache, not an API.
+6. `scenery inspect ... --json`, schemas under `docs/schemas/`, and harness command outputs are stronger than old prose when they disagree. Generated files under `.scenery/gen/` are cache, not an API.
 
 When implementation and docs disagree, the same PR must either fix the affected docs or open/update an ExecPlan that records the drift, owner, and intended resolution path.
 
@@ -40,14 +40,14 @@ Before editing non-trivial changes:
 After meaningful changes:
 
 - Update the nearest owning `AGENTS.md` when the change alters durable purpose, ownership, workflow, generated paths, validation commands, quality rules, required inputs/outputs, side effects, or future agent behavior for that subtree.
-- Update this root `AGENTS.md` when the change alters repo-wide rules, instruction layering, public onlava behavior, validation policy, or the child index.
+- Update this root `AGENTS.md` when the change alters repo-wide rules, instruction layering, public scenery behavior, validation policy, or the child index.
 - Keep `docs/knowledge.json`, docs indexes, `SKILL.md`, `docs/agent-guide.md`, and child `AGENTS.md` files synchronized when the same contract is affected.
 - Do not update instruction docs for small implementation-only edits that do not change future agent behavior; still report that instruction docs were intentionally left unchanged.
 
 Child `AGENTS.md` files:
 
 - Add one only when a directory becomes a durable boundary with its own purpose, contracts, workflow, verification, or quality standards.
-- Keep child docs short and operational. Put broad onlava rules here; put concrete local commands and exceptions in the child.
+- Keep child docs short and operational. Put broad scenery rules here; put concrete local commands and exceptions in the child.
 - Preferred section order for new child docs: Purpose, Ownership, Local Contracts, Work Guidance, Verification, Child Agent Index.
 
 ### Child Agent Index
@@ -71,34 +71,34 @@ Use a multi-context domain docs layout with root `CONTEXT-MAP.md` plus per-conte
 
 ## Current Mental Model
 
-onlava is a Go-native service runtime and local development platform. Think in app sessions and capability surfaces first; Grafana, Victoria, Temporal dev server, local proxying, generated cache files, hidden ports, and local stores are substrate details unless the task is explicitly debugging that substrate.
+scenery is a Go-native service runtime and local development platform. Think in app sessions and capability surfaces first; Grafana, Victoria, Temporal dev server, local proxying, generated cache files, hidden ports, and local stores are substrate details unless the task is explicitly debugging that substrate.
 
-- App roots are marked by `.onlava.json`.
+- App roots are marked by `.scenery.json`.
 - Go source is the app model: services, endpoints, auth handlers, middleware, Temporal declarations, cron jobs, and generated clients are discovered from code.
-- `onlava serve` builds once and starts a headless API-role runtime.
-- `onlava task run <domain>:<name> -- [args...]` runs an app-local code task.
-- `onlava worker` builds once and starts a worker-role runtime for cron and native Temporal workers.
-- `onlava up` starts the app session: supervised app process, file watching, dashboard, API explorer, logs, traces, metrics, managed dev services, and optional frontend routing.
+- `scenery serve` builds once and starts a headless API-role runtime.
+- `scenery task run <domain>:<name> -- [args...]` runs an app-local code task.
+- `scenery worker` builds once and starts a worker-role runtime for cron and native Temporal workers.
+- `scenery up` starts the app session: supervised app process, file watching, dashboard, API explorer, logs, traces, metrics, managed dev services, and optional frontend routing.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and must be called through generated helpers.
 - Typed endpoints decode path/query/header/cookie/body inputs into Go values and encode typed responses.
 - Generated internal calls preserve route, private access, auth context, tracing, and error semantics.
 
-Do not revive deprecated non-onlava APIs, legacy directive spellings, or compatibility aliases unless an active plan explicitly requires compatibility.
+Do not revive deprecated non-scenery APIs, legacy directive spellings, or compatibility aliases unless an active plan explicitly requires compatibility.
 
 ## Engineering Rules
 
 - Prefer the Go standard library. Add dependencies only when the payoff is clear and the maintenance surface is justified.
 - Keep public surface small, current, and singular. Remove obsolete spellings instead of carrying compatibility shims.
-- Preserve onlava-native naming: `.onlava.json`, `//onlava:*`, and `github.com/pbrazdil/onlava/...`.
+- Preserve scenery-native naming: `.scenery.json`, `//scenery:*`, and `scenery.sh/...`.
 - Keep generated app models and machine-readable JSON contracts stable. If a JSON shape changes, update schemas, docs, tests, and harness expectations together.
-- Do not commit machine-local state or generated cache output from `.onlava/`, Grafana, Victoria, node modules, coverage, `.DS_Store`, or local environment files.
+- Do not commit machine-local state or generated cache output from `.scenery/`, Grafana, Victoria, node modules, coverage, `.DS_Store`, or local environment files.
 
 ## Before Making Changes
 
 For any non-trivial task:
 
 ```sh
-onlava inspect docs --json
+scenery inspect docs --json
 ```
 
 Use the output's `summary.review_due_count`, document-level `review_due`, and `stale` fields while choosing doc-gardening work.
@@ -124,39 +124,39 @@ For complex features, migrations, multi-hour work, or significant refactors, cre
 Use JSON surfaces for inspection and automation:
 
 ```text
-onlava version --json
-onlava doctor --json
-onlava check --json
-onlava inspect app|routes|services|endpoints|wire|build|paths|docs --json
-onlava inspect temporal --json
-onlava traces list --json
-onlava metrics list --json
-onlava logs --jsonl --limit 200
-onlava harness --json --write
-onlava harness self --summary --write
+scenery version --json
+scenery doctor --json
+scenery check --json
+scenery inspect app|routes|services|endpoints|wire|build|paths|docs --json
+scenery inspect temporal --json
+scenery traces list --json
+scenery metrics list --json
+scenery logs --jsonl --limit 200
+scenery harness --json --write
+scenery harness self --summary --write
 ```
 
-Use `onlava doctor --json` before expensive troubleshooting when the failure may be local environment readiness: missing or old Go, low disk or memory, absent optional tools, or an app root that is not discoverable.
+Use `scenery doctor --json` before expensive troubleshooting when the failure may be local environment readiness: missing or old Go, low disk or memory, absent optional tools, or an app root that is not discoverable.
 
 Use runtime commands according to intent:
 
 ```text
-onlava up [--app-root <path>] [--session <id>|--new-session] [--json] [--detach]
-onlava logs --follow [--app-root <path>] [--session current|<id>] [--jsonl]
-onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all] [--json]
-onlava serve [--app-root <path>] [--env <name>] [--log-format text|json]
-onlava task list [--app-root <path>] [--json]
-onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
-onlava task run <name> [--app-root <path>]
-onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
-onlava worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
-onlava build [--app-root <path>] [-o <path>]
-onlava test [--app-root <path>] [go test flags/packages...]
-onlava generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
-onlava db psql|apply|seed|setup|reset|drop|snapshot [--app-root <path>]
+scenery up [--app-root <path>] [--session <id>|--new-session] [--json] [--detach]
+scenery logs --follow [--app-root <path>] [--session current|<id>] [--jsonl]
+scenery down [--app-root <path>] [--session <id>] [--db] [--state] [--all] [--json]
+scenery serve [--app-root <path>] [--env <name>] [--log-format text|json]
+scenery task list [--app-root <path>] [--json]
+scenery task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
+scenery task run <name> [--app-root <path>]
+scenery task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
+scenery worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
+scenery build [--app-root <path>] [-o <path>]
+scenery test [--app-root <path>] [go test flags/packages...]
+scenery generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+scenery db psql|apply|seed|setup|reset|drop|snapshot [--app-root <path>]
 ```
 
-`onlava up` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, session routing, and managed dev services. `onlava serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `onlava task` is for configured tasks and app-local code tasks.
+`scenery up` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, session routing, and managed dev services. `scenery serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `scenery task` is for configured tasks and app-local code tasks.
 
 ## Documentation Update Rules
 
@@ -167,7 +167,7 @@ When changing behavior, update all affected layers in one change:
 - `SKILL.md` for concise portable instructions used inside target apps.
 - `README.md` for human-facing overview and install/run examples.
 - `docs/app-development-cookbook.md` for practical app recipes.
-- `docs/environment.md` for onlava-owned env vars.
+- `docs/environment.md` for scenery-owned env vars.
 - `docs/environment.registry.json` for the machine-readable env registry enforced by self-harness. Do not add production env usage unless the user explicitly asks for env or an active ExecPlan records the exception.
 - `docs/knowledge.json` when adding, removing, or materially changing indexed docs.
 - `docs/plans/active.md` and `docs/knowledge.json` together when adding or activating an ExecPlan, until active plan indexing is generated by the toolchain.
@@ -176,37 +176,37 @@ If a historical product note appears in an ExecPlan, do not silently rewrite it 
 
 ## Validation Matrix
 
-For ordinary onlava repo changes:
+For ordinary scenery repo changes:
 
 ```sh
 go test ./...
-go test ./cmd/onlava
+go test ./cmd/scenery
 ```
 
-Do not run `go install ./cmd/onlava` during agent validation unless the human
-explicitly asks. Multiple worktrees share the same installed `onlava` path; use
-self-harness' worktree-local `.onlava/harness/bin/onlava` build instead.
+Do not run `go install ./cmd/scenery` during agent validation unless the human
+explicitly asks. Multiple worktrees share the same installed `scenery` path; use
+self-harness' worktree-local `.scenery/harness/bin/scenery` build instead.
 
-For substantial onlava repo changes:
+For substantial scenery repo changes:
 
 ```sh
-onlava harness self --summary --write
+scenery harness self --summary --write
 ```
 
 For target app changes:
 
 ```sh
-onlava check --json
+scenery check --json
 go test ./...
-onlava harness --json --write
+scenery harness --json --write
 ```
 
 For generated TypeScript client changes:
 
 ```sh
-onlava inspect endpoints --json
-onlava inspect wire --json
-onlava generate client --lang typescript --output <expected-output>
+scenery inspect endpoints --json
+scenery inspect wire --json
+scenery generate client --lang typescript --output <expected-output>
 ```
 
 For dashboard UI changes:
@@ -217,42 +217,42 @@ bun run typecheck
 bun run test
 bun run build
 cd ..
-onlava harness self --summary --write
+scenery harness self --summary --write
 ```
 
 For browser/dashboard validation when relevant:
 
 ```sh
-onlava harness ui --json --write
+scenery harness ui --json --write
 ```
 
 If a command cannot be run in the current environment, say exactly which command was skipped and why.
 
 ## App-Local Instructions For Clients
 
-The installable onlava skill is necessary but not enough for client repositories such as `github.com/pbrazdil/onlv`.
+The installable scenery skill is necessary but not enough for client repositories such as `github.com/pbrazdil/onlv`.
 
 Client apps should keep a small app-local `AGENTS.md` that records only app-specific facts:
 
-- app root and `.onlava.json` location
+- app root and `.scenery.json` location
 - frontend roots and generated client output paths
 - required local environment names without values
 - standard validation commands for that app
-- whether agents should use `onlava up --detach`, generated TypeScript client, or direct CLI JSON
-- product/domain invariants that onlava cannot know
+- whether agents should use `scenery up --detach`, generated TypeScript client, or direct CLI JSON
+- product/domain invariants that scenery cannot know
 
-Do not copy the whole onlava skill into the client app. Keep the shared onlava behavior in `SKILL.md` and the app-specific policy in the client's `AGENTS.md`.
+Do not copy the whole scenery skill into the client app. Keep the shared scenery behavior in `SKILL.md` and the app-specific policy in the client's `AGENTS.md`.
 
 ## Public Surface Checklist
 
 When editing source that changes the public app model, confirm the docs and tests cover:
 
-- `//onlava:api public|auth|private [raw] [path=/...] [method=...]`
-- `//onlava:service`
-- `//onlava:authhandler`
+- `//scenery:api public|auth|private [raw] [path=/...] [method=...]`
+- `//scenery:service`
+- `//scenery:authhandler`
 - request tags: `json`, `header`, `query`, `qs`, `cookie`
-- response tag: `onlava:"httpstatus"`
-- public packages: `onlava`, `auth`, `errs`, `middleware`, `temporal`, `cron`, `pgxpool`, `et`
+- response tag: `scenery:"httpstatus"`
+- public packages: `scenery`, `auth`, `errs`, `middleware`, `temporal`, `cron`, `pgxpool`, `et`
 - standard auth configuration and generated endpoints
 - private/internal call behavior
 - worker, Temporal, cron, middleware, and generated TypeScript client behavior when touched
@@ -262,4 +262,4 @@ When editing source that changes the public app model, confirm the docs and test
 - Keep changes small and explicit.
 - Prefer tests at stable boundaries: parser validation, codegen golden output, runtime HTTP behavior, CLI JSON contracts, schemas, and fixture apps.
 - Keep large files split. Non-generated source over 2500 lines should fail self-harness architecture checks; non-generated source over 1000 lines should be treated as a warning to split soon.
-- Do not bypass UI boundaries. Dashboard/app UI should compose from onlava primitives/layouts and approved `@onlava` registry items; read `docs/ui-agent-contract.md` before UI work.
+- Do not bypass UI boundaries. Dashboard/app UI should compose from scenery primitives/layouts and approved `@scenery` registry items; read `docs/ui-agent-contract.md` before UI work.

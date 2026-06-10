@@ -5,8 +5,8 @@ This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`,
 
 ## Purpose / Big Picture
 
-Onlava's `dev.services.postgres.project` must map to a Neon project boundary. In
-the self-hosted Neon driver, that means each Onlava Neon project gets its own
+Scenery's `dev.services.postgres.project` must map to a Neon project boundary. In
+the self-hosted Neon driver, that means each Scenery Neon project gets its own
 Neon tenant. A branch such as `onlv/pricing-agent` belongs to the `onlv` project
 tenant; another app or project using the same branch label must never share
 tenant state, timeline state, backend metadata, restore state, or cleanup scope
@@ -23,7 +23,7 @@ This plan migrates the selfhost driver to an explicit project model:
 
 ```json
 {
-  "schema_version": "onlava.db.neon.selfhost.backend.v2",
+  "schema_version": "scenery.db.neon.selfhost.backend.v2",
   "provider": "neon-selfhost",
   "projects": {
     "onlv": {
@@ -35,7 +35,7 @@ This plan migrates the selfhost driver to an explicit project model:
           "branch": "onlv/pricing-agent",
           "timeline_id": "...",
           "parent_timeline_id": "...",
-          "compute_container": "onlava-neon-compute-onlv-abc123",
+          "compute_container": "scenery-neon-compute-onlv-abc123",
           "host": "127.0.0.1",
           "port": 55441,
           "database": "onlv",
@@ -48,8 +48,8 @@ This plan migrates the selfhost driver to an explicit project model:
 }
 ```
 
-The outcome: two Onlava projects can safely use the same branch name, worktree
-name, or session template without cross-tenant collisions. `onlava db branch
+The outcome: two Scenery projects can safely use the same branch name, worktree
+name, or session template without cross-tenant collisions. `scenery db branch
 prune`, `delete`, `reset`, `restore`, `diff`, `down --db`, and compute cleanup
 must all operate inside the selected project tenant.
 
@@ -71,15 +71,15 @@ must all operate inside the selected project tenant.
 
 - 2026-06-09: The current backend state has one top-level `tenant_id` and a global branch map. Evidence: `internal/neonselfhost/state.go` defines `BackendState.TenantID`, `BackendState.DefaultPGVersion`, and `BackendState.Branches`.
 - 2026-06-09: The current backend ID derivation sets `state.TenantID` only when it is empty. Evidence: `internal/neonselfhost/pageserver.go` derives `state.TenantID` from the first project-like input when the field is blank.
-- 2026-06-09: Branch compute container identity has already been made safer than the original bug report: current code derives container names from project plus branch ID suffix and labels fresh compute containers with `onlava.project`, `onlava.branch_id`, and `onlava.branch`. This plan must preserve that work while moving the tenant and branch maps to project scope.
-- 2026-06-09: The real selfhost proof is now part of default non-quick `onlava harness self`; older opt-in `--with-neon-selfhost` references are stale and must not be reintroduced.
+- 2026-06-09: Branch compute container identity has already been made safer than the original bug report: current code derives container names from project plus branch ID suffix and labels fresh compute containers with `scenery.project`, `scenery.branch_id`, and `scenery.branch`. This plan must preserve that work while moving the tenant and branch maps to project scope.
+- 2026-06-09: The real selfhost proof is now part of default non-quick `scenery harness self`; older opt-in `--with-neon-selfhost` references are stale and must not be reintroduced.
 - 2026-06-09: Go map values cannot be returned as mutable project pointers, so the project resolver returns a project value plus key and callers write the updated project back into `state.Projects`.
-- 2026-06-09: `onlava.db.neon.status.v1` can remain the status envelope version because the backend summary change is additive: it now accepts backend schema v2 and optional `project_count` / `projects`.
+- 2026-06-09: `scenery.db.neon.status.v1` can remain the status envelope version because the backend summary change is additive: it now accepts backend schema v2 and optional `project_count` / `projects`.
 
 ## Decision Log
 
-- Decision: An Onlava Neon project maps to a Neon tenant in the self-hosted backend.
-  Rationale: Project is the stable isolation boundary. Branches and worktrees are cheap children under that project; separate Onlava apps/projects must not share tenant/timeline state.
+- Decision: A Scenery Neon project maps to a Neon tenant in the self-hosted backend.
+  Rationale: Project is the stable isolation boundary. Branches and worktrees are cheap children under that project; separate Scenery apps/projects must not share tenant/timeline state.
   Date/Author: 2026-06-09 / pbrazdil + agent
 
 - Decision: Backend state moves from top-level `tenant_id` / `branches` to `projects[project].tenant_id` / `projects[project].branches`.
@@ -90,13 +90,13 @@ must all operate inside the selected project tenant.
   Rationale: Branch names are not globally unique. Two projects can both have `feature/foo`. Docker container names are global on the host, so names must not be branch-label-only.
   Date/Author: 2026-06-09 / pbrazdil + agent
 
-- Decision: Keep public Onlava branch IDs stable.
-  Rationale: `.onlava/worktree-db.json`, `branches.json`, restore points, and user-facing branch status should not churn because the backend tenant shape changes.
+- Decision: Keep public Scenery branch IDs stable.
+  Rationale: `.scenery/worktree-db.json`, `branches.json`, restore points, and user-facing branch status should not churn because the backend tenant shape changes.
   Date/Author: 2026-06-09 / pbrazdil + agent
 
 ## Outcomes & Retrospective
 
-The backend state now writes `onlava.db.neon.selfhost.backend.v2`, migrates v1
+The backend state now writes `scenery.db.neon.selfhost.backend.v2`, migrates v1
 on read, and scopes ensure/reset/restore/delete/diff to the selected project.
 Status JSON reports project summaries, compute labels include tenant IDs, and
 the default real Neon selfhost harness includes a two-project same-branch tenant
@@ -111,16 +111,16 @@ Start with these files:
 - `internal/neonselfhost/lifecycle.go`: handles reset, restore, delete, diff, backend branch lookup, and branch metadata derivation.
 - `internal/neonselfhost/compute.go`: starts and inspects branch compute containers.
 - `internal/neonselfhost/postgres.go`: verifies Postgres readiness and creates the requested database.
-- `cmd/onlava/db_neon.go`: emits backend summary in `onlava db neon status --json`.
-- `cmd/onlava/db_neon_pin.go`: builds the public worktree pin and already has a stable `Project` field.
-- `cmd/onlava/harness_neon.go`: contains the real selfhost harness. It proves two worktrees in one project and two separate projects using the same branch label.
+- `cmd/scenery/db_neon.go`: emits backend summary in `scenery db neon status --json`.
+- `cmd/scenery/db_neon_pin.go`: builds the public worktree pin and already has a stable `Project` field.
+- `cmd/scenery/harness_neon.go`: contains the real selfhost harness. It proves two worktrees in one project and two separate projects using the same branch label.
 
 Definitions:
 
-- Onlava Neon project: `dev.services.postgres.project`, normalized through existing config/pin logic.
-- Neon tenant: the pageserver tenant that owns timelines for one Onlava Neon project.
+- Scenery Neon project: `dev.services.postgres.project`, normalized through existing config/pin logic.
+- Neon tenant: the pageserver tenant that owns timelines for one Scenery Neon project.
 - Backend branch: driver-owned metadata for a branch under a project tenant.
-- Public branch lease: Onlava-owned `branches.json` / `.onlava/worktree-db.json` metadata consumed by CLI status and app sessions.
+- Public branch lease: Scenery-owned `branches.json` / `.scenery/worktree-db.json` metadata consumed by CLI status and app sessions.
 - Backend state: driver-owned `backend.json`.
 
 ## Milestones
@@ -132,7 +132,7 @@ Introduce v2 backend state types while preserving migration compatibility.
 Target shape:
 
 ```go
-const BackendSchemaVersion = "onlava.db.neon.selfhost.backend.v2"
+const BackendSchemaVersion = "scenery.db.neon.selfhost.backend.v2"
 
 type BackendState struct {
     SchemaVersion string                    `json:"schema_version"`
@@ -225,28 +225,28 @@ maps.
 Expected pattern:
 
 ```text
-onlava-neon-compute-<safe project>-<short branch id>
+scenery-neon-compute-<safe project>-<short branch id>
 ```
 
 Example:
 
 ```text
-onlava-neon-compute-onlv-a1b2c3d4
+scenery-neon-compute-onlv-a1b2c3d4
 ```
 
 Keep or add Docker labels when starting compute:
 
 ```text
-onlava.substrate=neon
-onlava.component=compute
-onlava.project=<project>
-onlava.branch=<branch>
-onlava.branch_id=<branch_id>
-onlava.tenant_id=<tenant_id>
+scenery.substrate=neon
+scenery.shponent=compute
+scenery.project=<project>
+scenery.branch=<branch>
+scenery.branch_id=<branch_id>
+scenery.tenant_id=<tenant_id>
 ```
 
-Keep existing cleanup label `onlava.substrate=neon` so uninstall still removes
-all Onlava-owned Neon containers. The added labels are for inspection and future
+Keep existing cleanup label `scenery.substrate=neon` so uninstall still removes
+all Scenery-owned Neon containers. The added labels are for inspection and future
 targeted cleanup.
 
 ### Milestone 5: Project-local branch maps with host-global port allocation
@@ -286,10 +286,10 @@ Update all mutation paths to use project-local branches:
 unless the CLI later adds explicit cross-project syntax. For now:
 
 ```bash
-onlava db branch diff main
+scenery db branch diff main
 ```
 
-means "diff against branch `main` inside the same Onlava Neon project."
+means "diff against branch `main` inside the same Scenery Neon project."
 
 If a target branch exists in another project only, return:
 
@@ -307,7 +307,7 @@ New summary:
 
 ```json
 {
-  "schema_version": "onlava.db.neon.selfhost.backend.v2",
+  "schema_version": "scenery.db.neon.selfhost.backend.v2",
   "present": true,
   "project_count": 2,
   "branch_count": 4,
@@ -328,13 +328,13 @@ New summary:
 
 Update:
 
-- `docs/schemas/onlava.db.neon.selfhost.backend.v1.schema.json` or add a v2 schema.
-- `docs/schemas/onlava.db.neon.status.v1.schema.json` if the status payload shape changes.
+- `docs/schemas/scenery.db.neon.selfhost.backend.v1.schema.json` or add a v2 schema.
+- `docs/schemas/scenery.db.neon.status.v1.schema.json` if the status payload shape changes.
 - `docs/local-contract.md`.
 - `README.md`.
 - `docs/plans/0070-toolchain-managed-neon-selfhost-driver.md` with a note that plan 0072 supersedes the single-tenant backend assumption.
 
-Prefer adding a v2 backend schema while keeping `onlava.db.neon.status.v1`
+Prefer adding a v2 backend schema while keeping `scenery.db.neon.status.v1`
 stable if possible. Status can add optional project fields without breaking v1
 if schema allows it; if not, update schema carefully.
 
@@ -359,7 +359,7 @@ Extend the default real selfhost harness:
   - project `neon-selfhost-project-a`
   - project `neon-selfhost-project-b`
 - Use the same worktree/branch label in both, for example `same-branch`.
-- Run `onlava db branch checkout same-branch --json` for both.
+- Run `scenery db branch checkout same-branch --json` for both.
 - Assert:
   - backend status is ready for both.
   - backend JSON has two project entries.
@@ -381,12 +381,12 @@ is safer than trying to thread `project` manually through each map lookup. The
 invariant should become: no driver action mutates a branch without first
 selecting a `BackendProject`.
 
-Next, verify compute identity remains project-safe and add `onlava.tenant_id`
+Next, verify compute identity remains project-safe and add `scenery.tenant_id`
 labels where the tenant is available. Compute containers are Docker-global;
 project-local backend maps are not enough by themselves.
 
 After that, update status and schemas. Keep the public `branches.json` lease
-behavior unchanged. The public Onlava lease already has `Project`, so the
+behavior unchanged. The public Scenery lease already has `Project`, so the
 visible CLI behavior should remain stable while the backend implementation
 becomes safer.
 
@@ -413,28 +413,28 @@ Finally, extend the real selfhost harness. This should be the acceptance gate.
 17. Update schemas.
 18. Update docs.
 19. Add unit tests.
-20. Extend the default real `onlava harness self` Neon proof.
+20. Extend the default real `scenery harness self` Neon proof.
 21. Run validation.
 
 ## Validation and Acceptance
 
-Run these from the Onlava repo root:
+Run these from the Scenery repo root:
 
 ```bash
-jq empty docs/knowledge.json docs/environment.registry.json onlava.toolchain.json docs/schemas/*.json
+jq empty docs/knowledge.json docs/environment.registry.json scenery.toolchain.json docs/schemas/*.json
 go test ./internal/neonselfhost
-go test ./cmd/onlava
+go test ./cmd/scenery
 go test ./...
-go build -o "$(mktemp -d)/onlava" ./cmd/onlava
-onlava inspect docs --json
-onlava system toolchain verify --json --images
-go run ./cmd/onlava harness self --summary --write
+go build -o "$(mktemp -d)/scenery" ./cmd/scenery
+scenery inspect docs --json
+scenery system toolchain verify --json --images
+go run ./cmd/scenery harness self --summary --write
 ```
 
 Run the real selfhost acceptance gate:
 
 ```bash
-go run ./cmd/onlava harness self --json --write
+go run ./cmd/scenery harness self --json --write
 ```
 
 Acceptance criteria:
@@ -442,15 +442,15 @@ Acceptance criteria:
 - Default non-quick self-harness passes, including the real Docker-backed Neon selfhost proof.
 - `backend.json` is v2 after any write.
 - Existing v1 `backend.json` migrates on read/write without losing branches.
-- Two different Onlava projects with the same branch name get different tenant IDs.
-- Two different Onlava projects with the same branch name get different compute container names.
+- Two different Scenery projects with the same branch name get different tenant IDs.
+- Two different Scenery projects with the same branch name get different compute container names.
 - Project A branch delete/reset/restore/diff never mutates project B.
 - Status JSON reports project counts and per-project tenant IDs without raw database URLs.
-- Public `onlava db branch status --json` and `onlava db branch list --json` remain compatible for existing app/worktree flows.
+- Public `scenery db branch status --json` and `scenery db branch list --json` remain compatible for existing app/worktree flows.
 
-Do not run `go install ./cmd/onlava` during agent validation unless the human
-explicitly asks. Multiple worktrees share the same installed `onlava` path; use
-`go build` or the source-built `go run ./cmd/onlava harness self ...` path for
+Do not run `go install ./cmd/scenery` during agent validation unless the human
+explicitly asks. Multiple worktrees share the same installed `scenery` path; use
+`go build` or the source-built `go run ./cmd/scenery harness self ...` path for
 this plan.
 
 ## Idempotence and Recovery
@@ -469,7 +469,7 @@ includes project and branch ID, it can safely inspect or replace that container
 without colliding with another project.
 
 If `backend.json` becomes corrupt, existing destructive uninstall behavior should
-still be able to remove Onlava-labeled containers. Do not make uninstall depend
+still be able to remove Scenery-labeled containers. Do not make uninstall depend
 on successfully parsing v2 backend state.
 
 If v1 migration encounters branches with empty project, place them under a
@@ -487,10 +487,10 @@ Files expected to change:
 - `internal/neonselfhost/driver.go`
 - `internal/neonselfhost/state_test.go`
 - `internal/neonselfhost/driver_test.go`
-- `cmd/onlava/db_neon.go`
-- `cmd/onlava/harness_neon.go`
-- `docs/schemas/onlava.db.neon.selfhost.backend.v1.schema.json` or a new v2 schema
-- `docs/schemas/onlava.db.neon.status.v1.schema.json`
+- `cmd/scenery/db_neon.go`
+- `cmd/scenery/harness_neon.go`
+- `docs/schemas/scenery.db.neon.selfhost.backend.v1.schema.json` or a new v2 schema
+- `docs/schemas/scenery.db.neon.status.v1.schema.json`
 - `docs/local-contract.md`
 - `README.md`
 - `docs/knowledge.json`
@@ -499,7 +499,7 @@ Files expected to change:
 Potential new schema:
 
 ```text
-docs/schemas/onlava.db.neon.selfhost.backend.v2.schema.json
+docs/schemas/scenery.db.neon.selfhost.backend.v2.schema.json
 ```
 
 Potential old-schema policy:
@@ -512,27 +512,27 @@ Potential old-schema policy:
 The built-in driver interface remains unchanged:
 
 ```bash
-onlava internal neon-selfhost-driver ensure --project <project> --parent-branch <branch> --branch <branch> --branch-id <id> --database <db> --role <role> --json
-onlava internal neon-selfhost-driver reset ...
-onlava internal neon-selfhost-driver restore --at <lsn-or-rfc3339> ...
-onlava internal neon-selfhost-driver delete ...
-onlava internal neon-selfhost-driver diff --target <branch> ...
+scenery internal neon-selfhost-driver ensure --project <project> --parent-branch <branch> --branch <branch> --branch-id <id> --database <db> --role <role> --json
+scenery internal neon-selfhost-driver reset ...
+scenery internal neon-selfhost-driver restore --at <lsn-or-rfc3339> ...
+scenery internal neon-selfhost-driver delete ...
+scenery internal neon-selfhost-driver diff --target <branch> ...
 ```
 
-External drivers selected with `ONLAVA_DEV_NEON_SELFHOST_DRIVER` receive the same
+External drivers selected with `SCENERY_DEV_NEON_SELFHOST_DRIVER` receive the same
 branch JSON contract. The meaning of `--project` tightens from "metadata
 attached to a branch" to "the Neon project/tenant boundary." This is a semantic
 tightening, not a CLI grammar change.
 
-The public Onlava files remain:
+The public Scenery files remain:
 
 ```text
-<app-root>/.onlava/worktree-db.json
+<app-root>/.scenery/worktree-db.json
 <agent-home>/agent/substrates/neon/branches.json
 <agent-home>/agent/substrates/neon/backend.json
 ```
 
-`worktree-db.json` and `branches.json` stay public Onlava state. `backend.json`
+`worktree-db.json` and `branches.json` stay public Scenery state. `backend.json`
 stays driver-owned implementation state.
 
 External runtime dependencies remain:
@@ -540,8 +540,8 @@ External runtime dependencies remain:
 - Docker
 - `psql`
 - `pg_dump` for schema diff
-- Pinned Neon, compute-node, MinIO, and mc images from `onlava.toolchain.json`
-- Built-in `onlava internal neon-selfhost-driver`, with optional external override through `ONLAVA_DEV_NEON_SELFHOST_DRIVER`
+- Pinned Neon, compute-node, MinIO, and mc images from `scenery.toolchain.json`
+- Built-in `scenery internal neon-selfhost-driver`, with optional external override through `SCENERY_DEV_NEON_SELFHOST_DRIVER`
 
 The user-facing invariant after this plan:
 

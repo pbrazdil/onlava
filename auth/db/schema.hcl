@@ -1,8 +1,8 @@
-schema "onlava_auth" {
+schema "scenery_auth" {
 }
 
 table "tenants" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
   comment = "audit:row_changes"
 
   column "id" {
@@ -46,7 +46,7 @@ table "tenants" {
 }
 
 table "users" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
   comment = "audit:row_changes"
 
   column "id" {
@@ -122,7 +122,7 @@ table "users" {
 }
 
 table "auth_identities" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
   comment = "audit:row_changes"
 
   column "id" {
@@ -204,7 +204,7 @@ table "auth_identities" {
 }
 
 table "organization_memberships" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
   comment = "audit:row_changes"
 
   column "id" {
@@ -297,7 +297,7 @@ table "organization_memberships" {
 }
 
 table "refresh_sessions" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
   comment = "audit:row_changes"
 
   column "id" {
@@ -429,7 +429,7 @@ table "refresh_sessions" {
 }
 
 table "one_time_tokens" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
   comment = "audit:row_changes"
 
   column "id" {
@@ -518,7 +518,7 @@ table "one_time_tokens" {
 }
 
 table "oauth_states" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
 
   column "id" {
     type    = uuid
@@ -574,7 +574,7 @@ table "oauth_states" {
 }
 
 table "auth_attempts" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
 
   column "id" {
     type    = uuid
@@ -627,7 +627,7 @@ table "auth_attempts" {
 }
 
 table "auth_events" {
-  schema = schema.onlava_auth
+  schema = schema.scenery_auth
 
   column "id" {
     type    = uuid

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/localproxy"
+	"scenery.sh/internal/localproxy"
 )
 
 type RunOptions struct {
@@ -90,18 +90,18 @@ func NewServer(opts RunOptions) (*Server, error) {
 		if installTrust {
 			trusted, trustErr := localproxy.LocalCATrusted(tlsCA.CertPath)
 			if trustErr != nil {
-				slog.Warn("failed to check onlava local CA trust", "err", trustErr)
+				slog.Warn("failed to check scenery local CA trust", "err", trustErr)
 			}
 			if !trusted {
 				if err := localproxy.InstallLocalCATrust(tlsCA.CertPath); err != nil {
-					slog.Warn("failed to install onlava local CA trust", "err", err)
+					slog.Warn("failed to install scenery local CA trust", "err", err)
 				}
 			}
 		}
 	}
 	edgeState, edgeErr := LoadEdgeState(paths.EdgeStatePath)
 	if edgeErr != nil {
-		slog.Warn("failed to read onlava edge state", "err", edgeErr)
+		slog.Warn("failed to read scenery edge state", "err", edgeErr)
 	}
 	publicRouterAddr := actualRouterAddr
 	routeScheme := routerScheme
@@ -277,7 +277,7 @@ func (s *Server) Close() error {
 					continue
 				}
 				if err := interruptProcess(pid); err != nil {
-					slog.Warn("failed to interrupt onlava substrate process", "kind", substrate.Kind, "component", name, "pid", pid, "err", err)
+					slog.Warn("failed to interrupt scenery substrate process", "kind", substrate.Kind, "component", name, "pid", pid, "err", err)
 				}
 			}
 		}
@@ -315,7 +315,7 @@ func (s *Server) routerTLSConfig() *tls.Config {
 				host = "localhost"
 			}
 			if !s.agentTLSHostAllowed(host) {
-				return nil, fmt.Errorf("unsupported onlava agent TLS host %q", host)
+				return nil, fmt.Errorf("unsupported scenery agent TLS host %q", host)
 			}
 			if cert, ok := s.tlsCerts.Load(host); ok {
 				tlsCert := cert.(tls.Certificate)
@@ -346,13 +346,13 @@ func listenRouter(addr string) (net.Listener, string, error) {
 		return ln, ln.Addr().String(), nil
 	}
 	if strings.TrimSpace(addr) != defaultRouterAddr {
-		return nil, "", fmt.Errorf("listen onlava agent router at %s failed; choose a different --router-listen address or free that port: %w", addr, err)
+		return nil, "", fmt.Errorf("listen scenery agent router at %s failed; choose a different --router-listen address or free that port: %w", addr, err)
 	}
 	ln, fallbackErr := net.Listen("tcp", "127.0.0.1:0")
 	if fallbackErr != nil {
 		return nil, "", err
 	}
-	slog.Warn("onlava agent router default port unavailable; using fallback", "addr", ln.Addr().String(), "err", err)
+	slog.Warn("scenery agent router default port unavailable; using fallback", "addr", ln.Addr().String(), "err", err)
 	return ln, ln.Addr().String(), nil
 }
 
@@ -379,7 +379,7 @@ func removeStaleSocket(path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	if err := client.Ping(ctx); err == nil {
-		return fmt.Errorf("onlava agent already listening at %s", path)
+		return fmt.Errorf("scenery agent already listening at %s", path)
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -578,9 +578,9 @@ func (s *Server) handleSession(w http.ResponseWriter, req *http.Request) {
 		if ok && req.URL.Query().Get("signal") == "1" && (session.OwnerPID > 0 || session.Owner.PID > 0) {
 			owner, err := ownerForSignal(session.OwnerPID, session.Owner)
 			if err != nil {
-				slog.Warn("skipping onlava up owner interrupt because owner fingerprint did not verify", "pid", firstPositive(session.Owner.PID, session.OwnerPID), "err", err)
+				slog.Warn("skipping scenery up owner interrupt because owner fingerprint did not verify", "pid", firstPositive(session.Owner.PID, session.OwnerPID), "err", err)
 			} else if err := interruptProcess(owner.PID); err != nil {
-				slog.Warn("failed to interrupt onlava up owner", "pid", owner.PID, "err", err)
+				slog.Warn("failed to interrupt scenery up owner", "pid", owner.PID, "err", err)
 			}
 		}
 		writeJSON(w, http.StatusOK, RegisterResponse{Session: session, Deleted: ok})

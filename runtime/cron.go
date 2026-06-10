@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pbrazdil/onlava/errs"
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/errs"
+	"scenery.sh/runtime/shared"
 )
 
 const (
-	onlavaCronExecutionHeader = "X-Onlava-Cron-Execution"
-	maxCronScheduleHorizon    = 5 * 366 * 24 * time.Hour
+	sceneryCronExecutionHeader = "X-Scenery-Cron-Execution"
+	maxCronScheduleHorizon     = 5 * 366 * 24 * time.Hour
 )
 
 type cronScheduler struct {
@@ -136,7 +136,7 @@ func startInProcessCronScheduler(parent context.Context, jobs []*CronJob) *cronS
 			defer wg.Done()
 			runCronJobLoop(ctx, job)
 		}(job)
-		slog.Info("onlava cron job scheduled", "id", job.ID, "title", job.Title, "schedule", cronScheduleSummary(job))
+		slog.Info("scenery cron job scheduled", "id", job.ID, "title", job.Title, "schedule", cronScheduleSummary(job))
 	}
 	go func() {
 		wg.Wait()
@@ -168,7 +168,7 @@ func runCronJobLoop(ctx context.Context, job *CronJob) {
 	for {
 		next := job.plan.Next(time.Now().UTC())
 		if next.IsZero() {
-			slog.Error("onlava cron job disabled after failing to compute next execution", "id", job.ID)
+			slog.Error("scenery cron job disabled after failing to compute next execution", "id", job.ID)
 			return
 		}
 
@@ -187,12 +187,12 @@ func runCronJobLoop(ctx context.Context, job *CronJob) {
 
 		executionID, err := newCronExecutionID(job.ID, next)
 		if err != nil {
-			slog.Error("onlava cron job failed to allocate execution id", "id", job.ID, "err", err)
+			slog.Error("scenery cron job failed to allocate execution id", "id", job.ID, "err", err)
 			continue
 		}
 		callCtx := withCronInvocation(ctx, job, next, executionID)
 		if err := safeInvokeCronJob(callCtx, job); err != nil {
-			slog.Error("onlava cron job failed", "id", job.ID, "err", err)
+			slog.Error("scenery cron job failed", "id", job.ID, "err", err)
 			continue
 		}
 	}
@@ -225,7 +225,7 @@ func withCronInvocation(ctx context.Context, job *CronJob, scheduledAt time.Time
 		ctx = context.Background()
 	}
 	headers := make(http.Header)
-	headers.Set(onlavaCronExecutionHeader, executionID)
+	headers.Set(sceneryCronExecutionHeader, executionID)
 	request := shared.Request{
 		Type:               shared.APICall,
 		Started:            scheduledAt,
@@ -297,7 +297,7 @@ func cronCalendarSpecs(plan parsedCronPlan) []TemporalCronCalendarSpec {
 		Minute:  cronFieldRanges(plan.minute, false),
 		Hour:    cronFieldRanges(plan.hour, false),
 		Month:   cronFieldRanges(plan.month, false),
-		Comment: "onlava cron schedule",
+		Comment: "scenery cron schedule",
 	}
 	if plan.dom.any || plan.dow.any {
 		base.DayOfMonth = cronFieldRanges(plan.dom, false)

@@ -1,29 +1,29 @@
-# onlava
+# scenery
 
 **One CLI for building, running, and inspecting Go services — built for humans and AI agents.**
 
-onlava is a Go-native local runtime and toolchain for building service applications from ordinary Go packages.
+scenery is a Go-native local runtime and toolchain for building service applications from ordinary Go packages.
 
-Applications mark their root with `.onlava.json`, declare endpoints with `//onlava:` directives, and run as one local HTTP server. onlava handles service discovery, route registration, auth context, request decoding, generated internal calls, local development supervision, inspection, logs, traces, metrics, and TypeScript client generation.
+Applications mark their root with `.scenery.json`, declare endpoints with `//scenery:` directives, and run as one local HTTP server. scenery handles service discovery, route registration, auth context, request decoding, generated internal calls, local development supervision, inspection, logs, traces, metrics, and TypeScript client generation.
 
-onlava is used in production. The stable v0 surface is intentionally small and Go-first; the local dashboard, observability, Grafana workbench, local HTTPS routing, Temporal worker tooling, and cron UI are development-focused capabilities. Their backing services and files are substrate details unless you intentionally debug them.
+scenery is used in production. The stable v0 surface is intentionally small and Go-first; the local dashboard, observability, Grafana workbench, local HTTPS routing, Temporal worker tooling, and cron UI are development-focused capabilities. Their backing services and files are substrate details unless you intentionally debug them.
 
-## Why onlava?
+## Why scenery?
 
 - **Go source is the app model.** Services, APIs, auth handlers, middleware, Temporal workflows and activities, and cron jobs are discovered from Go code.
-- **One local app server.** `onlava serve` builds once and starts a headless, production-like HTTP server.
-- **Full local dev loop.** `onlava up` runs the app session with file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
-- **Typed HTTP by default.** onlava decodes path params, query params, headers, cookies, and JSON bodies into Go structs, then encodes typed responses.
+- **One local app server.** `scenery serve` builds once and starts a headless, production-like HTTP server.
+- **Full local dev loop.** `scenery up` runs the app session with file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
+- **Typed HTTP by default.** scenery decodes path params, query params, headers, cookies, and JSON bodies into Go structs, then encodes typed responses.
 - **Generated internal calls.** Endpoint-to-endpoint calls are rewritten to generated helpers so private access, auth context, and routing semantics are preserved.
-- **Inspectable by tools and agents.** `onlava inspect`, `onlava check`, `onlava logs`, `onlava harness`, and `onlava validate` expose machine-readable JSON contracts.
-- **Generated clients.** onlava can generate a TypeScript client with JSON and local wire-format support.
+- **Inspectable by tools and agents.** `scenery inspect`, `scenery check`, `scenery logs`, `scenery harness`, and `scenery validate` expose machine-readable JSON contracts.
+- **Generated clients.** scenery can generate a TypeScript client with JSON and local wire-format support.
 
 ## Status
 
 Available now:
 
-- `.onlava.json` root discovery
-- `onlava up`, `onlava serve`, `onlava task`, `onlava validate`, `onlava build`, `onlava check`
+- `.scenery.json` root discovery
+- `scenery up`, `scenery serve`, `scenery task`, `scenery validate`, `scenery build`, `scenery check`
 - typed and raw HTTP endpoints
 - public, auth, and private endpoints
 - auth handlers and request auth helpers
@@ -47,47 +47,47 @@ Stable v0 API details live in [docs/local-contract.md](docs/local-contract.md). 
 
 - Go 1.26+
 - Bun, only when working on the dashboard UI or the benchmark fixture
-- `psql`, only when using `onlava db psql`
+- `psql`, only when using `scenery db psql`
 
-Run `onlava doctor --json` after install when you want a read-only readiness report for the host, Go toolchain, disk/memory resources, Docker engine reachability, and optional local-development dependencies.
+Run `scenery doctor --json` after install when you want a read-only readiness report for the host, Go toolchain, disk/memory resources, Docker engine reachability, and optional local-development dependencies.
 
 ## Install From Source
 
 ```sh
-git clone https://github.com/pbrazdil/onlava.git onlava
-cd onlava
-go install ./cmd/onlava
-onlava doctor --json
-onlava version --json
+git clone https://github.com/scenery-sh/scenery.git scenery
+cd scenery
+go install ./cmd/scenery
+scenery doctor --json
+scenery version --json
 ```
 
-The module path is `github.com/pbrazdil/onlava`. Source installs are useful when working from a checkout or testing unreleased changes.
+The module path is `scenery.sh`. Source installs are useful when working from a checkout or testing unreleased changes.
 
 ## Prebuilt CLI Binaries
 
-Tagged releases publish prebuilt `onlava` archives for macOS, Linux, and Windows on the [GitHub Releases](https://github.com/pbrazdil/onlava/releases) page.
+Tagged releases publish prebuilt `scenery` archives for macOS, Linux, and Windows on the [GitHub Releases](https://github.com/scenery-sh/scenery/releases) page.
 
 After installing a prebuilt binary, verify it with:
 
 ```sh
-onlava version --json
+scenery version --json
 ```
 
 ## Agent Skill
 
-onlava includes an installable agent skill for using onlava apps:
+scenery includes an installable agent skill for using scenery apps:
 
 ```sh
-npx skills add https://github.com/pbrazdil/onlava
+npx skills add https://github.com/scenery-sh/scenery
 ```
 
-The skill teaches agents the onlava app model, directives, local development workflow, debugging commands, observability, database inspection, and TypeScript client generation.
+The skill teaches agents the scenery app model, directives, local development workflow, debugging commands, observability, database inspection, and TypeScript client generation.
 
-The skill is shared runtime knowledge. Client apps should still keep a small app-local `AGENTS.md` for app root, frontend roots, generated client output paths, required environment names, validation commands, and product invariants. Do not copy the whole skill into every app; keep shared onlava behavior in `SKILL.md` and app-specific facts in the client repository.
+The skill is shared runtime knowledge. Client apps should still keep a small app-local `AGENTS.md` for app root, frontend roots, generated client output paths, required environment names, validation commands, and product invariants. Do not copy the whole skill into every app; keep shared scenery behavior in `SKILL.md` and app-specific facts in the client repository.
 
 ## A Minimal App
 
-Create `.onlava.json`:
+Create `.scenery.json`:
 
 ```json
 {"name":"hello"}
@@ -100,9 +100,9 @@ module example.com/hello
 
 go 1.26.3
 
-require github.com/pbrazdil/onlava v0.0.0
+require scenery.sh v0.0.0
 
-replace github.com/pbrazdil/onlava => /path/to/onlava
+replace scenery.sh => /path/to/scenery
 ```
 
 Create `service/api.go`:
@@ -116,7 +116,7 @@ type HelloResponse struct {
 	Message string `json:"message"`
 }
 
-//onlava:api public path=/hello/:name method=GET
+//scenery:api public path=/hello/:name method=GET
 func Hello(ctx context.Context, name string) (*HelloResponse, error) {
 	return &HelloResponse{Message: "hello " + name}, nil
 }
@@ -125,8 +125,8 @@ func Hello(ctx context.Context, name string) (*HelloResponse, error) {
 Run it:
 
 ```sh
-onlava check --json
-onlava serve
+scenery check --json
+scenery serve
 ```
 
 Call it:
@@ -137,29 +137,29 @@ curl http://127.0.0.1:4000/hello/world
 
 ## Local Development
 
-Use `onlava up` for the full development platform:
+Use `scenery up` for the full development platform:
 
 ```sh
-onlava up
+scenery up
 ```
 
 Common options:
 
 ```sh
-onlava up --port 4000 --listen 127.0.0.1
-onlava up --json
-onlava up --detach
-onlava system edge dns install
-onlava system edge privileged install
-onlava system edge install
-onlava system edge trust
-onlava logs --follow
-onlava console
+scenery up --port 4000 --listen 127.0.0.1
+scenery up --json
+scenery up --detach
+scenery system edge dns install
+scenery system edge privileged install
+scenery system edge install
+scenery system edge trust
+scenery logs --follow
+scenery console
 ```
 
-`--detach` starts an agent-backed dev session in the background and returns after the session is registered. `onlava logs --follow` follows the current session logs from VictoriaLogs. `onlava console` opens a source-aware terminal console when attached to a real TTY. `onlava down` stops the current or selected session.
+`--detach` starts an agent-backed dev session in the background and returns after the session is registered. `scenery logs --follow` follows the current session logs from VictoriaLogs. `scenery console` opens a source-aware terminal console when attached to a real TTY. `scenery down` stops the current or selected session.
 
-`onlava up` uses canonical agent-routed session URLs from `.onlava.json` proxy config. Generated local routes default to `https://api.<session>.local.dev`, `https://console.<session>.local.dev`, and frontend routes under the same `local.dev` base. If `proxy.route_base_domain` is explicitly configured, the local edge is required for normal browser-facing URLs: startup fails loudly when DNS, the privileged listener, Caddy, or the HTTPS probe is not ready instead of publishing internal `:9440` router URLs as session routes. Configured hosts are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `onlava up --claim-aliases` only when intentionally transferring live aliases to this session. Use `onlava system edge dns install`, `onlava system edge privileged install`, `onlava system edge install`, and `onlava system edge trust` when you want trusted wildcard local HTTPS routes on the default HTTPS port; edge syncs managed dnsmasq and Caddy when needed and keeps Caddy user-owned.
+`scenery up` uses canonical agent-routed session URLs from `.scenery.json` proxy config. Generated local routes default to `https://api.<session>.local.dev`, `https://console.<session>.local.dev`, and frontend routes under the same `local.dev` base. If `proxy.route_base_domain` is explicitly configured, the local edge is required for normal browser-facing URLs: startup fails loudly when DNS, the privileged listener, Caddy, or the HTTPS probe is not ready instead of publishing internal `:9440` router URLs as session routes. Configured hosts are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `scenery up --claim-aliases` only when intentionally transferring live aliases to this session. Use `scenery system edge dns install`, `scenery system edge privileged install`, `scenery system edge install`, and `scenery system edge trust` when you want trusted wildcard local HTTPS routes on the default HTTPS port; edge syncs managed dnsmasq and Caddy when needed and keeps Caddy user-owned.
 
 Example proxy config:
 
@@ -185,149 +185,146 @@ Example proxy config:
 ## CLI Overview
 
 ```text
-onlava up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
-onlava logs --follow [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json]
-onlava console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
-onlava system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-onlava system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
-onlava system edge install|trust|status|restart|uninstall|dns|privileged [--json]
-onlava help <command>|all|--json
-onlava ps [--json] [--app-root <path>] [--session <id>] [--watch]
-onlava down [--app-root <path>] [--session <id>] [--db] [--state] [--all] [--json]
-onlava prune --older-than <duration> [--app-root <path>] [--json]
-onlava serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
-onlava worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
-onlava worker bindings [--app-root <path>] [--out <dir>] [--json]
-onlava worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
-onlava worker deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
-onlava worker deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
-onlava worker deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
-onlava version [--json]
-onlava system toolchain list [--json] [--include-source-locks] [--images]
-onlava system toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
-onlava system toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
-onlava system toolchain path [--json] --tool <name> [--platform <goos/goarch>]
-onlava doctor [--app-root <path>] [--json]
-onlava build [--app-root <path>] [-o <path>]
-onlava check [--app-root <path>] [--json]
-onlava generate [--app-root <path>] [--dry-run] [--json]
-onlava generate client [<app-id>] [--lang typescript] [--output <path>] [--app-root <path>] [--dry-run] [--json]
-onlava generate sqlc [--app-root <path>] [--dry-run] [--json]
-onlava task list [--app-root <path>] [--json]
-onlava task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
-onlava task run <name> [--app-root <path>]
-onlava task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
-onlava task graph --json [--app-root <path>]
-onlava validate [<profile>] [--app-root <path>] [--json] [--write] [--dry-run]
-onlava validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
-onlava harness [--app-root <path>] [--json] [--write] [--with-validation[=<profile>]]
-onlava harness self [--repo-root <path>] [--json] [--write] [--quick|--race|--release]
-onlava harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
-onlava inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
-onlava inspect docs --json [--repo-root <path>]
-onlava traces list --json [--app-root <path>]
-onlava metrics list --json [--app-root <path>]
-onlava traces clear --json [--app-root <path>]
-onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
-onlava test [--app-root <path>] [go test flags/packages...]
-onlava generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
-onlava db psql [--app-root <path>] [psql args...]
-onlava db apply [--app-root <path>] [--json]
-onlava db seed [--app-root <path>] [--dry-run] [--json]
-onlava db setup [--app-root <path>] [--json]
-onlava db reset [--app-root <path>]
-onlava db drop [--app-root <path>]
-onlava db snapshot create|restore <name> [--app-root <path>]
-onlava db branch status|list [--app-root <path>] [--json]
-onlava db branch checkout <name> [--app-root <path>] [--json]
-onlava db branch reset [--app-root <path>] [--yes]
-onlava db branch delete <name> [--app-root <path>] [--force]
-onlava db branch restore --at <timestamp-or-lsn> [--app-root <path>] [--yes]
-onlava db branch diff <branch> [--app-root <path>] [--json]
-onlava db branch expire [<name>] --after <duration> [--app-root <path>] [--json]
-onlava db branch prune [--older-than <duration>] [--app-root <path>] [--json]
-onlava db neon install|start|status|logs|stop|restart|uninstall [--json]
-onlava worktree create <name> [--from <branch>] [--app-root <path>] [--json]
-onlava worktree list [--app-root <path>] [--json]
-onlava worktree remove <name> [--app-root <path>] [--db] [--json]
+scenery up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
+scenery logs --follow [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json]
+scenery console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
+scenery system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+scenery system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
+scenery system edge install|trust|status|restart|uninstall|dns|privileged [--json]
+scenery help <command>|all|--json
+scenery ps [--json] [--app-root <path>] [--session <id>] [--watch]
+scenery down [--app-root <path>] [--session <id>] [--db] [--state] [--all] [--json]
+scenery prune --older-than <duration> [--app-root <path>] [--json]
+scenery serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
+scenery worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
+scenery worker bindings [--app-root <path>] [--out <dir>] [--json]
+scenery worker typescript [--task-queue <name>[,<name>]]... [--runtime bun|node] [--app-root <path>] [--generate-only]
+scenery worker deployment set-current --build-id <id> [--deployment <name>] [--app-root <path>] [--json]
+scenery worker deployment ramp --build-id <id> --percentage <n> [--deployment <name>] [--app-root <path>] [--json]
+scenery worker deployment drain --build-id <id> [--deployment <name>] [--force] [--app-root <path>] [--json]
+scenery version [--json]
+scenery system toolchain list [--json] [--include-source-locks] [--images]
+scenery system toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
+scenery system toolchain verify [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images] [--strict]
+scenery system toolchain path [--json] --tool <name> [--platform <goos/goarch>]
+scenery doctor [--app-root <path>] [--json]
+scenery build [--app-root <path>] [-o <path>]
+scenery check [--app-root <path>] [--json]
+scenery generate [--app-root <path>] [--dry-run] [--json]
+scenery generate client [<app-id>] [--lang typescript] [--output <path>] [--app-root <path>] [--dry-run] [--json]
+scenery generate sqlc [--app-root <path>] [--dry-run] [--json]
+scenery task list [--app-root <path>] [--json]
+scenery task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
+scenery task run <name> [--app-root <path>]
+scenery task run [--app-root <path>] [--env <name>] [--lang go|typescript] <domain>:<name> [-- task args...]
+scenery task graph --json [--app-root <path>]
+scenery validate [<profile>] [--app-root <path>] [--json] [--write] [--dry-run]
+scenery validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
+scenery harness [--app-root <path>] [--json] [--write] [--with-validation[=<profile>]]
+scenery harness self [--repo-root <path>] [--json] [--write] [--quick|--race|--release]
+scenery harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
+scenery inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
+scenery inspect docs --json [--repo-root <path>]
+scenery traces list --json [--app-root <path>]
+scenery metrics list --json [--app-root <path>]
+scenery traces clear --json [--app-root <path>]
+scenery logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
+scenery test [--app-root <path>] [go test flags/packages...]
+scenery generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
+scenery db psql [--app-root <path>] [psql args...]
+scenery db apply [--app-root <path>] [--json]
+scenery db seed [--app-root <path>] [--dry-run] [--json]
+scenery db setup [--app-root <path>] [--json]
+scenery db reset [--app-root <path>]
+scenery db drop [--app-root <path>]
+scenery db snapshot create|restore <name> [--app-root <path>]
+scenery db branch status|list [--app-root <path>] [--json]
+scenery db branch checkout <name> [--app-root <path>] [--json]
+scenery db branch reset [--app-root <path>] [--yes]
+scenery db branch delete <name> [--app-root <path>] [--force]
+scenery db branch restore --at <timestamp-or-lsn> [--app-root <path>] [--yes]
+scenery db branch diff <branch> [--app-root <path>] [--json]
+scenery db branch expire [<name>] --after <duration> [--app-root <path>] [--json]
+scenery db branch prune [--older-than <duration>] [--app-root <path>] [--json]
+scenery db postgres install|start|status|logs|stop|restart|uninstall [--json]
+scenery worktree create <name> [--from <branch>] [--app-root <path>] [--json]
+scenery worktree list [--app-root <path>] [--json]
+scenery worktree remove <name> [--app-root <path>] [--db] [--json]
 ```
 
-For self-hosted Neon branches, `onlava db snapshot create|restore` uses
-`pg_dump` and `psql` from the branch compute container so the client tools match
-the Neon Postgres server version.
+For managed Postgres branches, `scenery db snapshot create|restore` uses host
+`pg_dump` and `psql` against the ready branch database.
 
 See [docs/local-contract.md](docs/local-contract.md) for the full command contract and JSON schema list.
 
 ## Public Go Packages
 
-- `github.com/pbrazdil/onlava` exposes app metadata and current request metadata.
-- `github.com/pbrazdil/onlava/auth` exposes request auth state helpers.
-- Standard auth owns its tenant tables under `onlava_auth`; app-local `tenants` services or tables are product-domain concerns.
-- `github.com/pbrazdil/onlava/errs` exposes coded errors and HTTP status mapping.
-- `github.com/pbrazdil/onlava/middleware` exposes middleware request/response types.
-- `github.com/pbrazdil/onlava/temporal` exposes workflow/activity declarations and start helpers for the onlava-managed Temporal runtime.
-- `github.com/pbrazdil/onlava/cron` exposes cron job declarations.
-- `github.com/pbrazdil/onlava/pgxpool` wraps `pgxpool` with onlava DB tracing.
-- `github.com/pbrazdil/onlava/et` exposes endpoint/service mocking helpers for tests.
+- `scenery.sh` exposes app metadata and current request metadata.
+- `scenery.sh/auth` exposes request auth state helpers.
+- Standard auth owns its tenant tables under `scenery_auth`; app-local `tenants` services or tables are product-domain concerns.
+- `scenery.sh/errs` exposes coded errors and HTTP status mapping.
+- `scenery.sh/middleware` exposes middleware request/response types.
+- `scenery.sh/temporal` exposes workflow/activity declarations and start helpers for the scenery-managed Temporal runtime.
+- `scenery.sh/cron` exposes cron job declarations.
+- `scenery.sh/pgxpool` wraps `pgxpool` with scenery DB tracing.
+- `scenery.sh/et` exposes endpoint/service mocking helpers for tests.
 
 ## TypeScript Client Generation
 
 ```sh
-onlava inspect endpoints --json
-onlava inspect wire --json
-onlava generate client --lang typescript --output ./src/onlava-client.ts
+scenery inspect endpoints --json
+scenery inspect wire --json
+scenery generate client --lang typescript --output ./src/scenery-client.ts
 ```
 
 The generated client understands the app's route model and local wire capabilities. The benchmark fixture in [benchmarks/json-wire](benchmarks/json-wire) compares JSON, wire JSON, binary wire, and automatic wire modes.
 
 `WithMeta` methods also expose parsed `txid` metadata from `X-Txid`/`X-TXID`. Electric-backed write flows can use `observeAPIResponseTxid` to report later Electric observation failures as sync/substrate failures after a committed mutation, rather than as API mutation failures.
 
-Apps can also configure `generators.clients` and use `onlava generate client` or `onlava generate --dry-run --json` to inspect and run configured generators. `onlava generate sqlc` is for generated source artifacts; it must not apply database schema or seed data.
+Apps can also configure `generators.clients` and use `scenery generate client` or `scenery generate --dry-run --json` to inspect and run configured generators. `scenery generate sqlc` is for generated source artifacts; it must not apply database schema or seed data.
 
-The DB lifecycle split uses `onlava db apply` for schema/app database mutation, `onlava db seed` for initial data such as `SERVICE/db/seed.sql`, and `onlava db setup` for apply then seed. Seed files fail closed when previously-applied content changes or destructive SQL is detected.
+The DB lifecycle split uses `scenery db apply` for schema/app database mutation, `scenery db seed` for initial data such as `SERVICE/db/seed.sql`, and `scenery db setup` for apply then seed. Seed files fail closed when previously-applied content changes or destructive SQL is detected.
 
-`onlava up` runs the setup lifecycle before app startup when DB setup inputs exist, using the same managed `DatabaseURL` that the app receives. Rebuilds skip setup until the apply config or seed file hashes change.
+`scenery up` runs the setup lifecycle before app startup when DB setup inputs exist, using the same managed `DatabaseURL` that the app receives. Rebuilds skip setup until the apply config or seed file hashes change.
 
-The Neon dev-cell commands expose `onlava db neon status --json` for generated local Neon substrate state plus Docker/image/container health probes, reserved loopback debug ports, listener checks for running components, and the shared bind-mounted storage root under `~/.onlava/agent/substrates/neon/data/`. `onlava db neon start --json` and `onlava db neon stop --json` manage the generated Docker Compose storage-cell project; start fails closed when existing Onlava Neon containers still use Docker-managed `/data` volumes, because this contract starts fresh instead of migrating old anonymous-volume data. `onlava db neon uninstall --json` removes generated runtime files while preserving `data/`; add `--destroy-data` to remove the bind-mounted storage too. `onlava db neon restart --json` restarts existing Onlava-owned Neon containers.
+`scenery db postgres install|start|status|logs|stop|restart|uninstall --json` manages the shared local Postgres dev cell. `scenery db branch status --json` inspects the worktree branch pin at `.scenery/worktree-db.json`, and `scenery db branch list --json` lists Scenery-owned local branch leases in `branches.json` under `~/.scenery/agent/postgres/` or the `SCENERY_AGENT_HOME` equivalent. Branch status and list distinguish missing, expired, protected parent, and ready local leases. Ready leases may include redacted endpoint metadata but never raw connection URLs, and protected parent leases do not expose endpoint or app-session connection metadata.
 
-`onlava db branch status --json` inspects the worktree branch pin at `.onlava/worktree-db.json`, and `onlava db branch list --json` lists Onlava-owned local branch leases in `branches.json` under the agent home. Backend state and lease registry mutations are serialized by advisory `backend.lock` and `branches.lock` files under the Neon substrate root. Branch status and list can distinguish pending, missing, expired, protected parent, and ready local leases; pending branch status also reports whether the generated dev-cell is missing or not ready yet. Ready leases may include redacted endpoint metadata but never raw connection URLs, and protected parent leases do not expose endpoint or app-session connection metadata. `onlava db branch checkout <name> --json` writes the local pin and runs the branch-provider ensure boundary. `onlava db neon install --json` records the built-in `onlava internal neon-selfhost-driver`; `ONLAVA_DEV_NEON_SELFHOST_DRIVER` can still override it with an external driver, and `ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER` remains only a local Postgres-shaped development fallback. Checkout refuses to reuse a matching foreign local lease.
+Postgres branch creation is implemented for `dev.services.postgres.kind: "postgres"`, `mode: "local"`, `isolation: "database"`, and `branch_strategy: "template_database"`. `scenery db branch checkout <name> --json` writes the local pin, ensures the parent template database exists, clones or reuses the branch database from that template, and records a ready endpoint. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes the lease, `expire` updates lease metadata, and `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable. `scenery worktree create <name> --json` creates a Git worktree and writes the target Postgres branch pin, rolling the worktree back if pin creation or branch ensure fails. `scenery up`, `scenery db psql`, DB setup, and Electric consume ready branch endpoints.
 
-Built-in self-hosted Neon branch creation is implemented: the driver maps each `dev.services.postgres.project` to its own self-hosted Neon tenant, bootstraps pageserver tenant/timeline metadata, starts or reuses SQL-ready branch compute, creates the requested database when missing, and supports project-scoped ready-branch reset, restore, delete, and schema diff. `expire`, same-project `prune`, and selected-session `down --db` update only Onlava-owned local registry metadata and leave foreign leases alone. `onlava down --state` removes the local worktree pin. `onlava worktree create <name> --json` creates a Git worktree and writes the target pin for Neon apps, rolling the worktree back if pin creation fails; worktrees share the same Neon storage root rather than receiving data copies. `onlava worktree remove <name> --db` verifies the Git worktree before removing local `.onlava` state. `onlava up`, `onlava db psql`, and Electric can consume a non-parent ready lease endpoint.
-
-The default self-harness includes the Docker-backed Neon proof. Still experimental: Electric slot/publication lifecycle hardening and release-grade driver distribution beyond the current built-in CLI plus image toolchain contract.
+The default self-harness includes the live Postgres branch lifecycle proof.
 
 ## Managed Toolchain
 
-The root `onlava.toolchain.json` freezes Onlava-owned local tools, images, plugins, and source lock references for this source version. Managed binaries install under `.onlava/toolchain/` by default, while machine-level edge tools install under `~/.onlava/toolchain/`; set `ONLAVA_TOOLCHAIN_DIR` to use a controlled cache elsewhere.
+The root `scenery.toolchain.json` freezes Scenery-owned local tools, images, plugins, and source lock references for this source version. Managed binaries install under `.scenery/toolchain/` by default, while machine-level edge tools install under `~/.scenery/toolchain/`; set `SCENERY_TOOLCHAIN_DIR` to use a controlled cache elsewhere.
 
 ```sh
-onlava system toolchain list --json
-onlava system toolchain sync --json
-onlava system toolchain verify --json
+scenery system toolchain list --json
+scenery system toolchain sync --json
+scenery system toolchain verify --json
 ```
 
-Caddy edge, Grafana, Victoria sidecars, and the local Temporal CLI are backing substrate for local capabilities. Caddy edge is managed-toolchain only; for the other tools, use documented env overrides, the managed store, `onlava ps --json` substrate records, and the recorded stdout/stderr log paths when intentionally debugging them. They do not silently fall back to system `PATH` binaries.
+Caddy edge, Grafana, Victoria sidecars, and the local Temporal CLI are backing substrate for local capabilities. Caddy edge is managed-toolchain only; for the other tools, use documented env overrides, the managed store, `scenery ps --json` substrate records, and the recorded stdout/stderr log paths when intentionally debugging them. They do not silently fall back to system `PATH` binaries.
 
 ## Observability And Inspection
 
-onlava exposes local development logs, traces, metrics, and Grafana through app-session capabilities. The current backing substrate can run VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana for richer local inspection.
+scenery exposes local development logs, traces, metrics, and Grafana through app-session capabilities. The current backing substrate can run VictoriaMetrics, VictoriaLogs, VictoriaTraces, and Grafana for richer local inspection.
 
 Useful commands:
 
 ```sh
-onlava logs --session current --limit 200
-onlava logs --follow
-onlava console
-onlava logs --session current --source api --level error --jsonl --limit 200
-onlava inspect routes --json
-onlava inspect endpoints --json
-onlava traces list --json --session current --since 15m --slowest
-onlava metrics list --json --session current --since 1h
-onlava ps --json
-onlava harness --json --write
+scenery logs --session current --limit 200
+scenery logs --follow
+scenery console
+scenery logs --session current --source api --level error --jsonl --limit 200
+scenery inspect routes --json
+scenery inspect endpoints --json
+scenery traces list --json --session current --since 15m --slowest
+scenery metrics list --json --session current --since 1h
+scenery ps --json
+scenery harness --json --write
 ```
 
-Grafana substrate files are generated under `.onlava/grafana/` when you need to debug them. Shared Temporal and Victoria substrate failures are exposed in `onlava ps --json` as `last_exit` / `component_exits` and emit structured dev log events with component, PID, exit code or signal, and log paths. Set `ONLAVA_DEV_GRAFANA=0` to disable Grafana or `ONLAVA_DEV_GRAFANA=1` to require it during `onlava up` startup.
+Grafana substrate files are generated under `.scenery/grafana/` when you need to debug them. Shared Temporal and Victoria substrate failures are exposed in `scenery ps --json` as `last_exit` / `component_exits` and emit structured dev log events with component, PID, exit code or signal, and log paths. Set `SCENERY_DEV_GRAFANA=0` to disable Grafana or `SCENERY_DEV_GRAFANA=1` to require it during `scenery up` startup.
 
 ## Development
 
@@ -340,13 +337,13 @@ go test ./...
 Rebuild the CLI after changes:
 
 ```sh
-go install ./cmd/onlava
+go install ./cmd/scenery
 ```
 
 Run the self-harness when making substantial changes:
 
 ```sh
-onlava harness self --json --write
+scenery harness self --json --write
 ```
 
 Run the JSON/wire benchmark:
@@ -357,7 +354,7 @@ benchmarks/json-wire/run.sh
 
 ## Contributing
 
-onlava prefers small, explicit changes and minimal dependencies. When adding behavior, keep the parsed app model as the source of truth and add tests at stable boundaries: parser validation, generated code, runtime HTTP behavior, CLI JSON contracts, and fixture apps.
+scenery prefers small, explicit changes and minimal dependencies. When adding behavior, keep the parsed app model as the source of truth and add tests at stable boundaries: parser validation, generated code, runtime HTTP behavior, CLI JSON contracts, and fixture apps.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and pull request guidance.
 
@@ -365,19 +362,19 @@ Before opening a pull request, run:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
+go install ./cmd/scenery
 ```
 
 For larger changes, also run:
 
 ```sh
-onlava harness self --json --write
+scenery harness self --json --write
 ```
 
 ## Security
 
-Please do not open public issues for vulnerabilities. Report security issues to security@onlava.com. See [SECURITY.md](SECURITY.md).
+Please do not open public issues for vulnerabilities. Report security issues to security@scenery.sh. See [SECURITY.md](SECURITY.md).
 
 ## License
 
-onlava is licensed under the [Apache License 2.0](LICENSE).
+scenery is licensed under the [Apache License 2.0](LICENSE).

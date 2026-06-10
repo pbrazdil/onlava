@@ -1,7 +1,7 @@
 {
-  "schema_version": "onlava.docs.index.v1",
+  "schema_version": "scenery.docs.index.v1",
   "generated_at": "2026-06-07T00:00:00Z",
-  "owner_default": "onlava maintainers",
+  "owner_default": "scenery maintainers",
   "freshness_policy": {
     "default_review_days": 30,
     "quality_grades": [
@@ -19,8 +19,8 @@
   "documents": [
     {
       "path": "docs/index.md",
-      "title": "onlava Documentation Index",
-      "owner": "onlava maintainers",
+      "title": "scenery Documentation Index",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
@@ -35,8 +35,8 @@
     },
     {
       "path": "docs/knowledge.json",
-      "title": "onlava Docs Knowledge Index",
-      "owner": "onlava maintainers",
+      "title": "scenery Docs Knowledge Index",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
@@ -50,19 +50,19 @@
         "contract"
       ],
       "schema_refs": [
-        "docs/schemas/onlava.docs.index.v1.schema.json"
+        "docs/schemas/scenery.docs.index.v1.schema.json"
       ]
     },
     {
       "path": "AGENTS.md",
-      "title": "onlava Repo Agent Instructions",
-      "owner": "onlava maintainers",
+      "title": "scenery Repo Agent Instructions",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Repo-local operating manual for agents changing onlava itself, including the session/capability model, validation, docs review-due signals, drift handling, AGENTS hierarchy, and client-app instruction rules.",
+      "summary": "Repo-local operating manual for agents changing scenery itself, including the session/capability model, validation, docs review-due signals, drift handling, AGENTS hierarchy, and client-app instruction rules.",
       "tags": [
         "agents",
         "repo",
@@ -72,14 +72,14 @@
     },
     {
       "path": "SKILL.md",
-      "title": "onlava Installable Agent Skill",
-      "owner": "onlava maintainers",
+      "title": "scenery Installable Agent Skill",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Concise installed-skill entrypoint for using current onlava apps through app sessions and capabilities, including target-app AGENTS hierarchy checks, CLI JSON, scoped observability queries, managed toolchain diagnostics, browser UI harness validation, app validation profiles, docs review-due signals, debugging, databases, generated clients, and validation loops.",
+      "summary": "Concise installed-skill entrypoint for using current scenery apps through app sessions and capabilities, including target-app AGENTS hierarchy checks, CLI JSON, scoped observability queries, managed toolchain diagnostics, browser UI harness validation, app validation profiles, docs review-due signals, debugging, databases, generated clients, and validation loops.",
       "tags": [
         "skill",
         "agents",
@@ -89,8 +89,8 @@
     },
     {
       "path": "docs/agent-guide.md",
-      "title": "onlava Agent Guide",
-      "owner": "onlava maintainers",
+      "title": "scenery Agent Guide",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
@@ -107,14 +107,14 @@
     },
     {
       "path": "PLAN.md",
-      "title": "onlava Agent-First Harness Plan",
-      "owner": "onlava maintainers",
+      "title": "scenery Agent-First Harness Plan",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
       "last_reviewed": "2026-06-07",
       "review_after": "2026-07-07",
-      "summary": "Root plan translating OpenAI harness engineering ideas into onlava implementation priorities, with the browser UI harness marked as implemented baseline and route-depth work tracked separately.",
+      "summary": "Root plan translating OpenAI harness engineering ideas into scenery implementation priorities, with the browser UI harness marked as implemented baseline and route-depth work tracked separately.",
       "tags": [
         "plans",
         "harness",
@@ -124,8 +124,8 @@
     },
     {
       "path": "PLANS.md",
-      "title": "onlava Execution Plans Standard",
-      "owner": "onlava maintainers",
+      "title": "scenery Execution Plans Standard",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
@@ -141,14 +141,14 @@
     },
     {
       "path": "ARCHITECTURE.md",
-      "title": "onlava Architecture",
-      "owner": "onlava maintainers",
+      "title": "scenery Architecture",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "A",
       "freshness": "current",
       "last_reviewed": "2026-06-07",
       "review_after": "2026-07-07",
-      "summary": "High-level repo map, architectural boundaries, invariants, and cross-cutting concerns, updated for current onlava up/serve command naming.",
+      "summary": "High-level repo map, architectural boundaries, invariants, and cross-cutting concerns, updated for current scenery up/serve command naming.",
       "tags": [
         "architecture",
         "agents",
@@ -158,14 +158,14 @@
     },
     {
       "path": "docs/local-contract.md",
-      "title": "onlava Local Contract",
-      "owner": "onlava runtime",
+      "title": "scenery Local Contract",
+      "owner": "scenery runtime",
       "status": "active",
       "quality": "A",
       "freshness": "current",
       "last_reviewed": "2026-06-08",
       "review_after": "2026-07-07",
-      "summary": "Frozen local developer and agent-facing contract for onlava CLI, JSON schemas, app-session capabilities, scoped observability queries, harness evidence artifacts, validation profile artifacts, UI harness journey artifacts, cache artifacts, toolchain store, generators, configured tasks, code tasks, and local runtime surfaces.",
+      "summary": "Frozen local developer and agent-facing contract for scenery CLI, JSON schemas, app-session capabilities, scoped observability queries, harness evidence artifacts, validation profile artifacts, UI harness journey artifacts, cache artifacts, toolchain store, generators, configured tasks, code tasks, and local runtime surfaces.",
       "tags": [
         "contract",
         "cli",
@@ -174,53 +174,48 @@
         "toolchain"
       ],
       "schema_refs": [
-        "docs/schemas/onlava.toolchain.v1.schema.json",
-        "docs/schemas/onlava.toolchain.status.v1.schema.json",
-        "docs/schemas/onlava.db.branch.v1.schema.json",
-        "docs/schemas/onlava.db.branch.registry.v1.schema.json",
-        "docs/schemas/onlava.db.neon.status.v1.schema.json",
-        "docs/schemas/onlava.db.branch.status.v1.schema.json",
-        "docs/schemas/onlava.db.branch.list.v1.schema.json",
-        "docs/schemas/onlava.db.branch.restore.v1.schema.json",
-        "docs/schemas/onlava.db.branch.diff.v1.schema.json",
-        "docs/schemas/onlava.db.neon.restore_points.v1.schema.json",
-        "docs/schemas/onlava.worktree.create.v1.schema.json",
-        "docs/schemas/onlava.worktree.list.v1.schema.json",
-        "docs/schemas/onlava.worktree.remove.v1.schema.json",
-        "docs/schemas/onlava.harness.artifact.v1.schema.json",
-        "docs/schemas/onlava.harness.self.summary.v1.schema.json",
-        "docs/schemas/onlava.inspect.harness.v1.schema.json",
-        "docs/schemas/onlava.inspect.observability.v1.schema.json",
-        "docs/schemas/onlava.logs.query.v1.schema.json",
-        "docs/schemas/onlava.logs.tail.entry.v1.schema.json",
-        "docs/schemas/onlava.help.v1.schema.json",
-        "docs/schemas/onlava.down.v1.schema.json",
-        "docs/schemas/onlava.metrics.labels.v1.schema.json",
-        "docs/schemas/onlava.metrics.query.v1.schema.json",
-        "docs/schemas/onlava.metrics.series.v1.schema.json",
-        "docs/schemas/onlava.db.neon.driver.capabilities.v1.schema.json",
-        "docs/schemas/onlava.db.neon.selfhost.backend.v1.schema.json",
-        "docs/schemas/onlava.db.neon.selfhost.backend.v2.schema.json",
-        "docs/schemas/onlava.harness.ui.v1.schema.json",
-        "docs/schemas/onlava.harness.ui.dom.v1.schema.json",
-        "docs/schemas/onlava.inspect.validation.v1.schema.json",
-        "docs/schemas/onlava.validation.list.v1.schema.json",
-        "docs/schemas/onlava.validation.inspect.v1.schema.json",
-        "docs/schemas/onlava.validation.graph.v1.schema.json",
-        "docs/schemas/onlava.validation.plan.v1.schema.json",
-        "docs/schemas/onlava.validation.result.v1.schema.json"
+        "docs/schemas/scenery.toolchain.v1.schema.json",
+        "docs/schemas/scenery.toolchain.status.v1.schema.json",
+        "docs/schemas/scenery.db.branch.v1.schema.json",
+        "docs/schemas/scenery.db.branch.registry.v2.schema.json",
+        "docs/schemas/scenery.db.branch.status.v1.schema.json",
+        "docs/schemas/scenery.db.branch.list.v1.schema.json",
+        "docs/schemas/scenery.db.branch.restore.v1.schema.json",
+        "docs/schemas/scenery.db.branch.diff.v1.schema.json",
+        "docs/schemas/scenery.worktree.create.v1.schema.json",
+        "docs/schemas/scenery.worktree.list.v1.schema.json",
+        "docs/schemas/scenery.worktree.remove.v1.schema.json",
+        "docs/schemas/scenery.harness.artifact.v1.schema.json",
+        "docs/schemas/scenery.harness.self.summary.v1.schema.json",
+        "docs/schemas/scenery.inspect.harness.v1.schema.json",
+        "docs/schemas/scenery.inspect.observability.v1.schema.json",
+        "docs/schemas/scenery.logs.query.v1.schema.json",
+        "docs/schemas/scenery.logs.tail.entry.v1.schema.json",
+        "docs/schemas/scenery.help.v1.schema.json",
+        "docs/schemas/scenery.down.v1.schema.json",
+        "docs/schemas/scenery.metrics.labels.v1.schema.json",
+        "docs/schemas/scenery.metrics.query.v1.schema.json",
+        "docs/schemas/scenery.metrics.series.v1.schema.json",
+        "docs/schemas/scenery.harness.ui.v1.schema.json",
+        "docs/schemas/scenery.harness.ui.dom.v1.schema.json",
+        "docs/schemas/scenery.inspect.validation.v1.schema.json",
+        "docs/schemas/scenery.validation.list.v1.schema.json",
+        "docs/schemas/scenery.validation.inspect.v1.schema.json",
+        "docs/schemas/scenery.validation.graph.v1.schema.json",
+        "docs/schemas/scenery.validation.plan.v1.schema.json",
+        "docs/schemas/scenery.validation.result.v1.schema.json"
       ]
     },
     {
       "path": "docs/environment.md",
-      "title": "onlava Environment Reference",
-      "owner": "onlava runtime",
+      "title": "scenery Environment Reference",
+      "owner": "scenery runtime",
       "status": "active",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-01",
       "review_after": "2026-06-26",
-      "summary": "Human reference for onlava-owned environment variables, app-injected process identity, managed toolchain controls, local dev overrides, and tooling escape hatches.",
+      "summary": "Human reference for scenery-owned environment variables, app-injected process identity, managed toolchain controls, local dev overrides, and tooling escape hatches.",
       "tags": [
         "environment",
         "env",
@@ -230,13 +225,13 @@
         "toolchain"
       ],
       "schema_refs": [
-        "docs/schemas/onlava.environment.registry.v1.schema.json"
+        "docs/schemas/scenery.environment.registry.v1.schema.json"
       ]
     },
     {
       "path": "docs/environment.registry.json",
-      "title": "onlava Environment Registry",
-      "owner": "onlava runtime",
+      "title": "scenery Environment Registry",
+      "owner": "scenery runtime",
       "status": "active",
       "quality": "A",
       "freshness": "current",
@@ -251,13 +246,13 @@
         "harness"
       ],
       "schema_refs": [
-        "docs/schemas/onlava.environment.registry.v1.schema.json"
+        "docs/schemas/scenery.environment.registry.v1.schema.json"
       ]
     },
     {
       "path": "docs/grafana.md",
       "title": "Grafana Dev Integration",
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -274,38 +269,38 @@
     },
     {
       "path": "docs/harness-engineering.md",
-      "title": "onlava Harness Engineering",
-      "owner": "onlava runtime",
+      "title": "scenery Harness Engineering",
+      "owner": "scenery runtime",
       "status": "active",
       "quality": "A",
       "freshness": "current",
-      "last_reviewed": "2026-06-07",
+      "last_reviewed": "2026-06-10",
       "review_after": "2026-07-07",
-      "summary": "Agent validation loop, shared harness evidence model, agent-context handoff file, browser UI harness route journeys and DOM artifacts, self-harness contract, and doc-gardening rules for review-due and drift handling.",
+      "summary": "Agent validation loop, shared harness evidence model, agent-context handoff file, browser UI harness route journeys and DOM artifacts, managed Postgres branch self-harness proof, and doc-gardening rules for review-due and drift handling.",
       "tags": [
         "harness",
         "agents",
         "testing"
       ],
       "schema_refs": [
-        "docs/schemas/onlava.harness.artifact.v1.schema.json",
-        "docs/schemas/onlava.harness.self.summary.v1.schema.json",
-        "docs/schemas/onlava.inspect.harness.v1.schema.json",
-        "docs/schemas/onlava.agent_context.v1.schema.json",
-        "docs/schemas/onlava.harness.ui.v1.schema.json",
-        "docs/schemas/onlava.harness.ui.dom.v1.schema.json"
+        "docs/schemas/scenery.harness.artifact.v1.schema.json",
+        "docs/schemas/scenery.harness.self.summary.v1.schema.json",
+        "docs/schemas/scenery.inspect.harness.v1.schema.json",
+        "docs/schemas/scenery.agent_context.v1.schema.json",
+        "docs/schemas/scenery.harness.ui.v1.schema.json",
+        "docs/schemas/scenery.harness.ui.dom.v1.schema.json"
       ]
     },
     {
       "path": "docs/app-development-cookbook.md",
-      "title": "onlava App Development Cookbook",
-      "owner": "onlava runtime",
+      "title": "scenery App Development Cookbook",
+      "owner": "scenery runtime",
       "status": "active",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-08",
       "review_after": "2026-07-01",
-      "summary": "Practical recipes for building onlava apps, endpoints, auth, middleware, Temporal workers, cron, configured generators, code tasks, generated clients, proxy config, scoped observability debugging, and validation workflows.",
+      "summary": "Practical recipes for building scenery apps, endpoints, auth, middleware, Temporal workers, cron, configured generators, code tasks, generated clients, proxy config, scoped observability debugging, and validation workflows.",
       "tags": [
         "cookbook",
         "apps",
@@ -315,14 +310,14 @@
     },
     {
       "path": "docs/ui-agent-contract.md",
-      "title": "onlava UI Agent Contract",
-      "owner": "onlava dashboard",
+      "title": "scenery UI Agent Contract",
+      "owner": "scenery dashboard",
       "status": "active",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Rules for composing dashboard and app UI from onlava-owned primitives, layouts, the @onlava registry, static UI checks, and browser UI harness validation instead of direct shadcn usage.",
+      "summary": "Rules for composing dashboard and app UI from scenery-owned primitives, layouts, the @scenery registry, static UI checks, and browser UI harness validation instead of direct shadcn usage.",
       "tags": [
         "ui",
         "agents",
@@ -334,7 +329,7 @@
     {
       "path": "docs/plans/0072-neon-project-tenants.md",
       "title": "Neon Selfhost Project-Tenant Mapping",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -353,13 +348,13 @@
     {
       "path": "docs/plans/0071-neon-bind-mounted-storage.md",
       "title": "Bind-Mounted Neon Storage",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Completed ExecPlan that moved self-hosted Neon durable storage from Docker anonymous volumes into Onlava-owned bind-mounted directories under the shared Neon substrate root, while preserving worktree isolation through branch pins, leases, timelines, and compute endpoints.",
+      "summary": "Completed ExecPlan that moved self-hosted Neon durable storage from Docker anonymous volumes into Scenery-owned bind-mounted directories under the shared Neon substrate root, while preserving worktree isolation through branch pins, leases, timelines, and compute endpoints.",
       "tags": [
         "plans",
         "execplans",
@@ -372,13 +367,13 @@
     {
       "path": "docs/plans/0070-toolchain-managed-neon-selfhost-driver.md",
       "title": "Built-In Neon Selfhost Driver",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Completed ExecPlan that made the real neon-selfhost branch driver a built-in Onlava CLI capability that auto-records, auto-resolves, owns tenant/timeline/compute lifecycle, implements branch mutations and schema diff, and proves branch/Electric isolation.",
+      "summary": "Completed ExecPlan that made the real neon-selfhost branch driver a built-in Scenery CLI capability that auto-records, auto-resolves, owns tenant/timeline/compute lifecycle, implements branch mutations and schema diff, and proves branch/Electric isolation.",
       "tags": [
         "plans",
         "execplans",
@@ -391,13 +386,13 @@
     {
       "path": "docs/plans/0069-cli-help-and-human-ps.md",
       "title": "CLI Help and Human Session Status",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Completed ExecPlan that made root help orienting, moved full grammar into command-specific help and help all, added a machine-readable help manifest, and made bare onlava ps human-readable while preserving ps --json.",
+      "summary": "Completed ExecPlan that made root help orienting, moved full grammar into command-specific help and help all, added a machine-readable help manifest, and made bare scenery ps human-readable while preserving ps --json.",
       "tags": [
         "plans",
         "execplans",
@@ -409,13 +404,13 @@
     {
       "path": "docs/plans/0068-app-validation-profiles.md",
       "title": "App Validation Profiles",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-08",
       "review_after": "2026-07-08",
-      "summary": "Completed ExecPlan that added app-owned validation profiles under `.onlava.json`, `onlava validate`, `inspect validation`, harness-style evidence artifacts, changed-file selection, and an optional harness bridge.",
+      "summary": "Completed ExecPlan that added app-owned validation profiles under `.scenery.json`, `scenery validate`, `inspect validation`, harness-style evidence artifacts, changed-file selection, and an optional harness bridge.",
       "tags": [
         "plans",
         "execplans",
@@ -427,7 +422,7 @@
     {
       "path": "docs/plans/0067-cli-observability-query.md",
       "title": "CLI Observability Query Surface",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -442,24 +437,24 @@
         "agents"
       ],
       "schema_refs": [
-        "docs/schemas/onlava.inspect.observability.v1.schema.json",
-        "docs/schemas/onlava.logs.query.v1.schema.json",
-        "docs/schemas/onlava.logs.tail.entry.v1.schema.json",
-        "docs/schemas/onlava.metrics.labels.v1.schema.json",
-        "docs/schemas/onlava.metrics.query.v1.schema.json",
-        "docs/schemas/onlava.metrics.series.v1.schema.json"
+        "docs/schemas/scenery.inspect.observability.v1.schema.json",
+        "docs/schemas/scenery.logs.query.v1.schema.json",
+        "docs/schemas/scenery.logs.tail.entry.v1.schema.json",
+        "docs/schemas/scenery.metrics.labels.v1.schema.json",
+        "docs/schemas/scenery.metrics.query.v1.schema.json",
+        "docs/schemas/scenery.metrics.series.v1.schema.json"
       ]
     },
     {
       "path": "docs/plans/0066-harness-self-summary-output.md",
       "title": "Harness Self Summary Output",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-08",
       "review_after": "2026-07-08",
-      "summary": "Completed ExecPlan that made onlava harness self stdout summary-first, preserved explicit full archive mode, added focused harness drill-downs, and switched binary freshness to a worktree-local build.",
+      "summary": "Completed ExecPlan that made scenery harness self stdout summary-first, preserved explicit full archive mode, added focused harness drill-downs, and switched binary freshness to a worktree-local build.",
       "tags": [
         "plans",
         "execplans",
@@ -468,14 +463,14 @@
         "cli"
       ],
       "schema_refs": [
-        "docs/schemas/onlava.harness.self.summary.v1.schema.json",
-        "docs/schemas/onlava.inspect.harness.v1.schema.json"
+        "docs/schemas/scenery.harness.self.summary.v1.schema.json",
+        "docs/schemas/scenery.inspect.harness.v1.schema.json"
       ]
     },
     {
       "path": "docs/plans/0064-agent-first-development-control-plane.md",
       "title": "Agent-First Development Control Plane",
-      "owner": "onlava maintainers / agent DX",
+      "owner": "scenery maintainers / agent DX",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -493,13 +488,13 @@
     {
       "path": "docs/plans/0073-pg18-default-neon-selfhost.md",
       "title": "PostgreSQL 18 Default Neon Selfhost",
-      "owner": "onlava runtime / agent DX",
-      "status": "active",
+      "owner": "scenery runtime / agent DX",
+      "status": "deprecated",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-10",
       "review_after": "2026-07-10",
-      "summary": "Active ExecPlan for making self-hosted Neon-backed Onlava apps run through the existing app-facing surface while moving internal storage and compute plumbing to PostgreSQL 18 by default on stable upstream Neon refs.",
+      "summary": "Superseded ExecPlan that investigated making self-hosted Neon-backed Scenery apps run through the existing app-facing surface while moving internal storage and compute plumbing to PostgreSQL 18; replaced by the Postgres-only managed branching plan.",
       "tags": [
         "plans",
         "execplans",
@@ -511,15 +506,55 @@
       ]
     },
     {
-      "path": "docs/plans/0065-onlava-managed-neon-dev-cell.md",
-      "title": "Onlava-Managed Neon Dev Cell and Branch Isolation",
-      "owner": "onlava runtime / agent DX",
+      "path": "docs/plans/0074-postgres-only-managed-branching.md",
+      "title": "Postgres-Only Managed Branching",
+      "owner": "scenery runtime / agent DX",
+      "status": "completed",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-10",
+      "review_after": "2026-07-10",
+      "summary": "Completed ExecPlan that removed Neon as a Scenery substrate while preserving worktree/session database branching, managed DatabaseURL injection, DB lifecycle, Electric, auth, and harness behavior on PostgreSQL 18.",
+      "tags": [
+        "plans",
+        "execplans",
+        "database",
+        "postgres",
+        "branching",
+        "electric",
+        "agents"
+      ]
+    },
+    {
+      "path": "docs/plans/0075-rebrand-scenery.md",
+      "title": "Rebrand to Scenery",
+      "owner": "scenery maintainers / release tooling / agent DX",
+      "status": "active",
+      "quality": "B",
+      "freshness": "current",
+      "last_reviewed": "2026-06-10",
+      "review_after": "2026-07-10",
+      "summary": "Active ExecPlan for renaming the project to Scenery across repo identity, the scenery.sh module path, CLI, app model tokens, docs, CI, GoReleaser, local state paths, vanity import readiness, and the first v0.2.0 release.",
+      "tags": [
+        "plans",
+        "execplans",
+        "rebrand",
+        "release",
+        "cli",
+        "docs",
+        "agents"
+      ]
+    },
+    {
+      "path": "docs/plans/0065-scenery-managed-neon-dev-cell.md",
+      "title": "Scenery-Managed Neon Dev Cell and Branch Isolation",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-07",
-      "summary": "Completed ExecPlan for an Onlava-owned local Neon dev cell, branch-isolated managed Postgres provider, worktree/session branch pins, agent-safe worktree workflows, and default harness proof of branch/Electric isolation.",
+      "summary": "Completed ExecPlan for a Scenery-owned local Neon dev cell, branch-isolated managed Postgres provider, worktree/session branch pins, agent-safe worktree workflows, and default harness proof of branch/Electric isolation.",
       "tags": [
         "plans",
         "execplans",
@@ -531,7 +566,7 @@
     {
       "path": "docs/plans/0035-temporal-worker-production-hardening.md",
       "title": "Temporal Worker Production Hardening",
-      "owner": "onlava runtime / ONLV integration",
+      "owner": "scenery runtime / ONLV integration",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -549,13 +584,13 @@
     {
       "path": "docs/plans/0045-onlv-agent-native-dev-migration.md",
       "title": "ONLV Agent Native Dev Migration",
-      "owner": "onlava runtime / ONLV integration",
+      "owner": "scenery runtime / ONLV integration",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Completed ExecPlan for making ONLV consume the agent-native local development model by default through onlava-owned dev sessions, routes, Postgres, Electric, and docs.",
+      "summary": "Completed ExecPlan for making ONLV consume the agent-native local development model by default through scenery-owned dev sessions, routes, Postgres, Electric, and docs.",
       "tags": [
         "plans",
         "execplans",
@@ -567,7 +602,7 @@
     {
       "path": "docs/plans/0046-prd5-dev-safety-hardening.md",
       "title": "Agent Dev Safety Hardening",
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -585,7 +620,7 @@
     {
       "path": "docs/plans/0048-agent-runtime-operational-hardening.md",
       "title": "Agent Runtime Operational Hardening",
-      "owner": "onlava runtime / ONLV integration",
+      "owner": "scenery runtime / ONLV integration",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -603,7 +638,7 @@
     {
       "path": "docs/plans/0049-browser-direct-api-routing.md",
       "title": "Browser Direct API Routing",
-      "owner": "onlava runtime / ONLV Pulse integration",
+      "owner": "scenery runtime / ONLV Pulse integration",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -621,7 +656,7 @@
     {
       "path": "docs/plans/0050-test-suite-speed-hardening.md",
       "title": "Test Suite Speed and Stability",
-      "owner": "onlava runtime / test infrastructure",
+      "owner": "scenery runtime / test infrastructure",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -639,7 +674,7 @@
     {
       "path": "docs/plans/0051-harness-self-agent-oracle.md",
       "title": "Harness Self Agent Oracle",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -657,7 +692,7 @@
     {
       "path": "docs/plans/0054-remove-objectstore-functionality.md",
       "title": "Remove Objectstore Functionality",
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -675,7 +710,7 @@
     {
       "path": "docs/plans/0055-structured-dev-events-and-console.md",
       "title": "Structured Dev Events and Console",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -693,7 +728,7 @@
     {
       "path": "docs/plans/0056-dev-event-backend-cutover-and-parity.md",
       "title": "Dev Event Backend Cutover and Parity",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -711,13 +746,13 @@
     {
       "path": "docs/plans/0059-frozen-toolchain-manifest.md",
       "title": "Frozen Toolchain Manifest and Managed Tool Store",
-      "owner": "onlava runtime / release tooling / agent DX",
+      "owner": "scenery runtime / release tooling / agent DX",
       "status": "active",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-07",
       "review_after": "2026-07-07",
-      "summary": "Active ExecPlan for a frozen toolchain manifest, managed local tool store, toolchain CLI, and removal of implicit system PATH resolution for Onlava-managed tools.",
+      "summary": "Active ExecPlan for a frozen toolchain manifest, managed local tool store, toolchain CLI, and removal of implicit system PATH resolution for Scenery-managed tools.",
       "tags": [
         "plans",
         "execplans",
@@ -727,9 +762,9 @@
       ]
     },
     {
-      "path": "docs/plans/0060-onlava-doctor-command.md",
-      "title": "onlava Doctor Command",
-      "owner": "onlava runtime / agent DX",
+      "path": "docs/plans/0060-scenery-doctor-command.md",
+      "title": "scenery Doctor Command",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -747,7 +782,7 @@
     {
       "path": "docs/plans/0047-typescript-temporal-workers.md",
       "title": "TypeScript Temporal Workers",
-      "owner": "onlava runtime / Temporal",
+      "owner": "scenery runtime / Temporal",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -765,7 +800,7 @@
     {
       "path": "docs/plans/0062-remove-legacy-agent-transport.md",
       "title": "Remove Legacy Agent Transport",
-      "owner": "onlava runtime / agent DX",
+      "owner": "scenery runtime / agent DX",
       "status": "completed",
       "quality": "B",
       "freshness": "current",
@@ -783,7 +818,7 @@
     {
       "path": "docs/plans/0063-db-lifecycle-split.md",
       "title": "Database Lifecycle Split",
-      "owner": "onlava runtime / ONLV integration",
+      "owner": "scenery runtime / ONLV integration",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -801,13 +836,13 @@
     {
       "path": "docs/plans/0001-devrun-command-split.md",
       "title": "Split Local Development From Headless Runtime",
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "status": "completed",
       "quality": "A",
       "freshness": "current",
       "last_reviewed": "2026-06-07",
       "review_after": "2026-07-07",
-      "summary": "Completed historical ExecPlan for splitting development supervisor behavior from headless runtime execution; current local startup is onlava up and headless runtime execution is onlava serve.",
+      "summary": "Completed historical ExecPlan for splitting development supervisor behavior from headless runtime execution; current local startup is scenery up and headless runtime execution is scenery serve.",
       "tags": [
         "plans",
         "execplans",
@@ -817,8 +852,8 @@
     },
     {
       "path": "docs/plans/0002-v0-release-readiness.md",
-      "title": "onlava v0 Release Readiness",
-      "owner": "onlava runtime",
+      "title": "scenery v0 Release Readiness",
+      "owner": "scenery runtime",
       "status": "completed",
       "quality": "A",
       "freshness": "current",
@@ -835,7 +870,7 @@
     {
       "path": "docs/plans/0003-victoria-observability-sidecars.md",
       "title": "Victoria Observability Sidecars",
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "status": "completed",
       "quality": "A",
       "freshness": "current",
@@ -852,7 +887,7 @@
     {
       "path": "docs/plans/active.md",
       "title": "Active Plans",
-      "owner": "onlava maintainers",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -868,7 +903,7 @@
     {
       "path": "docs/plans/completed.md",
       "title": "Completed Plans",
-      "owner": "onlava maintainers",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "B",
       "freshness": "current",
@@ -884,13 +919,13 @@
     {
       "path": "docs/runbooks/standard-auth-migration.md",
       "title": "Standard Auth Production Migration Runbook",
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "status": "active",
       "quality": "B",
       "freshness": "current",
       "last_reviewed": "2026-06-07",
       "review_after": "2026-07-07",
-      "summary": "Operator checklist and SQL template for preserving existing app-owned auth data when moving to onlava standard auth; reviewed against current standard auth schema fields.",
+      "summary": "Operator checklist and SQL template for preserving existing app-owned auth data when moving to scenery standard auth; reviewed against current standard auth schema fields.",
       "tags": [
         "runbook",
         "auth",
@@ -901,7 +936,7 @@
     {
       "path": "docs/tech-debt.md",
       "title": "Tech Debt",
-      "owner": "onlava maintainers",
+      "owner": "scenery maintainers",
       "status": "active",
       "quality": "B",
       "freshness": "current",

@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/pbrazdil/onlava/internal/authbridge"
-	"github.com/pbrazdil/onlava/runtime"
+	"scenery.sh/internal/authbridge"
+	"scenery.sh/runtime"
 )
 
 type UID string

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 type Client struct {
@@ -101,7 +101,7 @@ func Ensure(ctx context.Context) (*Client, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	return nil, fmt.Errorf("timed out waiting for onlava agent at %s: %w", paths.SocketPath, lastErr)
+	return nil, fmt.Errorf("timed out waiting for scenery agent at %s: %w", paths.SocketPath, lastErr)
 }
 
 func StartProcess(paths Paths, opts StartOptions) error {

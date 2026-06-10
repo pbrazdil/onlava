@@ -8,13 +8,13 @@ import (
 	temporalinterceptor "go.temporal.io/sdk/interceptor"
 	"go.temporal.io/sdk/workflow"
 
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	sceneryruntime "scenery.sh/runtime"
 )
 
 func TestTemporalClientOptionsValidatePayloadCodec(t *testing.T) {
-	_, err := temporalClientOptions(onlavaruntime.TemporalRuntimeInfo{
-		Address:      onlavaruntime.DefaultTemporalAddress,
-		Namespace:    onlavaruntime.DefaultTemporalNamespace,
+	_, err := temporalClientOptions(sceneryruntime.TemporalRuntimeInfo{
+		Address:      sceneryruntime.DefaultTemporalAddress,
+		Namespace:    sceneryruntime.DefaultTemporalNamespace,
 		PayloadCodec: "custom",
 	})
 	if err == nil || !strings.Contains(err.Error(), "payload_codec") {
@@ -26,10 +26,10 @@ func TestTemporalClientOptionsAddsDevTelemetryInterceptor(t *testing.T) {
 	restore := setTemporalTracingEnabledForTest(true)
 	defer restore()
 
-	options, err := temporalClientOptions(onlavaruntime.TemporalRuntimeInfo{
-		Address:      onlavaruntime.DefaultTemporalAddress,
-		Namespace:    onlavaruntime.DefaultTemporalNamespace,
-		PayloadCodec: onlavaruntime.DefaultTemporalPayloadCodec,
+	options, err := temporalClientOptions(sceneryruntime.TemporalRuntimeInfo{
+		Address:      sceneryruntime.DefaultTemporalAddress,
+		Namespace:    sceneryruntime.DefaultTemporalNamespace,
+		PayloadCodec: sceneryruntime.DefaultTemporalPayloadCodec,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +39,8 @@ func TestTemporalClientOptionsAddsDevTelemetryInterceptor(t *testing.T) {
 	}
 }
 
-func TestOnlavaTemporalTracerPropagatesParent(t *testing.T) {
-	tracer := newOnlavaTemporalTracer(onlavaruntime.TemporalRuntimeInfo{})
+func TestSceneryTemporalTracerPropagatesParent(t *testing.T) {
+	tracer := newSceneryTemporalTracer(sceneryruntime.TemporalRuntimeInfo{})
 	parent, err := tracer.UnmarshalSpan(map[string]string{
 		"trace_id": "11111111111111111111111111111111",
 		"span_id":  "2222222222222222",
@@ -64,7 +64,7 @@ func TestOnlavaTemporalTracerPropagatesParent(t *testing.T) {
 	if data["trace_id"] != "11111111111111111111111111111111" || !isTemporalSpanID(data["span_id"]) {
 		t.Fatalf("marshaled span = %#v", data)
 	}
-	got := span.(*onlavaTemporalSpan)
+	got := span.(*sceneryTemporalSpan)
 	if got.parentSpanID != "2222222222222222" || temporalTraceType(got.operation) != "TEMPORAL_ACTIVITY" {
 		t.Fatalf("span = %#v", got)
 	}
@@ -73,7 +73,7 @@ func TestOnlavaTemporalTracerPropagatesParent(t *testing.T) {
 func TestTemporalTLSConfigRequiresCertAndKeyPair(t *testing.T) {
 	t.Setenv("TEMPORAL_TEST_CERT", "/tmp/missing-cert.pem")
 	t.Setenv("TEMPORAL_TEST_KEY", "")
-	_, enabled, err := temporalTLSConfig(onlavaruntime.TemporalRuntimeInfo{
+	_, enabled, err := temporalTLSConfig(sceneryruntime.TemporalRuntimeInfo{
 		TLSEnabled:     true,
 		TLSCertFileEnv: "TEMPORAL_TEST_CERT",
 		TLSKeyFileEnv:  "TEMPORAL_TEST_KEY",
@@ -87,10 +87,10 @@ func TestTemporalWorkerOptionsEnableDeploymentVersioning(t *testing.T) {
 	restore := setTemporalTracingEnabledForTest(false)
 	defer restore()
 
-	info := onlavaruntime.TemporalRuntimeInfo{
+	info := sceneryruntime.TemporalRuntimeInfo{
 		DeploymentName: "orders-api",
 		WorkerBuildID:  "sha.123",
-		Versioning:     onlavaruntime.TemporalVersioningAutoUpgrade,
+		Versioning:     sceneryruntime.TemporalVersioningAutoUpgrade,
 	}
 	opts := TemporalWorkerOptions(info, "worker", "orders.go")
 	if !opts.DeploymentOptions.UseVersioning {
@@ -111,7 +111,7 @@ func TestTemporalWorkerOptionsAddsDevTelemetryInterceptor(t *testing.T) {
 	restore := setTemporalTracingEnabledForTest(true)
 	defer restore()
 
-	opts := TemporalWorkerOptions(onlavaruntime.TemporalRuntimeInfo{}, "worker", "orders.go")
+	opts := TemporalWorkerOptions(sceneryruntime.TemporalRuntimeInfo{}, "worker", "orders.go")
 	if len(opts.Interceptors) != 1 {
 		t.Fatalf("interceptors = %d, want 1", len(opts.Interceptors))
 	}
@@ -121,14 +121,14 @@ func TestTemporalWorkerOptionsEnableHostResourceReporting(t *testing.T) {
 	restore := setTemporalTracingEnabledForTest(false)
 	defer restore()
 
-	opts := TemporalWorkerOptions(onlavaruntime.TemporalRuntimeInfo{
+	opts := TemporalWorkerOptions(sceneryruntime.TemporalRuntimeInfo{
 		DeploymentName: "orders-api",
 	}, "worker", "orders.go")
 	if opts.SysInfoProvider == nil {
 		t.Fatal("expected SysInfoProvider when host resource reporting uses default")
 	}
 
-	opts = TemporalWorkerOptions(onlavaruntime.TemporalRuntimeInfo{
+	opts = TemporalWorkerOptions(sceneryruntime.TemporalRuntimeInfo{
 		DeploymentName:   "orders-api",
 		HostReporting:    false,
 		HostReportingSet: true,

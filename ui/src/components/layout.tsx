@@ -80,9 +80,9 @@ function DashboardShell({ appId }: { appId: string }) {
     const root = document.documentElement;
     root.classList.add("dark");
     root.style.colorScheme = "dark";
-    document.body.classList.add("onlava-dark");
+    document.body.classList.add("scenery-dark");
     return () => {
-      document.body.classList.remove("onlava-dark");
+      document.body.classList.remove("scenery-dark");
     };
   }, []);
 
@@ -97,8 +97,8 @@ function DashboardShell({ appId }: { appId: string }) {
             <div className="relative flex min-w-0 text-left" ref={menuRef}>
               <button
                 type="button"
-                data-onlava-ui="AppStatus"
-                data-onlava-state={
+                data-scenery-ui="AppStatus"
+                data-scenery-state={
                   status?.compileError
                     ? "compile-error"
                     : status?.compiling
@@ -132,7 +132,7 @@ function DashboardShell({ appId }: { appId: string }) {
               </button>
               <button
                 type="button"
-                data-onlava-ui="AppSelector"
+                data-scenery-ui="AppSelector"
                 onClick={() => setMenuOpen((value) => !value)}
                 className={appShellAppMenuButtonClass()}
                 aria-haspopup="menu"
@@ -154,7 +154,7 @@ function DashboardShell({ appId }: { appId: string }) {
               </button>
               {menuOpen ? (
                 <div
-                  data-onlava-ui="AppSelectorList"
+                  data-scenery-ui="AppSelectorList"
                   className="absolute left-0 top-10 z-50 w-80 rounded-md border border-border bg-popover text-popover-foreground shadow-lg"
                 >
                   <div className="border-b border-border px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
@@ -511,7 +511,7 @@ function statusTooltip(
   connected: boolean,
 ): string {
   if (!connected) {
-    return "Disconnected from onlava. Attempting to reconnect.";
+    return "Disconnected from scenery. Attempting to reconnect.";
   }
   if (compiling) {
     return "Compiling...";

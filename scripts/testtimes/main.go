@@ -29,9 +29,9 @@ type testTiming struct {
 }
 
 const defaultPackageParallelism = "4"
-const shardedCmdOnlavaPackage = "github.com/pbrazdil/onlava/cmd/onlava"
+const shardedCmdSceneryPackage = "scenery.sh/cmd/scenery"
 
-var shardedCmdOnlavaDefaultRegexes = []string{
+var shardedCmdSceneryDefaultRegexes = []string{
 	"^Test[A-E].*",
 	"^Test[F-L].*",
 	"^Test[M-O].*",
@@ -129,7 +129,7 @@ func runDefaultShards() (int, []testTiming, error) {
 		err      error
 	}
 
-	results := make(chan result, len(shardedCmdOnlavaDefaultRegexes)+1)
+	results := make(chan result, len(shardedCmdSceneryDefaultRegexes)+1)
 	var wg sync.WaitGroup
 	run := func(args []string) {
 		defer wg.Done()
@@ -147,7 +147,7 @@ func runDefaultShards() (int, []testTiming, error) {
 		}
 		otherPackages := make([]string, 0, len(packages))
 		for _, pkg := range packages {
-			if pkg != shardedCmdOnlavaPackage {
+			if pkg != shardedCmdSceneryPackage {
 				otherPackages = append(otherPackages, pkg)
 			}
 		}
@@ -160,9 +160,9 @@ func runDefaultShards() (int, []testTiming, error) {
 		results <- result{rows: rows, exitCode: exitCode, err: err}
 	}()
 
-	for _, regex := range shardedCmdOnlavaDefaultRegexes {
+	for _, regex := range shardedCmdSceneryDefaultRegexes {
 		wg.Add(1)
-		go run([]string{"test", "-json", "-run", regex, "./cmd/onlava"})
+		go run([]string{"test", "-json", "-run", regex, "./cmd/scenery"})
 	}
 
 	wg.Wait()

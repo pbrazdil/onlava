@@ -38,7 +38,7 @@ dashboard search box
 
 ## Decision Log
 
-- Use `onlava_data.search_documents` with a GIN index on a `tsvector` document. This gives one indexed PostgreSQL search path for all dynamic objects without adding a search service.
+- Use `scenery_data.search_documents` with a GIN index on a `tsvector` document. This gives one indexed PostgreSQL search path for all dynamic objects without adding a search service.
 - Maintain search documents in the mutation layer for `CreateRecord`, `UpdateRecord`, and `DeleteRecord`, in the same transaction as the record write and outbox row.
 - Add field metadata columns `is_searchable` and `search_weight` instead of storing search configuration only in opaque settings JSON.
 - Add an object-wide `search` filter operator and a public `data.Search(...)` helper. Field-scoped search is intentionally not part of this pass.
@@ -118,11 +118,11 @@ Choose and document the search storage model, add metadata and indexes, then add
 ## Validation and Acceptance
 
 ```sh
-ONLAVA_TEST_DATABASE_URL=... go test ./internal/objectstore
+SCENERY_TEST_DATABASE_URL=... go test ./internal/objectstore
 cd ui && bun run typecheck && bun run build
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

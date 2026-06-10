@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "onlava-dev-dashboard-ui",
+      "name": "scenery-dev-dashboard-ui",
       "dependencies": {
         "@tanstack/react-form": "1.29.0",
         "@tanstack/react-router": "1.168.21",

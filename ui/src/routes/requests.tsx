@@ -59,7 +59,7 @@ import type {
   ServiceRPC,
 } from "../lib/types";
 
-const REQUESTS_SIDEBAR_STORAGE_KEY = "onlava:requests-sidebar-collapsed";
+const REQUESTS_SIDEBAR_STORAGE_KEY = "scenery:requests-sidebar-collapsed";
 const REQUESTS_SIDEBAR_WIDTH = 280;
 
 export function RequestsPage() {
@@ -407,8 +407,8 @@ export function RequestsPage() {
 
   return (
     <section
-      data-onlava-ui="APIExplorer"
-      data-onlava-endpoint-count={endpointOptions.length}
+      data-scenery-ui="APIExplorer"
+      data-scenery-endpoint-count={endpointOptions.length}
       className="w-full h-[calc(100vh-(var(--header-height)))] grid grid-cols-3"
     >
       <div className="col-span-2 overflow-hidden border-border border-r min-w-0">
@@ -419,8 +419,8 @@ export function RequestsPage() {
             style={{ width: sidebarCollapsed ? 0 : REQUESTS_SIDEBAR_WIDTH }}
           />
           <aside
-            data-onlava-ui="APIExplorerEndpointList"
-            data-onlava-endpoint-count={endpointOptions.length}
+            data-scenery-ui="APIExplorerEndpointList"
+            data-scenery-endpoint-count={endpointOptions.length}
             className={cn(
               "absolute inset-y-0 left-0 z-10 overflow-auto border-border border-r bg-sidebar transition-[left] duration-200 ease-linear",
             )}
@@ -524,7 +524,7 @@ export function RequestsPage() {
               {activeTab ? (
                 <div className="p-4 w-full min-w-0 max-w-full">
                   <div className="space-y-5">
-                    <div data-onlava-ui="APIExplorerEndpointDetail">
+                    <div data-scenery-ui="APIExplorerEndpointDetail">
                       <EndpointSelector
                         currentKey={`${activeTab.svcName}.${activeTab.rpcName}`}
                         endpoints={endpointOptions}

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/pbrazdil/onlava/internal/envfile"
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envfile"
+	"scenery.sh/internal/envpolicy"
 )
 
 var (
@@ -106,11 +106,11 @@ func logMissingSecrets(missing []missingSecret) {
 	if len(fields) == 0 || !emitNow {
 		return
 	}
-	slog.Warn("onlava secrets missing", "fields", fields, "env_keys", keys, "source", ".env")
+	slog.Warn("scenery secrets missing", "fields", fields, "env_keys", keys, "source", ".env")
 }
 
 func strictSecretsRequired() bool {
-	for _, key := range []string{"ONLAVA_RUNTIME_ENV", "ONLAVA_ENV"} {
+	for _, key := range []string{"SCENERY_RUNTIME_ENV", "SCENERY_ENV"} {
 		if strings.EqualFold(strings.TrimSpace(envpolicy.Get(key)), "production") {
 			return true
 		}
@@ -161,7 +161,7 @@ func FlushMissingSecretsWarnings() {
 	if !ok {
 		return
 	}
-	slog.Warn("onlava secrets missing", "fields", fields, "env_keys", keys, "source", ".env")
+	slog.Warn("scenery secrets missing", "fields", fields, "env_keys", keys, "source", ".env")
 }
 
 func collectMissingSecretsLocked() (fields []string, keys []string, ok bool) {

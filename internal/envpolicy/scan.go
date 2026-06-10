@@ -103,7 +103,7 @@ func EffectiveScope(refs []Reference, name string) string {
 	if scope == "" {
 		return "runtime"
 	}
-	if (strings.HasPrefix(name, "ONLAVA_TEST_") || strings.HasPrefix(name, "ONLAVA_INTEGRATION_")) && scope != "docs" {
+	if (strings.HasPrefix(name, "SCENERY_TEST_") || strings.HasPrefix(name, "SCENERY_INTEGRATION_")) && scope != "docs" {
 		return "test"
 	}
 	return scope
@@ -173,7 +173,7 @@ func looksLikeEnvName(token string) bool {
 		return false
 	}
 	for _, prefix := range []string{
-		"ONLAVA_",
+		"SCENERY_",
 		"GF_",
 	} {
 		if strings.HasPrefix(token, prefix) && token != prefix {

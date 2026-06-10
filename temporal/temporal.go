@@ -19,8 +19,8 @@ import (
 	temporalworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	"scenery.sh/internal/envpolicy"
+	sceneryruntime "scenery.sh/runtime"
 )
 
 type WorkflowContext = workflow.Context
@@ -168,7 +168,7 @@ type ActivityFuture[O any] struct {
 
 type declaration interface {
 	declarationKey() string
-	taskQueue(onlavaruntime.TemporalRuntimeInfo) string
+	taskQueue(sceneryruntime.TemporalRuntimeInfo) string
 	maxConcurrentActivityExecutions() int
 	register(temporalworker.Worker)
 }
@@ -189,9 +189,9 @@ var serviceAccessors = struct {
 }
 
 func init() {
-	onlavaruntime.RegisterTemporalRuntimeStarter(StartRuntime)
-	onlavaruntime.RegisterTemporalWorkerStarter(startWorkerRuntime)
-	onlavaruntime.RegisterTemporalCronStarter(startCronRuntime)
+	sceneryruntime.RegisterTemporalRuntimeStarter(StartRuntime)
+	sceneryruntime.RegisterTemporalWorkerStarter(startWorkerRuntime)
+	sceneryruntime.RegisterTemporalCronStarter(startCronRuntime)
 }
 
 func NewWorkflow[I, O any](name string, cfg WorkflowConfig, handler func(workflow.Context, I) (O, error)) *Workflow[I, O] {
@@ -256,9 +256,9 @@ func (w *Workflow[I, O]) Config() WorkflowConfig {
 	return w.config
 }
 
-func (w *Workflow[I, O]) taskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
+func (w *Workflow[I, O]) taskQueue(info sceneryruntime.TemporalRuntimeInfo) string {
 	if w != nil && strings.TrimSpace(w.config.TaskQueue) != "" {
-		return onlavaruntime.SessionScopedTemporalTaskQueue(info, w.config.TaskQueue)
+		return sceneryruntime.SessionScopedTemporalTaskQueue(info, w.config.TaskQueue)
 	}
 	return defaultWorkerTaskQueue(info)
 }
@@ -316,9 +316,9 @@ func (a *Activity[I, O]) temporalActivityOptions() activityOptions {
 	return a.options
 }
 
-func (a *Activity[I, O]) taskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
+func (a *Activity[I, O]) taskQueue(info sceneryruntime.TemporalRuntimeInfo) string {
 	if a != nil {
-		return onlavaruntime.SessionScopedTemporalTaskQueue(info, a.config.TaskQueue)
+		return sceneryruntime.SessionScopedTemporalTaskQueue(info, a.config.TaskQueue)
 	}
 	return ""
 }
@@ -386,7 +386,7 @@ func Start[I, O any](ctx context.Context, w *Workflow[I, O], input I, identity W
 	startOpts := applyStartOptions(w.config, opts...)
 	client, info, ok := ActiveClient()
 	if !ok || client == nil {
-		return Run[O]{}, errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")
+		return Run[O]{}, errors.New("temporal: runtime is not started; set temporal.enabled in .scenery.json")
 	}
 	sdkOpts := temporalStartWorkflowOptions(w.name, identity, startOpts, w.taskQueue(info), info)
 	run, err := client.ExecuteWorkflow(ctx, sdkOpts, w.name, input)
@@ -403,7 +403,7 @@ func ExecuteActivity[I, O any](ctx workflow.Context, a ActivityHandle[I, O], inp
 	cfg := a.temporalActivityConfig()
 	activityOpts := a.temporalActivityOptions()
 	opts := workflow.ActivityOptions{
-		TaskQueue:           onlavaruntime.SessionScopedTemporalTaskQueueFromEnv(cfg.TaskQueue),
+		TaskQueue:           sceneryruntime.SessionScopedTemporalTaskQueueFromEnv(cfg.TaskQueue),
 		StartToCloseTimeout: cfg.StartToClose,
 		HeartbeatTimeout:    activityOpts.HeartbeatTimeout,
 		RetryPolicy:         retryPolicy(cfg.RetryPolicy),
@@ -558,7 +558,7 @@ func WithWorkflowIDReusePolicy(policy WorkflowIDReusePolicy) StartOption {
 func GetWorkflow[O any](ctx context.Context, workflowID, runID string) Run[O] {
 	client, _, ok := ActiveClient()
 	if !ok || client == nil {
-		return Run[O]{workflowID: workflowID, runID: runID, err: errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")}
+		return Run[O]{workflowID: workflowID, runID: runID, err: errors.New("temporal: runtime is not started; set temporal.enabled in .scenery.json")}
 	}
 	workflowID = strings.TrimSpace(workflowID)
 	runID = strings.TrimSpace(runID)
@@ -606,7 +606,7 @@ func (r Run[O]) Cancel(ctx context.Context) error {
 		client, _, _ = ActiveClient()
 	}
 	if client == nil {
-		return errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")
+		return errors.New("temporal: runtime is not started; set temporal.enabled in .scenery.json")
 	}
 	workflowID := r.ID()
 	if strings.TrimSpace(workflowID) == "" {
@@ -624,7 +624,7 @@ func (r Run[O]) Terminate(ctx context.Context, reason string) error {
 		client, _, _ = ActiveClient()
 	}
 	if client == nil {
-		return errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")
+		return errors.New("temporal: runtime is not started; set temporal.enabled in .scenery.json")
 	}
 	workflowID := r.ID()
 	if strings.TrimSpace(workflowID) == "" {
@@ -721,7 +721,7 @@ func snapshotDeclarations() []declaration {
 	return items
 }
 
-func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(context.Context) error, error) {
+func startWorkerRuntime(ctx context.Context, cfg sceneryruntime.AppConfig) (func(context.Context) error, error) {
 	_ = ctx
 	items := snapshotDeclarations()
 	if len(items) == 0 || strings.EqualFold(strings.TrimSpace(cfg.Role), "api") {
@@ -729,7 +729,7 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 	}
 	client, info, ok := ActiveClient()
 	if !ok || client == nil {
-		return nil, errors.New("temporal: declarations require temporal.enabled in .onlava.json")
+		return nil, errors.New("temporal: declarations require temporal.enabled in .scenery.json")
 	}
 
 	byQueue := make(map[string][]declaration)
@@ -759,7 +759,7 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 		}
 		workers = append(workers, worker)
 	}
-	if onlavaruntime.ShouldAutoPromoteTemporalWorkerDeployment(info) {
+	if sceneryruntime.ShouldAutoPromoteTemporalWorkerDeployment(info) {
 		if err := EnsureWorkerDeploymentCurrentVersion(ctx, client, info); err != nil {
 			for _, started := range workers {
 				started.Stop()
@@ -776,16 +776,16 @@ func startWorkerRuntime(ctx context.Context, cfg onlavaruntime.AppConfig) (func(
 }
 
 func selectedTemporalTaskQueuesFromEnv() []string {
-	return splitTemporalTaskQueueList(envpolicy.Get("ONLAVA_TEMPORAL_TASK_QUEUE"))
+	return splitTemporalTaskQueueList(envpolicy.Get("SCENERY_TEMPORAL_TASK_QUEUE"))
 }
 
-func scopedSelectedTemporalTaskQueues(info onlavaruntime.TemporalRuntimeInfo, selected []string) []string {
+func scopedSelectedTemporalTaskQueues(info sceneryruntime.TemporalRuntimeInfo, selected []string) []string {
 	if len(selected) == 0 {
 		return nil
 	}
 	out := make([]string, 0, len(selected))
 	for _, queue := range selected {
-		out = append(out, onlavaruntime.SessionScopedTemporalTaskQueue(info, queue))
+		out = append(out, sceneryruntime.SessionScopedTemporalTaskQueue(info, queue))
 	}
 	return out
 }
@@ -851,7 +851,7 @@ func normalizeSelectedTaskQueues(selected []string) []string {
 	return queues
 }
 
-func temporalWorkerOptionsForQueue(info onlavaruntime.TemporalRuntimeInfo, role, queue string, items []declaration) temporalworker.Options {
+func temporalWorkerOptionsForQueue(info sceneryruntime.TemporalRuntimeInfo, role, queue string, items []declaration) temporalworker.Options {
 	opts := TemporalWorkerOptions(info, role, queue)
 	for _, item := range items {
 		max := item.maxConcurrentActivityExecutions()
@@ -881,12 +881,12 @@ func applyStartOptions(cfg WorkflowConfig, options ...StartOption) StartWorkflow
 	return opts
 }
 
-func temporalStartWorkflowOptions(workflowName string, identity WorkflowIdentity, opts StartWorkflowOptions, defaultTaskQueue string, info onlavaruntime.TemporalRuntimeInfo) temporalclient.StartWorkflowOptions {
+func temporalStartWorkflowOptions(workflowName string, identity WorkflowIdentity, opts StartWorkflowOptions, defaultTaskQueue string, info sceneryruntime.TemporalRuntimeInfo) temporalclient.StartWorkflowOptions {
 	taskQueue := strings.TrimSpace(opts.TaskQueue)
 	if taskQueue == "" {
 		taskQueue = defaultTaskQueue
 	}
-	taskQueue = onlavaruntime.SessionScopedTemporalTaskQueue(info, taskQueue)
+	taskQueue = sceneryruntime.SessionScopedTemporalTaskQueue(info, taskQueue)
 	start := temporalclient.StartWorkflowOptions{
 		ID:                       workflowIDFromIdentity(workflowName, identity),
 		TaskQueue:                taskQueue,
@@ -901,7 +901,7 @@ func temporalStartWorkflowOptions(workflowName string, identity WorkflowIdentity
 	if buildID := strings.TrimSpace(opts.PinnedBuildID); buildID != "" {
 		start.VersioningOverride = &temporalclient.PinnedVersioningOverride{
 			Version: temporalworker.WorkerDeploymentVersion{
-				DeploymentName: onlavaruntime.TemporalDeploymentName(info),
+				DeploymentName: sceneryruntime.TemporalDeploymentName(info),
 				BuildID:        buildID,
 			},
 		}
@@ -959,7 +959,7 @@ func temporalClientForRun[O any](run Run[O]) (temporalclient.Client, error) {
 		client, _, _ = ActiveClient()
 	}
 	if client == nil {
-		return nil, errors.New("temporal: runtime is not started; set temporal.enabled in .onlava.json")
+		return nil, errors.New("temporal: runtime is not started; set temporal.enabled in .scenery.json")
 	}
 	if strings.TrimSpace(run.ID()) == "" {
 		return nil, errors.New("temporal: workflow id must not be empty")
@@ -982,13 +982,13 @@ func randomWorkflowID(prefix string) string {
 	if prefix = strings.Trim(strings.ToLower(prefix), ".-_/ "); prefix == "" {
 		prefix = "workflow"
 	}
-	return "onlava." + sanitizeName(prefix) + "." + fmt.Sprintf("%d", time.Now().UTC().UnixNano()) + "." + randomHex(6)
+	return "scenery." + sanitizeName(prefix) + "." + fmt.Sprintf("%d", time.Now().UTC().UnixNano()) + "." + randomHex(6)
 }
 
-func defaultWorkerTaskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
+func defaultWorkerTaskQueue(info sceneryruntime.TemporalRuntimeInfo) string {
 	prefix := strings.TrimSpace(info.TaskQueuePrefix)
 	if prefix == "" {
-		prefix = "onlava"
+		prefix = "scenery"
 	}
 	return strings.TrimSuffix(prefix, ".") + ".worker.go"
 }

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"time"
 
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	sceneryruntime "scenery.sh/runtime"
 )
 
 type JobConfig struct {
@@ -81,7 +81,7 @@ func NewJob(id string, cfg JobConfig) *Job {
 	if err != nil {
 		panic(err)
 	}
-	onlavaruntime.RegisterCronJob(&onlavaruntime.CronJob{
+	sceneryruntime.RegisterCronJob(&sceneryruntime.CronJob{
 		ID:                   job.ID,
 		Title:                job.Title,
 		Every:                time.Duration(job.Every) * time.Second,
@@ -90,7 +90,7 @@ func NewJob(id string, cfg JobConfig) *Job {
 		CatchupWindow:        job.CatchupWindow,
 		PauseOnFailure:       job.PauseOnFailure,
 		ActivityStartToClose: job.ActivityStartToClose,
-		ActivityRetryPolicy: onlavaruntime.CronRetryPolicy{
+		ActivityRetryPolicy: sceneryruntime.CronRetryPolicy{
 			InitialInterval:        job.ActivityRetryPolicy.InitialInterval,
 			BackoffCoefficient:     job.ActivityRetryPolicy.BackoffCoefficient,
 			MaximumInterval:        job.ActivityRetryPolicy.MaximumInterval,

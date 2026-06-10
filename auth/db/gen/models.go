@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type OnlavaAuthAuthAttempt struct {
+type SceneryAuthAuthAttempt struct {
 	ID              pgtype.UUID        `json:"id"`
 	Purpose         string             `json:"purpose"`
 	NormalizedEmail string             `json:"normalized_email"`
@@ -18,7 +18,7 @@ type OnlavaAuthAuthAttempt struct {
 	LastAttemptAt   pgtype.Timestamptz `json:"last_attempt_at"`
 }
 
-type OnlavaAuthAuthEvent struct {
+type SceneryAuthAuthEvent struct {
 	ID          pgtype.UUID        `json:"id"`
 	EventType   string             `json:"event_type"`
 	UserID      pgtype.UUID        `json:"user_id"`
@@ -32,7 +32,7 @@ type OnlavaAuthAuthEvent struct {
 }
 
 // audit:row_changes
-type OnlavaAuthAuthIdentity struct {
+type SceneryAuthAuthIdentity struct {
 	ID              pgtype.UUID        `json:"id"`
 	UserID          pgtype.UUID        `json:"user_id"`
 	Provider        string             `json:"provider"`
@@ -44,7 +44,7 @@ type OnlavaAuthAuthIdentity struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
-type OnlavaAuthOauthState struct {
+type SceneryAuthOauthState struct {
 	ID           pgtype.UUID        `json:"id"`
 	StateHash    string             `json:"state_hash"`
 	PkceVerifier string             `json:"pkce_verifier"`
@@ -56,7 +56,7 @@ type OnlavaAuthOauthState struct {
 }
 
 // audit:row_changes
-type OnlavaAuthOneTimeToken struct {
+type SceneryAuthOneTimeToken struct {
 	ID              pgtype.UUID        `json:"id"`
 	Purpose         string             `json:"purpose"`
 	TokenHash       string             `json:"token_hash"`
@@ -71,7 +71,7 @@ type OnlavaAuthOneTimeToken struct {
 }
 
 // audit:row_changes
-type OnlavaAuthOrganizationMembership struct {
+type SceneryAuthOrganizationMembership struct {
 	ID              pgtype.UUID        `json:"id"`
 	TenantID        pgtype.UUID        `json:"tenant_id"`
 	UserID          pgtype.UUID        `json:"user_id"`
@@ -84,7 +84,7 @@ type OnlavaAuthOrganizationMembership struct {
 }
 
 // audit:row_changes
-type OnlavaAuthRefreshSession struct {
+type SceneryAuthRefreshSession struct {
 	ID                     pgtype.UUID        `json:"id"`
 	UserID                 pgtype.UUID        `json:"user_id"`
 	TokenHash              string             `json:"token_hash"`
@@ -105,7 +105,7 @@ type OnlavaAuthRefreshSession struct {
 }
 
 // audit:row_changes
-type OnlavaAuthTenant struct {
+type SceneryAuthTenant struct {
 	ID        pgtype.UUID        `json:"id"`
 	Name      string             `json:"name"`
 	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
@@ -114,7 +114,7 @@ type OnlavaAuthTenant struct {
 }
 
 // audit:row_changes
-type OnlavaAuthUser struct {
+type SceneryAuthUser struct {
 	ID                     pgtype.UUID        `json:"id"`
 	DisplayName            string             `json:"display_name"`
 	AvatarUrl              string             `json:"avatar_url"`

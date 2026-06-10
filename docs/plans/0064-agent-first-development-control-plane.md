@@ -25,8 +25,8 @@ work.
 
 ## Surprises & Discoveries
 
-- 2026-06-07: `onlava inspect docs --json` already exposes `summary.review_due_count` plus per-document `review_due` and `stale`; the needed change is to make that behavior visible in the repo knowledge docs.
-- 2026-06-07: The completed-plan record already marks `onlava harness ui --json` as shipped, while the root harness roadmap and tech-debt tracker still described it as missing.
+- 2026-06-07: `scenery inspect docs --json` already exposes `summary.review_due_count` plus per-document `review_due` and `stale`; the needed change is to make that behavior visible in the repo knowledge docs.
+- 2026-06-07: The completed-plan record already marks `scenery harness ui --json` as shipped, while the root harness roadmap and tech-debt tracker still described it as missing.
 
 ## Decision Log
 
@@ -45,7 +45,7 @@ unimplemented.
 Start with these files:
 
 - `AGENTS.md` for repo-local agent rules.
-- `SKILL.md` for the portable onlava skill.
+- `SKILL.md` for the portable scenery skill.
 - `PLAN.md` for the harness-engineering roadmap.
 - `docs/harness-engineering.md` for harness and doc-gardening practice.
 - `docs/knowledge.json` for machine-readable docs metadata.
@@ -53,8 +53,8 @@ Start with these files:
 - `docs/tech-debt.md` for visible follow-up debt.
 - `docs/local-contract.md` for implemented CLI and JSON contracts.
 
-The current implemented contract includes `onlava harness ui --json` and
-`onlava inspect docs --json` review-due fields.
+The current implemented contract includes `scenery harness ui --json` and
+`scenery inspect docs --json` review-due fields.
 
 ## Milestones
 
@@ -78,7 +78,7 @@ follow-up if maintainers still want generated/indexed active plan coverage.
 
 ## Concrete Steps
 
-1. Run `onlava inspect docs --json` and inspect current docs knowledge state.
+1. Run `scenery inspect docs --json` and inspect current docs knowledge state.
 2. Create `docs/plans/0064-agent-first-development-control-plane.md`.
 3. Add plan 0064 to `docs/plans/active.md`.
 4. Update `PLAN.md`, `docs/tech-debt.md`, and `docs/plans/completed.md` so the
@@ -98,14 +98,14 @@ Acceptance criteria:
 - `PLAN.md` and `docs/tech-debt.md` no longer describe the browser UI harness as missing.
 - `docs/harness-engineering.md` includes a doc-gardening section.
 - `AGENTS.md` and `SKILL.md` contain the rule that docs/behavior drift must be fixed or recorded in an ExecPlan in the same PR.
-- `onlava inspect docs --json` succeeds and shows review-due fields.
+- `scenery inspect docs --json` succeeds and shows review-due fields.
 
 Validation commands:
 
 ```sh
 jq empty docs/knowledge.json
-onlava inspect docs --json
-onlava harness self --json --write
+scenery inspect docs --json
+scenery harness self --json --write
 git diff --check
 ```
 
@@ -119,13 +119,13 @@ Do not renumber any existing ExecPlan while recovering from a failed edit.
 
 Expected artifacts:
 
-- `.onlava/harness/self-latest.json` when self-harness validation runs with
+- `.scenery/harness/self-latest.json` when self-harness validation runs with
   `--write`.
 
 No generated cache output should be committed.
 
 ## Interfaces and Dependencies
 
-This plan depends on the existing `onlava inspect docs --json` contract and
+This plan depends on the existing `scenery inspect docs --json` contract and
 `docs/knowledge.json` schema. It intentionally avoids new runtime interfaces in
 the first PR.

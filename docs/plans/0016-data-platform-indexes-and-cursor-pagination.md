@@ -58,16 +58,16 @@ internal/objectstore/migrate.go
 internal/objectstore/query.go
 internal/datainspect/inspect.go
 data/data.go
-docs/schemas/onlava.inspect.data.v1.schema.json
+docs/schemas/scenery.inspect.data.v1.schema.json
 ```
 
 `RecordPage` already has `NextCursor`; this plan should make it real.
 
 ## Interfaces and Dependencies
 
-- Public API changes live in `github.com/pbrazdil/onlava/data`.
+- Public API changes live in `scenery.sh/data`.
 - Core implementation lives in `internal/objectstore`.
-- Inspect output changes must update `docs/schemas/onlava.inspect.data.v1.schema.json`.
+- Inspect output changes must update `docs/schemas/scenery.inspect.data.v1.schema.json`.
 - PostgreSQL tests should use the existing test database/testcontainers path.
 
 ## Plan of Work
@@ -81,8 +81,8 @@ Add metadata and physical index creation first, then expose inspect output, then
 Add:
 
 ```text
-onlava_data.indexes
-onlava_data.index_fields
+scenery_data.indexes
+scenery_data.index_fields
 ```
 
 Represent:
@@ -126,7 +126,7 @@ Use migration rows and advisory locks.
 
 ### Milestone 4: Inspect output
 
-`onlava inspect data` should show logical and physical index state.
+`scenery inspect data` should show logical and physical index state.
 
 ### Milestone 5: Cursor pagination
 
@@ -154,10 +154,10 @@ Rules:
 ## Validation and Acceptance
 
 ```sh
-ONLAVA_TEST_DATABASE_URL=... go test ./internal/objectstore ./internal/datainspect
+SCENERY_TEST_DATABASE_URL=... go test ./internal/objectstore ./internal/datainspect
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

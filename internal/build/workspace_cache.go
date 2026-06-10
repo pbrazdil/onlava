@@ -17,8 +17,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pbrazdil/onlava/internal/app"
-	"github.com/pbrazdil/onlava/internal/codegen"
+	"scenery.sh/internal/app"
+	"scenery.sh/internal/codegen"
 )
 
 func dependencyFingerprintFromWorkspace(root string) (string, error) {
@@ -127,7 +127,7 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 	if state.GeneratorFingerprint == "" || state.GeneratorFingerprint != generatorFingerprint {
 		return nil, false, nil
 	}
-	if _, err := os.Stat(filepath.Join(root, "onlava_internal_main", "main.go")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "scenery_internal_main", "main.go")); err != nil {
 		return nil, false, nil
 	}
 	if state.BuildFingerprint == "" {
@@ -189,7 +189,7 @@ func RefreshCachedWorkspaceWithOptions(appRoot string, result *Result, opts Refr
 	if err := removeUnexpectedFilesFromLists(result.Dir, result.SourceFiles, result.GeneratedFiles); err != nil {
 		return false, err
 	}
-	if err := seedOnlavaGoSum(result.Dir, app.RepoRoot()); err != nil {
+	if err := seedSceneryGoSum(result.Dir, app.RepoRoot()); err != nil {
 		return false, err
 	}
 	depFingerprint, err := dependencyFingerprintFromWorkspace(result.Dir)
@@ -296,7 +296,7 @@ func syncGeneratedFiles(root, appRoot string, gen *codegen.Output, prev, sourceF
 		rel = filepath.ToSlash(rel)
 		if filepath.Ext(rel) == ".go" {
 			var err error
-			data, err = rewriteOnlavaImports(filepath.Join(appRoot, rel), data)
+			data, err = rewriteSceneryImports(filepath.Join(appRoot, rel), data)
 			if err != nil {
 				return nil, err
 			}
@@ -340,7 +340,7 @@ func sortedKeys(set map[string]struct{}) []string {
 	return paths
 }
 
-func rewriteOnlavaImports(path string, src []byte) ([]byte, error) {
+func rewriteSceneryImports(path string, src []byte) ([]byte, error) {
 	text := string(src)
 	needsPGXPoolRewrite := strings.Contains(text, "github.com/jackc/pgx/v5/pgxpool")
 	if !needsPGXPoolRewrite {
@@ -354,7 +354,7 @@ func rewriteOnlavaImports(path string, src []byte) ([]byte, error) {
 	}
 
 	changed := false
-	if rewriteImportPath(file, "github.com/jackc/pgx/v5/pgxpool", "github.com/pbrazdil/onlava/pgxpool", "") {
+	if rewriteImportPath(file, "github.com/jackc/pgx/v5/pgxpool", "scenery.sh/pgxpool", "") {
 		changed = true
 	}
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	authdb "github.com/pbrazdil/onlava/auth/db/gen"
+	authdb "scenery.sh/auth/db/gen"
 )
 
 type StartImpersonationParams struct {
@@ -16,7 +16,7 @@ type StartImpersonationParams struct {
 
 // StartImpersonation starts a short-lived platform support impersonation session.
 //
-//onlava:api auth method=POST path=/auth/impersonation/start
+//scenery:api auth method=POST path=/auth/impersonation/start
 func (s *Service) StartImpersonation(ctx context.Context, params *StartImpersonationParams) (*AuthSessionResponse, error) {
 	if params == nil || strings.TrimSpace(params.TargetUserID) == "" {
 		return nil, invalidArgument("target_user_id is required")
@@ -84,7 +84,7 @@ func (s *Service) StartImpersonation(ctx context.Context, params *StartImpersona
 
 // StopImpersonation stops an impersonation session and starts a normal actor session.
 //
-//onlava:api auth method=POST path=/auth/impersonation/stop
+//scenery:api auth method=POST path=/auth/impersonation/stop
 func (s *Service) StopImpersonation(ctx context.Context, params *RefreshParams) (*AuthSessionResponse, error) {
 	authData, err := currentAuthData()
 	if err != nil {

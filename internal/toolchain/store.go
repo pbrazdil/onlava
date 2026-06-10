@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 var ErrDockerUnavailable = errors.New("docker unavailable")
@@ -123,13 +123,13 @@ type InstallMetadata struct {
 }
 
 func DefaultStoreDir(appRoot string) string {
-	if value := strings.TrimSpace(envpolicy.Get("ONLAVA_TOOLCHAIN_DIR")); value != "" {
+	if value := strings.TrimSpace(envpolicy.Get("SCENERY_TOOLCHAIN_DIR")); value != "" {
 		return value
 	}
 	if strings.TrimSpace(appRoot) == "" {
 		appRoot = "."
 	}
-	return filepath.Join(appRoot, ".onlava", "toolchain")
+	return filepath.Join(appRoot, ".scenery", "toolchain")
 }
 
 func NewStore(dir string, manifest Manifest) (*Store, error) {
@@ -180,8 +180,8 @@ func (s *Store) Sync(ctx context.Context, opts Options) (Status, error) {
 			}
 			continue
 		}
-		if isFalseEnv(envpolicy.Get("ONLAVA_TOOLCHAIN_DOWNLOAD")) {
-			return Status{}, fmt.Errorf("toolchain downloads disabled by ONLAVA_TOOLCHAIN_DOWNLOAD=0")
+		if isFalseEnv(envpolicy.Get("SCENERY_TOOLCHAIN_DOWNLOAD")) {
+			return Status{}, fmt.Errorf("toolchain downloads disabled by SCENERY_TOOLCHAIN_DOWNLOAD=0")
 		}
 		if err := s.installArtifact(ctx, artifact, opts.Platform); err != nil {
 			return Status{}, err

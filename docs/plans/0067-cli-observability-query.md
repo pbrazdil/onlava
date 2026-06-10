@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`,
 
 ## Purpose / Big Picture
 
-Onlava already owns the local observability substrate for app sessions:
+Scenery already owns the local observability substrate for app sessions:
 VictoriaLogs for logs, VictoriaMetrics for metrics, VictoriaTraces for traces,
 and Grafana as an optional visual surface. Agents should not need external tool
 bridges, Grafana scraping, raw Victoria ports, or query-string rewriting to
@@ -16,12 +16,12 @@ This plan adds a first-class CLI query surface under existing observability
 nouns:
 
 ```sh
-onlava inspect observability --json
-onlava logs query --json --since 15m --query 'error OR panic'
-onlava logs tail --query 'error'
-onlava metrics query --json --since 15m --step 5s --promql 'max_over_time(onlava_request_duration_seconds[15m])'
-onlava metrics labels --json --since 1h
-onlava metrics series --json --match 'onlava_request_duration_seconds'
+scenery inspect observability --json
+scenery logs query --json --since 15m --query 'error OR panic'
+scenery logs tail --query 'error'
+scenery metrics query --json --since 15m --step 5s --promql 'max_over_time(scenery_request_duration_seconds[15m])'
+scenery metrics labels --json --since 1h
+scenery metrics series --json --match 'scenery_request_duration_seconds'
 ```
 
 The observable behavior is that a contributor can run those commands from an
@@ -40,19 +40,19 @@ the current implementation detail, not the user-facing integration API.
 
 ## Surprises & Discoveries
 
-- 2026-06-08: `onlava inspect docs --json` reports one review-due document, `docs/ui-agent-contract.md`. This plan is CLI/runtime work and should preserve that signal without mixing unrelated UI gardening into the observability query work.
-- 2026-06-08: `docs/local-contract.md` currently lists `onlava traces list --json`, `onlava metrics list --json`, and `onlava logs --jsonl` as observability surfaces. The new query commands must update that contract rather than living only in code or this plan.
-- 2026-06-08: The current code has `cmd/onlava/observability_commands.go` for `traces list`, `traces clear`, and `metrics list`; `cmd/onlava/logs.go` owns the existing structured dev log reader; and `cmd/onlava/victoria_query.go` already contains VictoriaTraces query helpers.
+- 2026-06-08: `scenery inspect docs --json` reports one review-due document, `docs/ui-agent-contract.md`. This plan is CLI/runtime work and should preserve that signal without mixing unrelated UI gardening into the observability query work.
+- 2026-06-08: `docs/local-contract.md` currently lists `scenery traces list --json`, `scenery metrics list --json`, and `scenery logs --jsonl` as observability surfaces. The new query commands must update that contract rather than living only in code or this plan.
+- 2026-06-08: The current code has `cmd/scenery/observability_commands.go` for `traces list`, `traces clear`, and `metrics list`; `cmd/scenery/logs.go` owns the existing structured dev log reader; and `cmd/scenery/victoria_query.go` already contains VictoriaTraces query helpers.
 - 2026-06-08: Current Victoria docs name the log query language LogsQL and expose `/select/logsql/query` plus `/select/logsql/tail`. VictoriaMetrics exposes PromQL/MetricsQL instant and range endpoints under `/prometheus/api/v1/query` and `/prometheus/api/v1/query_range`, and documents `extra_label` for enforced metrics scoping.
-- 2026-06-08: Existing structured dev-event exports use `onlava_app_id` and `onlava_session_id`, while OTLP log exports use dotted fields such as `onlava.application_id` and `onlava.session_id`. The LogsQL scope filter accepts both app/session spellings and uses the root-hash filter where available.
+- 2026-06-08: Existing structured dev-event exports use `scenery_app_id` and `scenery_session_id`, while OTLP log exports use dotted fields such as `scenery.application_id` and `scenery.session_id`. The LogsQL scope filter accepts both app/session spellings and uses the root-hash filter where available.
 
 ## Decision Log
 
-- 2026-06-08: Put the new commands under existing `logs`, `metrics`, and `inspect` nouns instead of adding top-level `promql`, `logql`, or `observability` commands. This matches the current CLI shape and makes the feature discoverable to agents already using `onlava logs`, `onlava metrics`, and `onlava inspect`.
+- 2026-06-08: Put the new commands under existing `logs`, `metrics`, and `inspect` nouns instead of adding top-level `promql`, `logql`, or `observability` commands. This matches the current CLI shape and makes the feature discoverable to agents already using `scenery logs`, `scenery metrics`, and `scenery inspect`.
 - 2026-06-08: Name the logs flag `--query` for native LogsQL and reserve `--logql` only for a future explicit translate-or-reject path. VictoriaLogs is not Loki, so the CLI must not silently pretend Loki LogQL is native.
 - 2026-06-08: Enforce app/session/worktree scope through backend query parameters, not by editing user query strings. Use VictoriaLogs `extra_filters` and VictoriaMetrics `extra_label` where available.
 - 2026-06-08: Default to `--session current`, bounded time ranges, bounded limits, and JSON output for query commands. Unscoped cross-session queries require an explicit friction flag and are not part of the default agent path.
-- 2026-06-08: Keep shared backend and scope logic outside `cmd/onlava` where practical. CLI files parse flags and print responses; shared query/discovery behavior belongs under an internal package such as `internal/observability`.
+- 2026-06-08: Keep shared backend and scope logic outside `cmd/scenery` where practical. CLI files parse flags and print responses; shared query/discovery behavior belongs under an internal package such as `internal/observability`.
 
 ## Outcomes & Retrospective
 
@@ -60,30 +60,30 @@ Completed on 2026-06-08.
 
 Shipped:
 
-- `onlava inspect observability --json [--session current|<id>]` with backend readiness, dialects, examples, warnings, and echoed enforced scope.
-- `onlava logs query` and `onlava logs tail` over VictoriaLogs LogsQL, with bounded defaults, JSON/JSONL output, LogQL rejection, and backend-enforced `extra_filters`.
-- `onlava metrics query`, `metrics labels`, and `metrics series` over VictoriaMetrics PromQL/MetricsQL APIs, with bounded defaults and repeated `extra_label` scope parameters.
+- `scenery inspect observability --json [--session current|<id>]` with backend readiness, dialects, examples, warnings, and echoed enforced scope.
+- `scenery logs query` and `scenery logs tail` over VictoriaLogs LogsQL, with bounded defaults, JSON/JSONL output, LogQL rejection, and backend-enforced `extra_filters`.
+- `scenery metrics query`, `metrics labels`, and `metrics series` over VictoriaMetrics PromQL/MetricsQL APIs, with bounded defaults and repeated `extra_label` scope parameters.
 - Versioned schemas for the new discovery, log query/tail, and metrics query/catalog envelopes.
 - Docs and agent guidance updates in `docs/local-contract.md`, `docs/agent-guide.md`, `SKILL.md`, and `docs/app-development-cookbook.md`.
 - Targeted tests for parser behavior, backend request shape, scope isolation parameters, catalog decoding, and result normalization.
 
 Validation:
 
-- `go test ./internal/observability ./cmd/onlava` passed during implementation.
+- `go test ./internal/observability ./cmd/scenery` passed during implementation.
 - `go test ./...` passed.
-- `go install ./cmd/onlava` passed.
-- `onlava inspect docs --json` passed with the expected review-due UI contract signal.
-- `onlava harness self --json --write` passed after restoring the pre-existing missing 0066 active ExecPlan file and installing existing UI dependencies.
+- `go install ./cmd/scenery` passed.
+- `scenery inspect docs --json` passed with the expected review-due UI contract signal.
+- `scenery harness self --json --write` passed after restoring the pre-existing missing 0066 active ExecPlan file and installing existing UI dependencies.
 
 ## Context and Orientation
 
 Start with these files and surfaces:
 
-- `cmd/onlava/main.go` for top-level CLI dispatch and usage text.
-- `cmd/onlava/observability_commands.go` for existing `traces` and `metrics` command routing.
-- `cmd/onlava/logs.go` for existing `onlava logs` flag parsing, session resolution, and structured dev-event output.
-- `cmd/onlava/inspect.go` and `cmd/onlava/inspect_observability.go` for `inspect` subject routing and the current trace/metrics summary response shapes.
-- `cmd/onlava/victoria.go`, `cmd/onlava/victoria_query.go`, and `cmd/onlava/grafana.go` for the Victoria component specs, local default ports, and current query helper style.
+- `cmd/scenery/main.go` for top-level CLI dispatch and usage text.
+- `cmd/scenery/observability_commands.go` for existing `traces` and `metrics` command routing.
+- `cmd/scenery/logs.go` for existing `scenery logs` flag parsing, session resolution, and structured dev-event output.
+- `cmd/scenery/inspect.go` and `cmd/scenery/inspect_observability.go` for `inspect` subject routing and the current trace/metrics summary response shapes.
+- `cmd/scenery/victoria.go`, `cmd/scenery/victoria_query.go`, and `cmd/scenery/grafana.go` for the Victoria component specs, local default ports, and current query helper style.
 - `internal/agent` for current session records, session IDs, route/worktree metadata, and substrate records.
 - `internal/devdash` for current dev-event, log, metric, and trace persistence models.
 - `docs/local-contract.md` for CLI grammar, JSON schemas, artifact paths, stability labels, and public contract language.
@@ -94,9 +94,9 @@ Start with these files and surfaces:
 Relevant current CLI contract before this plan:
 
 ```text
-onlava traces list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
-onlava metrics list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
-onlava logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
+scenery traces list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]
+scenery metrics list --json [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]
+scenery logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
 ```
 
 This plan extends that surface. It does not remove the existing summary/list
@@ -104,16 +104,16 @@ commands, and it does not make raw Victoria URLs part of the public contract.
 
 ## Milestones
 
-1. Discovery Contract: add `onlava inspect observability --json` so agents can
+1. Discovery Contract: add `scenery inspect observability --json` so agents can
    discover backend readiness, dialects, examples, and enforced scope for the
    selected app/session.
 2. Shared Scope and Clients: add an internal query package that resolves app
    root, app ID, current session, root hash, worktree, branch, backend URLs, and
    applies scope through Victoria query parameters.
-3. Logs Query Surface: add `onlava logs query` and `onlava logs tail` with
+3. Logs Query Surface: add `scenery logs query` and `scenery logs tail` with
    LogsQL input, bounded time/limit defaults, JSON and JSONL output, field
    selection, and explicit diagnostics for unsupported `--logql`.
-4. Metrics Query Surface: add `onlava metrics query`, `metrics labels`, and
+4. Metrics Query Surface: add `scenery metrics query`, `metrics labels`, and
    `metrics series` for bounded PromQL/MetricsQL queries and catalog reads.
 5. Contract and Validation: add schemas, tests, self-harness coverage, and docs
    updates that prove session isolation and keep the CLI contract stable.
@@ -121,7 +121,7 @@ commands, and it does not make raw Victoria URLs part of the public contract.
 ## Plan of Work
 
 First add a small internal scope model that can be reused by logs, metrics, and
-inspection commands. The scope model should discover `.onlava.json` from cwd or
+inspection commands. The scope model should discover `.scenery.json` from cwd or
 `--app-root`, resolve `--session current` through the local agent/session
 registry, compute the app root hash using the same value emitted into existing
 observability records, and expose a JSON object that every query response echoes.
@@ -132,9 +132,9 @@ VictoriaLogs, metrics queries call VictoriaMetrics, and inspect reports backend
 readiness without forcing a query. The caller should not need to know default
 ports or Victoria endpoint paths.
 
-Then layer CLI parsing on top. Preserve existing `onlava logs ...` behavior by
+Then layer CLI parsing on top. Preserve existing `scenery logs ...` behavior by
 dispatching only when the first argument is a new subcommand such as `query` or
-`tail`. Preserve existing `onlava metrics list ...` behavior while adding
+`tail`. Preserve existing `scenery metrics list ...` behavior while adding
 `query`, `labels`, and `series`. Add `inspect observability` as a new inspect
 subject rather than overloading the existing `inspect traces` and `inspect
 metrics` compatibility errors.
@@ -165,12 +165,12 @@ surface, so schema files, `docs/local-contract.md`, `docs/agent-guide.md`,
 3. Define request/response types for logs query, logs tail, metrics query,
    metrics labels, metrics series, and inspect observability. Response
    `schema_version` values should be:
-   - `onlava.inspect.observability.v1`
-   - `onlava.logs.query.v1`
-   - `onlava.logs.tail.entry.v1` for self-describing streaming JSONL records.
-   - `onlava.metrics.query.v1`
-   - `onlava.metrics.labels.v1`
-   - `onlava.metrics.series.v1`
+   - `scenery.inspect.observability.v1`
+   - `scenery.logs.query.v1`
+   - `scenery.logs.tail.entry.v1` for self-describing streaming JSONL records.
+   - `scenery.metrics.query.v1`
+   - `scenery.metrics.labels.v1`
+   - `scenery.metrics.series.v1`
 4. Implement VictoriaLogs query support against `/select/logsql/query`. Pass
    `query`, `start`, `end`, `limit`, and `timeout` using HTTP parameters. Apply
    app/session scope through `extra_filters`, not by modifying the LogsQL text.
@@ -187,16 +187,16 @@ surface, so schema files, `docs/local-contract.md`, `docs/agent-guide.md`,
    `/prometheus/api/v1/query_range` with `--since` or `--start/--end` plus
    `--step`.
 8. Apply metrics scope through repeated `extra_label` parameters such as
-   `onlava_app=<app_id>`, `onlava_session_id=<session_id>`, and
-   `onlava_app_root_hash=<hash>`.
+   `scenery_app=<app_id>`, `scenery_session_id=<session_id>`, and
+   `scenery_app_root_hash=<hash>`.
 9. Implement `metrics labels` through `/prometheus/api/v1/labels` and
    `metrics series` through `/prometheus/api/v1/series`, including `start`,
    `end`, `match[]`, `limit`, and the same `extra_label` scope.
-10. Add `onlava inspect observability --json [--app-root <path>] [--session
+10. Add `scenery inspect observability --json [--app-root <path>] [--session
     current|<id>]`. Output backend kinds, dialects, readiness, query examples,
     and the exact enforced scope.
-11. Change `logsCommand` routing so `onlava logs query ...` and `onlava logs
-    tail ...` dispatch to new handlers, while plain `onlava logs ...` continues
+11. Change `logsCommand` routing so `scenery logs query ...` and `scenery logs
+    tail ...` dispatch to new handlers, while plain `scenery logs ...` continues
     to call the existing dev-event reader.
 12. Change `metricsCommand` routing so `query`, `labels`, and `series` dispatch
     to new handlers, while `list` preserves current behavior and a missing
@@ -206,11 +206,11 @@ surface, so schema files, `docs/local-contract.md`, `docs/agent-guide.md`,
 14. Add client tests with `httptest.Server` for VictoriaLogs and VictoriaMetrics
     requests. Assert endpoint paths, query parameters, time bounds, repeated
     scope parameters, timeout, and response normalization.
-15. Add command tests that prove existing `onlava logs --jsonl`,
-    `onlava logs --follow`, and `onlava metrics list --json` behavior is not
+15. Add command tests that prove existing `scenery logs --jsonl`,
+    `scenery logs --follow`, and `scenery metrics list --json` behavior is not
     broken by subcommand dispatch.
 16. Add a self-harness check or fixture-backed test for session isolation. The
-    acceptance artifact should live at `.onlava/harness/observability/latest.json`
+    acceptance artifact should live at `.scenery/harness/observability/latest.json`
     and report booleans such as `logs_scoped`, `metrics_scoped`,
     `cross_session_log_leak`, and `cross_session_metric_leak`.
 17. Add JSON schemas under `docs/schemas/` for the new stable response shapes
@@ -229,27 +229,27 @@ surface, so schema files, `docs/local-contract.md`, `docs/agent-guide.md`,
 
 Acceptance criteria:
 
-- `onlava inspect observability --json` returns
-  `onlava.inspect.observability.v1` with logs, metrics, and traces backend
+- `scenery inspect observability --json` returns
+  `scenery.inspect.observability.v1` with logs, metrics, and traces backend
   readiness; dialects; examples; selected app/session; and enforced scope.
-- `onlava logs query --json --since 15m --limit 100 --query 'error OR panic'`
-  returns `onlava.logs.query.v1`, uses VictoriaLogs LogsQL, applies scope through
+- `scenery logs query --json --since 15m --limit 100 --query 'error OR panic'`
+  returns `scenery.logs.query.v1`, uses VictoriaLogs LogsQL, applies scope through
   `extra_filters`, and returns bounded normalized log entries.
-- `onlava logs tail --query 'error'` streams only scoped log entries for the
+- `scenery logs tail --query 'error'` streams only scoped log entries for the
   selected app session and exits cleanly on cancellation.
-- `onlava logs query --logql '{app=\"demo\"} |= \"error\"'` either performs an
+- `scenery logs query --logql '{app=\"demo\"} |= \"error\"'` either performs an
   explicit, tested translation or rejects with a diagnostic that names LogsQL as
   the native dialect. It must not silently send Loki LogQL to VictoriaLogs.
-- `onlava metrics query --json --since 15m --step 5s --promql
-  'max_over_time(onlava_request_duration_seconds[15m])'` returns
-  `onlava.metrics.query.v1`, uses range query semantics by default, applies
+- `scenery metrics query --json --since 15m --step 5s --promql
+  'max_over_time(scenery_request_duration_seconds[15m])'` returns
+  `scenery.metrics.query.v1`, uses range query semantics by default, applies
   scope through `extra_label`, and echoes query bounds and scope.
-- `onlava metrics query --json --instant --promql 'up'` uses instant query
+- `scenery metrics query --json --instant --promql 'up'` uses instant query
   semantics and still applies scope.
-- `onlava metrics labels --json --since 1h` and `onlava metrics series --json
-  --match 'onlava_request_duration_seconds'` return bounded scoped catalog data.
-- Existing `onlava logs`, `onlava logs --follow`, `onlava logs --jsonl`,
-  `onlava metrics list --json`, `onlava traces list --json`, and `onlava traces
+- `scenery metrics labels --json --since 1h` and `scenery metrics series --json
+  --match 'scenery_request_duration_seconds'` return bounded scoped catalog data.
+- Existing `scenery logs`, `scenery logs --follow`, `scenery logs --jsonl`,
+  `scenery metrics list --json`, `scenery traces list --json`, and `scenery traces
   clear --json` behavior remains compatible.
 - No query command runs unscoped by default. Any future unscoped mode requires
   an explicit flag pair such as `--unscoped --i-know-this-crosses-sessions` and
@@ -261,21 +261,21 @@ Validation commands:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
-onlava inspect docs --json
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery inspect docs --json
+scenery harness self --json --write
 ```
 
 When practical after implementation, also run a fixture or temporary app session
 to validate the runtime behavior:
 
 ```sh
-onlava up --detach --session obs-a --app-root <fixture-app-a>
-onlava up --detach --session obs-b --app-root <fixture-app-b>
-onlava inspect observability --json --session obs-a --app-root <fixture-app-a>
-onlava logs query --json --session obs-a --query 'unique-from-b' --app-root <fixture-app-a>
-onlava metrics query --json --session obs-a --promql 'onlava_request_duration_seconds' --app-root <fixture-app-a>
-onlava harness self --json --write
+scenery up --detach --session obs-a --app-root <fixture-app-a>
+scenery up --detach --session obs-b --app-root <fixture-app-b>
+scenery inspect observability --json --session obs-a --app-root <fixture-app-a>
+scenery logs query --json --session obs-a --query 'unique-from-b' --app-root <fixture-app-a>
+scenery metrics query --json --session obs-a --promql 'scenery_request_duration_seconds' --app-root <fixture-app-a>
+scenery harness self --json --write
 ```
 
 The cross-session log query should return zero entries for values emitted only
@@ -293,7 +293,7 @@ Schema and docs updates are ordinary tracked files. If implementation stops
 halfway, keep this plan's `Progress`, `Surprises & Discoveries`, and `Decision
 Log` current so another agent can resume from the last completed milestone.
 
-The self-harness observability artifact is generated evidence under `.onlava/`
+The self-harness observability artifact is generated evidence under `.scenery/`
 and must not be committed. Re-running the harness can replace it safely.
 
 If a Victoria component is not running or has no data, commands should return
@@ -306,9 +306,9 @@ malformed backend responses.
 
 Generated or written evidence:
 
-- `.onlava/harness/observability/latest.json` for self-harness session-isolation
+- `.scenery/harness/observability/latest.json` for self-harness session-isolation
   evidence.
-- Existing `.onlava/harness/self-latest.json` for full self-harness evidence.
+- Existing `.scenery/harness/self-latest.json` for full self-harness evidence.
 
 External references checked while writing this plan:
 
@@ -332,14 +332,14 @@ Current local review-due signal:
 Public CLI additions:
 
 ```text
-onlava inspect observability --json [--app-root <path>] [--session current|<id>]
+scenery inspect observability --json [--app-root <path>] [--session current|<id>]
 
-onlava logs query [--app-root <path>] [--session current|<id>] --query <logsql> [--logql <logql>] [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--timeout <duration>] [--fields <csv>] [--json|--jsonl]
-onlava logs tail [--app-root <path>] [--session current|<id>] --query <logsql> [--since <duration>] [--timeout <duration>] [--fields <csv>] [--jsonl]
+scenery logs query [--app-root <path>] [--session current|<id>] --query <logsql> [--logql <logql>] [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--timeout <duration>] [--fields <csv>] [--json|--jsonl]
+scenery logs tail [--app-root <path>] [--session current|<id>] --query <logsql> [--since <duration>] [--timeout <duration>] [--fields <csv>] [--jsonl]
 
-onlava metrics query [--app-root <path>] [--session current|<id>] --promql <query> [--instant] [--since <duration>] [--start <time>] [--end <time>] [--step <duration>] [--timeout <duration>] [--limit <n>] [--json]
-onlava metrics labels [--app-root <path>] [--session current|<id>] [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--json]
-onlava metrics series [--app-root <path>] [--session current|<id>] --match <selector> [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--json]
+scenery metrics query [--app-root <path>] [--session current|<id>] --promql <query> [--instant] [--since <duration>] [--start <time>] [--end <time>] [--step <duration>] [--timeout <duration>] [--limit <n>] [--json]
+scenery metrics labels [--app-root <path>] [--session current|<id>] [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--json]
+scenery metrics series [--app-root <path>] [--session current|<id>] --match <selector> [--since <duration>] [--start <time>] [--end <time>] [--limit <n>] [--json]
 ```
 
 Default values:
@@ -356,7 +356,7 @@ Backend dependencies:
 - VictoriaMetrics accepts PromQL/MetricsQL at
   `/prometheus/api/v1/query` and `/prometheus/api/v1/query_range`, with catalog
   endpoints `/prometheus/api/v1/labels` and `/prometheus/api/v1/series`.
-- Onlava applies log scope through VictoriaLogs `extra_filters` and metric scope
+- Scenery applies log scope through VictoriaLogs `extra_filters` and metric scope
   through VictoriaMetrics `extra_label`.
 
 Proposed internal API shape:

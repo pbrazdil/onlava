@@ -4,21 +4,21 @@ This file tracks known project debt that should be visible to agents before they
 
 ## Open
 
-### onlava console TUI Broken Formatting
+### scenery console TUI Broken Formatting
 
 - Area: console
 - Severity: medium
-- Owner: onlava runtime
+- Owner: scenery runtime
 - Created: 2026-06-09
 - Review after: 2026-07-09
 
-`onlava console` TUI behavior is not working as expected. It causes weird terminal issues and the formatting is completely broken. Treat console/TUI changes as suspect until this is diagnosed and fixed with terminal-rendering coverage.
+`scenery console` TUI behavior is not working as expected. It causes weird terminal issues and the formatting is completely broken. Treat console/TUI changes as suspect until this is diagnosed and fixed with terminal-rendering coverage.
 
 ### Full Dashboard Parity
 
 - Area: dashboard
 - Severity: medium
-- Owner: onlava dashboard
+- Owner: scenery dashboard
 - Created: 2026-04-27
 - Review after: 2026-05-27
 
@@ -28,7 +28,7 @@ The editable dashboard source exists, but parity should continue to be verified 
 
 - Area: harness
 - Severity: medium
-- Owner: onlava runtime
+- Owner: scenery runtime
 - Created: 2026-06-07
 - Review after: 2026-07-07
 
@@ -38,7 +38,7 @@ The browser UI harness now captures route-specific semantic journeys, screenshot
 
 - Area: harness
 - Severity: low
-- Owner: onlava runtime
+- Owner: scenery runtime
 - Created: 2026-04-27
 - Review after: 2026-05-27
 
@@ -48,7 +48,7 @@ The self harness now enforces the first architecture checks: dependency allowlis
 
 - Area: tests
 - Severity: low
-- Owner: onlava runtime
+- Owner: scenery runtime
 - Created: 2026-04-27
 - Review after: 2026-05-27
 

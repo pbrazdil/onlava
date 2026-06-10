@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	onlava "github.com/pbrazdil/onlava"
+	scenery "scenery.sh"
 )
 
 func parseUUID(value string) (pgtype.UUID, error) {
@@ -117,7 +117,7 @@ func currentAuthData() (*AuthData, error) {
 }
 
 func requestHeaders() http.Header {
-	req := onlava.CurrentRequest()
+	req := scenery.CurrentRequest()
 	if req == nil {
 		return nil
 	}
@@ -149,8 +149,8 @@ func requestIPHash() string {
 }
 
 func isLocalRuntime() bool {
-	meta := onlava.Meta()
-	return meta != nil && meta.Environment.Cloud == onlava.CloudLocal
+	meta := scenery.Meta()
+	return meta != nil && meta.Environment.Cloud == scenery.CloudLocal
 }
 
 func safeRedirectPath(value string) string {

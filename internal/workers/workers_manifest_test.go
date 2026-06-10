@@ -17,14 +17,14 @@ func TestValidateWorkerManifests(t *testing.T) {
 
 	root := t.TempDir()
 	writeManifest(t, root, "email.json", `{
-  "schema_version": "onlava.worker.manifest.v1",
+  "schema_version": "scenery.worker.manifest.v1",
   "app": "orders",
   "language": "python",
   "build_id": "sha-123",
-  "payload_codec": "onlava-json-v1",
+  "payload_codec": "scenery-json-v1",
   "temporal": {
     "namespace": "default",
-    "task_queues": ["onlava.orders.activity.email.python"]
+    "task_queues": ["scenery.orders.activity.email.python"]
   },
   "activities": [
     {"name": "email.SendWelcome/v1", "input": "WelcomeEmail", "output": "Void"}
@@ -48,16 +48,16 @@ func TestValidateWorkerManifestRejectsIncompatibleQueueSharing(t *testing.T) {
   "app": "orders",
   "language": "python",
   "build_id": "sha-python",
-  "payload_codec": "onlava-json-v1",
-  "temporal": {"namespace": "default", "task_queues": ["onlava.orders.activity.email"]},
+  "payload_codec": "scenery-json-v1",
+  "temporal": {"namespace": "default", "task_queues": ["scenery.orders.activity.email"]},
   "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
 }`)
 	writeManifest(t, root, "typescript.json", `{
   "app": "orders",
   "language": "typescript",
   "build_id": "sha-ts",
-  "payload_codec": "onlava-json-v1",
-  "temporal": {"namespace": "default", "task_queues": ["onlava.orders.activity.email"]},
+  "payload_codec": "scenery-json-v1",
+  "temporal": {"namespace": "default", "task_queues": ["scenery.orders.activity.email"]},
   "activities": [{"name": "email.Render/v1", "input": "Input", "output": "Output"}]
 }`)
 
@@ -75,15 +75,15 @@ func TestValidateWorkerManifestV2AcceptsQueueRegistrations(t *testing.T) {
 
 	root := t.TempDir()
 	writeManifest(t, root, "email.json", `{
-  "schema_version": "onlava.worker.manifest.v2",
+  "schema_version": "scenery.worker.manifest.v2",
   "app": "orders",
   "language": "python",
   "build_id": "sha-python",
-  "payload_codec": "onlava-json-v1",
+  "payload_codec": "scenery-json-v1",
   "temporal": {"namespace": "default"},
   "task_queues": [
     {
-      "name": "onlava.orders.activity.email",
+      "name": "scenery.orders.activity.email",
       "activities": ["email.Send/v1"],
       "workflows": [],
       "registration_hash": "`+testRegistrationHashA+`"
@@ -100,7 +100,7 @@ func TestValidateWorkerManifestV2AcceptsQueueRegistrations(t *testing.T) {
 	if manifest.SchemaVersion != ManifestSchemaVersionV2 || len(manifest.TaskQueueRegistrations) != 1 {
 		t.Fatalf("manifest summary = %#v", manifest)
 	}
-	if len(manifest.TaskQueues) != 1 || manifest.TaskQueues[0] != "onlava.orders.activity.email" {
+	if len(manifest.TaskQueues) != 1 || manifest.TaskQueues[0] != "scenery.orders.activity.email" {
 		t.Fatalf("task queues = %#v", manifest.TaskQueues)
 	}
 }
@@ -110,23 +110,23 @@ func TestValidateWorkerManifestV2RejectsRegistrationHashMismatch(t *testing.T) {
 
 	root := t.TempDir()
 	writeManifest(t, root, "python.json", `{
-  "schema_version": "onlava.worker.manifest.v2",
+  "schema_version": "scenery.worker.manifest.v2",
   "app": "orders",
   "language": "python",
   "build_id": "sha-python",
-  "payload_codec": "onlava-json-v1",
+  "payload_codec": "scenery-json-v1",
   "temporal": {"namespace": "default"},
-  "task_queues": [{"name": "onlava.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "`+testRegistrationHashA+`"}],
+  "task_queues": [{"name": "scenery.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "`+testRegistrationHashA+`"}],
   "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
 }`)
 	writeManifest(t, root, "typescript.json", `{
-  "schema_version": "onlava.worker.manifest.v2",
+  "schema_version": "scenery.worker.manifest.v2",
   "app": "orders",
   "language": "typescript",
   "build_id": "sha-ts",
-  "payload_codec": "onlava-json-v1",
+  "payload_codec": "scenery-json-v1",
   "temporal": {"namespace": "default"},
-  "task_queues": [{"name": "onlava.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "`+testRegistrationHashB+`"}],
+  "task_queues": [{"name": "scenery.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "`+testRegistrationHashB+`"}],
   "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
 }`)
 
@@ -144,13 +144,13 @@ func TestValidateWorkerManifestV2RejectsMalformedRegistrationHash(t *testing.T) 
 
 	root := t.TempDir()
 	writeManifest(t, root, "python.json", `{
-  "schema_version": "onlava.worker.manifest.v2",
+  "schema_version": "scenery.worker.manifest.v2",
   "app": "orders",
   "language": "python",
   "build_id": "sha-python",
-  "payload_codec": "onlava-json-v1",
+  "payload_codec": "scenery-json-v1",
   "temporal": {"namespace": "default"},
-  "task_queues": [{"name": "onlava.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "sha256:ABC"}],
+  "task_queues": [{"name": "scenery.orders.activity.email", "activities": ["email.Send/v1"], "registration_hash": "sha256:ABC"}],
   "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
 }`)
 
@@ -168,22 +168,22 @@ func TestValidateWorkerManifestAllowsV1AndV2SharedQueueDuringMigration(t *testin
 
 	root := t.TempDir()
 	writeManifest(t, root, "python-v1.json", `{
-  "schema_version": "onlava.worker.manifest.v1",
+  "schema_version": "scenery.worker.manifest.v1",
   "app": "orders",
   "language": "python",
   "build_id": "sha-python-v1",
-  "payload_codec": "onlava-json-v1",
-  "temporal": {"namespace": "default", "task_queues": ["onlava.orders.activity.email"]},
+  "payload_codec": "scenery-json-v1",
+  "temporal": {"namespace": "default", "task_queues": ["scenery.orders.activity.email"]},
   "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
 }`)
 	writeManifest(t, root, "python-v2.json", `{
-  "schema_version": "onlava.worker.manifest.v2",
+  "schema_version": "scenery.worker.manifest.v2",
   "app": "orders",
   "language": "python",
   "build_id": "sha-python-v2",
-  "payload_codec": "onlava-json-v1",
+  "payload_codec": "scenery-json-v1",
   "temporal": {"namespace": "default"},
-  "task_queues": [{"name": "onlava.orders.activity.email", "activities": ["email.Render/v1"], "registration_hash": "`+testRegistrationHashA+`"}],
+  "task_queues": [{"name": "scenery.orders.activity.email", "activities": ["email.Render/v1"], "registration_hash": "`+testRegistrationHashA+`"}],
   "activities": [{"name": "email.Render/v1", "input": "Input", "output": "Output"}]
 }`)
 
@@ -201,8 +201,8 @@ func TestValidateWorkerManifestRejectsUnknownActivitiesWhenKnownSetProvided(t *t
   "app": "orders",
   "language": "python",
   "build_id": "sha-python",
-  "payload_codec": "onlava-json-v1",
-  "temporal": {"namespace": "default", "task_queues": ["onlava.orders.activity.email"]},
+  "payload_codec": "scenery-json-v1",
+  "temporal": {"namespace": "default", "task_queues": ["scenery.orders.activity.email"]},
   "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
 }`)
 
@@ -243,21 +243,21 @@ func TestGenerateBindingsWritesPythonAndTypeScriptStarters(t *testing.T) {
 
 	root := t.TempDir()
 	writeManifest(t, root, "email-python.json", `{
-  "schema_version": "onlava.worker.manifest.v1",
+  "schema_version": "scenery.worker.manifest.v1",
   "app": "orders",
   "language": "python",
   "build_id": "sha-python",
-  "payload_codec": "onlava-json-v1",
-  "temporal": {"namespace": "default", "task_queues": ["onlava.orders.activity.email.python"]},
+  "payload_codec": "scenery-json-v1",
+  "temporal": {"namespace": "default", "task_queues": ["scenery.orders.activity.email.python"]},
   "activities": [{"name": "email.SendWelcome/v1", "input": "WelcomeEmail", "output": "Void"}]
 }`)
 	writeManifest(t, root, "email-ts.json", `{
-  "schema_version": "onlava.worker.manifest.v1",
+  "schema_version": "scenery.worker.manifest.v1",
   "app": "orders",
   "language": "typescript",
   "build_id": "sha-ts",
-  "payload_codec": "onlava-json-v1",
-  "temporal": {"namespace": "default", "task_queues": ["onlava.orders.activity.email.typescript"]},
+  "payload_codec": "scenery-json-v1",
+  "temporal": {"namespace": "default", "task_queues": ["scenery.orders.activity.email.typescript"]},
   "activities": [{"name": "email.Render/v1", "input": "EmailInput", "output": "EmailOutput"}]
 }`)
 	outDir := filepath.Join(root, "bindings")
@@ -269,18 +269,18 @@ func TestGenerateBindingsWritesPythonAndTypeScriptStarters(t *testing.T) {
 	if !result.OK || len(result.Files) != 2 {
 		t.Fatalf("binding result = %#v", result)
 	}
-	python, err := os.ReadFile(filepath.Join(outDir, "email_python", "onlava_worker.py"))
+	python, err := os.ReadFile(filepath.Join(outDir, "email_python", "scenery_worker.py"))
 	if err != nil {
 		t.Fatalf("read python binding: %v", err)
 	}
-	if !strings.Contains(string(python), "async def email_sendwelcome_v1") || !strings.Contains(string(python), "PAYLOAD_CODEC = \"onlava-json-v1\"") {
+	if !strings.Contains(string(python), "async def email_sendwelcome_v1") || !strings.Contains(string(python), "PAYLOAD_CODEC = \"scenery-json-v1\"") {
 		t.Fatalf("python binding content:\n%s", python)
 	}
-	ts, err := os.ReadFile(filepath.Join(outDir, "email_ts", "onlava_worker.ts"))
+	ts, err := os.ReadFile(filepath.Join(outDir, "email_ts", "scenery_worker.ts"))
 	if err != nil {
 		t.Fatalf("read typescript binding: %v", err)
 	}
-	if !strings.Contains(string(ts), "export async function email_render_v1") || !strings.Contains(string(ts), "payloadCodec = \"onlava-json-v1\"") {
+	if !strings.Contains(string(ts), "export async function email_render_v1") || !strings.Contains(string(ts), "payloadCodec = \"scenery-json-v1\"") {
 		t.Fatalf("typescript binding content:\n%s", ts)
 	}
 }
@@ -292,7 +292,7 @@ func TestGenerateBindingsReturnsValidationDiagnostics(t *testing.T) {
   "language": "python",
   "build_id": "",
   "payload_codec": "bad",
-  "temporal": {"namespace": "default", "task_queues": ["onlava.orders.activity.email.python"]},
+  "temporal": {"namespace": "default", "task_queues": ["scenery.orders.activity.email.python"]},
   "activities": [{"name": "email.Send/v1", "input": "Input", "output": "Output"}]
 }`)
 
@@ -307,7 +307,7 @@ func TestGenerateBindingsReturnsValidationDiagnostics(t *testing.T) {
 
 func writeManifest(t *testing.T, root, name, data string) {
 	t.Helper()
-	dir := filepath.Join(root, ".onlava", "workers")
+	dir := filepath.Join(root, ".scenery", "workers")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

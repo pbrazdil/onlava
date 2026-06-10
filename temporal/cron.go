@@ -16,10 +16,10 @@ import (
 	temporalworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	sceneryruntime "scenery.sh/runtime"
 )
 
-const temporalCronWorkflowName = "onlava.cron.Invoke/v1"
+const temporalCronWorkflowName = "scenery.cron.Invoke/v1"
 
 type temporalCronInput struct {
 	AppID                string
@@ -27,7 +27,7 @@ type temporalCronInput struct {
 	ActivityName         string
 	TaskQueue            string
 	ActivityStartToClose time.Duration
-	ActivityRetryPolicy  onlavaruntime.CronRetryPolicy
+	ActivityRetryPolicy  sceneryruntime.CronRetryPolicy
 }
 
 type temporalCronActivityInput struct {
@@ -37,7 +37,7 @@ type temporalCronActivityInput struct {
 	ExecutionID string
 }
 
-func startCronRuntime(parent context.Context, cfg onlavaruntime.AppConfig, jobs []*onlavaruntime.CronJob) (func(context.Context) error, error) {
+func startCronRuntime(parent context.Context, cfg sceneryruntime.AppConfig, jobs []*sceneryruntime.CronJob) (func(context.Context) error, error) {
 	client, info, ok := ActiveClient()
 	if !ok || client == nil {
 		return nil, fmt.Errorf("runtime: cron jobs require temporal.enabled and an active Temporal client")
@@ -48,7 +48,7 @@ func startCronRuntime(parent context.Context, cfg onlavaruntime.AppConfig, jobs 
 			if err := reconcileTemporalCronSchedule(parent, client, cfg, info, taskQueue, job); err != nil {
 				return nil, err
 			}
-			slog.Info("onlava cron schedule reconciled", "id", job.ID, "title", job.Title, "schedule", cronScheduleSummary(job), "backend", "temporal", "task_queue", taskQueue)
+			slog.Info("scenery cron schedule reconciled", "id", job.ID, "title", job.Title, "schedule", cronScheduleSummary(job), "backend", "temporal", "task_queue", taskQueue)
 		}
 	}
 	var worker temporalworker.Worker
@@ -67,7 +67,7 @@ func startCronRuntime(parent context.Context, cfg onlavaruntime.AppConfig, jobs 
 		if err := worker.Start(); err != nil {
 			return nil, fmt.Errorf("runtime: start temporal cron worker on %s: %w", taskQueue, err)
 		}
-		if onlavaruntime.ShouldAutoPromoteTemporalWorkerDeployment(info) {
+		if sceneryruntime.ShouldAutoPromoteTemporalWorkerDeployment(info) {
 			if err := EnsureWorkerDeploymentCurrentVersion(parent, client, info); err != nil {
 				worker.Stop()
 				return nil, err
@@ -82,7 +82,7 @@ func startCronRuntime(parent context.Context, cfg onlavaruntime.AppConfig, jobs 
 	}, nil
 }
 
-func reconcileTemporalCronSchedule(ctx context.Context, client temporalclient.Client, cfg onlavaruntime.AppConfig, info onlavaruntime.TemporalRuntimeInfo, taskQueue string, job *onlavaruntime.CronJob) error {
+func reconcileTemporalCronSchedule(ctx context.Context, client temporalclient.Client, cfg sceneryruntime.AppConfig, info sceneryruntime.TemporalRuntimeInfo, taskQueue string, job *sceneryruntime.CronJob) error {
 	options, err := temporalCronScheduleOptions(cfg, info, taskQueue, job)
 	if err != nil {
 		return err
@@ -117,7 +117,7 @@ func reconcileTemporalCronSchedule(ctx context.Context, client temporalclient.Cl
 	return nil
 }
 
-func temporalCronScheduleOptions(cfg onlavaruntime.AppConfig, info onlavaruntime.TemporalRuntimeInfo, taskQueue string, job *onlavaruntime.CronJob) (temporalclient.ScheduleOptions, error) {
+func temporalCronScheduleOptions(cfg sceneryruntime.AppConfig, info sceneryruntime.TemporalRuntimeInfo, taskQueue string, job *sceneryruntime.CronJob) (temporalclient.ScheduleOptions, error) {
 	spec, err := temporalCronScheduleSpec(job)
 	if err != nil {
 		return temporalclient.ScheduleOptions{}, err
@@ -151,23 +151,23 @@ func temporalCronScheduleOptions(cfg onlavaruntime.AppConfig, info onlavaruntime
 				ActivityRetryPolicy:  job.ActivityRetryPolicy,
 			}},
 			Memo: map[string]interface{}{
-				"onlava_app": cfg.Name,
-				"onlava_job": job.ID,
+				"scenery_app": cfg.Name,
+				"scenery_job": job.ID,
 			},
 		},
 		Overlap:        overlap,
 		CatchupWindow:  catchupWindow,
 		PauseOnFailure: job.PauseOnFailure,
-		Note:           "managed by onlava",
+		Note:           "managed by scenery",
 		Memo: map[string]interface{}{
-			"onlava_app": cfg.Name,
-			"onlava_job": job.ID,
+			"scenery_app": cfg.Name,
+			"scenery_job": job.ID,
 		},
 	}, nil
 }
 
-func temporalCronScheduleSpec(job *onlavaruntime.CronJob) (temporalclient.ScheduleSpec, error) {
-	spec, err := onlavaruntime.TemporalCronScheduleSpecForJob(job)
+func temporalCronScheduleSpec(job *sceneryruntime.CronJob) (temporalclient.ScheduleSpec, error) {
+	spec, err := sceneryruntime.TemporalCronScheduleSpecForJob(job)
 	if err != nil {
 		return temporalclient.ScheduleSpec{}, err
 	}
@@ -189,7 +189,7 @@ func temporalCronScheduleSpec(job *onlavaruntime.CronJob) (temporalclient.Schedu
 	return out, nil
 }
 
-func temporalScheduleRanges(in []onlavaruntime.TemporalCronScheduleRange) []temporalclient.ScheduleRange {
+func temporalScheduleRanges(in []sceneryruntime.TemporalCronScheduleRange) []temporalclient.ScheduleRange {
 	if len(in) == 0 {
 		return nil
 	}
@@ -224,7 +224,7 @@ func temporalCronWorkflow(ctx workflow.Context, in temporalCronInput) error {
 	}).Get(actCtx, nil)
 }
 
-func runTemporalCronActivity(ctx context.Context, job *onlavaruntime.CronJob, in temporalCronActivityInput) error {
+func runTemporalCronActivity(ctx context.Context, job *sceneryruntime.CronJob, in temporalCronActivityInput) error {
 	if job == nil {
 		return fmt.Errorf("runtime: missing cron job declaration")
 	}
@@ -232,7 +232,7 @@ func runTemporalCronActivity(ctx context.Context, job *onlavaruntime.CronJob, in
 	if scheduledAt.IsZero() {
 		scheduledAt = time.Now().UTC()
 	}
-	return onlavaruntime.InvokeCronJob(ctx, job, scheduledAt, in.ExecutionID)
+	return sceneryruntime.InvokeCronJob(ctx, job, scheduledAt, in.ExecutionID)
 }
 
 func temporalCronOverlapPolicy(policy string) (enumspb.ScheduleOverlapPolicy, error) {
@@ -254,7 +254,7 @@ func temporalCronOverlapPolicy(policy string) (enumspb.ScheduleOverlapPolicy, er
 	}
 }
 
-func temporalCronRetryPolicy(policy onlavaruntime.CronRetryPolicy) *sdktemporal.RetryPolicy {
+func temporalCronRetryPolicy(policy sceneryruntime.CronRetryPolicy) *sdktemporal.RetryPolicy {
 	if cronRetryPolicyIsZero(policy) {
 		return nil
 	}
@@ -270,7 +270,7 @@ func temporalCronRetryPolicy(policy onlavaruntime.CronRetryPolicy) *sdktemporal.
 	}
 }
 
-func cronRetryPolicyIsZero(policy onlavaruntime.CronRetryPolicy) bool {
+func cronRetryPolicyIsZero(policy sceneryruntime.CronRetryPolicy) bool {
 	return policy.InitialInterval == 0 &&
 		policy.BackoffCoefficient == 0 &&
 		policy.MaximumInterval == 0 &&
@@ -286,35 +286,35 @@ func shouldStartTemporalCronWorker(role string) bool {
 	return strings.TrimSpace(strings.ToLower(role)) != "api"
 }
 
-func temporalCronTaskQueue(info onlavaruntime.TemporalRuntimeInfo) string {
+func temporalCronTaskQueue(info sceneryruntime.TemporalRuntimeInfo) string {
 	prefix := strings.TrimSpace(info.TaskQueuePrefix)
 	if prefix == "" {
-		prefix = "onlava"
+		prefix = "scenery"
 	}
 	return strings.TrimSuffix(prefix, ".") + ".cron.go"
 }
 
-func temporalCronScheduleID(info onlavaruntime.TemporalRuntimeInfo, job *onlavaruntime.CronJob) string {
-	return onlavaruntime.TemporalDeploymentName(info) + ".cron." + onlavaruntime.SanitizeTemporalName(job.ID)
+func temporalCronScheduleID(info sceneryruntime.TemporalRuntimeInfo, job *sceneryruntime.CronJob) string {
+	return sceneryruntime.TemporalDeploymentName(info) + ".cron." + sceneryruntime.SanitizeTemporalName(job.ID)
 }
 
-func temporalCronWorkflowID(info onlavaruntime.TemporalRuntimeInfo, job *onlavaruntime.CronJob) string {
+func temporalCronWorkflowID(info sceneryruntime.TemporalRuntimeInfo, job *sceneryruntime.CronJob) string {
 	return temporalCronScheduleID(info, job)
 }
 
-func temporalCronActivityName(job *onlavaruntime.CronJob) string {
+func temporalCronActivityName(job *sceneryruntime.CronJob) string {
 	if job == nil {
-		return "onlava.cron.unknown/v1"
+		return "scenery.cron.unknown/v1"
 	}
-	return "onlava.cron." + onlavaruntime.SanitizeTemporalName(job.ID) + "/v1"
+	return "scenery.cron." + sceneryruntime.SanitizeTemporalName(job.ID) + "/v1"
 }
 
 func stableTemporalCronExecutionID(appID, jobID string, scheduledAt time.Time) string {
-	appID = onlavaruntime.SanitizeTemporalName(appID)
+	appID = sceneryruntime.SanitizeTemporalName(appID)
 	if appID == "" {
 		appID = "app"
 	}
-	return fmt.Sprintf("%s-%s-%s", appID, onlavaruntime.SanitizeTemporalName(jobID), scheduledAt.UTC().Format("20060102T150405Z"))
+	return fmt.Sprintf("%s-%s-%s", appID, sceneryruntime.SanitizeTemporalName(jobID), scheduledAt.UTC().Format("20060102T150405Z"))
 }
 
 func isTemporalAlreadyExistsError(err error) bool {
@@ -329,7 +329,7 @@ func isTemporalAlreadyExistsError(err error) bool {
 	return strings.Contains(message, "already exist") || strings.Contains(message, "already registered")
 }
 
-func cronScheduleSummary(job *onlavaruntime.CronJob) string {
+func cronScheduleSummary(job *sceneryruntime.CronJob) string {
 	if job.Every > 0 {
 		return "every " + job.Every.String()
 	}

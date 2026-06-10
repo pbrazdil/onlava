@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/devreport"
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/internal/devreport"
+	"scenery.sh/runtime/shared"
 )
 
 func TestDevReporterDisablesOnConnectionRefused(t *testing.T) {
 	reporter := &devReporter{
 		appID: "app",
-		url:   "http://127.0.0.1:9401/__onlava/report",
+		url:   "http://127.0.0.1:9401/__scenery/report",
 		token: "token",
 		client: &http.Client{
 			Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -98,7 +98,7 @@ func TestDevReporterBacksOffAfterFailedPost(t *testing.T) {
 	var calls atomic.Int64
 	reporter := &devReporter{
 		appID: "app",
-		url:   "http://dashboard.test/__onlava/report",
+		url:   "http://dashboard.test/__scenery/report",
 		token: "token",
 		client: &http.Client{
 			Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {

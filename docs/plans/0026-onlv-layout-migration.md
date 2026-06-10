@@ -1,4 +1,4 @@
-# ONLV Layout Migration into onlava
+# ONLV Layout Migration into scenery
 
 Status: canceled 2026-05-26. This plan is retained as historical context only
 and is no longer linked from the active plan index.
@@ -7,7 +7,7 @@ This ExecPlan is a living document only while active; it is now archived. Its Pr
 
 ## Purpose / Big Picture
 
-onlava should own the reusable layout primitives currently living in ONLV app so future agents compose product UI from onlava-owned layouts instead of copying ONLV-specific components or writing page-local className-heavy markup.
+scenery should own the reusable layout primitives currently living in ONLV app so future agents compose product UI from scenery-owned layouts instead of copying ONLV-specific components or writing page-local className-heavy markup.
 
 The migration is not a redesign. It is a source-of-truth migration:
 
@@ -15,23 +15,23 @@ The migration is not a redesign. It is a source-of-truth migration:
 ONLV app generic layout patterns
         |
         v
-onlava ui/src/components/layouts
+scenery ui/src/components/layouts
         |
         v
-onlava @onlava/* registry items
+scenery @scenery/* registry items
         |
         v
-ONLV imports updated to consume onlava-facing layout surfaces
+ONLV imports updated to consume scenery-facing layout surfaces
         |
         v
 visual output intentionally unchanged
 ```
 
-The most concrete starting point is ONLV's `apps/app/src/components/app/product-layout.tsx`, which defines reusable product chrome primitives such as `LegacyAppSidebar`, `LegacyAppMain`, `LegacyAppHeader`, `LegacyAppToolbar`, `LegacyPanel`, and `LegacyMetaBox`. These map naturally to onlava-owned `AppSidebar`, `AppMain`, `AppHeader`, `AppToolbar`, `AppPanel`, and `AppMetaBox`.
+The most concrete starting point is ONLV's `apps/app/src/components/app/product-layout.tsx`, which defines reusable product chrome primitives such as `LegacyAppSidebar`, `LegacyAppMain`, `LegacyAppHeader`, `LegacyAppToolbar`, `LegacyPanel`, and `LegacyMetaBox`. These map naturally to scenery-owned `AppSidebar`, `AppMain`, `AppHeader`, `AppToolbar`, `AppPanel`, and `AppMetaBox`.
 
-onlava already has `ui/src/components/layouts/AppSurface.tsx` with matching onlava-named components and stable `data-onlava-ui` markers. Treat that as the current baseline, not as final proof that the migration is complete.
+scenery already has `ui/src/components/layouts/AppSurface.tsx` with matching scenery-named components and stable `data-scenery-ui` markers. Treat that as the current baseline, not as final proof that the migration is complete.
 
-The goal is to make ONLV use onlava layout contracts while preserving ONLV's current pixels and behavior. ONLV's own agent notes explicitly say Linear-inspired product chrome should use semantic app tokens, keep dense quiet product chrome, and prefer `src/components/app/product-layout.tsx` for repeated product sidebars, main surfaces, headers, toolbars, panels, and metadata boxes.
+The goal is to make ONLV use scenery layout contracts while preserving ONLV's current pixels and behavior. ONLV's own agent notes explicitly say Linear-inspired product chrome should use semantic app tokens, keep dense quiet product chrome, and prefer `src/components/app/product-layout.tsx` for repeated product sidebars, main surfaces, headers, toolbars, panels, and metadata boxes.
 
 Suggested first execution target: only reconcile and test `AppSurface` plus ONLV import adapters first. Do not start migrating page-level Tasks, Contacts, Jobs, Drive, Console, or Viewer shells until the basic app-surface family is proven with visual harness.
 
@@ -40,13 +40,13 @@ Suggested first execution target: only reconcile and test `AppSurface` plus ONLV
 * [x] Create this ExecPlan as `docs/plans/0026-onlv-layout-migration.md`.
 * [x] Link this ExecPlan from `docs/plans/active.md`.
 * [x] Inventory ONLV layout candidates.
-* [x] Compare ONLV layout candidates against existing onlava layouts.
-* [ ] Port missing generic layouts into onlava.
-* [x] Confirm the existing `@onlava/app-surface` registry item covers the first migrated layout family.
+* [x] Compare ONLV layout candidates against existing scenery layouts.
+* [ ] Port missing generic layouts into scenery.
+* [x] Confirm the existing `@scenery/app-surface` registry item covers the first migrated layout family.
 * [x] Add layout render tests for `AppSurface`.
-* [x] Update ONLV import adapters to use onlava-facing layout surfaces.
-* [x] Update ONLV app-surface consumers to use onlava-facing `App*` names.
-* [x] Run onlava validation.
+* [x] Update ONLV import adapters to use scenery-facing layout surfaces.
+* [x] Update ONLV app-surface consumers to use scenery-facing `App*` names.
+* [x] Run scenery validation.
 * [x] Run ONLV validation and visual harness, with current failures recorded below.
 * [ ] Resolve or approve ONLV visual harness diffs before completing this plan.
 * [ ] Record outcomes and move this plan to completed.
@@ -58,12 +58,12 @@ Record discoveries here as work proceeds.
 Known starting discoveries:
 
 * ONLV app has explicit UI layering and visual harness expectations under `apps/app/AGENTS.md`. Any migration touching ONLV app UI should run the frozen visual harness and preserve pixels unless a visual change is deliberately approved.
-* onlava already has a controlled UI contract: agents compose from `ui/src/components/primitives` and `ui/src/components/layouts`, not raw shadcn or vendor imports. The migration must preserve that contract.
-* onlava already has `AppSurface.tsx`; the first task is audit/reconciliation, not blindly copying duplicate components.
+* scenery already has a controlled UI contract: agents compose from `ui/src/components/primitives` and `ui/src/components/layouts`, not raw shadcn or vendor imports. The migration must preserve that contract.
+* scenery already has `AppSurface.tsx`; the first task is audit/reconciliation, not blindly copying duplicate components.
 * ONLV already had `apps/app/src/components/layouts/product-layout.ts` as an adapter path, but it re-exported the app-local implementation. The first implementation slice can preserve existing screen imports while making `AppSurface` the adapter source.
 * The initial inventory found one additional app-surface user outside the originally named surfaces: `apps/app/src/pages/InvoicesPage/index.tsx`.
-* onlava `AppSurface.tsx` covers the compiled dashboard baseline, while `ui/src/components/registry/layouts/app-surface.tsx` carries the downstream ONLV registry output, including `AppTwoPane`, `AppFilterControl`, and `AppFilterSelectTrigger`.
-* `bun run shadcn:add @onlava/app-surface --dry-run` reports the ONLV-facing registry output and its `@onlava/select` dependency.
+* scenery `AppSurface.tsx` covers the compiled dashboard baseline, while `ui/src/components/registry/layouts/app-surface.tsx` carries the downstream ONLV registry output, including `AppTwoPane`, `AppFilterControl`, and `AppFilterSelectTrigger`.
+* `bun run shadcn:add @scenery/app-surface --dry-run` reports the ONLV-facing registry output and its `@scenery/select` dependency.
 * ONLV app `bun run typecheck` was blocked by a duplicated `three` / `@types/three` version mismatch in `apps/viewer`. Aligning viewer to the same `0.184.0` versions already used by the blog app fixed ONLV app typecheck.
 * ONLV app `bun run ui-harness` initially failed all 24 screenshots because the global workspace switcher was hidden in dev/E2E auth-bypass mode. The switcher now renders for E2E auth bypass, restoring the expected workspace chrome.
 * ONLV app `bun run ui-harness` still fails all 24 screenshots. The run reaches the harness pages, but the frozen baselines differ from the current app. The visible UI catalog labels were restored to the previous `ONLV app*` names while the implementation imports use `App*`; remaining known contributors include sidebar drift around the newer `Data` development route and small app-page focus-ring differences such as close button versus edit button focus. Baselines were not updated because approval is required. Diff report: `/Users/petrbrazdil/Repos/onlv/apps/app/test-results/ui-harness/diff-report.md`.
@@ -73,16 +73,16 @@ Known starting discoveries:
 
 ## Decision Log
 
-* Decision: Use onlava-owned names, not app-prefixed names, for shared layouts.
-  Rationale: The public onlava UI surface should not be ONLV app-branded. app-specific naming remains in ONLV only where the component is truly app-specific.
+* Decision: Use scenery-owned names, not app-prefixed names, for shared layouts.
+  Rationale: The public scenery UI surface should not be ONLV app-branded. app-specific naming remains in ONLV only where the component is truly app-specific.
   Date/Author: 2026-05-09 / Codex
 
 * Decision: Preserve ONLV visual output during migration.
   Rationale: The purpose is ownership and guardrails, not redesign. Any visual changes should be separately approved through ONLV's visual harness.
   Date/Author: 2026-05-09 / Codex
 
-* Decision: Generic layouts move to onlava; app-specific feature components stay in ONLV.
-  Rationale: onlava should own reusable shell/layout primitives, while ONLV keeps business-specific behavior and data wiring.
+* Decision: Generic layouts move to scenery; app-specific feature components stay in ONLV.
+  Rationale: scenery should own reusable shell/layout primitives, while ONLV keeps business-specific behavior and data wiring.
   Date/Author: 2026-05-09 / Codex
 
 * Decision: Start with `AppSurface` reconciliation and ONLV import adapters only.
@@ -98,11 +98,11 @@ Known starting discoveries:
   Date/Author: 2026-05-09 / Codex
 
 * Decision: Keep app-prefixed compatibility exports but remove app-prefixed usage from page consumers.
-  Rationale: Screens should compose onlava-facing layout names now, while legacy import paths remain reversible until the visual harness and broader migration are complete.
+  Rationale: Screens should compose scenery-facing layout names now, while legacy import paths remain reversible until the visual harness and broader migration are complete.
   Date/Author: 2026-05-09 / Codex
 
 * Decision: Keep ONLV UI catalog display labels as `ONLV app*` during the source migration.
-  Rationale: The plan is a source-of-truth migration, not a visual/content rename. The code can import onlava-facing `App*` symbols while the app continues to display the existing app-specific labels until a separate naming/content change is approved.
+  Rationale: The plan is a source-of-truth migration, not a visual/content rename. The code can import scenery-facing `App*` symbols while the app continues to display the existing app-specific labels until a separate naming/content change is approved.
   Date/Author: 2026-05-09 / Codex
 
 ## Outcomes & Retrospective
@@ -132,7 +132,7 @@ Known ONLV layout source:
 apps/app/src/components/app/product-layout.tsx
 ```
 
-Known onlava layout baseline:
+Known scenery layout baseline:
 
 ```text
 ui/src/components/layouts/AppSurface.tsx
@@ -142,30 +142,30 @@ ui/src/components/layouts/PageToolbar.tsx
 ui/src/components/layouts/AppShell.tsx
 ```
 
-Known onlava registry/guardrail files:
+Known scenery registry/guardrail files:
 
 ```text
 ui/components.json
-ui/scripts/onlava-shadcn.mjs
-ui/registry/onlava/registry.json
-ui/registry/onlava/app-surface.json
-ui/registry/onlava/page-toolbar.json
+ui/scripts/scenery-shadcn.mjs
+ui/registry/scenery/registry.json
+ui/registry/scenery/app-surface.json
+ui/registry/scenery/page-toolbar.json
 docs/ui-agent-contract.md
-cmd/onlava/harness_ui.go
+cmd/scenery/harness_ui.go
 ```
 
 Architecture constraints:
 
 * Do not introduce raw shadcn usage in app/dashboard screens.
 * Do not import from `ui/src/components/vendor/shadcn` from screens.
-* Do not create ONLV-branded public surfaces in onlava unless the component is explicitly kept internal.
+* Do not create ONLV-branded public surfaces in scenery unless the component is explicitly kept internal.
 * Prefer typed named slots over compound component APIs for agent-facing layouts.
-* Add stable `data-onlava-ui` and `data-slot` markers to migrated layouts.
-* Do not move app-specific ONLV data/state logic into onlava.
+* Add stable `data-scenery-ui` and `data-slot` markers to migrated layouts.
+* Do not move app-specific ONLV data/state logic into scenery.
 
 ## Scope
 
-Migrate generic layout primitives from ONLV app into onlava.
+Migrate generic layout primitives from ONLV app into scenery.
 
 Candidate categories:
 
@@ -197,7 +197,7 @@ Non-goals:
 ```text
 visual redesign
 CRM rewrite
-moving ONLV product logic into onlava
+moving ONLV product logic into scenery
 migrating ONLV data fetching or sync logic
 replacing all ONLV UI components
 adding new shadcn primitives unless needed by a migrated layout
@@ -229,7 +229,7 @@ Create a small inventory table in this plan:
 ONLV source file
 component/pattern
 generic or app-specific
-target onlava layout
+target scenery layout
 ONLV migration strategy
 visual-risk level
 ```
@@ -240,9 +240,9 @@ Acceptance:
 * Inventory identifies repeated page-level shells in Tasks, Contacts, Jobs, Drive, Console, and Viewer surfaces.
 * Each candidate is classified as generic or app-specific.
 
-### Milestone 2: Reconcile existing onlava layout baseline
+### Milestone 2: Reconcile existing scenery layout baseline
 
-Compare ONLV `product-layout.tsx` with onlava `AppSurface.tsx`.
+Compare ONLV `product-layout.tsx` with scenery `AppSurface.tsx`.
 
 Check:
 
@@ -252,14 +252,14 @@ semantic tokens
 dimensions
 DOM element types
 accessibility expectations
-data-onlava-ui markers
+data-scenery-ui markers
 registry item coverage
 tests
 ```
 
 Acceptance:
 
-* Existing onlava `AppSurface.tsx` is confirmed equivalent or updated.
+* Existing scenery `AppSurface.tsx` is confirmed equivalent or updated.
 * Any registry-only app-surface source is recorded as deliberate source-generator input, not a second app-facing layout API.
 * Any semantic differences are recorded in Decision Log.
 
@@ -287,10 +287,10 @@ Do not add all of these blindly. Add only the layouts justified by the ONLV inve
 Every migrated layout must:
 
 ```text
-use onlava-owned component names
+use scenery-owned component names
 use typed props
 use named slots
-include data-onlava-ui markers
+include data-scenery-ui markers
 include data-slot markers for important regions
 avoid app-specific names/copy
 avoid business logic
@@ -310,7 +310,7 @@ Example target shape:
 
 Acceptance:
 
-* New layouts are generic and onlava-named.
+* New layouts are generic and scenery-named.
 * Existing ONLV visuals can be represented without page-local layout CSS.
 * No raw shadcn imports are introduced.
 
@@ -319,7 +319,7 @@ Acceptance:
 Add or update registry files under:
 
 ```text
-ui/registry/onlava/
+ui/registry/scenery/
 ```
 
 For each migrated layout, add a registry item:
@@ -335,7 +335,7 @@ empty-state-layout
 Update:
 
 ```text
-ui/registry/onlava/registry.json
+ui/registry/scenery/registry.json
 ```
 
 Registry requirements:
@@ -343,12 +343,12 @@ Registry requirements:
 * `source` points at an existing file under `ui/src`.
 * `target` uses approved aliases such as `@components/layouts/...`.
 * No registry item writes config, lockfiles, scripts, or package files.
-* Dependencies use only `@onlava/*` registry dependencies.
+* Dependencies use only `@scenery/*` registry dependencies.
 
 Acceptance:
 
-* `onlava harness self --json` UI static checks pass.
-* `bun run shadcn:add @onlava/<new-layout> --dry-run` works for each new item.
+* `scenery harness self --json` UI static checks pass.
+* `bun run shadcn:add @scenery/<new-layout> --dry-run` works for each new item.
 
 ### Milestone 5: Tests
 
@@ -363,7 +363,7 @@ ui/src/components/layouts/*.test.tsx
 Test:
 
 ```text
-renders root data-onlava-ui marker
+renders root data-scenery-ui marker
 renders all required slots
 omits optional slots cleanly
 does not create empty side columns for absent optional slots
@@ -377,15 +377,15 @@ Acceptance:
 
 ### Milestone 6: Update ONLV imports
 
-In ONLV, update usage from app-specific generic layouts to onlava-facing layout surfaces.
+In ONLV, update usage from app-specific generic layouts to scenery-facing layout surfaces.
 
-Preferred import direction depends on ONLV's current package wiring. The migration should end with ONLV screens importing onlava-facing layout names, not local ONLV app layout primitives.
+Preferred import direction depends on ONLV's current package wiring. The migration should end with ONLV screens importing scenery-facing layout names, not local ONLV app layout primitives.
 
 Possible ONLV adapter strategy:
 
 ```text
 apps/app/src/components/layouts/*
-  re-export onlava-owned layouts or mirror installed @onlava registry outputs
+  re-export scenery-owned layouts or mirror installed @scenery registry outputs
 ```
 
 Do not immediately delete ONLV local components if that would increase visual risk. First add adapter/re-export paths, update screen imports, and only then remove unused local components.
@@ -398,22 +398,22 @@ Acceptance:
 
 ### Milestone 7: Visual and harness validation
 
-Run onlava validation:
+Run scenery validation:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
+go install ./cmd/scenery
 cd ui && bun run typecheck
 cd ui && bun run test
 cd ui && bun run build
-onlava harness self --json --write
+scenery harness self --json --write
 ```
 
 Run ONLV validation:
 
 ```sh
 cd /path/to/onlv
-onlava check --json
+scenery check --json
 go test ./...
 ```
 
@@ -434,29 +434,29 @@ Only update baselines after approval.
 
 Acceptance:
 
-* onlava validation passes.
+* scenery validation passes.
 * ONLV check/tests pass.
 * ONLV UI visual harness passes, or visual diffs are explicitly reviewed and approved.
 * No new guardrail violations are introduced.
 
 ## Plan of Work
 
-Start by inventorying ONLV, not by copying files. ONLV's `product-layout.tsx` is already small and may already be mirrored by onlava's `AppSurface.tsx`; the valuable work is finding every repeated layout pattern that still lives only in ONLV or still encourages agents to write page-local layout CSS.
+Start by inventorying ONLV, not by copying files. ONLV's `product-layout.tsx` is already small and may already be mirrored by scenery's `AppSurface.tsx`; the valuable work is finding every repeated layout pattern that still lives only in ONLV or still encourages agents to write page-local layout CSS.
 
 Use this classification:
 
 ```text
 Generic:
-  could be used by onlava dashboard, data explorer, CRM prototype, or another app
+  could be used by scenery dashboard, data explorer, CRM prototype, or another app
 
 App-specific:
   depends on ONLV entities, sync state, copy, or product workflows
 
 Borderline:
-  port the structural shell to onlava; keep feature content in ONLV
+  port the structural shell to scenery; keep feature content in ONLV
 ```
 
-When porting, rename app-prefixed symbols to onlava names:
+When porting, rename app-prefixed symbols to scenery names:
 
 ```text
 LegacyAppSidebar  -> AppSidebar
@@ -494,7 +494,7 @@ Keep visual tokens semantic. ONLV currently expects app tokens such as:
 --app-separator-subtle
 ```
 
-For onlava, decide whether to preserve those token names temporarily or add neutral aliases. Do not silently change colors/spacing. Record the token decision in the Decision Log.
+For scenery, decide whether to preserve those token names temporarily or add neutral aliases. Do not silently change colors/spacing. Record the token decision in the Decision Log.
 
 ## Concrete Steps
 
@@ -511,19 +511,19 @@ For onlava, decide whether to preserve those token names temporarily or add neut
 
 4. Fill the inventory table in this plan.
 
-5. Compare ONLV `apps/app/src/components/app/product-layout.tsx` with onlava `ui/src/components/layouts/AppSurface.tsx`.
+5. Compare ONLV `apps/app/src/components/app/product-layout.tsx` with scenery `ui/src/components/layouts/AppSurface.tsx`.
 
 6. Update `AppSurface.tsx` only if needed.
 
-7. Add missing onlava layouts under `ui/src/components/layouts`.
+7. Add missing scenery layouts under `ui/src/components/layouts`.
 
 8. Export them from `ui/src/components/layouts/index.ts`.
 
-9. Add or update registry items under `ui/registry/onlava`.
+9. Add or update registry items under `ui/registry/scenery`.
 
 10. Add render tests under `ui/src/components/layouts`.
 
-11. Run onlava validation.
+11. Run scenery validation.
 
 12. Update ONLV imports through an adapter/re-export path first.
 
@@ -539,7 +539,7 @@ For onlava, decide whether to preserve those token names temporarily or add neut
 
 Fill this during Milestone 1.
 
-| ONLV source                                                | Component/pattern                                    | Generic? | onlava target                          | Migration strategy                           | Visual risk |
+| ONLV source                                                | Component/pattern                                    | Generic? | scenery target                          | Migration strategy                           | Visual risk |
 | ---------------------------------------------------------- | ---------------------------------------------------- | -------: | -------------------------------------- | -------------------------------------------- | ----------- |
 | `apps/app/src/components/app/product-layout.tsx`       | `LegacyAppSidebar`                               |      yes | `AppSidebar`                       | mirrored; source adapter from AppSurface | low         |
 | `apps/app/src/components/app/product-layout.tsx`       | `LegacyAppMain`                                  |      yes | `AppMain`                          | mirrored; source adapter from AppSurface | low         |
@@ -561,23 +561,23 @@ Additional page-local grid shells were found in DataPlatform, Annotation, Debug,
 
 ## Validation and Acceptance
 
-onlava validation:
+scenery validation:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
+go install ./cmd/scenery
 cd ui && bun run typecheck
 cd ui && bun run test
 cd ui && bun run build
-cd ui && bun run shadcn:add @onlava/app-surface --dry-run
-onlava harness self --json --write
+cd ui && bun run shadcn:add @scenery/app-surface --dry-run
+scenery harness self --json --write
 ```
 
 ONLV validation:
 
 ```sh
 cd /path/to/onlv
-onlava check --json
+scenery check --json
 go test ./...
 ```
 
@@ -591,11 +591,11 @@ bun run ui-harness
 Acceptance criteria:
 
 ```text
-- onlava owns the migrated generic layouts.
-- ONLV screens use onlava-facing layout surfaces for generic product layout.
+- scenery owns the migrated generic layouts.
+- ONLV screens use scenery-facing layout surfaces for generic product layout.
 - ONLV app-specific logic remains in ONLV.
-- onlava UI static architecture checks pass.
-- onlava layout render tests pass.
+- scenery UI static architecture checks pass.
+- scenery layout render tests pass.
 - ONLV visual harness passes or approved diffs are documented.
 - No intentional visual redesign is included.
 - No raw shadcn or vendor shadcn imports are introduced in screens.
@@ -614,12 +614,12 @@ Rules:
 - Do not delete ONLV local layout files until visual validation passes.
 - Do not update ONLV visual baselines without approval.
 - If visual diff appears, stop and compare class names, token values, element types, and slot nesting.
-- If onlava layout is too generic and loses required behavior, keep the feature-specific part in ONLV and port only the structural shell.
+- If scenery layout is too generic and loses required behavior, keep the feature-specific part in ONLV and port only the structural shell.
 ```
 
 ## Artifacts and Notes
 
-Expected onlava artifacts:
+Expected scenery artifacts:
 
 ```text
 ui/src/components/layouts/AppSurface.tsx
@@ -627,10 +627,10 @@ ui/src/components/layouts/AppListDetailLayout.tsx
 ui/src/components/layouts/TableShell.tsx
 ui/src/components/layouts/EmptyStateLayout.tsx
 ui/src/components/layouts/*.test.tsx
-ui/registry/onlava/app-surface.json
-ui/registry/onlava/product-list-detail-layout.json
-ui/registry/onlava/table-shell.json
-ui/registry/onlava/empty-state-layout.json
+ui/registry/scenery/app-surface.json
+ui/registry/scenery/product-list-detail-layout.json
+ui/registry/scenery/table-shell.json
+ui/registry/scenery/empty-state-layout.json
 ```
 
 Expected ONLV artifacts:
@@ -645,12 +645,12 @@ test-results/ui-harness/diff-report.md, only if diffs occur
 
 No new dependencies are expected.
 
-Use existing onlava UI primitives and layout system:
+Use existing scenery UI primitives and layout system:
 
 ```text
 @/components/primitives
 @/components/layouts
-@onlava/* registry items
+@scenery/* registry items
 ```
 
 Do not add new direct shadcn usage. If a new shadcn primitive is needed, follow `docs/ui-agent-contract.md` promotion flow first.

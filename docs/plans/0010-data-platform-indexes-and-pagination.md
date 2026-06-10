@@ -4,14 +4,14 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The onlava data platform now has the first vertical slice, PostgreSQL validation and inspectability, migration/live hardening, and trigger-backed outbox support. The next foundation step is query usability and performance: metadata-backed physical indexes and stable cursor pagination.
+The scenery data platform now has the first vertical slice, PostgreSQL validation and inspectability, migration/live hardening, and trigger-backed outbox support. The next foundation step is query usability and performance: metadata-backed physical indexes and stable cursor pagination.
 
-Do not add CRM UI in this plan. The current goal is to make dynamic objects scale as real PostgreSQL tables while preserving onlava's existing migration discipline, inspectability, and live-update correctness.
+Do not add CRM UI in this plan. The current goal is to make dynamic objects scale as real PostgreSQL tables while preserving scenery's existing migration discipline, inspectability, and live-update correctness.
 
 Target flow:
 
 ```text
-onlava data.Store public API
+scenery data.Store public API
         |
         v
 metadata-backed index request + query request
@@ -62,11 +62,11 @@ Success means app code can create/list indexes through a small public API, inspe
   Date/Author: 2026-05-09 / Codex
 
 - Decision: Keep physical index names inspectable but not central to the app-facing public API.
-  Rationale: The public `data` API should be about objects, fields, queries, and indexes. Physical names are operational details for `onlava inspect data`.
+  Rationale: The public `data` API should be about objects, fields, queries, and indexes. Physical names are operational details for `scenery inspect data`.
   Date/Author: 2026-05-09 / Codex
 
 - Decision: Keep arbitrary partial-index predicates out of the first implementation.
-  Rationale: Accepting raw predicate SQL would violate the data platform's identifier/value safety model. The first implementation focuses on deterministic full-table btree/GIN indexes; constrained onlava-owned partial predicates can be added later.
+  Rationale: Accepting raw predicate SQL would violate the data platform's identifier/value safety model. The first implementation focuses on deterministic full-table btree/GIN indexes; constrained scenery-owned partial predicates can be added later.
   Date/Author: 2026-05-09 / Codex
 
 - Decision: Include object schema version in cursors and reject mismatches.
@@ -79,12 +79,12 @@ Completed 2026-05-09.
 
 Shipped:
 
-- Metadata tables `onlava_data.indexes` and `onlava_data.index_fields`.
+- Metadata tables `scenery_data.indexes` and `scenery_data.index_fields`.
 - Public `data.Store.CreateIndex` and `data.Store.ListIndexes` APIs plus `Index`, `IndexField`, `CreateIndexRequest`, `ListIndexesRequest`, and index method constants.
 - Deterministic physical index names using the same readable stable-suffix strategy as object tables and field columns.
 - Migration-managed physical index creation with advisory locks, schema migration rows, catalog verification, idempotent repeated creates, and failed-migration recording on DDL failure.
 - Btree scalar and compound indexes, plus explicit GIN indexes for multi-select and JSON/raw JSON fields.
-- `onlava inspect data --json` index output with logical fields and physical presence/drift state.
+- `scenery inspect data --json` index output with logical fields and physical presence/drift state.
 - Keyset cursor pagination in `QueryRecords`, including automatic `id` tie-breaker, base64url opaque cursors, schema-version validation, sort-shape rejection, and `RecordPage.NextCursor`.
 - Data-platform fixture endpoints and README examples for index create/list and cursor usage.
 
@@ -96,8 +96,8 @@ The index work fit naturally into the existing migration path. The main cursor d
 
 This plan follows completed data-platform plans:
 
-- `docs/plans/0005-onlava-data-platform.md`: initial metadata/object/field/record/outbox/SSE vertical slice.
-- `docs/plans/0007-data-platform-validation-and-inspect.md`: PostgreSQL CI and `onlava inspect data`.
+- `docs/plans/0005-scenery-data-platform.md`: initial metadata/object/field/record/outbox/SSE vertical slice.
+- `docs/plans/0007-data-platform-validation-and-inspect.md`: PostgreSQL CI and `scenery inspect data`.
 - `docs/plans/0008-data-platform-migration-and-live-hardening.md`: migration correctness, live matching, and public data API cleanup.
 - `docs/plans/0009-trigger-backed-outbox.md`: direct SQL changes write outbox rows through optional triggers.
 
@@ -112,17 +112,17 @@ Relevant files and packages:
 - `internal/objectstore/mutate.go`: record mutations and outbox writes.
 - `internal/objectstore/live.go`: subscription resolution and event matching.
 - `internal/datainspect`: inspect data JSON builder.
-- `cmd/onlava`: inspect command wiring.
+- `cmd/scenery`: inspect command wiring.
 - `testdata/apps/data-platform`: fixture app and README walkthrough.
 - `docs/local-contract.md`: public/beta contract documentation for stable surfaces only.
 - `docs/schemas`: JSON schemas for inspect output if the shape changes.
 
 Existing query behavior supports selected fields, filters, sort, and limit. `RecordPage` already has a `NextCursor` field, but the query implementation currently returns records without a cursor. This plan should fill that behavior.
 
-Metadata tables to add in the `onlava_data` schema:
+Metadata tables to add in the `scenery_data` schema:
 
 ```text
-onlava_data.indexes
+scenery_data.indexes
   id
   tenant_id
   object_id
@@ -135,7 +135,7 @@ onlava_data.indexes
   created_at
   updated_at
 
-onlava_data.index_fields
+scenery_data.index_fields
   id
   tenant_id
   index_id
@@ -157,7 +157,7 @@ btree index on scalar fields
 compound btree indexes
 GIN index for multi_select text[]
 GIN index for json/raw_json only when explicitly requested
-optional partial indexes when the predicate is generated from a constrained onlava-owned shape
+optional partial indexes when the predicate is generated from a constrained scenery-owned shape
 ```
 
 Do not add an ORM, migration framework, external broker, dynamic GraphQL, or UI in this plan.
@@ -191,11 +191,11 @@ The first milestone should support a single-field scalar btree index and one com
 
 Milestone 3: Migration history, advisory locks, and verification.
 
-Index creation must use the existing migration discipline: explicit transaction boundaries where possible, advisory locks per tenant/object, `onlava_data.schema_migrations` rows, deterministic DDL, successful catalog verification before returning success, and clear failed migration rows for failed DDL.
+Index creation must use the existing migration discipline: explicit transaction boundaries where possible, advisory locks per tenant/object, `scenery_data.schema_migrations` rows, deterministic DDL, successful catalog verification before returning success, and clear failed migration rows for failed DDL.
 
 Milestone 4: Inspectability.
 
-Extend `onlava inspect data --json` so it shows logical index definitions and physical index state. It should answer: does metadata know about this index, does PostgreSQL have it, what method/fields does it use, and is there drift?
+Extend `scenery inspect data --json` so it shows logical index definitions and physical index state. It should answer: does metadata know about this index, does PostgreSQL have it, what method/fields does it use, and is there drift?
 
 Milestone 5: Cursor pagination.
 
@@ -237,7 +237,7 @@ Avoid exposing raw DDL structs or PostgreSQL catalog details as primary public A
 
 Then implement metadata bootstrap and loading. Index metadata should reference fields by ID, not by repeated field names, while public requests use logical field names resolved through current metadata. For compound indexes, preserve field order.
 
-Next implement DDL generation. Only metadata-resolved physical table/column names may become SQL identifiers. Quote identifiers with existing helpers. Values such as names and predicates must not be interpolated from user input unless they are generated from a constrained onlava-owned shape. Do not accept arbitrary SQL predicates in the first pass unless the plan is updated with a clear safety design.
+Next implement DDL generation. Only metadata-resolved physical table/column names may become SQL identifiers. Quote identifiers with existing helpers. Values such as names and predicates must not be interpolated from user input unless they are generated from a constrained scenery-owned shape. Do not accept arbitrary SQL predicates in the first pass unless the plan is updated with a clear safety design.
 
 After index APIs are tested, implement cursor pagination. The query compiler must understand the effective sort, produce a lexicographic keyset predicate, fetch `limit + 1` rows, return only `limit`, and build `NextCursor` from the last returned row when another row exists.
 
@@ -257,7 +257,7 @@ Live updates should continue to work with paginated queries. The first version d
 ## Concrete Steps
 
 1. Read `internal/objectstore/metadata.go`, `migrate.go`, `ident.go`, `query.go`, `data/data.go`, and `internal/datainspect`.
-2. Add index metadata types and bootstrap DDL for `onlava_data.indexes` and `onlava_data.index_fields`.
+2. Add index metadata types and bootstrap DDL for `scenery_data.indexes` and `scenery_data.index_fields`.
 3. Add deterministic index physical-name derivation and unit tests for long names, duplicate names, reserved words, and malicious names.
 4. Add internal `CreateIndex` and `ListIndexes` methods in `internal/objectstore`.
 5. Wire public wrapper methods and types in `data/data.go`.
@@ -278,21 +278,21 @@ Required validation:
 
 ```sh
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
-PostgreSQL-specific validation should run through the existing testcontainers or `ONLAVA_TEST_DATABASE_URL` path:
+PostgreSQL-specific validation should run through the existing testcontainers or `SCENERY_TEST_DATABASE_URL` path:
 
 ```sh
 go test ./internal/objectstore ./internal/datainspect -count=1
-onlava check --app-root testdata/apps/data-platform --json
+scenery check --app-root testdata/apps/data-platform --json
 ```
 
 Acceptance criteria:
 
 ```text
-- index metadata is stored in onlava_data tables
+- index metadata is stored in scenery_data tables
 - physical indexes are created with deterministic names
 - index creation uses migration rows and advisory locks
 - failed index DDL records a failed migration status
@@ -384,7 +384,7 @@ Follow-up plans after this one:
 
 Public package changes:
 
-- `github.com/pbrazdil/onlava/data`
+- `scenery.sh/data`
   - add `CreateIndexRequest`
   - add `ListIndexesRequest`
   - add `Index`
@@ -411,7 +411,7 @@ Internal package changes:
 Documentation and schemas:
 
 - Update `docs/local-contract.md` only if the public API or inspect JSON is stable enough to document.
-- Update `docs/schemas` if `onlava inspect data --json` has a schema file for its response.
+- Update `docs/schemas` if `scenery inspect data --json` has a schema file for its response.
 - Update `testdata/apps/data-platform/README.md` for runnable examples.
 
 Dependencies:

@@ -12,9 +12,9 @@ func TestClarifyStandardAuthTenantError(t *testing.T) {
 	t.Parallel()
 
 	original := &pgconn.PgError{
-		SchemaName: "onlava_auth",
+		SchemaName: "scenery_auth",
 		TableName:  "tenants",
-		Message:    `relation "onlava_auth"."tenants" does not exist`,
+		Message:    `relation "scenery_auth"."tenants" does not exist`,
 	}
 
 	err := clarifyStandardAuthTenantError(original)
@@ -22,7 +22,7 @@ func TestClarifyStandardAuthTenantError(t *testing.T) {
 		t.Fatalf("wrapped error does not preserve original: %v", err)
 	}
 	got := err.Error()
-	for _, want := range []string{"standard auth owns framework tenant state", "onlava_auth.tenants", "not an app-local tenants service"} {
+	for _, want := range []string{"standard auth owns framework tenant state", "scenery_auth.tenants", "not an app-local tenants service"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("error %q does not contain %q", got, want)
 		}
@@ -42,7 +42,7 @@ func TestClarifyAppDomainTenantError(t *testing.T) {
 		t.Fatalf("wrapped error does not preserve original: %v", err)
 	}
 	got := err.Error()
-	for _, want := range []string{"app-domain tenants relation", "standard auth tenant state lives in onlava_auth.tenants", "does not require an app-local tenants service"} {
+	for _, want := range []string{"app-domain tenants relation", "standard auth tenant state lives in scenery_auth.tenants", "does not require an app-local tenants service"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("error %q does not contain %q", got, want)
 		}
@@ -62,9 +62,9 @@ func TestClarifyStandardAuthTenantErrorIgnoresNonTenantAuthSchemaErrors(t *testi
 	t.Parallel()
 
 	original := &pgconn.PgError{
-		SchemaName: "onlava_auth",
+		SchemaName: "scenery_auth",
 		TableName:  "users",
-		Message:    `relation "onlava_auth"."users" does not exist`,
+		Message:    `relation "scenery_auth"."users" does not exist`,
 	}
 	if got := clarifyStandardAuthTenantError(original); got != original {
 		t.Fatalf("error = %v, want original", got)

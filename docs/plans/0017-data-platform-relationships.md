@@ -59,7 +59,7 @@ internal/objectstore/migrate.go
 internal/objectstore/query.go
 internal/datainspect/inspect.go
 data/data.go
-docs/schemas/onlava.inspect.data.v1.schema.json
+docs/schemas/scenery.inspect.data.v1.schema.json
 testdata/apps/data-platform
 ```
 
@@ -136,7 +136,7 @@ Show relation state in inspect data.
 
 ## Interfaces and Dependencies
 
-- Relation APIs should live in `github.com/pbrazdil/onlava/data`.
+- Relation APIs should live in `scenery.sh/data`.
 - Physical relationship structures are owned by `internal/objectstore`.
 - Inspect data must expose relationship state without making physical names the app-facing contract.
 - PostgreSQL foreign keys and join tables are required for the first real relationship implementation.
@@ -157,10 +157,10 @@ Implement many-to-one first because it maps cleanly to a UUID column and foreign
 ## Validation and Acceptance
 
 ```sh
-ONLAVA_TEST_DATABASE_URL=... go test ./internal/objectstore
+SCENERY_TEST_DATABASE_URL=... go test ./internal/objectstore
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

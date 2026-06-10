@@ -4,9 +4,9 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-After the data platform, data explorer, indexes, saved views, and relationships exist, onlava can host a small CRM-like prototype to validate the architecture against real workflows.
+After the data platform, data explorer, indexes, saved views, and relationships exist, scenery can host a small CRM-like prototype to validate the architecture against real workflows.
 
-This is not a Twenty clone. It is a fixture/product prototype proving onlava-native dynamic data can support CRM surfaces.
+This is not a Twenty clone. It is a fixture/product prototype proving scenery-native dynamic data can support CRM surfaces.
 
 The goal:
 
@@ -144,11 +144,11 @@ Define the fixture app and seed data first, then add list/detail UI and live-upd
 ## Validation and Acceptance
 
 ```sh
-ONLAVA_TEST_DATABASE_URL=... go test ./testdata/...
+SCENERY_TEST_DATABASE_URL=... go test ./testdata/...
 cd ui && bun run typecheck && bun run build
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

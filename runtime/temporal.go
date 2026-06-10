@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 const (
@@ -14,24 +14,24 @@ const (
 	DefaultTemporalAddressEnv       = "TEMPORAL_ADDRESS"
 	DefaultTemporalNamespace        = "default"
 	DefaultTemporalNamespaceEnv     = "TEMPORAL_NAMESPACE"
-	DefaultTemporalTaskQueueEnv     = "ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX"
+	DefaultTemporalTaskQueueEnv     = "SCENERY_TEMPORAL_TASK_QUEUE_PREFIX"
 	DefaultTemporalBuildID          = "dev"
-	DefaultTemporalBuildIDEnv       = "ONLAVA_BUILD_ID"
-	DefaultTemporalDeploymentEnv    = "ONLAVA_TEMPORAL_DEPLOYMENT_NAME"
-	DefaultTemporalVersioningEnv    = "ONLAVA_TEMPORAL_VERSIONING_BEHAVIOR"
+	DefaultTemporalBuildIDEnv       = "SCENERY_BUILD_ID"
+	DefaultTemporalDeploymentEnv    = "SCENERY_TEMPORAL_DEPLOYMENT_NAME"
+	DefaultTemporalVersioningEnv    = "SCENERY_TEMPORAL_VERSIONING_BEHAVIOR"
 	DefaultTemporalVersioning       = "pinned"
-	DefaultTemporalPayloadCodec     = "onlava-json-v1"
+	DefaultTemporalPayloadCodec     = "scenery-json-v1"
 	DefaultTemporalAPIKeyEnv        = "TEMPORAL_API_KEY"
 	DefaultTemporalTLSServerNameEnv = "TEMPORAL_TLS_SERVER_NAME"
 	DefaultTemporalTLSCACertFileEnv = "TEMPORAL_TLS_CA_CERT_FILE"
 	DefaultTemporalTLSCertFileEnv   = "TEMPORAL_TLS_CERT_FILE"
 	DefaultTemporalTLSKeyFileEnv    = "TEMPORAL_TLS_KEY_FILE"
-	DefaultTemporalHostReportingEnv = "ONLAVA_TEMPORAL_HOST_RESOURCE_REPORTING"
-	DefaultOnlavaSessionIDEnv       = "ONLAVA_SESSION_ID"
+	DefaultTemporalHostReportingEnv = "SCENERY_TEMPORAL_HOST_RESOURCE_REPORTING"
+	DefaultScenerySessionIDEnv      = "SCENERY_SESSION_ID"
 	DefaultTemporalMode             = "local"
 	DefaultTemporalConnectWait      = 5 * time.Second
-	DefaultTemporalLocalDBFile      = ".onlava/temporal/dev.db"
-	defaultTemporalTaskQueuePart    = "onlava"
+	DefaultTemporalLocalDBFile      = ".scenery/temporal/dev.db"
+	defaultTemporalTaskQueuePart    = "scenery"
 )
 
 const (
@@ -143,7 +143,7 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 	if taskQueuePrefix == "" {
 		taskQueuePrefix = defaultTemporalTaskQueuePrefix(appName)
 	}
-	sessionID, sessionIDEnvSet := envValue(DefaultOnlavaSessionIDEnv)
+	sessionID, sessionIDEnvSet := envValue(DefaultScenerySessionIDEnv)
 	payloadCodec := strings.TrimSpace(cfg.PayloadCodec)
 	if payloadCodec == "" {
 		payloadCodec = DefaultTemporalPayloadCodec
@@ -206,7 +206,7 @@ func ResolveTemporalConfig(appName string, cfg TemporalConfig) TemporalRuntimeIn
 		TaskQueueEnv:     DefaultTemporalTaskQueueEnv,
 		TaskQueueEnvSet:  taskQueueEnvSet,
 		SessionID:        sessionID,
-		SessionIDEnv:     DefaultOnlavaSessionIDEnv,
+		SessionIDEnv:     DefaultScenerySessionIDEnv,
 		SessionIDEnvSet:  sessionIDEnvSet,
 		PayloadCodec:     payloadCodec,
 		APIKeyEnv:        apiKeyEnv,
@@ -288,7 +288,7 @@ func SessionScopedTemporalTaskQueue(info TemporalRuntimeInfo, queue string) stri
 
 func SessionScopedTemporalTaskQueueFromEnv(queue string) string {
 	prefix, _ := envValue(DefaultTemporalTaskQueueEnv)
-	sessionID, _ := envValue(DefaultOnlavaSessionIDEnv)
+	sessionID, _ := envValue(DefaultScenerySessionIDEnv)
 	return SessionScopedTemporalTaskQueue(TemporalRuntimeInfo{
 		TaskQueuePrefix: prefix,
 		SessionID:       sessionID,
@@ -314,7 +314,7 @@ func TemporalWorkerIdentity(info TemporalRuntimeInfo, role, taskQueue string) st
 	role = sanitizeTemporalName(firstNonEmpty(role, "all"))
 	taskQueue = sanitizeTemporalName(firstNonEmpty(taskQueue, "default"))
 	buildID := sanitizeTemporalName(TemporalWorkerBuildID(info))
-	return fmt.Sprintf("onlava:%s:%s:%s:pid-%d:build-%s", TemporalDeploymentName(info), role, taskQueue, os.Getpid(), buildID)
+	return fmt.Sprintf("scenery:%s:%s:%s:pid-%d:build-%s", TemporalDeploymentName(info), role, taskQueue, os.Getpid(), buildID)
 }
 
 func envValue(name string) (string, bool) {

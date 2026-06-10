@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	appcfg "github.com/pbrazdil/onlava/internal/app"
-	"github.com/pbrazdil/onlava/internal/codegen"
-	"github.com/pbrazdil/onlava/internal/parse"
+	appcfg "scenery.sh/internal/app"
+	"scenery.sh/internal/codegen"
+	"scenery.sh/internal/parse"
 )
 
 func TestGenerateBasicGolden(t *testing.T) {
@@ -27,28 +27,28 @@ func TestGenerateBasicGolden(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	assertGolden(t, filepath.Join(repoRoot(t), "testdata", "golden", "basic_service_onlava.gen.go"), out.Generated["service/onlava.gen.go"])
-	assertGolden(t, filepath.Join(repoRoot(t), "testdata", "golden", "basic_main.go"), out.Generated["onlava_internal_main/main.go"])
+	assertGolden(t, filepath.Join(repoRoot(t), "testdata", "golden", "basic_service_scenery.gen.go"), out.Generated["service/scenery.gen.go"])
+	assertGolden(t, filepath.Join(repoRoot(t), "testdata", "golden", "basic_main.go"), out.Generated["scenery_internal_main/main.go"])
 }
 
 func TestGenerateEndpointMiddlewareAndRawEdges(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentCodegenTestApp(t, "endpointedges", map[string]string{
-		"go.mod":       "module example.com/endpointedges\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"endpointedges"}`,
+		"go.mod":        "module example.com/endpointedges\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"endpointedges"}`,
 		"svc/api.go": `package svc
 
 import "context"
 
-//onlava:api public tag:foo
+//scenery:api public tag:foo
 func Hello(_ context.Context) error { return nil }
 `,
 		"svc/mw.go": `package svc
 
-import "github.com/pbrazdil/onlava/middleware"
+import "scenery.sh/middleware"
 
-//onlava:middleware target=tag:foo
+//scenery:middleware target=tag:foo
 func Apply(req middleware.Request, next middleware.Next) middleware.Response {
 	return next(req)
 }
@@ -57,7 +57,7 @@ func Apply(req middleware.Request, next middleware.Next) middleware.Response {
 
 import "net/http"
 
-//onlava:api public raw
+//scenery:api public raw
 func Hook(w http.ResponseWriter, req *http.Request) {}
 `,
 	})
@@ -71,24 +71,24 @@ func Hook(w http.ResponseWriter, req *http.Request) {}
 		t.Fatalf("generate: %v", err)
 	}
 
-	got := string(out.Generated["svc/onlava.gen.go"])
-	if !strings.Contains(got, "onlavaArg0 context.Context") {
+	got := string(out.Generated["svc/scenery.gen.go"])
+	if !strings.Contains(got, "sceneryArg0 context.Context") {
 		t.Fatalf("expected sanitized context param, got:\n%s", got)
 	}
 	if strings.Contains(got, "CallEndpoint(_,") {
 		t.Fatalf("expected blank identifier to be sanitized, got:\n%s", got)
 	}
-	if !strings.Contains(got, "onlavaInternalImplHello(ctx)") {
+	if !strings.Contains(got, "sceneryInternalImplHello(ctx)") {
 		t.Fatalf("expected invoke closure to use ctx, got:\n%s", got)
 	}
-	if !strings.Contains(got, "RegisterMiddleware(&onlavaruntime.Middleware") {
+	if !strings.Contains(got, "RegisterMiddleware(&sceneryruntime.Middleware") {
 		t.Fatalf("expected middleware registration, got:\n%s", got)
 	}
 	if !strings.Contains(got, `MiddlewareIDs:`) || !strings.Contains(got, `[]string{"example.com/endpointedges/svc.Apply"}`) {
 		t.Fatalf("expected endpoint middleware ids, got:\n%s", got)
 	}
 
-	rawGot := string(out.Generated["raw/onlava.gen.go"])
+	rawGot := string(out.Generated["raw/scenery.gen.go"])
 	if strings.Contains(rawGot, "\"context\"") {
 		t.Fatalf("expected raw-only package to omit context import, got:\n%s", rawGot)
 	}
@@ -98,8 +98,8 @@ func TestGenerateServiceLifecycleAndEarlySecrets(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentCodegenTestApp(t, "servicelifecycle", map[string]string{
-		"go.mod":       "module example.com/servicelifecycle\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"servicelifecycle"}`,
+		"go.mod":        "module example.com/servicelifecycle\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"servicelifecycle"}`,
 		"svc/api.go": `package svc
 
 import "context"
@@ -110,14 +110,14 @@ var secrets struct {
 
 var maxConcurrency = secrets.TestQueueConcurrency
 
-//onlava:service
+//scenery:service
 type Service struct{}
 
 func initService() (*Service, error) { return &Service{}, nil }
 
 func (s *Service) Shutdown(force context.Context) {}
 
-//onlava:api public
+//scenery:api public
 func (s *Service) Hello(ctx context.Context) error { return nil }
 `,
 	})
@@ -131,24 +131,24 @@ func (s *Service) Hello(ctx context.Context) error { return nil }
 		t.Fatalf("generate: %v", err)
 	}
 
-	configGot := string(out.Generated["svc/00_onlava_config.gen.go"])
+	configGot := string(out.Generated["svc/00_scenery_config.gen.go"])
 	for _, want := range []string{
-		`var onlavaInternalDotEnvInitialized = onlavaruntime.MustLoadDotEnvIntoEnv()`,
-		`var onlavaInternalSecretsInitialized = func() bool {`,
-		`onlavaruntime.MustPopulateSecrets(&secrets)`,
+		`var sceneryInternalDotEnvInitialized = sceneryruntime.MustLoadDotEnvIntoEnv()`,
+		`var sceneryInternalSecretsInitialized = func() bool {`,
+		`sceneryruntime.MustPopulateSecrets(&secrets)`,
 	} {
 		if !strings.Contains(configGot, want) {
 			t.Fatalf("expected early secrets file to contain %q, got:\n%s", want, configGot)
 		}
 	}
 
-	got := string(out.Generated["svc/onlava.gen.go"])
+	got := string(out.Generated["svc/scenery.gen.go"])
 	for _, want := range []string{
-		`onlavaruntime.RegisterServiceInitializer("svc", func() error {`,
-		`_, err := onlavaInternalGetService()`,
-		`onlavaruntime.LookupServiceMock(onlavaruntime.TypeOf[*Service]())`,
-		`onlavaruntime.MarkServiceInitialized("svc", func(force context.Context) { onlavaInternalServiceService.svc.Shutdown(force) })`,
-		`onlavaruntime.RegisterEndpointFunc(Hello, "svc", "Hello")`,
+		`sceneryruntime.RegisterServiceInitializer("svc", func() error {`,
+		`_, err := sceneryInternalGetService()`,
+		`sceneryruntime.LookupServiceMock(sceneryruntime.TypeOf[*Service]())`,
+		`sceneryruntime.MarkServiceInitialized("svc", func(force context.Context) { sceneryInternalServiceService.svc.Shutdown(force) })`,
+		`sceneryruntime.RegisterEndpointFunc(Hello, "svc", "Hello")`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected generated file to contain %q, got:\n%s", want, got)
@@ -160,20 +160,20 @@ func TestGenerateMainImportsRuntimeDeclarationPackages(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentCodegenTestApp(t, "runtimeimports", map[string]string{
-		"go.mod":       "module example.com/runtimeimports\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"runtimeimports"}`,
+		"go.mod":        "module example.com/runtimeimports\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"runtimeimports"}`,
 		"service/api.go": `package service
 
 import "context"
 
-//onlava:api private
+//scenery:api private
 func Run(ctx context.Context) error { return nil }
 `,
 		"jobs/jobs.go": `package jobs
 
 import (
 	"example.com/runtimeimports/service"
-	"github.com/pbrazdil/onlava/cron"
+	"scenery.sh/cron"
 )
 
 var _ = cron.NewJob("tick", cron.JobConfig{
@@ -184,7 +184,7 @@ var _ = cron.NewJob("tick", cron.JobConfig{
 `,
 		"workers/workflows.go": `package workers
 
-import "github.com/pbrazdil/onlava/temporal"
+import "scenery.sh/temporal"
 
 type Input struct {
 	ID string
@@ -209,14 +209,14 @@ var Fulfill = temporal.NewWorkflow[Input, Output]("orders.Fulfill/v1", temporal.
 		t.Fatalf("generate: %v", err)
 	}
 
-	got := string(out.Generated["onlava_internal_main/main.go"])
+	got := string(out.Generated["scenery_internal_main/main.go"])
 	if !strings.Contains(got, `_ "example.com/runtimeimports/jobs"`) {
 		t.Fatalf("expected generated main to import cron package, got:\n%s", got)
 	}
 	if !strings.Contains(got, `_ "example.com/runtimeimports/workers"`) {
 		t.Fatalf("expected generated main to import temporal declaration package, got:\n%s", got)
 	}
-	if strings.Contains(got, `Temporal: onlavaruntime.TemporalConfig{Enabled: true}`) {
+	if strings.Contains(got, `Temporal: sceneryruntime.TemporalConfig{Enabled: true}`) {
 		t.Fatalf("expected generated main to leave temporal disabled without explicit config, got:\n%s", got)
 	}
 }
@@ -225,11 +225,11 @@ func TestGenerateRegistersTemporalServiceAccessor(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentCodegenTestApp(t, "temporalsvc", map[string]string{
-		"go.mod":       "module example.com/temporalsvc\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"temporalsvc"}`,
+		"go.mod":        "module example.com/temporalsvc\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"temporalsvc"}`,
 		"svc/api.go": `package svc
 
-//onlava:service
+//scenery:service
 type Service struct{}
 `,
 	})
@@ -243,8 +243,8 @@ type Service struct{}
 		t.Fatalf("generate: %v", err)
 	}
 
-	got := string(out.Generated["svc/onlava.gen.go"])
-	if !strings.Contains(got, `onlavatemporal.RegisterServiceAccessorFor[*Service](func() (any, error) {`) {
+	got := string(out.Generated["svc/scenery.gen.go"])
+	if !strings.Contains(got, `scenerytemporal.RegisterServiceAccessorFor[*Service](func() (any, error) {`) {
 		t.Fatalf("expected generated service accessor registration, got:\n%s", got)
 	}
 }
@@ -253,13 +253,13 @@ func TestGenerateMainConfigVariants(t *testing.T) {
 	t.Parallel()
 
 	dir := persistentCodegenTestApp(t, "mainconfig", map[string]string{
-		"go.mod":       "module example.com/mainconfig\n\ngo 1.26.3\n\nrequire github.com/pbrazdil/onlava v0.0.0\n\nreplace github.com/pbrazdil/onlava => " + repoRoot(t) + "\n",
-		".onlava.json": `{"name":"mainconfig","proxy":{"api_host":"api.acme.localhost"}}`,
+		"go.mod":        "module example.com/mainconfig\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => " + repoRoot(t) + "\n",
+		".scenery.json": `{"name":"mainconfig","proxy":{"api_host":"api.acme.localhost"}}`,
 		"svc/api.go": `package svc
 
 import "context"
 
-//onlava:api public
+//scenery:api public
 func Run(ctx context.Context) error { return nil }
 `,
 	})
@@ -273,8 +273,8 @@ func Run(ctx context.Context) error { return nil }
 		t.Fatalf("generate: %v", err)
 	}
 
-	got := string(out.Generated["onlava_internal_main/main.go"])
-	if strings.Contains(got, `github.com/pbrazdil/onlava/runtimeapp`) {
+	got := string(out.Generated["scenery_internal_main/main.go"])
+	if strings.Contains(got, `scenery.sh/runtimeapp`) {
 		t.Fatalf("generated main imported runtimeapp by default:\n%s", got)
 	}
 
@@ -292,8 +292,8 @@ func Run(ctx context.Context) error { return nil }
 			Mode:            "local",
 			Namespace:       "default",
 			AddressEnv:      "TEMPORAL_ADDRESS",
-			TaskQueuePrefix: "onlava.temporalapp",
-			PayloadCodec:    "onlava-json-v1",
+			TaskQueuePrefix: "scenery.temporalapp",
+			PayloadCodec:    "scenery-json-v1",
 			APIKeyEnv:       "TEMPORAL_API_KEY",
 			TLS: appcfg.TemporalTLSConfig{
 				Enabled:           true,
@@ -304,7 +304,7 @@ func Run(ctx context.Context) error { return nil }
 			},
 			Local: appcfg.TemporalLocalConfig{
 				AutoStart:  true,
-				DBFilename: ".onlava/temporal/dev.db",
+				DBFilename: ".scenery/temporal/dev.db",
 			},
 		},
 	})
@@ -312,22 +312,22 @@ func Run(ctx context.Context) error { return nil }
 		t.Fatalf("generate: %v", err)
 	}
 
-	got = string(out.Generated["onlava_internal_main/main.go"])
+	got = string(out.Generated["scenery_internal_main/main.go"])
 	for _, want := range []string{
-		`Observability: onlavaruntime.ObservabilityConfig{`,
-		`Logs: onlavaruntime.EndpointFilterConfig{ExcludeEndpoints: []string{"sync.*"}}`,
-		`Tracing: onlavaruntime.EndpointFilterConfig{IncludeEndpoints: []string{"tenants.Config"}}`,
-		`_ "github.com/pbrazdil/onlava/temporal"`,
-		`Temporal: onlavaruntime.TemporalConfig{`,
+		`Observability: sceneryruntime.ObservabilityConfig{`,
+		`Logs: sceneryruntime.EndpointFilterConfig{ExcludeEndpoints: []string{"sync.*"}}`,
+		`Tracing: sceneryruntime.EndpointFilterConfig{IncludeEndpoints: []string{"tenants.Config"}}`,
+		`_ "scenery.sh/temporal"`,
+		`Temporal: sceneryruntime.TemporalConfig{`,
 		`Enabled: true`,
 		`Mode: "local"`,
 		`Namespace: "default"`,
 		`AddressEnv: "TEMPORAL_ADDRESS"`,
-		`TaskQueuePrefix: "onlava.temporalapp"`,
-		`PayloadCodec: "onlava-json-v1"`,
+		`TaskQueuePrefix: "scenery.temporalapp"`,
+		`PayloadCodec: "scenery-json-v1"`,
 		`APIKeyEnv: "TEMPORAL_API_KEY"`,
-		`TLS: onlavaruntime.TemporalTLSConfig{Enabled: true, ServerNameEnv: "TEMPORAL_TLS_SERVER_NAME", CACertFileEnv: "TEMPORAL_TLS_CA_CERT_FILE", ClientCertFileEnv: "TEMPORAL_TLS_CERT_FILE", ClientKeyFileEnv: "TEMPORAL_TLS_KEY_FILE"}`,
-		`Local: onlavaruntime.TemporalLocalConfig{AutoStart: true, DBFilename: ".onlava/temporal/dev.db"}`,
+		`TLS: sceneryruntime.TemporalTLSConfig{Enabled: true, ServerNameEnv: "TEMPORAL_TLS_SERVER_NAME", CACertFileEnv: "TEMPORAL_TLS_CA_CERT_FILE", ClientCertFileEnv: "TEMPORAL_TLS_CERT_FILE", ClientKeyFileEnv: "TEMPORAL_TLS_KEY_FILE"}`,
+		`Local: sceneryruntime.TemporalLocalConfig{AutoStart: true, DBFilename: ".scenery/temporal/dev.db"}`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected generated main to contain %q, got:\n%s", want, got)
@@ -372,9 +372,9 @@ func persistentCodegenTestApp(t *testing.T, name string, files map[string]string
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join(cacheDir, "onlava", "internal-codegen-tests", name)
+	root := filepath.Join(cacheDir, "scenery", "internal-codegen-tests", name)
 	fingerprint := codegenTestAppFingerprint(files)
-	marker := filepath.Join(root, ".onlava-test-fingerprint")
+	marker := filepath.Join(root, ".scenery-test-fingerprint")
 	if data, err := os.ReadFile(marker); err != nil || strings.TrimSpace(string(data)) != fingerprint {
 		if err := os.RemoveAll(root); err != nil {
 			t.Fatal(err)
@@ -388,7 +388,7 @@ func persistentCodegenTestApp(t *testing.T, name string, files map[string]string
 	for _, rel := range paths {
 		writeFileIfChanged(t, root, rel, files[rel])
 	}
-	writeFileIfChanged(t, root, ".onlava-test-fingerprint", fingerprint+"\n")
+	writeFileIfChanged(t, root, ".scenery-test-fingerprint", fingerprint+"\n")
 	return root
 }
 

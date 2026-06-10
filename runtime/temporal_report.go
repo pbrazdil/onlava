@@ -3,7 +3,7 @@ package runtime
 import (
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/devreport"
+	"scenery.sh/internal/devreport"
 )
 
 type TemporalTraceReport struct {

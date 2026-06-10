@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pbrazdil/onlava/internal/toolchain"
+	"scenery.sh/internal/toolchain"
 )
 
 type PinnedVersionsConfig struct {
@@ -58,7 +58,7 @@ func pinnedVersionsFromToolchainManifest() (PinnedVersionsConfig, error) {
 		return PinnedVersionsConfig{}, err
 	}
 	cfg := PinnedVersionsConfig{
-		SchemaVersion: "onlava.internal.devtools.versions.v1",
+		SchemaVersion: "scenery.internal.devtools.versions.v1",
 	}
 	for _, artifact := range manifest.Artifacts {
 		switch artifact.Name {
@@ -117,7 +117,7 @@ func ParsePinnedVersions(data []byte) (PinnedVersionsConfig, error) {
 }
 
 func validatePinnedVersions(cfg PinnedVersionsConfig) error {
-	if cfg.SchemaVersion != "onlava.internal.devtools.versions.v1" {
+	if cfg.SchemaVersion != "scenery.internal.devtools.versions.v1" {
 		return fmt.Errorf("unsupported internal devtool versions schema %q", cfg.SchemaVersion)
 	}
 	if strings.TrimSpace(cfg.Grafana.Version) == "" {

@@ -10,18 +10,18 @@ import (
 	"go.temporal.io/api/serviceerror"
 	temporalclient "go.temporal.io/sdk/client"
 
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	sceneryruntime "scenery.sh/runtime"
 )
 
 func TestTemporalCronScheduleOptionsApplyPolicy(t *testing.T) {
-	job := &onlavaruntime.CronJob{
+	job := &sceneryruntime.CronJob{
 		ID:                   "tick",
 		Every:                5 * time.Minute,
 		OverlapPolicy:        "buffer_one",
 		CatchupWindow:        10 * time.Minute,
 		PauseOnFailure:       true,
 		ActivityStartToClose: 2 * time.Minute,
-		ActivityRetryPolicy: onlavaruntime.CronRetryPolicy{
+		ActivityRetryPolicy: sceneryruntime.CronRetryPolicy{
 			InitialInterval:    time.Second,
 			BackoffCoefficient: 2,
 			MaximumInterval:    30 * time.Second,
@@ -29,8 +29,8 @@ func TestTemporalCronScheduleOptionsApplyPolicy(t *testing.T) {
 		},
 		Invoke: func(context.Context) error { return nil },
 	}
-	onlavaruntime.RegisterCronJob(job)
-	options, err := temporalCronScheduleOptions(onlavaruntime.AppConfig{Name: "app"}, onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "app"}, "app.cron.go", job)
+	sceneryruntime.RegisterCronJob(job)
+	options, err := temporalCronScheduleOptions(sceneryruntime.AppConfig{Name: "app"}, sceneryruntime.TemporalRuntimeInfo{TaskQueuePrefix: "app"}, "app.cron.go", job)
 	if err != nil {
 		t.Fatalf("temporalCronScheduleOptions returned error: %v", err)
 	}
@@ -74,26 +74,26 @@ func TestStableTemporalCronExecutionIDIsDeterministic(t *testing.T) {
 }
 
 func TestTemporalCronRetryPolicySkipsNonPositiveInitialInterval(t *testing.T) {
-	if got := temporalCronRetryPolicy(onlavaruntime.CronRetryPolicy{MaximumAttempts: 3}); got != nil {
+	if got := temporalCronRetryPolicy(sceneryruntime.CronRetryPolicy{MaximumAttempts: 3}); got != nil {
 		t.Fatalf("temporalCronRetryPolicy = %#v, want nil", got)
 	}
-	if got := temporalCronRetryPolicy(onlavaruntime.CronRetryPolicy{InitialInterval: -time.Second, MaximumAttempts: 3}); got != nil {
+	if got := temporalCronRetryPolicy(sceneryruntime.CronRetryPolicy{InitialInterval: -time.Second, MaximumAttempts: 3}); got != nil {
 		t.Fatalf("temporalCronRetryPolicy = %#v, want nil", got)
 	}
-	got := temporalCronRetryPolicy(onlavaruntime.CronRetryPolicy{InitialInterval: time.Second, MaximumAttempts: 3})
+	got := temporalCronRetryPolicy(sceneryruntime.CronRetryPolicy{InitialInterval: time.Second, MaximumAttempts: 3})
 	if got == nil || got.InitialInterval != time.Second || got.MaximumAttempts != 3 {
 		t.Fatalf("temporalCronRetryPolicy = %#v", got)
 	}
 }
 
 func TestTemporalCronScheduleOptionsDefaultPolicy(t *testing.T) {
-	job := &onlavaruntime.CronJob{
+	job := &sceneryruntime.CronJob{
 		ID:     "tickdefault",
 		Every:  5 * time.Minute,
 		Invoke: func(context.Context) error { return nil },
 	}
-	onlavaruntime.RegisterCronJob(job)
-	options, err := temporalCronScheduleOptions(onlavaruntime.AppConfig{Name: "app"}, onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "app"}, "app.cron.go", job)
+	sceneryruntime.RegisterCronJob(job)
+	options, err := temporalCronScheduleOptions(sceneryruntime.AppConfig{Name: "app"}, sceneryruntime.TemporalRuntimeInfo{TaskQueuePrefix: "app"}, "app.cron.go", job)
 	if err != nil {
 		t.Fatalf("temporalCronScheduleOptions returned error: %v", err)
 	}

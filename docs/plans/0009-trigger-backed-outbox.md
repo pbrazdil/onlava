@@ -20,7 +20,7 @@ INSERT / UPDATE / DELETE on physical object table
 PostgreSQL trigger
         |
         v
-onlava_data.outbox_events
+scenery_data.outbox_events
         |
         v
 existing replay + live SSE routing
@@ -40,7 +40,7 @@ The trigger path should be compatible with existing event payloads. It may produ
 
 ## Surprises & Discoveries
 
-- Trigger-created events need logical field values, not physical columns, otherwise existing query-aware live matching cannot work. The trigger now reconstructs logical records from `onlava_data.fields.storage_columns`.
+- Trigger-created events need logical field values, not physical columns, otherwise existing query-aware live matching cannot work. The trigger now reconstructs logical records from `scenery_data.fields.storage_columns`.
 - SSE originally only received in-process router publishes after the initial replay. Trigger-written rows happen outside Go, so SSE streams now poll the PostgreSQL outbox sequence while connected.
 
 ## Decision Log
@@ -50,15 +50,15 @@ The trigger path should be compatible with existing event payloads. It may produ
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Make trigger-backed outbox optional per object at first.
-  Rationale: Explicit mutation path already writes precise events. Optional triggers let onlava close the direct SQL gap without forcing every object into trigger overhead before the design is proven.
+  Rationale: Explicit mutation path already writes precise events. Optional triggers let scenery close the direct SQL gap without forcing every object into trigger overhead before the design is proven.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Use transaction-local PostgreSQL settings for actor context when available.
-  Rationale: Triggers cannot see Go request state directly. `SET LOCAL onlava.actor_id = '...'` lets explicit mutations provide actor context while direct  edits can fall back to anonymous/system actor.
+  Rationale: Triggers cannot see Go request state directly. `SET LOCAL scenery.actor_id = '...'` lets explicit mutations provide actor context while direct  edits can fall back to anonymous/system actor.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Use duplicate-event strategy Option B.
-  Rationale: Explicit onlava mutations still write precise outbox rows. They set `onlava.outbox_explicit=true` inside the transaction, and record-table triggers skip those transactions. Direct SQL/ changes do not set that flag, so triggers write generic logical events without duplicate delivery.
+  Rationale: Explicit scenery mutations still write precise outbox rows. They set `scenery.outbox_explicit=true` inside the transaction, and record-table triggers skip those transactions. Direct SQL/ changes do not set that flag, so triggers write generic logical events without duplicate delivery.
   Date/Author: 2026-05-08 / Codex
 
 - Decision: Reconstruct logical field values inside the trigger from metadata.
@@ -76,10 +76,10 @@ Completed 2026-05-08.
 Shipped:
 
 - `outbox_triggers_enabled` metadata on objects.
-- Shared PostgreSQL trigger function `onlava_data.record_change_trigger()`.
+- Shared PostgreSQL trigger function `scenery_data.record_change_trigger()`.
 - Per-object trigger installation through `Store.EnableOutboxTriggers` and `data.Store.EnableOutboxTriggers`.
-- Transaction-local `onlava.actor_id` and `onlava.outbox_explicit` settings for explicit mutation transactions.
-- Direct SQL insert/update/delete trigger coverage that writes to the existing `onlava_data.outbox_events` table.
+- Transaction-local `scenery.actor_id` and `scenery.outbox_explicit` settings for explicit mutation transactions.
+- Direct SQL insert/update/delete trigger coverage that writes to the existing `scenery_data.outbox_events` table.
 - Logical trigger event payloads reconstructed from metadata, including composite fields.
 - SSE polling for trigger-created outbox rows while preserving replay through `after_seq` and `Last-Event-ID`.
 - Inspect output showing trigger enablement and physical trigger presence.
@@ -93,8 +93,8 @@ The tricky part was not the trigger DDL itself; it was keeping trigger-created e
 
 This plan depends on the data-platform foundation:
 
-- `0005-onlava-data-platform.md`: completed first vertical slice.
-- `0007-data-platform-validation-and-inspect.md`: PostgreSQL CI and `onlava inspect data`.
+- `0005-scenery-data-platform.md`: completed first vertical slice.
+- `0007-data-platform-validation-and-inspect.md`: PostgreSQL CI and `scenery inspect data`.
 - `0008-data-platform-migration-and-live-hardening.md`: migration/live correctness.
 
 Relevant files after those plans:
@@ -107,20 +107,20 @@ Relevant files after those plans:
 - `internal/objectstore/objectstore_integration_test.go`: PostgreSQL tests.
 - `internal/datainspect` or equivalent inspect package from `0007`.
 
-Trigger-backed outbox should use the same `onlava_data.outbox_events` table and existing live routing. It should not introduce Redis, NATS, Kafka, or an external broker.
+Trigger-backed outbox should use the same `scenery_data.outbox_events` table and existing live routing. It should not introduce Redis, NATS, Kafka, or an external broker.
 
 Proposed trigger function:
 
 ```sql
-onlava_data.record_change_trigger()
+scenery_data.record_change_trigger()
 ```
 
 Each physical object table can get a trigger like:
 
 ```sql
-CREATE TRIGGER onlava_data_outbox_company
-AFTER INSERT OR UPDATE OR DELETE ON onlava_data_records.company__...
-FOR EACH ROW EXECUTE FUNCTION onlava_data.record_change_trigger();
+CREATE TRIGGER scenery_data_outbox_company
+AFTER INSERT OR UPDATE OR DELETE ON scenery_data_records.company__...
+FOR EACH ROW EXECUTE FUNCTION scenery_data.record_change_trigger();
 ```
 
 The trigger should read `TG_OP`, `OLD`, `NEW`, and trigger arguments that identify tenant/object metadata. It should write generic `before` and `after` JSON using `row_to_json`.
@@ -129,11 +129,11 @@ The trigger should read `TG_OP`, `OLD`, `NEW`, and trigger arguments that identi
 
 Milestone 1: Trigger design and metadata.
 
-Decide how an object records trigger-backed outbox status. Options include a boolean on `onlava_data.objects`, a separate settings table, or migration history only. Add inspect output showing whether triggers are enabled and physically present.
+Decide how an object records trigger-backed outbox status. Options include a boolean on `scenery_data.objects`, a separate settings table, or migration history only. Add inspect output showing whether triggers are enabled and physically present.
 
 Milestone 2: Trigger function migration.
 
-Add deterministic DDL for the shared trigger function under `onlava_data`. Record it in migration history or a separate bootstrap path. Verify function existence through PostgreSQL catalogs.
+Add deterministic DDL for the shared trigger function under `scenery_data`. Record it in migration history or a separate bootstrap path. Verify function existence through PostgreSQL catalogs.
 
 Milestone 3: Per-object trigger migration.
 
@@ -141,7 +141,7 @@ Add API or internal option to enable triggers for an object. Create, verify, and
 
 Milestone 4: Actor context.
 
-In explicit mutations, set transaction-local context such as `SET LOCAL onlava.actor_id = $1` before DML. Ensure explicit mutation path does not double-write events when triggers are enabled, or decide and test a deduplication strategy.
+In explicit mutations, set transaction-local context such as `SET LOCAL scenery.actor_id = $1` before DML. Ensure explicit mutation path does not double-write events when triggers are enabled, or decide and test a deduplication strategy.
 
 Milestone 5: Direct SQL integration tests.
 
@@ -160,8 +160,8 @@ Option C: Triggers always write generic events and explicit path writes precise 
 Prefer Option B if it keeps explicit mutation precision and avoids duplicate delivery. Use transaction-local variables:
 
 ```sql
-SET LOCAL onlava.actor_id = '...';
-SET LOCAL onlava.outbox_explicit = 'true';
+SET LOCAL scenery.actor_id = '...';
+SET LOCAL scenery.outbox_explicit = 'true';
 ```
 
 Then implement the shared function and per-object triggers through existing migration primitives. The trigger function must be deterministic and idempotent. It should not depend on app code being present.
@@ -189,9 +189,9 @@ Required validation:
 ```sh
 go test ./...
 go test ./internal/objectstore -count=1
-go run ./cmd/onlava check --app-root testdata/apps/data-platform --json
-go install ./cmd/onlava
-onlava harness self --json --write
+go run ./cmd/scenery check --app-root testdata/apps/data-platform --json
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance:

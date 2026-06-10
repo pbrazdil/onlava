@@ -1,4 +1,4 @@
-module github.com/pbrazdil/onlava
+module scenery.sh
 
 go 1.26.3
 

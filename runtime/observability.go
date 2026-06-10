@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/runtime/shared"
 )
 
 type ObservabilityConfig struct {

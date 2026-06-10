@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	EdgeSchemaVersion       = "onlava.edge.state.v1"
-	EdgeTargetSchemaVersion = "onlava.edge.target.v1"
+	EdgeSchemaVersion       = "scenery.edge.state.v1"
+	EdgeTargetSchemaVersion = "scenery.edge.target.v1"
 	EdgeKindCaddy           = "caddy"
 	EdgeStatusRunning       = "running"
 	EdgeStatusStopped       = "stopped"

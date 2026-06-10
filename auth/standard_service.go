@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	authdb "github.com/pbrazdil/onlava/auth/db/gen"
-	"github.com/pbrazdil/onlava/errs"
+	authdb "scenery.sh/auth/db/gen"
+	"scenery.sh/errs"
 )
 
 // Service owns standard auth, sessions, organizations, invites, and impersonation.
@@ -146,7 +146,7 @@ func (s *Service) beginTx(ctx context.Context) (pgx.Tx, *authdb.Queries, error) 
 	return tx, s.query.WithTx(tx), nil
 }
 
-func mapUser(row authdb.OnlavaAuthUser) UserProfile {
+func mapUser(row authdb.SceneryAuthUser) UserProfile {
 	return UserProfile{
 		ID:                  uuidString(row.ID),
 		Email:               strings.TrimSpace(row.PrimaryEmail),
@@ -165,7 +165,7 @@ func mapOrganization(row authdb.ListUserMembershipsRow) OrganizationSession {
 	}
 }
 
-func (s *Service) buildBootstrap(ctx context.Context, q authdb.Querier, user authdb.OnlavaAuthUser, tenantID pgtype.UUID, session authdb.OnlavaAuthRefreshSession) (*AuthBootstrapResponse, error) {
+func (s *Service) buildBootstrap(ctx context.Context, q authdb.Querier, user authdb.SceneryAuthUser, tenantID pgtype.UUID, session authdb.SceneryAuthRefreshSession) (*AuthBootstrapResponse, error) {
 	memberships, err := q.ListUserMemberships(ctx, user.ID)
 	if err != nil {
 		return nil, err
@@ -211,7 +211,7 @@ func (s *Service) buildBootstrap(ctx context.Context, q authdb.Querier, user aut
 	}, nil
 }
 
-func (s *Service) ensureActiveTenant(ctx context.Context, q authdb.Querier, user authdb.OnlavaAuthUser, preferred pgtype.UUID) (pgtype.UUID, error) {
+func (s *Service) ensureActiveTenant(ctx context.Context, q authdb.Querier, user authdb.SceneryAuthUser, preferred pgtype.UUID) (pgtype.UUID, error) {
 	if !user.EmailVerifiedAt.Valid {
 		return pgtype.UUID{}, failedPrecondition("email verification is required")
 	}
@@ -258,14 +258,14 @@ func (s *Service) ensureActiveTenant(ctx context.Context, q authdb.Querier, user
 	return tenant.ID, nil
 }
 
-func (s *Service) createRefreshSession(ctx context.Context, q authdb.Querier, userID pgtype.UUID, tenantID pgtype.UUID, ttl time.Duration, actorUserID pgtype.UUID, impersonationID pgtype.UUID, reason string) (authdb.OnlavaAuthRefreshSession, string, error) {
+func (s *Service) createRefreshSession(ctx context.Context, q authdb.Querier, userID pgtype.UUID, tenantID pgtype.UUID, ttl time.Duration, actorUserID pgtype.UUID, impersonationID pgtype.UUID, reason string) (authdb.SceneryAuthRefreshSession, string, error) {
 	sessionID, err := newUUID()
 	if err != nil {
-		return authdb.OnlavaAuthRefreshSession{}, "", err
+		return authdb.SceneryAuthRefreshSession{}, "", err
 	}
 	rawToken, err := newRefreshToken(sessionID)
 	if err != nil {
-		return authdb.OnlavaAuthRefreshSession{}, "", err
+		return authdb.SceneryAuthRefreshSession{}, "", err
 	}
 	session, err := q.CreateRefreshSession(ctx, authdb.CreateRefreshSessionParams{
 		ID:                  sessionID,
@@ -280,12 +280,12 @@ func (s *Service) createRefreshSession(ctx context.Context, q authdb.Querier, us
 		ImpersonationReason: strings.TrimSpace(reason),
 	})
 	if err != nil {
-		return authdb.OnlavaAuthRefreshSession{}, "", err
+		return authdb.SceneryAuthRefreshSession{}, "", err
 	}
 	return session, rawToken, nil
 }
 
-func (s *Service) createAuthSessionResponse(ctx context.Context, q authdb.Querier, user authdb.OnlavaAuthUser, tenantID pgtype.UUID, ttl time.Duration, actorUserID pgtype.UUID, impersonationID pgtype.UUID, reason string) (*AuthSessionResponse, error) {
+func (s *Service) createAuthSessionResponse(ctx context.Context, q authdb.Querier, user authdb.SceneryAuthUser, tenantID pgtype.UUID, ttl time.Duration, actorUserID pgtype.UUID, impersonationID pgtype.UUID, reason string) (*AuthSessionResponse, error) {
 	session, rawToken, err := s.createRefreshSession(ctx, q, user.ID, tenantID, ttl, actorUserID, impersonationID, reason)
 	if err != nil {
 		return nil, err

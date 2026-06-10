@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 export function Card({ className, ...props }: HTMLAttributes<HTMLElement>) {
   return (
     <section
-      data-onlava-ui="Card"
+      data-scenery-ui="Card"
       className={cn("rounded-md border border-border bg-background/60", className)}
       {...props}
     />

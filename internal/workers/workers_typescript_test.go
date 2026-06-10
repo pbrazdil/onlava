@@ -12,7 +12,7 @@ func TestDiscoverTypeScriptActivitiesFromWorkerFiles(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeTSWorkerFile(t, root, "house/preview.worker.ts", `import { activity } from "onlava/worker";
+	writeTSWorkerFile(t, root, "house/preview.worker.ts", `import { activity } from "scenery/worker";
 
 export type RenderRoofPreviewInput = { project_id: string; scene_id: string };
 export type RenderRoofPreviewOutput = { preview_url: string };
@@ -27,8 +27,8 @@ export const renderRoofPreview = activity<RenderRoofPreviewInput, RenderRoofPrev
   return { preview_url: input.scene_id };
 });
 `)
-	writeTSWorkerFile(t, root, "maps/earth.ts", `//onlava:worker
-import { activity } from "@onlava/temporal";
+	writeTSWorkerFile(t, root, "maps/earth.ts", `//scenery:worker
+import { activity } from "@scenery/temporal";
 
 export type NormalizeEarthMetadataInput = { scene_id: string };
 export type NormalizeEarthMetadataOutput = { scene_id: string };
@@ -57,7 +57,7 @@ func TestGenerateTypeScriptWorkerWritesRegistryWorkerAndManifest(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeTSWorkerFile(t, root, "house/preview.worker.ts", `import { activity } from "onlava/worker";
+	writeTSWorkerFile(t, root, "house/preview.worker.ts", `import { activity } from "scenery/worker";
 export type RenderRoofPreviewInput = { project_id: string };
 export type RenderRoofPreviewOutput = { preview_url: string };
 export const renderRoofPreview = activity<RenderRoofPreviewInput, RenderRoofPreviewOutput>({
@@ -66,7 +66,7 @@ export const renderRoofPreview = activity<RenderRoofPreviewInput, RenderRoofPrev
   maxConcurrency: 4
 }, async (_ctx, input) => ({ preview_url: input.project_id }));
 `)
-	writeTSWorkerFile(t, root, "maps/earth.worker.ts", `import { activity } from "onlava/worker";
+	writeTSWorkerFile(t, root, "maps/earth.worker.ts", `import { activity } from "scenery/worker";
 export type NormalizeEarthMetadataInput = { scene_id: string };
 export type NormalizeEarthMetadataOutput = { scene_id: string };
 export const normalizeEarthMetadata = activity<NormalizeEarthMetadataInput, NormalizeEarthMetadataOutput>({
@@ -122,9 +122,9 @@ export const normalizeEarthMetadata = activity<NormalizeEarthMetadataInput, Norm
 	}
 	for _, want := range []string{
 		`Worker.create`,
-		`ONLAVA_TEMPORAL_TASK_QUEUE`,
+		`SCENERY_TEMPORAL_TASK_QUEUE`,
 		`function sanitizeDeploymentName`,
-		`ONLAVA_DEV_SUPERVISOR_PID`,
+		`SCENERY_DEV_SUPERVISOR_PID`,
 		`function monitorSupervisorProcess`,
 		`process.kill(pid, 0)`,
 		`setInterval(() => {`,
@@ -133,9 +133,9 @@ export const normalizeEarthMetadata = activity<NormalizeEarthMetadataInput, Norm
 		`function installSignalExitFailsafe`,
 		`Runtime.install`,
 		`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
-		`ONLAVA_DEV_REPORT_URL`,
-		`onlavaTemporalActivityInterceptor`,
-		`onlava-temporal-trace`,
+		`SCENERY_DEV_REPORT_URL`,
+		`sceneryTemporalActivityInterceptor`,
+		`scenery-temporal-trace`,
 	} {
 		if !strings.Contains(string(worker), want) {
 			t.Fatalf("worker missing %q:\n%s", want, worker)
@@ -156,7 +156,7 @@ export const normalizeEarthMetadata = activity<NormalizeEarthMetadataInput, Norm
 	if diagnostics := ValidateManifest(manifest, "onlvnext-o5o2"); len(diagnostics) != 0 {
 		t.Fatalf("manifest diagnostics = %#v\n%s", diagnostics, data)
 	}
-	if manifest.SchemaVersion != ManifestSchemaVersionV2 || manifest.Language != "typescript" || manifest.PayloadCodec != "onlava-json-v1" || len(manifest.TaskQueues) != 2 {
+	if manifest.SchemaVersion != ManifestSchemaVersionV2 || manifest.Language != "typescript" || manifest.PayloadCodec != "scenery-json-v1" || len(manifest.TaskQueues) != 2 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 }

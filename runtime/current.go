@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pbrazdil/onlava/runtime/shared"
+	"scenery.sh/runtime/shared"
 )
 
 type requestStateKey struct{}

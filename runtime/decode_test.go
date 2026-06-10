@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pbrazdil/onlava/errs"
+	"scenery.sh/errs"
 )
 
 type plainValidationPayload struct{}

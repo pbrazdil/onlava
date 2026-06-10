@@ -37,13 +37,13 @@ jobs:
         run: go test ./...
 
       - name: Check basic fixture app
-        run: go run ./cmd/onlava check --app-root testdata/apps/basic --json
+        run: go run ./cmd/scenery check --app-root testdata/apps/basic --json
 
       - name: Clean install
-        run: go install ./cmd/onlava
+        run: go install ./cmd/scenery
 
       - name: Smoke installed binary
-        run: $(go env GOPATH)/bin/onlava version --json
+        run: $(go env GOPATH)/bin/scenery version --json
 
   ui:
     name: UI
@@ -95,8 +95,8 @@ jobs:
         working-directory: ui
         run: bun install --frozen-lockfile
 
-      - name: Install Onlava
-        run: go install ./cmd/onlava
+      - name: Install Scenery
+        run: go install ./cmd/scenery
 
       - name: Run self harness
-        run: $(go env GOPATH)/bin/onlava harness self --json --write
+        run: $(go env GOPATH)/bin/scenery harness self --json --write

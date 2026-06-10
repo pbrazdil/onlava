@@ -1,5 +1,5 @@
 {
-  "name": "onlava-dev-dashboard-ui",
+  "name": "scenery-dev-dashboard-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "shadcn:add": "node scripts/onlava-shadcn.mjs"
+    "shadcn:add": "node scripts/scenery-shadcn.mjs"
   },
   "dependencies": {
     "@tanstack/react-form": "1.29.0",

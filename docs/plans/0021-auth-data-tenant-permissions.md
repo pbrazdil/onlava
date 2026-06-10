@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-onlava now has standard auth and a dynamic data platform. This plan connects them so data tenants can map to auth tenants/organizations and record access can be enforced consistently.
+scenery now has standard auth and a dynamic data platform. This plan connects them so data tenants can map to auth tenants/organizations and record access can be enforced consistently.
 
 The goal:
 
@@ -124,10 +124,10 @@ Map standard auth tenant/org claims to a data tenant key, then implement a defau
 ## Validation and Acceptance
 
 ```sh
-ONLAVA_TEST_DATABASE_URL=... go test ./auth ./data ./internal/objectstore
+SCENERY_TEST_DATABASE_URL=... go test ./auth ./data ./internal/objectstore
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

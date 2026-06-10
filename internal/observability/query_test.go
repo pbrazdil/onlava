@@ -45,7 +45,7 @@ func TestQueryLogsAppliesVictoriaLogsScope(t *testing.T) {
 		t.Fatalf("unexpected form: %+v", form)
 	}
 	filters := strings.Join(form["extra_filters"], "\n")
-	for _, want := range []string{`onlava.application_id:"demo"`, `onlava_session_id:"session-a"`} {
+	for _, want := range []string{`scenery.application_id:"demo"`, `scenery_session_id:"session-a"`} {
 		if !strings.Contains(filters, want) {
 			t.Fatalf("extra_filters %q missing %q", filters, want)
 		}
@@ -115,14 +115,14 @@ func TestQueryMetricsAppliesExtraLabels(t *testing.T) {
 			t.Fatalf("ParseForm: %v", err)
 		}
 		form = r.Form
-		_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"onlava_request_duration_seconds","onlava_session_id":"session-a"},"values":[[1812450000,"0.2"]]}]}}`)
+		_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"scenery_request_duration_seconds","scenery_session_id":"session-a"},"values":[[1812450000,"0.2"]]}]}}`)
 	}))
 	defer server.Close()
 
 	result, err := QueryMetrics(context.Background(), MetricsQuery{
 		BaseURL: server.URL,
 		Scope:   testScope(),
-		PromQL:  "onlava_request_duration_seconds",
+		PromQL:  "scenery_request_duration_seconds",
 		Bounds:  testBounds(),
 		Step:    5 * time.Second,
 		Timeout: time.Second,
@@ -131,11 +131,11 @@ func TestQueryMetricsAppliesExtraLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryMetrics: %v", err)
 	}
-	if form.Get("query") != "onlava_request_duration_seconds" || form.Get("step") != "5s" {
+	if form.Get("query") != "scenery_request_duration_seconds" || form.Get("step") != "5s" {
 		t.Fatalf("unexpected form: %+v", form)
 	}
 	labels := strings.Join(form["extra_label"], "\n")
-	for _, want := range []string{"onlava_app=demo", "onlava_session_id=session-a", "onlava_app_root_hash=root123"} {
+	for _, want := range []string{"scenery_app=demo", "scenery_session_id=session-a", "scenery_app_root_hash=root123"} {
 		if !strings.Contains(labels, want) {
 			t.Fatalf("extra_label %q missing %q", labels, want)
 		}
@@ -154,7 +154,7 @@ func TestMetricsLabelsAndSeriesDecodeCatalogs(t *testing.T) {
 			if err := r.ParseForm(); err != nil {
 				t.Fatalf("ParseForm: %v", err)
 			}
-			if r.Form.Get("match[]") != `onlava_request_duration_seconds` {
+			if r.Form.Get("match[]") != `scenery_request_duration_seconds` {
 				t.Fatalf("labels match[] = %q", r.Form.Get("match[]"))
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": []string{"z", "a"}})
@@ -162,28 +162,28 @@ func TestMetricsLabelsAndSeriesDecodeCatalogs(t *testing.T) {
 			if err := r.ParseForm(); err != nil {
 				t.Fatalf("ParseForm: %v", err)
 			}
-			if r.Form.Get("match[]") != `onlava_request_duration_seconds` {
+			if r.Form.Get("match[]") != `scenery_request_duration_seconds` {
 				t.Fatalf("match[] = %q", r.Form.Get("match[]"))
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": []map[string]string{{"__name__": "onlava_request_duration_seconds"}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": []map[string]string{{"__name__": "scenery_request_duration_seconds"}}})
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 	}))
 	defer server.Close()
 
-	labels, err := MetricsLabels(context.Background(), MetricsCatalogQuery{BaseURL: server.URL, Scope: testScope(), Bounds: testBounds(), Match: "onlava_request_duration_seconds", Limit: 10, Timeout: time.Second})
+	labels, err := MetricsLabels(context.Background(), MetricsCatalogQuery{BaseURL: server.URL, Scope: testScope(), Bounds: testBounds(), Match: "scenery_request_duration_seconds", Limit: 10, Timeout: time.Second})
 	if err != nil {
 		t.Fatalf("MetricsLabels: %v", err)
 	}
 	if strings.Join(labels.Labels, ",") != "a,z" {
 		t.Fatalf("labels = %+v", labels.Labels)
 	}
-	series, err := MetricsSeries(context.Background(), MetricsCatalogQuery{BaseURL: server.URL, Scope: testScope(), Bounds: testBounds(), Match: "onlava_request_duration_seconds", Limit: 10})
+	series, err := MetricsSeries(context.Background(), MetricsCatalogQuery{BaseURL: server.URL, Scope: testScope(), Bounds: testBounds(), Match: "scenery_request_duration_seconds", Limit: 10})
 	if err != nil {
 		t.Fatalf("MetricsSeries: %v", err)
 	}
-	if len(series.Series) != 1 || series.Series[0]["__name__"] != "onlava_request_duration_seconds" {
+	if len(series.Series) != 1 || series.Series[0]["__name__"] != "scenery_request_duration_seconds" {
 		t.Fatalf("series = %+v", series.Series)
 	}
 }

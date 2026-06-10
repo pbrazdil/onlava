@@ -14,7 +14,7 @@ import (
 	temporalclient "go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/workflow"
 
-	onlavaruntime "github.com/pbrazdil/onlava/runtime"
+	sceneryruntime "scenery.sh/runtime"
 )
 
 type testWorkflowInput struct {
@@ -137,11 +137,11 @@ func TestNewActivityRequiresTaskQueue(t *testing.T) {
 }
 
 func TestTemporalDefaultWorkerTaskQueue(t *testing.T) {
-	info := onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "onlava.orders"}
-	if got := defaultWorkerTaskQueue(info); got != "onlava.orders.worker.go" {
+	info := sceneryruntime.TemporalRuntimeInfo{TaskQueuePrefix: "scenery.orders"}
+	if got := defaultWorkerTaskQueue(info); got != "scenery.orders.worker.go" {
 		t.Fatalf("defaultWorkerTaskQueue = %q", got)
 	}
-	if got := defaultWorkerTaskQueue(onlavaruntime.TemporalRuntimeInfo{}); got != "onlava.worker.go" {
+	if got := defaultWorkerTaskQueue(sceneryruntime.TemporalRuntimeInfo{}); got != "scenery.worker.go" {
 		t.Fatalf("defaultWorkerTaskQueue empty = %q", got)
 	}
 }
@@ -160,7 +160,7 @@ func TestTemporalWorkerOptionsForQueueUsesSmallestActivityConcurrency(t *testing
 		return testWorkflowOutput{}, nil
 	})
 
-	opts := temporalWorkerOptionsForQueue(onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "onlava.orders", HostReporting: true}, "worker", "orders.go", snapshotDeclarations())
+	opts := temporalWorkerOptionsForQueue(sceneryruntime.TemporalRuntimeInfo{TaskQueuePrefix: "scenery.orders", HostReporting: true}, "worker", "orders.go", snapshotDeclarations())
 	if opts.MaxConcurrentActivityExecutionSize != 1 {
 		t.Fatalf("MaxConcurrentActivityExecutionSize = %d", opts.MaxConcurrentActivityExecutionSize)
 	}
@@ -180,11 +180,11 @@ func TestTemporalDeclarationsUseSessionScopedTaskQueues(t *testing.T) {
 		return testWorkflowOutput{}, nil
 	})
 
-	byQueue := declarationsByQueueForTest(onlavaruntime.TemporalRuntimeInfo{
-		TaskQueuePrefix: "onlava.orders.session-a",
+	byQueue := declarationsByQueueForTest(sceneryruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "scenery.orders.session-a",
 		SessionID:       "session-a",
 	})
-	want := []string{"onlava.orders.session-a.orders.go", "onlava.orders.session-a.payments.go"}
+	want := []string{"scenery.orders.session-a.orders.go", "scenery.orders.session-a.payments.go"}
 	if got := sortedDeclarationQueues(byQueue); !reflect.DeepEqual(got, want) {
 		t.Fatalf("queues = %#v, want %#v", got, want)
 	}
@@ -194,7 +194,7 @@ func TestStartWorkerRuntimeSkipsEmptyAndAPIRole(t *testing.T) {
 	restore := resetRegistryForTest()
 	defer restore()
 
-	stop, err := startWorkerRuntime(context.Background(), onlavaruntime.AppConfig{Role: "worker"})
+	stop, err := startWorkerRuntime(context.Background(), sceneryruntime.AppConfig{Role: "worker"})
 	if err != nil {
 		t.Fatalf("empty startWorkerRuntime error = %v", err)
 	}
@@ -205,7 +205,7 @@ func TestStartWorkerRuntimeSkipsEmptyAndAPIRole(t *testing.T) {
 	_ = NewWorkflow("orders.Fulfill/v1", WorkflowConfig{}, func(ctx workflow.Context, in testWorkflowInput) (testWorkflowOutput, error) {
 		return testWorkflowOutput{}, nil
 	})
-	stop, err = startWorkerRuntime(context.Background(), onlavaruntime.AppConfig{Role: "api"})
+	stop, err = startWorkerRuntime(context.Background(), sceneryruntime.AppConfig{Role: "api"})
 	if err != nil {
 		t.Fatalf("api startWorkerRuntime error = %v", err)
 	}
@@ -221,14 +221,14 @@ func TestStartWorkerRuntimeRequiresTemporalRuntimeForDeclarations(t *testing.T) 
 	_ = NewWorkflow("orders.Fulfill/v1", WorkflowConfig{}, func(ctx workflow.Context, in testWorkflowInput) (testWorkflowOutput, error) {
 		return testWorkflowOutput{}, nil
 	})
-	_, err := startWorkerRuntime(context.Background(), onlavaruntime.AppConfig{Role: "worker"})
+	_, err := startWorkerRuntime(context.Background(), sceneryruntime.AppConfig{Role: "worker"})
 	if err == nil || !strings.Contains(err.Error(), "temporal.enabled") {
 		t.Fatalf("expected temporal.enabled error, got %v", err)
 	}
 }
 
 func TestSelectedTemporalTaskQueuesFromEnv(t *testing.T) {
-	t.Setenv("ONLAVA_TEMPORAL_TASK_QUEUE", "orders.go, payments.go, orders.go,  ")
+	t.Setenv("SCENERY_TEMPORAL_TASK_QUEUE", "orders.go, payments.go, orders.go,  ")
 	got := selectedTemporalTaskQueuesFromEnv()
 	want := []string{"orders.go", "payments.go"}
 	if !reflect.DeepEqual(got, want) {
@@ -237,11 +237,11 @@ func TestSelectedTemporalTaskQueuesFromEnv(t *testing.T) {
 }
 
 func TestScopedSelectedTemporalTaskQueues(t *testing.T) {
-	got := scopedSelectedTemporalTaskQueues(onlavaruntime.TemporalRuntimeInfo{
-		TaskQueuePrefix: "onlava.orders.session-a",
+	got := scopedSelectedTemporalTaskQueues(sceneryruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "scenery.orders.session-a",
 		SessionID:       "session-a",
-	}, []string{"orders.go", "onlava.orders.session-a.payments.go"})
-	want := []string{"onlava.orders.session-a.orders.go", "onlava.orders.session-a.payments.go"}
+	}, []string{"orders.go", "scenery.orders.session-a.payments.go"})
+	want := []string{"scenery.orders.session-a.orders.go", "scenery.orders.session-a.payments.go"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("scopedSelectedTemporalTaskQueues = %#v, want %#v", got, want)
 	}
@@ -257,7 +257,7 @@ func TestFilterDeclarationsBySelectedTaskQueues(t *testing.T) {
 	_ = NewActivity("payments.Capture/v1", ActivityConfig{TaskQueue: "payments.go"}, func(ctx context.Context, in testWorkflowInput) (testWorkflowOutput, error) {
 		return testWorkflowOutput{}, nil
 	})
-	byQueue := declarationsByQueueForTest(onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "onlava.orders"})
+	byQueue := declarationsByQueueForTest(sceneryruntime.TemporalRuntimeInfo{TaskQueuePrefix: "scenery.orders"})
 
 	all, err := filterDeclarationsBySelectedTaskQueues(byQueue, nil)
 	if err != nil {
@@ -291,7 +291,7 @@ func TestFilterDeclarationsBySelectedTaskQueuesRejectsUnknownQueue(t *testing.T)
 	_ = NewWorkflow("orders.Fulfill/v1", WorkflowConfig{TaskQueue: "orders.go"}, func(ctx workflow.Context, in testWorkflowInput) (testWorkflowOutput, error) {
 		return testWorkflowOutput{}, nil
 	})
-	byQueue := declarationsByQueueForTest(onlavaruntime.TemporalRuntimeInfo{TaskQueuePrefix: "onlava.orders"})
+	byQueue := declarationsByQueueForTest(sceneryruntime.TemporalRuntimeInfo{TaskQueuePrefix: "scenery.orders"})
 
 	_, err := filterDeclarationsBySelectedTaskQueues(byQueue, []string{"missing.go"})
 	if err == nil || !strings.Contains(err.Error(), "missing.go") || !strings.Contains(err.Error(), "orders.go") {
@@ -342,8 +342,8 @@ func TestTemporalStartWorkflowOptions(t *testing.T) {
 		WorkflowExecutionTimeout: time.Hour,
 	}, WithTaskQueue("orders.go"), WithMemo(map[string]any{"tenant": "acme"}), WithSearchAttributes(NewSearchAttributes(customKeyword.ValueSet("orders"))), WithRunTimeout(time.Minute), WithTaskTimeout(10*time.Second), WithPinnedBuildID("build-2"), WithWorkflowIDConflictPolicy(WorkflowIDConflictUseExisting), WithWorkflowIDReusePolicy(WorkflowIDReuseRejectDuplicate))
 
-	info := onlavaruntime.TemporalRuntimeInfo{
-		TaskQueuePrefix: "onlava.orders",
+	info := sceneryruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "scenery.orders",
 		DeploymentName:  "orders-deployment",
 	}
 	start := temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowID("orders-123"), opts, "default.go", info)
@@ -377,8 +377,8 @@ func TestTemporalStartWorkflowOptions(t *testing.T) {
 
 func TestTemporalStartWorkflowOptionsDoNotPinByDefault(t *testing.T) {
 	opts := applyStartOptions(WorkflowConfig{TaskQueue: "cfg.go"})
-	start := temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowIDPrefix("orders"), opts, "default.go", onlavaruntime.TemporalRuntimeInfo{
-		TaskQueuePrefix: "onlava.orders",
+	start := temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowIDPrefix("orders"), opts, "default.go", sceneryruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "scenery.orders",
 		DeploymentName:  "orders-deployment",
 		WorkerBuildID:   "build-1",
 	})
@@ -394,20 +394,20 @@ func TestTemporalStartWorkflowOptionsUseSessionScopedTaskQueue(t *testing.T) {
 	opts := applyStartOptions(WorkflowConfig{
 		TaskQueue: "cfg.go",
 	}, WithTaskQueue("orders.go"))
-	start := temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowID("orders-123"), opts, "default.go", onlavaruntime.TemporalRuntimeInfo{
-		TaskQueuePrefix: "onlava.orders.session-a",
+	start := temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowID("orders-123"), opts, "default.go", sceneryruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "scenery.orders.session-a",
 		SessionID:       "session-a",
 	})
-	if start.TaskQueue != "onlava.orders.session-a.orders.go" {
+	if start.TaskQueue != "scenery.orders.session-a.orders.go" {
 		t.Fatalf("TaskQueue = %q", start.TaskQueue)
 	}
 
 	opts = applyStartOptions(WorkflowConfig{})
-	start = temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowID("orders-123"), opts, "onlava.orders.session-a.worker.go", onlavaruntime.TemporalRuntimeInfo{
-		TaskQueuePrefix: "onlava.orders.session-a",
+	start = temporalStartWorkflowOptions("orders.Fulfill/v1", WorkflowID("orders-123"), opts, "scenery.orders.session-a.worker.go", sceneryruntime.TemporalRuntimeInfo{
+		TaskQueuePrefix: "scenery.orders.session-a",
 		SessionID:       "session-a",
 	})
-	if start.TaskQueue != "onlava.orders.session-a.worker.go" {
+	if start.TaskQueue != "scenery.orders.session-a.worker.go" {
 		t.Fatalf("default TaskQueue = %q", start.TaskQueue)
 	}
 }
@@ -579,7 +579,7 @@ func resetServiceAccessorsForTest() func() {
 	}
 }
 
-func declarationsByQueueForTest(info onlavaruntime.TemporalRuntimeInfo) map[string][]declaration {
+func declarationsByQueueForTest(info sceneryruntime.TemporalRuntimeInfo) map[string][]declaration {
 	byQueue := make(map[string][]declaration)
 	for _, item := range snapshotDeclarations() {
 		queue := item.taskQueue(info)

@@ -10,7 +10,7 @@ export function ObservabilityPage() {
   const dashboards = grafanaAvailable ? (grafana?.dashboards ?? []) : [];
 
   return (
-    <div data-onlava-ui="ObservabilityRoute" className="max-h-[calc(100vh-var(--header-height))] overflow-auto">
+    <div data-scenery-ui="ObservabilityRoute" className="max-h-[calc(100vh-var(--header-height))] overflow-auto">
       <div className="min-h-0 grow px-8 pb-12 pt-6 leading-6">
         <div className="max-w-6xl space-y-8">
           <div>
@@ -21,8 +21,8 @@ export function ObservabilityPage() {
           </div>
 
           <section
-            data-onlava-ui="TemporalStatusCard"
-            data-onlava-state={grafana?.temporal_url ? "available" : "unavailable"}
+            data-scenery-ui="TemporalStatusCard"
+            data-scenery-state={grafana?.temporal_url ? "available" : "unavailable"}
             className="rounded-md border border-border p-6"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -51,8 +51,8 @@ export function ObservabilityPage() {
           </section>
 
           <section
-            data-onlava-ui="WorkerStatusCard"
-            data-onlava-state="intentional-empty"
+            data-scenery-ui="WorkerStatusCard"
+            data-scenery-state="intentional-empty"
             className="rounded-md border border-border p-6"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -204,9 +204,9 @@ function StatusPill({ status }: { status: string }) {
 function grafanaStatusCopy(status?: string): string {
   switch (status) {
     case "ready":
-      return "Grafana is ready with onlava datasources and dashboards.";
+      return "Grafana is ready with scenery datasources and dashboards.";
     case "external":
-      return "A verified external Grafana instance has onlava datasources and dashboards.";
+      return "A verified external Grafana instance has scenery datasources and dashboards.";
     case "starting":
       return "Grafana is starting.";
     case "disabled":

@@ -7,51 +7,51 @@ reuse IDs; this list can still be ordered by current priority.
 
 ## Active ExecPlans
 
-- [0073 PostgreSQL 18 Default Neon Selfhost](0073-pg18-default-neon-selfhost.md)
+- [0075 Rebrand to Scenery](0075-rebrand-scenery.md)
   - Status: active
-  - Owner: onlava runtime / agent DX
+  - Owner: scenery maintainers / release tooling / agent DX
   - Created: 2026-06-10
-  - Focus: make self-hosted Neon apps run through the same Onlava surface as today while moving the internal storage and compute stack to PostgreSQL 18 by default on stable upstream Neon refs.
+  - Focus: rename the project to Scenery across repo identity, `scenery.sh` module path, CLI, app model tokens, docs, CI, GoReleaser, local state paths, and the first `v0.2.0` release.
 - [0064 Agent-First Development Control Plane](0064-agent-first-development-control-plane.md)
   - Status: active
-  - Owner: onlava maintainers / agent DX
+  - Owner: scenery maintainers / agent DX
   - Created: 2026-06-07
   - Focus: keep repo knowledge, active ExecPlans, review-due signals, tech debt, and doc-drift handling aligned so agents can rely on repo-local instructions before implementation.
 - [0048 Agent Runtime Operational Hardening](0048-agent-runtime-operational-hardening.md)
   - Status: active
-  - Owner: onlava runtime / ONLV integration
+  - Owner: scenery runtime / ONLV integration
   - Created: 2026-05-27
   - Focus: source-review gap closure around devdash storage, DB-aware prune, non-destructive restart, legacy proxy removal, setup policy, and the two-worktree ONLV gate.
 - [0049 Browser Direct API Routing](0049-browser-direct-api-routing.md)
   - Status: active
-  - Owner: onlava runtime / ONLV Pulse integration
+  - Owner: scenery runtime / ONLV Pulse integration
   - Created: 2026-05-28
   - Focus: replace Pulse's same-origin Vite API proxy with direct browser calls to the agent-routed API origin, with explicit auth, CORS, and sync validation.
 - [0050 Test Suite Speed and Stability](0050-test-suite-speed-hardening.md)
   - Status: active
-  - Owner: onlava runtime / test infrastructure
+  - Owner: scenery runtime / test infrastructure
   - Created: 2026-05-28
   - Focus: fix flaky Grafana version probing, silence expected CLI warnings in tests, add timing reports, and reduce warm-cache `go test -count=1 ./...` runtime.
 - [0059 Frozen Toolchain Manifest and Managed Tool Store](0059-frozen-toolchain-manifest.md)
   - Status: active
-  - Owner: onlava runtime / release tooling / agent DX
+  - Owner: scenery runtime / release tooling / agent DX
   - Created: 2026-06-01
-  - Focus: add a root frozen toolchain manifest, managed local tool store, `onlava toolchain` CLI, and remove implicit system `PATH` resolution for Onlava-managed tools.
+  - Focus: add a root frozen toolchain manifest, managed local tool store, `scenery toolchain` CLI, and remove implicit system `PATH` resolution for Scenery-managed tools.
 - [0047 TypeScript Temporal Workers](0047-typescript-temporal-workers.md)
   - Status: active
-  - Owner: onlava runtime / Temporal
+  - Owner: scenery runtime / Temporal
   - Created: 2026-05-27
   - Focus: domain-local TypeScript Temporal activities, generated worker runtime files, external Go activity declarations, and validation.
 - [0063 Database Lifecycle Split](0063-db-lifecycle-split.md)
   - Status: active
-  - Owner: onlava runtime / ONLV integration
+  - Owner: scenery runtime / ONLV integration
   - Created: 2026-06-02
   - Focus: split DB apply, seed, and setup from generated SQLC artifacts and migrate ONLV to the new lifecycle.
 
 ## Agent-Friendly Local Runtime
 
 - Status: active
-- Owner: onlava runtime
+- Owner: scenery runtime
 - Last reviewed: 2026-04-27
 - Review after: 2026-05-27
 - Quality: B
@@ -65,7 +65,7 @@ Current focus:
 ## Dashboard Source Parity
 
 - Status: active
-- Owner: onlava dashboard
+- Owner: scenery dashboard
 - Last reviewed: 2026-04-27
 - Review after: 2026-05-27
 - Quality: B
@@ -79,12 +79,12 @@ Current focus:
 ## Runtime Contracts
 
 - Status: active
-- Owner: onlava runtime
+- Owner: scenery runtime
 - Last reviewed: 2026-04-27
 - Review after: 2026-05-27
 - Quality: B
 
 Current focus:
 
-- Prefer onlava-native naming and contracts.
+- Prefer scenery-native naming and contracts.
 - Keep generated artifacts deterministic and inspectable.

@@ -1,5 +1,5 @@
 {
-  "schema_version": "onlava.environment.registry.v1",
+  "schema_version": "scenery.environment.registry.v1",
   "variables": [
     {
       "name": "API_BASE_URL",
@@ -14,9 +14,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "API route exposed to app/frontends",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -36,9 +36,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Conventional app auth cookie domain fallback for standard auth.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -58,9 +58,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Conventional app auth sender fallback for standard auth.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -79,9 +79,9 @@
         "code",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Conventional CI marker used to disable interactive console behavior.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -98,9 +98,9 @@
         "code",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Standard terminal color control.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -118,9 +118,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Conventional database URL. Managed dev Postgres does not inject this into app, setup, DB setup, or worker environments; prefer `DatabaseURL` for Onlava apps.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Conventional database URL. Managed dev Postgres does not inject this into app, setup, DB setup, or worker environments; prefer `DatabaseURL` for Scenery apps.",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -140,9 +140,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "onlava app-style database URL env and managed app database authority. Used when `auth.database_url_env` is `DatabaseURL`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "scenery app-style database URL env and managed app database authority. Used when `auth.database_url_env` is `DatabaseURL`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -162,9 +162,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Electric container setting injected for local managed Electric processes.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -182,9 +182,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Electric container port injected into managed Electric processes.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -202,9 +202,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Electric replication stream ID. onlava sets a deterministic session-scoped default",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Electric replication stream ID. scenery sets a deterministic session-scoped default",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -224,9 +224,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Public Electric route for app/frontends",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -246,9 +246,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Electric container setting injected for local managed Electric processes.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -266,9 +266,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Grafana child-process environment family. onlava filters ambient GF_* values and injects only owned settings unless explicitly preserving them.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Grafana child-process environment family. scenery filters ambient GF_* values and injects only owned settings unless explicitly preserving them.",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -286,9 +286,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Grafana data directory",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -308,9 +308,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Grafana logs directory",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -330,9 +330,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Grafana plugins directory",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -352,9 +352,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Grafana provisioning directory",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -374,9 +374,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Grafana child loopback bind address",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -396,9 +396,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Grafana child loopback bind port",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -418,9 +418,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Grafana public root URL",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -439,9 +439,9 @@
         "code",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Host home directory used by browser discovery fallback.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -459,9 +459,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Conventional app JWT signing secret fallback for standard auth.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -480,15 +480,15 @@
         "code",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Standard terminal color opt-out.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
     },
     {
-      "name": "ONLAVA_AGENT_DISABLE",
+      "name": "SCENERY_AGENT_DISABLE",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -500,9 +500,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "`1` disables local agent usage. `onlava up --detach` requires this to be unset",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "`1` disables local agent usage. `scenery up --detach` requires this to be unset",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -510,7 +510,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AGENT_HOME",
+      "name": "SCENERY_AGENT_HOME",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -522,9 +522,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Overrides the machine-wide local agent home. Default is `~/.onlava`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Overrides the machine-wide local agent home. Default is `~/.scenery`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -532,7 +532,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AGENT_ROUTER_ADDR",
+      "name": "SCENERY_AGENT_ROUTER_ADDR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -544,9 +544,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the agent router listen address. Default is `127.0.0.1:9440`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -554,7 +554,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AGENT_ROUTER_TLS",
+      "name": "SCENERY_AGENT_ROUTER_TLS",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -566,9 +566,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`0` disables HTTPS routing; `1` forces HTTPS. Default is HTTPS",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -576,7 +576,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AGENT_SOCKET",
+      "name": "SCENERY_AGENT_SOCKET",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -588,9 +588,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the agent Unix control socket path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -598,7 +598,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AGENT_TRUST",
+      "name": "SCENERY_AGENT_TRUST",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -610,9 +610,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "`1` asks the agent to trust the existing local onlava CA when starting HTTPS routing",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "`1` asks the agent to trust the existing local scenery CA when starting HTTPS routing",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -620,7 +620,7 @@
       ]
     },
     {
-      "name": "ONLAVA_API_BASE_URL",
+      "name": "SCENERY_API_BASE_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -632,9 +632,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "onlava-prefixed API route exposed to app/frontends",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "scenery-prefixed API route exposed to app/frontends",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -642,7 +642,7 @@
       ]
     },
     {
-      "name": "ONLAVA_APP_ID",
+      "name": "SCENERY_APP_ID",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -654,9 +654,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Base app identity from `.onlava.json`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Base app identity from `.scenery.json`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -664,7 +664,7 @@
       ]
     },
     {
-      "name": "ONLAVA_APP_ROOT",
+      "name": "SCENERY_APP_ROOT",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -676,9 +676,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Absolute app root path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -686,7 +686,7 @@
       ]
     },
     {
-      "name": "ONLAVA_APP_ROOT_HASH",
+      "name": "SCENERY_APP_ROOT_HASH",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -698,9 +698,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Stable hash of the app root path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -708,7 +708,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AUTH_COOKIE_DOMAIN",
+      "name": "SCENERY_AUTH_COOKIE_DOMAIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -720,9 +720,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Auth cookie domain; empty in default local agent dev",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -730,7 +730,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AUTH_DATABASE_URL",
+      "name": "SCENERY_AUTH_DATABASE_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -742,9 +742,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Fallback DB URL for standard auth when app-specific envs are unset",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -752,7 +752,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AUTH_EMAIL_FROM",
+      "name": "SCENERY_AUTH_EMAIL_FROM",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -764,9 +764,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Fallback sender address for standard auth email flows when `auth.email_from_env` and `AUTH_EMAIL_FROM` are unset",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -774,7 +774,7 @@
       ]
     },
     {
-      "name": "ONLAVA_AUTH_JWT_SECRET",
+      "name": "SCENERY_AUTH_JWT_SECRET",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -786,9 +786,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Fallback JWT signing secret for standard auth when `auth.jwt_secret_env` and `JWT_SECRET` are unset",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -796,7 +796,7 @@
       ]
     },
     {
-      "name": "ONLAVA_BASE_APP_ID",
+      "name": "SCENERY_BASE_APP_ID",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -808,9 +808,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Base app ID for a session",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -818,7 +818,7 @@
       ]
     },
     {
-      "name": "ONLAVA_BIN",
+      "name": "SCENERY_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -830,9 +830,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Target-app helper override for the onlava binary path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Target-app helper override for the scenery binary path",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -840,7 +840,7 @@
       ]
     },
     {
-      "name": "ONLAVA_BRANCH",
+      "name": "SCENERY_BRANCH",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -852,9 +852,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Git branch captured for the dev session",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -862,7 +862,7 @@
       ]
     },
     {
-      "name": "ONLAVA_BUILD_ID",
+      "name": "SCENERY_BUILD_ID",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -874,9 +874,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Worker build ID. Agent dev uses the session ID",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -884,7 +884,7 @@
       ]
     },
     {
-      "name": "ONLAVA_CORS_ALLOW_ORIGINS",
+      "name": "SCENERY_CORS_ALLOW_ORIGINS",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -896,9 +896,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Comma-separated production CORS allowlist outside dev endpoint mode",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -906,7 +906,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_CACHE_DIR",
+      "name": "SCENERY_DEV_CACHE_DIR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -918,9 +918,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides build/dashboard cache root. This does not change agent home",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -928,7 +928,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_DASHBOARD_ADDR",
+      "name": "SCENERY_DEV_DASHBOARD_ADDR",
       "match": "exact",
       "scope": "runtime",
       "direction": "internal_user_input",
@@ -940,9 +940,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the dashboard backend address used by dev sessions. Normally allocated automatically",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -950,7 +950,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_DASHBOARD_UI_DIR",
+      "name": "SCENERY_DEV_DASHBOARD_UI_DIR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -962,9 +962,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the built dashboard UI directory used by the dashboard backend",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -972,7 +972,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_DETACHED_CHILD",
+      "name": "SCENERY_DEV_DETACHED_CHILD",
       "match": "exact",
       "scope": "internal",
       "direction": "internal",
@@ -984,9 +984,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Marks the background child used by `onlava up --detach`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Marks the background child used by `scenery up --detach`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -994,7 +994,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_ELECTRIC_BIN",
+      "name": "SCENERY_DEV_ELECTRIC_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1006,9 +1006,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Explicit local Electric binary path; onlava does not search `PATH` for it",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Explicit local Electric binary path; scenery does not search `PATH` for it",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1016,7 +1016,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_ELECTRIC_UPSTREAM",
+      "name": "SCENERY_DEV_ELECTRIC_UPSTREAM",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1028,9 +1028,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Explicit Electric upstream; onlava registers it as the session Electric backend",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Explicit Electric upstream; scenery registers it as the session Electric backend",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1038,7 +1038,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_ENDPOINTS",
+      "name": "SCENERY_DEV_ENDPOINTS",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -1050,9 +1050,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "`1` enables dev/admin endpoints such as `/__onlava/config` and `/debug/pprof/*`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "`1` enables dev/admin endpoints such as `/__scenery/config` and `/debug/pprof/*`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1060,7 +1060,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_GRAFANA",
+      "name": "SCENERY_DEV_GRAFANA",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1072,9 +1072,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`auto`, `1`, or `0`. Default `auto` starts Grafana when possible",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1082,7 +1082,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_GRAFANA_DOWNLOAD",
+      "name": "SCENERY_DEV_GRAFANA_DOWNLOAD",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1094,9 +1094,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`0` disables automatic Grafana managed-toolchain downloads",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1104,73 +1104,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_NEON_SELFHOST_DRIVER",
-      "match": "exact",
-      "scope": "runtime",
-      "direction": "user_input",
-      "category": "dev.services",
-      "stability": "dev_escape_hatch",
-      "secret": false,
-      "allowed_in": [
-        "code",
-        "docs",
-        "tests"
-      ],
-      "owner": "onlava runtime",
-      "rationale": "Explicit external neon-selfhost branch driver executable path for overriding the built-in self-hosted Neon dev-cell backend",
-      "preferred_surface": ".onlava.json for stable provider configuration; this env is a development escape hatch and the normal dev-cell driver is built into onlava",
-      "replacement": "",
-      "sunset": "",
-      "docs": [
-        "docs/environment.md"
-      ]
-    },
-    {
-      "name": "ONLAVA_NEON_SELFHOST_ROOT",
-      "match": "exact",
-      "scope": "internal",
-      "direction": "internal",
-      "category": "dev.services",
-      "stability": "internal",
-      "secret": false,
-      "allowed_in": [
-        "code",
-        "docs",
-        "tests"
-      ],
-      "owner": "onlava runtime",
-      "rationale": "Injected into the managed neon-selfhost driver so driver-owned backend state uses the same local substrate root as onlava db neon commands",
-      "preferred_surface": "internal CLI-to-driver handoff; users should not set it directly",
-      "replacement": "",
-      "sunset": "",
-      "docs": [
-        "docs/environment.md"
-      ]
-    },
-    {
-      "name": "ONLAVA_DEV_LOCAL_POSTGRES_BRANCH_DRIVER",
-      "match": "exact",
-      "scope": "runtime",
-      "direction": "user_input",
-      "category": "dev.services",
-      "stability": "dev_escape_hatch",
-      "secret": false,
-      "allowed_in": [
-        "code",
-        "docs",
-        "tests"
-      ],
-      "owner": "onlava runtime",
-      "rationale": "Explicit local-postgres-branch development fallback executable path for branch pin/lease/env validation against local Postgres-shaped endpoints",
-      "preferred_surface": ".onlava.json for stable provider configuration; this env is not the actual neon-selfhost dev-cell backend",
-      "replacement": "",
-      "sunset": "",
-      "docs": [
-        "docs/environment.md"
-      ]
-    },
-    {
-      "name": "ONLAVA_DEV_OBSERVABILITY_BACKEND",
+      "name": "SCENERY_DEV_OBSERVABILITY_BACKEND",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1182,9 +1116,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Current dev observability backend, for example `victoria`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1192,7 +1126,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_POSTGRES_ADMIN_URL",
+      "name": "SCENERY_DEV_POSTGRES_ADMIN_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1204,9 +1138,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Explicit admin Postgres URL for the managed dev database planner",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1214,7 +1148,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_POSTGRES_BIN",
+      "name": "SCENERY_DEV_POSTGRES_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1226,9 +1160,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Explicit local `postgres` binary path; onlava does not search `PATH` for it",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Explicit local `postgres` binary path; scenery does not search `PATH` for it",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1236,7 +1170,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_POSTGRES_EXTERNAL",
+      "name": "SCENERY_DEV_POSTGRES_EXTERNAL",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1248,9 +1182,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`1` keeps an explicit external `DatabaseURL` instead of creating a managed session database. External mode requires `DatabaseURL`; `DATABASE_URL` is ignored as the app database authority.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1258,7 +1192,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_POSTGRES_INITDB",
+      "name": "SCENERY_DEV_POSTGRES_INITDB",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1270,9 +1204,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Explicit local `initdb` binary path; onlava does not search `PATH` for it",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Explicit local `initdb` binary path; scenery does not search `PATH` for it",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1280,7 +1214,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_REPORT_TOKEN",
+      "name": "SCENERY_DEV_REPORT_TOKEN",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1292,9 +1226,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Token used by the app child to report logs/traces to the dev dashboard",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1302,7 +1236,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_REPORT_URL",
+      "name": "SCENERY_DEV_REPORT_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1314,9 +1248,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Dev dashboard report endpoint",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1324,7 +1258,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_SUPERVISOR",
+      "name": "SCENERY_DEV_SUPERVISOR",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1336,9 +1270,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Marks a child process launched by `onlava up`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Marks a child process launched by `scenery up`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1346,7 +1280,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_SUPERVISOR_PID",
+      "name": "SCENERY_DEV_SUPERVISOR_PID",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1358,9 +1292,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Parent dev supervisor PID",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1368,7 +1302,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_VICTORIA",
+      "name": "SCENERY_DEV_VICTORIA",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1380,9 +1314,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`0` disables Victoria sidecars",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1390,7 +1324,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_VICTORIA_DIR",
+      "name": "SCENERY_DEV_VICTORIA_DIR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1402,9 +1336,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Overrides Victoria runtime state root. Managed binaries still live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Overrides Victoria runtime state root. Managed binaries still live under `.scenery/toolchain/` or `SCENERY_TOOLCHAIN_DIR`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1412,7 +1346,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DEV_VICTORIA_DOWNLOAD",
+      "name": "SCENERY_DEV_VICTORIA_DOWNLOAD",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1424,9 +1358,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`0` disables automatic Victoria managed-toolchain downloads",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1434,7 +1368,7 @@
       ]
     },
     {
-      "name": "ONLAVA_DISABLE_FRONTEND_PROXY",
+      "name": "SCENERY_DISABLE_FRONTEND_PROXY",
       "match": "exact",
       "scope": "runtime",
       "direction": "internal",
@@ -1446,9 +1380,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Disables frontend proxy/upstream discovery in the legacy local proxy outside the normal onlava up path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Disables frontend proxy/upstream discovery in the legacy local proxy outside the normal scenery up path",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1456,7 +1390,7 @@
       ]
     },
     {
-      "name": "ONLAVA_ELECTRIC_URL",
+      "name": "SCENERY_ELECTRIC_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1468,9 +1402,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "onlava-prefixed Electric route",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "scenery-prefixed Electric route",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1478,7 +1412,7 @@
       ]
     },
     {
-      "name": "ONLAVA_ENV",
+      "name": "SCENERY_ENV",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -1490,9 +1424,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "App environment name such as `development`, `test`, or `production`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1500,7 +1434,7 @@
       ]
     },
     {
-      "name": "ONLAVA_FRONTEND_",
+      "name": "SCENERY_FRONTEND_",
       "match": "prefix",
       "scope": "runtime",
       "direction": "internal",
@@ -1512,9 +1446,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Dynamic prefix used to build ONLAVA_FRONTEND_<NAME>_ADDR manual frontend upstream overrides.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Dynamic prefix used to build SCENERY_FRONTEND_<NAME>_ADDR manual frontend upstream overrides.",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1522,7 +1456,7 @@
       ]
     },
     {
-      "name": "ONLAVA_FRONTEND_*_ADDR",
+      "name": "SCENERY_FRONTEND_*_ADDR",
       "match": "glob",
       "scope": "runtime",
       "direction": "user_input",
@@ -1534,9 +1468,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Manual frontend upstream override, for example `ONLAVA_FRONTEND_PULSE_ADDR=127.0.0.1:4321`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Manual frontend upstream override, for example `SCENERY_FRONTEND_PULSE_ADDR=127.0.0.1:4321`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1544,7 +1478,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_BIN",
+      "name": "SCENERY_GRAFANA_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1556,9 +1490,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Explicit Grafana binary path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1566,7 +1500,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_DIR",
+      "name": "SCENERY_GRAFANA_DIR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1578,9 +1512,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Overrides Grafana runtime state root. Managed binaries still live under `.onlava/toolchain/` or `ONLAVA_TOOLCHAIN_DIR`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Overrides Grafana runtime state root. Managed binaries still live under `.scenery/toolchain/` or `SCENERY_TOOLCHAIN_DIR`",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1588,7 +1522,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_DOWNLOAD_SHA256",
+      "name": "SCENERY_GRAFANA_DOWNLOAD_SHA256",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1600,9 +1534,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Checksum for a custom Grafana download",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1610,7 +1544,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_DOWNLOAD_URL",
+      "name": "SCENERY_GRAFANA_DOWNLOAD_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1622,9 +1556,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Custom Grafana archive URL",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1632,7 +1566,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_HOME",
+      "name": "SCENERY_GRAFANA_HOME",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1644,9 +1578,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides Grafana home for an explicit binary or custom download path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1654,7 +1588,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_PLUGINS_PREINSTALL_SYNC",
+      "name": "SCENERY_GRAFANA_PLUGINS_PREINSTALL_SYNC",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1666,9 +1600,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Comma-separated Grafana plugin install list",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1676,7 +1610,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_PORT",
+      "name": "SCENERY_GRAFANA_PORT",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1688,9 +1622,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Preferred Grafana loopback port",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1698,7 +1632,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_PRESERVE_GF_ENV",
+      "name": "SCENERY_GRAFANA_PRESERVE_GF_ENV",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1710,9 +1644,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`1` allows ambient `GF_*` variables through to Grafana",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1720,7 +1654,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_PUBLIC_URL",
+      "name": "SCENERY_GRAFANA_PUBLIC_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1732,9 +1666,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides advertised Grafana browser URL",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1742,7 +1676,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_REUSE_EXTERNAL",
+      "name": "SCENERY_GRAFANA_REUSE_EXTERNAL",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1754,9 +1688,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`1` allows reusing an externally managed Grafana",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1764,7 +1698,7 @@
       ]
     },
     {
-      "name": "ONLAVA_GRAFANA_VERSION",
+      "name": "SCENERY_GRAFANA_VERSION",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1776,9 +1710,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the pinned Grafana version",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1786,7 +1720,7 @@
       ]
     },
     {
-      "name": "ONLAVA_INTEGRATION_",
+      "name": "SCENERY_INTEGRATION_",
       "match": "prefix",
       "scope": "test_only",
       "direction": "test_input",
@@ -1797,9 +1731,9 @@
         "tests",
         "docs"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Prefix reserved for integration-test-only process controls.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1807,7 +1741,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LISTEN_ADDR",
+      "name": "SCENERY_LISTEN_ADDR",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1819,9 +1753,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Runtime listen address or Unix socket path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1829,7 +1763,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LISTEN_NETWORK",
+      "name": "SCENERY_LISTEN_NETWORK",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1841,9 +1775,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Runtime listen network, usually `unix` in agent dev or `tcp` otherwise",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1851,7 +1785,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LOCAL_PROXY",
+      "name": "SCENERY_LOCAL_PROXY",
       "match": "exact",
       "scope": "runtime",
       "direction": "internal",
@@ -1863,9 +1797,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "`1` is rejected by normal onlava up; retained for legacy local proxy internals and tests",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "`1` is rejected by normal scenery up; retained for legacy local proxy internals and tests",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1873,7 +1807,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LOCAL_PROXY_HTTPS_PORT",
+      "name": "SCENERY_LOCAL_PROXY_HTTPS_PORT",
       "match": "exact",
       "scope": "runtime",
       "direction": "internal",
@@ -1885,9 +1819,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Overrides the legacy local proxy HTTPS port outside the normal onlava up path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Overrides the legacy local proxy HTTPS port outside the normal scenery up path",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1895,7 +1829,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LOCAL_PROXY_HTTP_PORT",
+      "name": "SCENERY_LOCAL_PROXY_HTTP_PORT",
       "match": "exact",
       "scope": "runtime",
       "direction": "internal",
@@ -1907,9 +1841,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Overrides the legacy local proxy HTTP port outside the normal onlava up path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Overrides the legacy local proxy HTTP port outside the normal scenery up path",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1917,7 +1851,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL",
+      "name": "SCENERY_LOCAL_PROXY_SKIP_TRUST_INSTALL",
       "match": "exact",
       "scope": "runtime",
       "direction": "internal",
@@ -1929,9 +1863,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "`1` skips local CA trust installation for the legacy local proxy outside the normal onlava up path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "`1` skips local CA trust installation for the legacy local proxy outside the normal scenery up path",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1939,7 +1873,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LOGS_BACKEND",
+      "name": "SCENERY_LOGS_BACKEND",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -1951,9 +1885,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Selects the dev-event backend for logs, attach, TUI, and console when debugging the VictoriaLogs read path.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1961,7 +1895,7 @@
       ]
     },
     {
-      "name": "ONLAVA_LOG_FORMAT",
+      "name": "SCENERY_LOG_FORMAT",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -1973,9 +1907,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Runtime log format selected by CLI flags or env",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -1983,7 +1917,7 @@
       ]
     },
     {
-      "name": "ONLAVA_MANAGED_DATABASE_NAME",
+      "name": "SCENERY_MANAGED_DATABASE_NAME",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -1995,9 +1929,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Name of the managed per-session Postgres database",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2005,7 +1939,7 @@
       ]
     },
     {
-      "name": "ONLAVA_MANAGED_DATABASE_URL",
+      "name": "SCENERY_MANAGED_DATABASE_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2017,9 +1951,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Managed per-session Postgres URL exposed for tooling/debugging",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2027,7 +1961,7 @@
       ]
     },
     {
-      "name": "ONLAVA_PARENT_MONITOR",
+      "name": "SCENERY_PARENT_MONITOR",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -2039,9 +1973,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Enables runtime parent monitoring",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2049,7 +1983,7 @@
       ]
     },
     {
-      "name": "ONLAVA_PARENT_MONITOR_PID",
+      "name": "SCENERY_PARENT_MONITOR_PID",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2061,9 +1995,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Parent PID watched by runtime parent monitoring",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2071,7 +2005,7 @@
       ]
     },
     {
-      "name": "ONLAVA_PUBLIC_APP_URL",
+      "name": "SCENERY_PUBLIC_APP_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2083,9 +2017,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Public app URL for auth and app code",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2093,7 +2027,7 @@
       ]
     },
     {
-      "name": "ONLAVA_PUBLIC_BASE_URL",
+      "name": "SCENERY_PUBLIC_BASE_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2105,9 +2039,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Public API base URL advertised to app code",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2115,7 +2049,7 @@
       ]
     },
     {
-      "name": "ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT",
+      "name": "SCENERY_RELEASE_GATE_EXTERNAL_APP_ROOT",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2127,9 +2061,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Optional external app root for release-gate smoke validation",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2137,7 +2071,7 @@
       ]
     },
     {
-      "name": "ONLAVA_RELEASE_GATE_LOG_DIR",
+      "name": "SCENERY_RELEASE_GATE_LOG_DIR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2149,9 +2083,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Release-gate log directory override",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2159,7 +2093,7 @@
       ]
     },
     {
-      "name": "ONLAVA_ONLV_SMOKE_LOG_DIR",
+      "name": "SCENERY_ONLV_SMOKE_LOG_DIR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2171,9 +2105,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Log directory override for the ONLV two-worktree release-gate smoke",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2181,7 +2115,7 @@
       ]
     },
     {
-      "name": "ONLAVA_ONLV_SMOKE_ROOT",
+      "name": "SCENERY_ONLV_SMOKE_ROOT",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2193,9 +2127,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "ONLV checkout root for the two-worktree release-gate smoke",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2203,7 +2137,7 @@
       ]
     },
     {
-      "name": "ONLAVA_ROLE",
+      "name": "SCENERY_ROLE",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2215,9 +2149,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Generated binary role: `all`, `api`, or `worker`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2225,7 +2159,7 @@
       ]
     },
     {
-      "name": "ONLAVA_RUNTIME_APP_ID",
+      "name": "SCENERY_RUNTIME_APP_ID",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2237,9 +2171,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Session-qualified runtime app ID",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2247,7 +2181,7 @@
       ]
     },
     {
-      "name": "ONLAVA_RUNTIME_ENV",
+      "name": "SCENERY_RUNTIME_ENV",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -2259,9 +2193,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Runtime environment name used by onlava internals",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Runtime environment name used by scenery internals",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2269,7 +2203,7 @@
       ]
     },
     {
-      "name": "ONLAVA_SESSION_ID",
+      "name": "SCENERY_SESSION_ID",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2281,9 +2215,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Agent session ID for local dev",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2291,7 +2225,7 @@
       ]
     },
     {
-      "name": "ONLAVA_SHADCN_OVERWRITE",
+      "name": "SCENERY_SHADCN_OVERWRITE",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2303,9 +2237,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`1` permits overwrite operations in the dashboard shadcn wrapper",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2313,7 +2247,7 @@
       ]
     },
     {
-      "name": "ONLAVA_SHADCN_REGISTRY_ROOT",
+      "name": "SCENERY_SHADCN_REGISTRY_ROOT",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2325,9 +2259,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "UI registry root override for the dashboard shadcn wrapper",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2335,7 +2269,7 @@
       ]
     },
     {
-      "name": "ONLAVA_SHADCN_VERSION",
+      "name": "SCENERY_SHADCN_VERSION",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2347,9 +2281,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "shadcn CLI version override for the dashboard wrapper",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2357,7 +2291,7 @@
       ]
     },
     {
-      "name": "ONLAVA_STANDALONE_DEV",
+      "name": "SCENERY_STANDALONE_DEV",
       "match": "exact",
       "scope": "internal",
       "direction": "internal",
@@ -2369,9 +2303,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Marks a generated runtime process started in standalone dev mode",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2379,7 +2313,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEMPORAL_BIN",
+      "name": "SCENERY_TEMPORAL_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2391,9 +2325,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Explicit Temporal CLI binary path for local dev server and deployment admin commands. Without this, onlava uses the managed toolchain artifact",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Explicit Temporal CLI binary path for local dev server and deployment admin commands. Without this, scenery uses the managed toolchain artifact",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2401,7 +2335,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEMPORAL_DEPLOYMENT_NAME",
+      "name": "SCENERY_TEMPORAL_DEPLOYMENT_NAME",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -2413,9 +2347,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Temporal Worker Deployment name override",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2423,7 +2357,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEMPORAL_HOST_RESOURCE_REPORTING",
+      "name": "SCENERY_TEMPORAL_HOST_RESOURCE_REPORTING",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2435,9 +2369,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`0` disables Temporal Go SDK host resource reporting. Enabled by default",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2445,7 +2379,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEMPORAL_TASK_QUEUE",
+      "name": "SCENERY_TEMPORAL_TASK_QUEUE",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -2457,9 +2391,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Worker task queue override; `onlava worker --task-queue` sets it",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Worker task queue override; `scenery worker --task-queue` sets it",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2467,7 +2401,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX",
+      "name": "SCENERY_TEMPORAL_TASK_QUEUE_PREFIX",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected_user_input",
@@ -2479,9 +2413,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides generated Temporal task queue prefix. Agent dev sets this to a session-scoped value",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2489,7 +2423,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEMPORAL_VERSIONING_BEHAVIOR",
+      "name": "SCENERY_TEMPORAL_VERSIONING_BEHAVIOR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2501,9 +2435,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`pinned` or `auto_upgrade`; default is `pinned`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2511,7 +2445,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEST_",
+      "name": "SCENERY_TEST_",
       "match": "prefix",
       "scope": "test_only",
       "direction": "test_input",
@@ -2522,9 +2456,9 @@
         "tests",
         "docs"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Prefix reserved for test-only process controls.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2532,7 +2466,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEST_DATABASE_URL",
+      "name": "SCENERY_TEST_DATABASE_URL",
       "match": "exact",
       "scope": "test_only",
       "direction": "test_input",
@@ -2543,9 +2477,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "PostgreSQL admin URL for integration tests that need a real database; tests create package-scoped databases from it",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2553,7 +2487,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEST_WATCH_BACKUP_POLL_MS",
+      "name": "SCENERY_TEST_WATCH_BACKUP_POLL_MS",
       "match": "exact",
       "scope": "runtime",
       "direction": "test_input",
@@ -2565,9 +2499,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Integration-test escape hatch read by the dev watcher to shorten the backup polling path when fsnotify events are missed during process-level reload tests.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2575,7 +2509,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEST_WATCH_POLL_MS",
+      "name": "SCENERY_TEST_WATCH_POLL_MS",
       "match": "exact",
       "scope": "runtime",
       "direction": "test_input",
@@ -2587,9 +2521,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Integration-test escape hatch read by the dev watcher to shorten file snapshot polling during process-level reload tests.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2597,7 +2531,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TEST_WATCH_SETTLE_DELAY_MS",
+      "name": "SCENERY_TEST_WATCH_SETTLE_DELAY_MS",
       "match": "exact",
       "scope": "runtime",
       "direction": "test_input",
@@ -2609,9 +2543,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Integration-test escape hatch read by the dev watcher to shorten file-watch debounce timing during process-level reload tests.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2619,7 +2553,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TOOLCHAIN_DIR",
+      "name": "SCENERY_TOOLCHAIN_DIR",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2631,9 +2565,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
-      "rationale": "Overrides the managed toolchain store root. Default is `.onlava/toolchain/` under the app or repo root",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "owner": "scenery runtime",
+      "rationale": "Overrides the managed toolchain store root. Default is `.scenery/toolchain/` under the app or repo root",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2641,7 +2575,7 @@
       ]
     },
     {
-      "name": "ONLAVA_TOOLCHAIN_DOWNLOAD",
+      "name": "SCENERY_TOOLCHAIN_DOWNLOAD",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2653,9 +2587,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "`0` disables automatic downloads for managed toolchain binaries",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2663,7 +2597,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_LOGS",
+      "name": "SCENERY_VICTORIA_LOGS",
       "match": "exact",
       "scope": "internal",
       "direction": "internal_prefix",
@@ -2675,9 +2609,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Prefix used by VictoriaLogs-specific env naming. Do not set this key directly",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2685,7 +2619,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_LOGS_BIN",
+      "name": "SCENERY_VICTORIA_LOGS_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2697,9 +2631,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Explicit VictoriaLogs binary path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2707,7 +2641,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_LOGS_ENDPOINT",
+      "name": "SCENERY_VICTORIA_LOGS_ENDPOINT",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2719,9 +2653,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "VictoriaLogs OTLP endpoint",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2729,7 +2663,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_LOGS_PORT",
+      "name": "SCENERY_VICTORIA_LOGS_PORT",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2741,9 +2675,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Preferred VictoriaLogs loopback port",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2751,7 +2685,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_LOGS_URL",
+      "name": "SCENERY_VICTORIA_LOGS_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2763,9 +2697,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "VictoriaLogs base URL exposed to children",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2773,7 +2707,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_LOGS_VERSION",
+      "name": "SCENERY_VICTORIA_LOGS_VERSION",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2785,9 +2719,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the pinned VictoriaLogs version",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2795,7 +2729,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_METRICS",
+      "name": "SCENERY_VICTORIA_METRICS",
       "match": "exact",
       "scope": "internal",
       "direction": "internal_prefix",
@@ -2807,9 +2741,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Prefix used by VictoriaMetrics-specific env naming. Do not set this key directly",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2817,7 +2751,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_METRICS_BIN",
+      "name": "SCENERY_VICTORIA_METRICS_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2829,9 +2763,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Explicit VictoriaMetrics binary path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2839,7 +2773,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_METRICS_ENDPOINT",
+      "name": "SCENERY_VICTORIA_METRICS_ENDPOINT",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2851,9 +2785,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "VictoriaMetrics OTLP endpoint",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2861,7 +2795,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_METRICS_PORT",
+      "name": "SCENERY_VICTORIA_METRICS_PORT",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2873,9 +2807,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Preferred VictoriaMetrics loopback port",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2883,7 +2817,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_METRICS_URL",
+      "name": "SCENERY_VICTORIA_METRICS_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2895,9 +2829,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "VictoriaMetrics base URL exposed to children",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2905,7 +2839,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_METRICS_VERSION",
+      "name": "SCENERY_VICTORIA_METRICS_VERSION",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2917,9 +2851,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the pinned VictoriaMetrics version",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2927,7 +2861,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_TRACES",
+      "name": "SCENERY_VICTORIA_TRACES",
       "match": "exact",
       "scope": "internal",
       "direction": "internal_prefix",
@@ -2939,9 +2873,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Prefix used by VictoriaTraces-specific env naming. Do not set this key directly",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2949,7 +2883,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_TRACES_BIN",
+      "name": "SCENERY_VICTORIA_TRACES_BIN",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -2961,9 +2895,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Explicit VictoriaTraces binary path",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2971,7 +2905,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_TRACES_ENDPOINT",
+      "name": "SCENERY_VICTORIA_TRACES_ENDPOINT",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -2983,9 +2917,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "VictoriaTraces OTLP endpoint",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -2993,7 +2927,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_TRACES_PORT",
+      "name": "SCENERY_VICTORIA_TRACES_PORT",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -3005,9 +2939,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Preferred VictoriaTraces loopback port",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3015,7 +2949,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_TRACES_URL",
+      "name": "SCENERY_VICTORIA_TRACES_URL",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -3027,9 +2961,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "VictoriaTraces base URL exposed to children",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3037,7 +2971,7 @@
       ]
     },
     {
-      "name": "ONLAVA_VICTORIA_TRACES_VERSION",
+      "name": "SCENERY_VICTORIA_TRACES_VERSION",
       "match": "exact",
       "scope": "runtime",
       "direction": "user_input",
@@ -3049,9 +2983,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Overrides the pinned VictoriaTraces version",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3059,7 +2993,7 @@
       ]
     },
     {
-      "name": "ONLAVA_WIRE_CONTENT_TYPE",
+      "name": "SCENERY_WIRE_CONTENT_TYPE",
       "match": "exact",
       "scope": "internal",
       "direction": "internal",
@@ -3071,9 +3005,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Generated TypeScript client constant; not a process environment variable.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3081,7 +3015,7 @@
       ]
     },
     {
-      "name": "ONLAVA_WIRE_JSON_CONTENT_TYPE",
+      "name": "SCENERY_WIRE_JSON_CONTENT_TYPE",
       "match": "exact",
       "scope": "internal",
       "direction": "internal",
@@ -3093,9 +3027,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Generated TypeScript client constant; not a process environment variable.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3103,7 +3037,7 @@
       ]
     },
     {
-      "name": "ONLAVA_WIRE_SCHEMA_HASH",
+      "name": "SCENERY_WIRE_SCHEMA_HASH",
       "match": "exact",
       "scope": "internal",
       "direction": "internal",
@@ -3115,9 +3049,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Generated TypeScript client constant; not a process environment variable.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3125,7 +3059,7 @@
       ]
     },
     {
-      "name": "ONLAVA_WORKTREE",
+      "name": "SCENERY_WORKTREE",
       "match": "exact",
       "scope": "runtime",
       "direction": "injected",
@@ -3137,9 +3071,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Worktree directory name captured for the dev session",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3159,9 +3093,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "OpenTelemetry exporter endpoint family injected for managed observability sidecars.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -3179,9 +3113,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Logs OTLP endpoint, usually VictoriaLogs",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3201,9 +3135,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Metrics OTLP endpoint, usually VictoriaMetrics",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3223,9 +3157,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Traces OTLP endpoint, usually VictoriaTraces",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3244,9 +3178,9 @@
         "code",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Host executable search path passed through process boundaries.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -3264,9 +3198,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Conventional app public URL fallback for standard auth.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3286,9 +3220,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Default Temporal address env. Apps can override the env name with `temporal.address_env`",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3308,9 +3242,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Default Temporal API key env when configured",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3330,9 +3264,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Temporal namespace",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3352,9 +3286,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Default Temporal TLS CA file env when configured",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3374,9 +3308,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Default Temporal client certificate env when configured",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3396,9 +3330,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Default Temporal client key env when configured",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3418,9 +3352,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Default Temporal TLS server name env when configured",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3439,9 +3373,9 @@
         "code",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Standard terminal type environment variable.",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": []
@@ -3459,9 +3393,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Vite-compatible frontend API route",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [
@@ -3481,9 +3415,9 @@
         "docs",
         "tests"
       ],
-      "owner": "onlava runtime",
+      "owner": "scenery runtime",
       "rationale": "Vite-compatible frontend Electric route",
-      "preferred_surface": ".onlava.json, explicit CLI flags, or onlava.toolchain.json for stable non-secret configuration",
+      "preferred_surface": ".scenery.json, explicit CLI flags, or scenery.toolchain.json for stable non-secret configuration",
       "replacement": "",
       "sunset": "",
       "docs": [

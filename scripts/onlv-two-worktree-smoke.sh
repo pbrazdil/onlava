@@ -2,9 +2,9 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ONLAVA_BIN="${ONLAVA_BIN:-onlava}"
-ONLV_ROOT="${ONLAVA_ONLV_SMOKE_ROOT:-${ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT:-/Users/petrbrazdil/Repos/onlv}}"
-LOG_DIR="${ONLAVA_ONLV_SMOKE_LOG_DIR:-$ROOT/.onlava/release-gate/onlv-smoke}"
+SCENERY_BIN="${SCENERY_BIN:-scenery}"
+ONLV_ROOT="${SCENERY_ONLV_SMOKE_ROOT:-${SCENERY_RELEASE_GATE_EXTERNAL_APP_ROOT:-/Users/petrbrazdil/Repos/onlv}}"
+LOG_DIR="${SCENERY_ONLV_SMOKE_LOG_DIR:-$ROOT/.scenery/release-gate/onlv-smoke}"
 EDGE_PUBLIC_ADDR="127.0.0.1:443"
 
 need() {
@@ -37,7 +37,7 @@ cleanup() {
   local id item
   for id in "${session_ids[@]:-}"; do
     if [[ -n "$AGENT_HOME" ]]; then
-      ONLAVA_AGENT_HOME="$AGENT_HOME" "$ONLAVA_BIN" down --session "$id" --all >/dev/null 2>&1 || true
+      SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" down --session "$id" --all >/dev/null 2>&1 || true
     fi
   done
   if [[ -n "$AGENT_PID" ]]; then
@@ -45,7 +45,7 @@ cleanup() {
     wait "$AGENT_PID" >/dev/null 2>&1 || true
   fi
   if [[ "$EDGE_STARTED" == "1" && -n "$AGENT_HOME" ]]; then
-    ONLAVA_AGENT_HOME="$AGENT_HOME" "$ONLAVA_BIN" edge uninstall --json >/dev/null 2>&1 || true
+    SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" edge uninstall --json >/dev/null 2>&1 || true
   fi
   if [[ -n "$AGENT_HOME" ]]; then
     pkill -f "$AGENT_HOME" >/dev/null 2>&1 || true
@@ -60,14 +60,14 @@ need git
 need python3
 
 [[ -d "$ONLV_ROOT/.git" ]] || { printf 'onlv smoke: ONLV root not found: %s\n' "$ONLV_ROOT" >&2; exit 1; }
-[[ -f "$ONLV_ROOT/.onlava.json" ]] || { printf 'onlv smoke: missing .onlava.json in %s\n' "$ONLV_ROOT" >&2; exit 1; }
+[[ -f "$ONLV_ROOT/.scenery.json" ]] || { printf 'onlv smoke: missing .scenery.json in %s\n' "$ONLV_ROOT" >&2; exit 1; }
 
 mkdir -p "$LOG_DIR"
 TMP="$(mktemp -d)"
 cleanup_items+=("rm -rf '$TMP'")
 AGENT_HOME="$TMP/agent"
-export ONLAVA_AGENT_HOME="$AGENT_HOME"
-export ONLAVA_LOCAL_PROXY=0
+export SCENERY_AGENT_HOME="$AGENT_HOME"
+export SCENERY_LOCAL_PROXY=0
 
 WT_A="$TMP/onlv-a"
 WT_B="$TMP/onlv-b"
@@ -87,13 +87,13 @@ text = path.read_text()
 lines = []
 replaced = False
 for line in text.splitlines():
-    if line.strip().startswith("replace github.com/pbrazdil/onlava =>"):
-        lines.append(f"replace github.com/pbrazdil/onlava => {root}")
+    if line.strip().startswith("replace scenery.sh =>"):
+        lines.append(f"replace scenery.sh => {root}")
         replaced = True
     else:
         lines.append(line)
 if not replaced:
-    lines.append(f"replace github.com/pbrazdil/onlava => {root}")
+    lines.append(f"replace scenery.sh => {root}")
 path.write_text("\n".join(lines) + "\n")
 PY
   for env_file in .env .env.local ".secrets.local.cue"; do
@@ -115,7 +115,7 @@ prepare_worktree "$WT_B"
 start_edge() {
   local out="$LOG_DIR/edge-install.json"
   local err="$LOG_DIR/edge-install.stderr"
-  if "$ONLAVA_BIN" edge install --json >"$out" 2>"$err"; then
+  if "$SCENERY_BIN" edge install --json >"$out" 2>"$err"; then
     EDGE_STARTED=1
     return 0
   fi
@@ -137,7 +137,7 @@ start_session() {
   local wt="$1"
   local name="$2"
   local out="$LOG_DIR/$name-detach.json"
-  ONLAVA_AGENT_HOME="$AGENT_HOME" "$ONLAVA_BIN" dev --app-root "$wt" --new-session --detach --json >"$out"
+  SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" dev --app-root "$wt" --new-session --detach --json >"$out"
   json_get "$out" "session.session_id"
 }
 
@@ -150,7 +150,7 @@ STATUS="$LOG_DIR/status.json"
 wait_for_sessions_ready() {
   local deadline=$((SECONDS + 180))
   while (( SECONDS < deadline )); do
-    ONLAVA_AGENT_HOME="$AGENT_HOME" "$ONLAVA_BIN" status --json >"$STATUS"
+    SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" status --json >"$STATUS"
     if python3 - "$STATUS" "$SESSION_A" "$SESSION_B" <<'PY'
 import json
 import sys
@@ -173,7 +173,7 @@ PY
     sleep 1
   done
   printf 'timed out waiting for ONLV sessions to register all routes\n' >&2
-  ONLAVA_AGENT_HOME="$AGENT_HOME" "$ONLAVA_BIN" status --json >&2 || true
+  SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" status --json >&2 || true
   return 1
 }
 
@@ -221,8 +221,8 @@ for session in (a, b):
         url = routes.get(route, "")
         if not url:
             fail(f"{sid} missing route {route}: {routes}")
-        if ".onlava.localhost" in url:
-            fail(f"{sid} route {route} uses onlava.localhost: {url}")
+        if ".scenery.localhost" in url:
+            fail(f"{sid} route {route} uses scenery.localhost: {url}")
         if ":9440" in url:
             fail(f"{sid} route {route} kept fallback router port under HTTPS 443: {url}")
         if edge_on_443 and re.search(r":\d+/", url):
@@ -286,15 +286,15 @@ for sid in (session_a, session_b):
     api_env = env_for_pid((processes.get("api") or {}).get("pid"))
     worker_env = env_for_pid((processes.get("worker-typescript") or {}).get("pid"))
     electric_env = env_for_pid((processes.get("electric") or {}).get("pid"))
-    db_name = value(api_env, "ONLAVA_MANAGED_DATABASE_NAME")
-    queue = value(worker_env, "ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX") or value(api_env, "ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX")
+    db_name = value(api_env, "SCENERY_MANAGED_DATABASE_NAME")
+    queue = value(worker_env, "SCENERY_TEMPORAL_TASK_QUEUE_PREFIX") or value(api_env, "SCENERY_TEMPORAL_TASK_QUEUE_PREFIX")
     stream = value(electric_env, "ELECTRIC_REPLICATION_STREAM_ID")
     if not db_name:
-        raise SystemExit(f"{sid} missing ONLAVA_MANAGED_DATABASE_NAME in API process environment")
+        raise SystemExit(f"{sid} missing SCENERY_MANAGED_DATABASE_NAME in API process environment")
     if not queue:
-        raise SystemExit(f"{sid} missing ONLAVA_TEMPORAL_TASK_QUEUE_PREFIX in worker/API process environment")
+        raise SystemExit(f"{sid} missing SCENERY_TEMPORAL_TASK_QUEUE_PREFIX in worker/API process environment")
     if not stream:
-        expected = "onlava_" + re.sub(r"[^A-Za-z0-9_]", "_", sid)
+        expected = "scenery_" + re.sub(r"[^A-Za-z0-9_]", "_", sid)
         if expected not in electric_env:
             raise SystemExit(f"{sid} missing ELECTRIC_REPLICATION_STREAM_ID in Electric process command/environment")
         stream = expected

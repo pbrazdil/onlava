@@ -31,7 +31,7 @@ object
 
 ## Decision Log
 
-- Stored view columns in `onlava_data.view_fields` as metadata-resolved field names, including relation paths, rather than field IDs only.
+- Stored view columns in `scenery_data.view_fields` as metadata-resolved field names, including relation paths, rather than field IDs only.
 - Kept the first public API name-based per object: `CreateView`, `UpdateView`, `ListViews`, `DeleteView`, and `QueryView`.
 - Reserved `kanban` and `calendar` view types in metadata, but the first UI treats saved views as table query shapes.
 
@@ -50,7 +50,7 @@ internal/objectstore/*
 internal/datainspect/*
 data/data.go
 ui/src/features/data-explorer/*
-docs/schemas/onlava.inspect.data.v1.schema.json
+docs/schemas/scenery.inspect.data.v1.schema.json
 ```
 
 ## Scope
@@ -84,8 +84,8 @@ owner_id
 Add:
 
 ```text
-onlava_data.views
-onlava_data.view_fields
+scenery_data.views
+scenery_data.view_fields
 ```
 
 ### Milestone 2: API
@@ -110,7 +110,7 @@ View filters must be validated using same query compiler rules.
 
 ## Interfaces and Dependencies
 
-- Public saved-view APIs belong in `github.com/pbrazdil/onlava/data`.
+- Public saved-view APIs belong in `scenery.sh/data`.
 - Query execution should reuse the existing query compiler.
 - Dashboard integration should be optional and should not block API tests.
 - Saved view metadata must not require a CRM-specific role model.
@@ -131,11 +131,11 @@ Add saved view metadata and APIs first, prove query-by-view in Go tests, then wi
 ## Validation and Acceptance
 
 ```sh
-ONLAVA_TEST_DATABASE_URL=... go test ./internal/objectstore
+SCENERY_TEST_DATABASE_URL=... go test ./internal/objectstore
 cd ui && bun run typecheck && bun run test && bun run build
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

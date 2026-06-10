@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The `github.com/pbrazdil/onlava/data` package is currently beta. This plan hardens its public contract so apps and agents can depend on it safely.
+The `scenery.sh/data` package is currently beta. This plan hardens its public contract so apps and agents can depend on it safely.
 
 The goal:
 
@@ -40,7 +40,7 @@ stable-ish v0 surface
 
 ## Decision Log
 
-- Kept `github.com/pbrazdil/onlava/data` classified as beta, not stable, because relationships and saved views are still actively evolving.
+- Kept `scenery.sh/data` classified as beta, not stable, because relationships and saved views are still actively evolving.
 - Added public `data.CodeOf(err)` and `*data.Error` for coarse error classification instead of a larger typed error hierarchy.
 - Added a compile-only example package under `examples/data-platform` rather than a runnable sample requiring PostgreSQL credentials.
 
@@ -125,9 +125,9 @@ Snapshot public API examples and expected JSON behavior.
 
 ## Interfaces and Dependencies
 
-- Stable or beta public API lives only under `github.com/pbrazdil/onlava/data`.
+- Stable or beta public API lives only under `scenery.sh/data`.
 - Internal objectstore implementation details must remain internal.
-- Error types should compose with existing onlava error conventions where possible.
+- Error types should compose with existing scenery error conventions where possible.
 - Examples must compile without private package imports.
 
 ## Plan of Work
@@ -148,8 +148,8 @@ Audit public types first, remove accidental internal leaks, then add typed error
 ```sh
 go test ./data ./internal/objectstore
 go test ./...
-go install ./cmd/onlava
-onlava harness self --json --write
+go install ./cmd/scenery
+scenery harness self --json --write
 ```
 
 Acceptance criteria:

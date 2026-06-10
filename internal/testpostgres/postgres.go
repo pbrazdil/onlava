@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
-const EnvDatabaseURL = "ONLAVA_TEST_DATABASE_URL"
+const EnvDatabaseURL = "SCENERY_TEST_DATABASE_URL"
 
 type Database struct {
 	URL      string
@@ -99,7 +99,7 @@ func startDockerPostgres(ctx context.Context) (string, error) {
 		Scheme: "postgres",
 		User:   url.UserPassword("postgres", "postgres"),
 		Host:   net.JoinHostPort(host, port),
-		Path:   "/onlava_test",
+		Path:   "/scenery_test",
 	}).String() + "?sslmode=disable"
 	if err := waitForPostgres(ctx, adminURL); err != nil {
 		return "", err
@@ -122,7 +122,7 @@ func runDockerPostgres(ctx context.Context, name string) error {
 	output, err := runCommand(ctx,
 		"docker", "run", "-d",
 		"--name", name,
-		"-e", "POSTGRES_DB=onlava_test",
+		"-e", "POSTGRES_DB=scenery_test",
 		"-e", "POSTGRES_USER=postgres",
 		"-e", "POSTGRES_PASSWORD=postgres",
 		"-p", "127.0.0.1::5432",
@@ -196,7 +196,7 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 
 func reusablePostgresContainerName() string {
 	sum := sha256.Sum256([]byte(repoRootForContainerName()))
-	return "onlava-test-postgres-" + hex.EncodeToString(sum[:6])
+	return "scenery-test-postgres-" + hex.EncodeToString(sum[:6])
 }
 
 func reusablePostgresCacheDir() (string, error) {
@@ -204,7 +204,7 @@ func reusablePostgresCacheDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(cacheRoot, "onlava", "test-postgres"), nil
+	return filepath.Join(cacheRoot, "scenery", "test-postgres"), nil
 }
 
 func reusablePostgresURLCachePath() string {
@@ -258,7 +258,7 @@ func repoRootForContainerName() string {
 	}
 	for {
 		data, err := os.ReadFile(filepath.Join(wd, "go.mod"))
-		if err == nil && strings.Contains(string(data), "module github.com/pbrazdil/onlava") {
+		if err == nil && strings.Contains(string(data), "module scenery.sh") {
 			return wd
 		}
 		parent := filepath.Dir(wd)
@@ -350,7 +350,7 @@ func packageDatabaseName() string {
 		rel = wd
 	}
 	sum := sha256.Sum256([]byte(rel))
-	return "onlava_test_" + hex.EncodeToString(sum[:6])
+	return "scenery_test_" + hex.EncodeToString(sum[:6])
 }
 
 func quoteIdent(value string) string {

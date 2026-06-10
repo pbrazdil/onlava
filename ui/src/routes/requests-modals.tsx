@@ -151,11 +151,11 @@ export function EndpointSelector({
   }, [endpoints, query]);
 
   return (
-    <div className="w-full" data-endpoint-selector="" data-onlava-ui="APIExplorerEndpointSelector">
+    <div className="w-full" data-endpoint-selector="" data-scenery-ui="APIExplorerEndpointSelector">
       <Button
         tone="secondary"
         size="lg"
-        data-onlava-ui="APIExplorerEndpointSelectorButton"
+        data-scenery-ui="APIExplorerEndpointSelectorButton"
         className="w-full justify-between px-3 text-left"
         disabled={endpoints.length === 0}
         onClick={() => (open ? onClose() : onOpen())}
@@ -168,7 +168,7 @@ export function EndpointSelector({
       </Button>
       {open ? (
         <div
-          data-onlava-ui="APIExplorerEndpointSelectorMenu"
+          data-scenery-ui="APIExplorerEndpointSelectorMenu"
           className="mt-2 w-full overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg"
         >
           <input
@@ -182,7 +182,7 @@ export function EndpointSelector({
             {filtered.length === 0 ? (
               <div className="px-4 py-6 text-sm text-muted-foreground">No endpoint found.</div>
             ) : (
-              <div data-onlava-ui="APIExplorerEndpointSelectorOptions">
+              <div data-scenery-ui="APIExplorerEndpointSelectorOptions">
                 {filtered.map((endpoint) => {
                   const selected = endpoint.key === currentKey;
                   return (
@@ -223,7 +223,7 @@ export function EndpointSelector({
             Define an endpoint to view it in the API Explorer.{" "}
             <a
               className="underline"
-              href="https://onlava.com/docs/ts/primitives/defining-apis"
+              href="https://scenery.sh/docs/ts/primitives/defining-apis"
               rel="noreferrer"
               target="_blank"
             >

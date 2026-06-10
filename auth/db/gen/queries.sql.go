@@ -12,7 +12,7 @@ import (
 )
 
 const consumeOAuthState = `-- name: ConsumeOAuthState :one
-UPDATE onlava_auth.oauth_states
+UPDATE scenery_auth.oauth_states
 SET consumed_at = now()
 WHERE state_hash = $1
   AND consumed_at IS NULL
@@ -20,9 +20,9 @@ WHERE state_hash = $1
 RETURNING id, state_hash, pkce_verifier, nonce_hash, redirect_path, expires_at, consumed_at, created_at
 `
 
-func (q *Queries) ConsumeOAuthState(ctx context.Context, stateHash string) (OnlavaAuthOauthState, error) {
+func (q *Queries) ConsumeOAuthState(ctx context.Context, stateHash string) (SceneryAuthOauthState, error) {
 	row := q.db.QueryRow(ctx, consumeOAuthState, stateHash)
-	var i OnlavaAuthOauthState
+	var i SceneryAuthOauthState
 	err := row.Scan(
 		&i.ID,
 		&i.StateHash,
@@ -37,7 +37,7 @@ func (q *Queries) ConsumeOAuthState(ctx context.Context, stateHash string) (Onla
 }
 
 const consumeOneTimeToken = `-- name: ConsumeOneTimeToken :one
-UPDATE onlava_auth.one_time_tokens
+UPDATE scenery_auth.one_time_tokens
 SET consumed_at = now()
 WHERE token_hash = $1
   AND purpose = $2
@@ -51,9 +51,9 @@ type ConsumeOneTimeTokenParams struct {
 	Purpose   string `json:"purpose"`
 }
 
-func (q *Queries) ConsumeOneTimeToken(ctx context.Context, arg ConsumeOneTimeTokenParams) (OnlavaAuthOneTimeToken, error) {
+func (q *Queries) ConsumeOneTimeToken(ctx context.Context, arg ConsumeOneTimeTokenParams) (SceneryAuthOneTimeToken, error) {
 	row := q.db.QueryRow(ctx, consumeOneTimeToken, arg.TokenHash, arg.Purpose)
-	var i OnlavaAuthOneTimeToken
+	var i SceneryAuthOneTimeToken
 	err := row.Scan(
 		&i.ID,
 		&i.Purpose,
@@ -72,7 +72,7 @@ func (q *Queries) ConsumeOneTimeToken(ctx context.Context, arg ConsumeOneTimeTok
 
 const countActiveOwners = `-- name: CountActiveOwners :one
 SELECT count(*)::int
-FROM onlava_auth.organization_memberships
+FROM scenery_auth.organization_memberships
 WHERE tenant_id = $1
   AND role = 'owner'
   AND disabled_at IS NULL
@@ -86,7 +86,7 @@ func (q *Queries) CountActiveOwners(ctx context.Context, tenantID pgtype.UUID) (
 }
 
 const createAuthEvent = `-- name: CreateAuthEvent :exec
-INSERT INTO onlava_auth.auth_events (
+INSERT INTO scenery_auth.auth_events (
   id,
   event_type,
   user_id,
@@ -128,7 +128,7 @@ func (q *Queries) CreateAuthEvent(ctx context.Context, arg CreateAuthEventParams
 }
 
 const createAuthIdentity = `-- name: CreateAuthIdentity :one
-INSERT INTO onlava_auth.auth_identities (
+INSERT INTO scenery_auth.auth_identities (
   id,
   user_id,
   provider,
@@ -151,7 +151,7 @@ type CreateAuthIdentityParams struct {
 	PasswordHash    string      `json:"password_hash"`
 }
 
-func (q *Queries) CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentityParams) (OnlavaAuthAuthIdentity, error) {
+func (q *Queries) CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentityParams) (SceneryAuthAuthIdentity, error) {
 	row := q.db.QueryRow(ctx, createAuthIdentity,
 		arg.ID,
 		arg.UserID,
@@ -161,7 +161,7 @@ func (q *Queries) CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentity
 		arg.NormalizedEmail,
 		arg.PasswordHash,
 	)
-	var i OnlavaAuthAuthIdentity
+	var i SceneryAuthAuthIdentity
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -177,7 +177,7 @@ func (q *Queries) CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentity
 }
 
 const createOAuthState = `-- name: CreateOAuthState :one
-INSERT INTO onlava_auth.oauth_states (
+INSERT INTO scenery_auth.oauth_states (
   id,
   state_hash,
   pkce_verifier,
@@ -198,7 +198,7 @@ type CreateOAuthStateParams struct {
 	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
 }
 
-func (q *Queries) CreateOAuthState(ctx context.Context, arg CreateOAuthStateParams) (OnlavaAuthOauthState, error) {
+func (q *Queries) CreateOAuthState(ctx context.Context, arg CreateOAuthStateParams) (SceneryAuthOauthState, error) {
 	row := q.db.QueryRow(ctx, createOAuthState,
 		arg.ID,
 		arg.StateHash,
@@ -207,7 +207,7 @@ func (q *Queries) CreateOAuthState(ctx context.Context, arg CreateOAuthStatePara
 		arg.RedirectPath,
 		arg.ExpiresAt,
 	)
-	var i OnlavaAuthOauthState
+	var i SceneryAuthOauthState
 	err := row.Scan(
 		&i.ID,
 		&i.StateHash,
@@ -222,7 +222,7 @@ func (q *Queries) CreateOAuthState(ctx context.Context, arg CreateOAuthStatePara
 }
 
 const createOneTimeToken = `-- name: CreateOneTimeToken :one
-INSERT INTO onlava_auth.one_time_tokens (
+INSERT INTO scenery_auth.one_time_tokens (
   id,
   purpose,
   token_hash,
@@ -249,7 +249,7 @@ type CreateOneTimeTokenParams struct {
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 }
 
-func (q *Queries) CreateOneTimeToken(ctx context.Context, arg CreateOneTimeTokenParams) (OnlavaAuthOneTimeToken, error) {
+func (q *Queries) CreateOneTimeToken(ctx context.Context, arg CreateOneTimeTokenParams) (SceneryAuthOneTimeToken, error) {
 	row := q.db.QueryRow(ctx, createOneTimeToken,
 		arg.ID,
 		arg.Purpose,
@@ -261,7 +261,7 @@ func (q *Queries) CreateOneTimeToken(ctx context.Context, arg CreateOneTimeToken
 		arg.Metadata,
 		arg.ExpiresAt,
 	)
-	var i OnlavaAuthOneTimeToken
+	var i SceneryAuthOneTimeToken
 	err := row.Scan(
 		&i.ID,
 		&i.Purpose,
@@ -279,7 +279,7 @@ func (q *Queries) CreateOneTimeToken(ctx context.Context, arg CreateOneTimeToken
 }
 
 const createOrganizationMembership = `-- name: CreateOrganizationMembership :one
-INSERT INTO onlava_auth.organization_memberships (
+INSERT INTO scenery_auth.organization_memberships (
   id,
   tenant_id,
   user_id,
@@ -303,7 +303,7 @@ type CreateOrganizationMembershipParams struct {
 	InvitedAt       pgtype.Timestamptz `json:"invited_at"`
 }
 
-func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOrganizationMembershipParams) (OnlavaAuthOrganizationMembership, error) {
+func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOrganizationMembershipParams) (SceneryAuthOrganizationMembership, error) {
 	row := q.db.QueryRow(ctx, createOrganizationMembership,
 		arg.ID,
 		arg.TenantID,
@@ -312,7 +312,7 @@ func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOr
 		arg.InvitedByUserID,
 		arg.InvitedAt,
 	)
-	var i OnlavaAuthOrganizationMembership
+	var i SceneryAuthOrganizationMembership
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -328,7 +328,7 @@ func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOr
 }
 
 const createRefreshSession = `-- name: CreateRefreshSession :one
-INSERT INTO onlava_auth.refresh_sessions (
+INSERT INTO scenery_auth.refresh_sessions (
   id,
   user_id,
   token_hash,
@@ -357,7 +357,7 @@ type CreateRefreshSessionParams struct {
 	ImpersonationReason string             `json:"impersonation_reason"`
 }
 
-func (q *Queries) CreateRefreshSession(ctx context.Context, arg CreateRefreshSessionParams) (OnlavaAuthRefreshSession, error) {
+func (q *Queries) CreateRefreshSession(ctx context.Context, arg CreateRefreshSessionParams) (SceneryAuthRefreshSession, error) {
 	row := q.db.QueryRow(ctx, createRefreshSession,
 		arg.ID,
 		arg.UserID,
@@ -370,7 +370,7 @@ func (q *Queries) CreateRefreshSession(ctx context.Context, arg CreateRefreshSes
 		arg.ImpersonationID,
 		arg.ImpersonationReason,
 	)
-	var i OnlavaAuthRefreshSession
+	var i SceneryAuthRefreshSession
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -394,7 +394,7 @@ func (q *Queries) CreateRefreshSession(ctx context.Context, arg CreateRefreshSes
 }
 
 const createTenant = `-- name: CreateTenant :one
-INSERT INTO onlava_auth.tenants (id, name)
+INSERT INTO scenery_auth.tenants (id, name)
 VALUES ($1, $2)
 RETURNING id, name, deleted_at, created_at, updated_at
 `
@@ -404,9 +404,9 @@ type CreateTenantParams struct {
 	Name string      `json:"name"`
 }
 
-func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (OnlavaAuthTenant, error) {
+func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (SceneryAuthTenant, error) {
 	row := q.db.QueryRow(ctx, createTenant, arg.ID, arg.Name)
-	var i OnlavaAuthTenant
+	var i SceneryAuthTenant
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -418,7 +418,7 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Onl
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO onlava_auth.users (
+INSERT INTO scenery_auth.users (
   id,
   display_name,
   avatar_url,
@@ -439,7 +439,7 @@ type CreateUserParams struct {
 	EmailVerifiedAt        pgtype.Timestamptz `json:"email_verified_at"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (OnlavaAuthUser, error) {
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (SceneryAuthUser, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.ID,
 		arg.DisplayName,
@@ -448,7 +448,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (OnlavaA
 		arg.NormalizedPrimaryEmail,
 		arg.EmailVerifiedAt,
 	)
-	var i OnlavaAuthUser
+	var i SceneryAuthUser
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
@@ -465,7 +465,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (OnlavaA
 }
 
 const disableMembership = `-- name: DisableMembership :one
-UPDATE onlava_auth.organization_memberships
+UPDATE scenery_auth.organization_memberships
 SET disabled_at = COALESCE(disabled_at, now()),
     updated_at = now()
 WHERE tenant_id = $1
@@ -478,9 +478,9 @@ type DisableMembershipParams struct {
 	UserID   pgtype.UUID `json:"user_id"`
 }
 
-func (q *Queries) DisableMembership(ctx context.Context, arg DisableMembershipParams) (OnlavaAuthOrganizationMembership, error) {
+func (q *Queries) DisableMembership(ctx context.Context, arg DisableMembershipParams) (SceneryAuthOrganizationMembership, error) {
 	row := q.db.QueryRow(ctx, disableMembership, arg.TenantID, arg.UserID)
-	var i OnlavaAuthOrganizationMembership
+	var i SceneryAuthOrganizationMembership
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -497,7 +497,7 @@ func (q *Queries) DisableMembership(ctx context.Context, arg DisableMembershipPa
 
 const getActiveMembership = `-- name: GetActiveMembership :one
 SELECT id, tenant_id, user_id, role, disabled_at, invited_by_user_id, invited_at, created_at, updated_at
-FROM onlava_auth.organization_memberships
+FROM scenery_auth.organization_memberships
 WHERE user_id = $1
   AND tenant_id = $2
   AND disabled_at IS NULL
@@ -508,9 +508,9 @@ type GetActiveMembershipParams struct {
 	TenantID pgtype.UUID `json:"tenant_id"`
 }
 
-func (q *Queries) GetActiveMembership(ctx context.Context, arg GetActiveMembershipParams) (OnlavaAuthOrganizationMembership, error) {
+func (q *Queries) GetActiveMembership(ctx context.Context, arg GetActiveMembershipParams) (SceneryAuthOrganizationMembership, error) {
 	row := q.db.QueryRow(ctx, getActiveMembership, arg.UserID, arg.TenantID)
-	var i OnlavaAuthOrganizationMembership
+	var i SceneryAuthOrganizationMembership
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -527,7 +527,7 @@ func (q *Queries) GetActiveMembership(ctx context.Context, arg GetActiveMembersh
 
 const getAuthIdentityByProviderSubject = `-- name: GetAuthIdentityByProviderSubject :one
 SELECT id, user_id, provider, provider_subject, email, normalized_email, password_hash, created_at, updated_at
-FROM onlava_auth.auth_identities
+FROM scenery_auth.auth_identities
 WHERE provider = $1
   AND provider_subject = $2
 `
@@ -537,9 +537,9 @@ type GetAuthIdentityByProviderSubjectParams struct {
 	ProviderSubject string `json:"provider_subject"`
 }
 
-func (q *Queries) GetAuthIdentityByProviderSubject(ctx context.Context, arg GetAuthIdentityByProviderSubjectParams) (OnlavaAuthAuthIdentity, error) {
+func (q *Queries) GetAuthIdentityByProviderSubject(ctx context.Context, arg GetAuthIdentityByProviderSubjectParams) (SceneryAuthAuthIdentity, error) {
 	row := q.db.QueryRow(ctx, getAuthIdentityByProviderSubject, arg.Provider, arg.ProviderSubject)
-	var i OnlavaAuthAuthIdentity
+	var i SceneryAuthAuthIdentity
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -556,14 +556,14 @@ func (q *Queries) GetAuthIdentityByProviderSubject(ctx context.Context, arg GetA
 
 const getEmailIdentityForLogin = `-- name: GetEmailIdentityForLogin :one
 SELECT id, user_id, provider, provider_subject, email, normalized_email, password_hash, created_at, updated_at
-FROM onlava_auth.auth_identities
+FROM scenery_auth.auth_identities
 WHERE provider = 'email'
   AND provider_subject = $1
 `
 
-func (q *Queries) GetEmailIdentityForLogin(ctx context.Context, providerSubject string) (OnlavaAuthAuthIdentity, error) {
+func (q *Queries) GetEmailIdentityForLogin(ctx context.Context, providerSubject string) (SceneryAuthAuthIdentity, error) {
 	row := q.db.QueryRow(ctx, getEmailIdentityForLogin, providerSubject)
-	var i OnlavaAuthAuthIdentity
+	var i SceneryAuthAuthIdentity
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -580,13 +580,13 @@ func (q *Queries) GetEmailIdentityForLogin(ctx context.Context, providerSubject 
 
 const getRefreshSessionByID = `-- name: GetRefreshSessionByID :one
 SELECT id, user_id, token_hash, previous_token_hash, previous_token_expires_at, active_tenant_id, expires_at, rotated_at, revoked_at, revoked_reason, user_agent, ip_hash, actor_user_id, impersonation_id, impersonation_reason, created_at, updated_at
-FROM onlava_auth.refresh_sessions
+FROM scenery_auth.refresh_sessions
 WHERE id = $1
 `
 
-func (q *Queries) GetRefreshSessionByID(ctx context.Context, id pgtype.UUID) (OnlavaAuthRefreshSession, error) {
+func (q *Queries) GetRefreshSessionByID(ctx context.Context, id pgtype.UUID) (SceneryAuthRefreshSession, error) {
 	row := q.db.QueryRow(ctx, getRefreshSessionByID, id)
-	var i OnlavaAuthRefreshSession
+	var i SceneryAuthRefreshSession
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -611,13 +611,13 @@ func (q *Queries) GetRefreshSessionByID(ctx context.Context, id pgtype.UUID) (On
 
 const getTenantByID = `-- name: GetTenantByID :one
 SELECT id, name, deleted_at, created_at, updated_at
-FROM onlava_auth.tenants
+FROM scenery_auth.tenants
 WHERE id = $1
 `
 
-func (q *Queries) GetTenantByID(ctx context.Context, id pgtype.UUID) (OnlavaAuthTenant, error) {
+func (q *Queries) GetTenantByID(ctx context.Context, id pgtype.UUID) (SceneryAuthTenant, error) {
 	row := q.db.QueryRow(ctx, getTenantByID, id)
-	var i OnlavaAuthTenant
+	var i SceneryAuthTenant
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -630,13 +630,13 @@ func (q *Queries) GetTenantByID(ctx context.Context, id pgtype.UUID) (OnlavaAuth
 
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, display_name, avatar_url, primary_email, normalized_primary_email, email_verified_at, disabled_at, can_impersonate_users, created_at, updated_at
-FROM onlava_auth.users
+FROM scenery_auth.users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (OnlavaAuthUser, error) {
+func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (SceneryAuthUser, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
-	var i OnlavaAuthUser
+	var i SceneryAuthUser
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
@@ -654,13 +654,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (OnlavaAuthUs
 
 const getUserByNormalizedEmail = `-- name: GetUserByNormalizedEmail :one
 SELECT id, display_name, avatar_url, primary_email, normalized_primary_email, email_verified_at, disabled_at, can_impersonate_users, created_at, updated_at
-FROM onlava_auth.users
+FROM scenery_auth.users
 WHERE normalized_primary_email = $1
 `
 
-func (q *Queries) GetUserByNormalizedEmail(ctx context.Context, normalizedPrimaryEmail string) (OnlavaAuthUser, error) {
+func (q *Queries) GetUserByNormalizedEmail(ctx context.Context, normalizedPrimaryEmail string) (SceneryAuthUser, error) {
 	row := q.db.QueryRow(ctx, getUserByNormalizedEmail, normalizedPrimaryEmail)
-	var i OnlavaAuthUser
+	var i SceneryAuthUser
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
@@ -691,8 +691,8 @@ SELECT
   u.primary_email,
   u.avatar_url,
   u.disabled_at AS user_disabled_at
-FROM onlava_auth.organization_memberships AS m
-JOIN onlava_auth.users AS u ON u.id = m.user_id
+FROM scenery_auth.organization_memberships AS m
+JOIN scenery_auth.users AS u ON u.id = m.user_id
 WHERE m.tenant_id = $1
 ORDER BY lower(u.display_name), lower(u.primary_email), m.created_at
 `
@@ -760,8 +760,8 @@ SELECT
   m.updated_at,
   t.name AS tenant_name,
   t.deleted_at AS tenant_deleted_at
-FROM onlava_auth.organization_memberships AS m
-JOIN onlava_auth.tenants AS t ON t.id = m.tenant_id
+FROM scenery_auth.organization_memberships AS m
+JOIN scenery_auth.tenants AS t ON t.id = m.tenant_id
 WHERE m.user_id = $1
   AND m.disabled_at IS NULL
   AND t.deleted_at IS NULL
@@ -815,16 +815,16 @@ func (q *Queries) ListUserMemberships(ctx context.Context, userID pgtype.UUID) (
 }
 
 const markUserEmailVerified = `-- name: MarkUserEmailVerified :one
-UPDATE onlava_auth.users
+UPDATE scenery_auth.users
 SET email_verified_at = COALESCE(email_verified_at, now()),
     updated_at = now()
 WHERE id = $1
 RETURNING id, display_name, avatar_url, primary_email, normalized_primary_email, email_verified_at, disabled_at, can_impersonate_users, created_at, updated_at
 `
 
-func (q *Queries) MarkUserEmailVerified(ctx context.Context, id pgtype.UUID) (OnlavaAuthUser, error) {
+func (q *Queries) MarkUserEmailVerified(ctx context.Context, id pgtype.UUID) (SceneryAuthUser, error) {
 	row := q.db.QueryRow(ctx, markUserEmailVerified, id)
-	var i OnlavaAuthUser
+	var i SceneryAuthUser
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
@@ -841,7 +841,7 @@ func (q *Queries) MarkUserEmailVerified(ctx context.Context, id pgtype.UUID) (On
 }
 
 const revokeRefreshSession = `-- name: RevokeRefreshSession :exec
-UPDATE onlava_auth.refresh_sessions
+UPDATE scenery_auth.refresh_sessions
 SET revoked_at = COALESCE(revoked_at, now()),
     revoked_reason = $2,
     updated_at = now()
@@ -859,7 +859,7 @@ func (q *Queries) RevokeRefreshSession(ctx context.Context, arg RevokeRefreshSes
 }
 
 const revokeUserRefreshSessions = `-- name: RevokeUserRefreshSessions :exec
-UPDATE onlava_auth.refresh_sessions
+UPDATE scenery_auth.refresh_sessions
 SET revoked_at = COALESCE(revoked_at, now()),
     revoked_reason = $2,
     updated_at = now()
@@ -878,7 +878,7 @@ func (q *Queries) RevokeUserRefreshSessions(ctx context.Context, arg RevokeUserR
 }
 
 const rotateRefreshSession = `-- name: RotateRefreshSession :one
-UPDATE onlava_auth.refresh_sessions
+UPDATE scenery_auth.refresh_sessions
 SET previous_token_hash = token_hash,
     previous_token_expires_at = now() + ($3::bigint * interval '1 millisecond'),
     token_hash = $2,
@@ -894,9 +894,9 @@ type RotateRefreshSessionParams struct {
 	Column3   int64       `json:"column_3"`
 }
 
-func (q *Queries) RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (OnlavaAuthRefreshSession, error) {
+func (q *Queries) RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (SceneryAuthRefreshSession, error) {
 	row := q.db.QueryRow(ctx, rotateRefreshSession, arg.ID, arg.TokenHash, arg.Column3)
-	var i OnlavaAuthRefreshSession
+	var i SceneryAuthRefreshSession
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -920,7 +920,7 @@ func (q *Queries) RotateRefreshSession(ctx context.Context, arg RotateRefreshSes
 }
 
 const setRefreshSessionTenant = `-- name: SetRefreshSessionTenant :one
-UPDATE onlava_auth.refresh_sessions
+UPDATE scenery_auth.refresh_sessions
 SET active_tenant_id = $2,
     updated_at = now()
 WHERE id = $1
@@ -933,9 +933,9 @@ type SetRefreshSessionTenantParams struct {
 	ActiveTenantID pgtype.UUID `json:"active_tenant_id"`
 }
 
-func (q *Queries) SetRefreshSessionTenant(ctx context.Context, arg SetRefreshSessionTenantParams) (OnlavaAuthRefreshSession, error) {
+func (q *Queries) SetRefreshSessionTenant(ctx context.Context, arg SetRefreshSessionTenantParams) (SceneryAuthRefreshSession, error) {
 	row := q.db.QueryRow(ctx, setRefreshSessionTenant, arg.ID, arg.ActiveTenantID)
-	var i OnlavaAuthRefreshSession
+	var i SceneryAuthRefreshSession
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -959,16 +959,16 @@ func (q *Queries) SetRefreshSessionTenant(ctx context.Context, arg SetRefreshSes
 }
 
 const softDeleteTenant = `-- name: SoftDeleteTenant :one
-UPDATE onlava_auth.tenants
+UPDATE scenery_auth.tenants
 SET deleted_at = COALESCE(deleted_at, now()),
     updated_at = now()
 WHERE id = $1
 RETURNING id, name, deleted_at, created_at, updated_at
 `
 
-func (q *Queries) SoftDeleteTenant(ctx context.Context, id pgtype.UUID) (OnlavaAuthTenant, error) {
+func (q *Queries) SoftDeleteTenant(ctx context.Context, id pgtype.UUID) (SceneryAuthTenant, error) {
 	row := q.db.QueryRow(ctx, softDeleteTenant, id)
-	var i OnlavaAuthTenant
+	var i SceneryAuthTenant
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -980,7 +980,7 @@ func (q *Queries) SoftDeleteTenant(ctx context.Context, id pgtype.UUID) (OnlavaA
 }
 
 const updateIdentityPasswordHash = `-- name: UpdateIdentityPasswordHash :one
-UPDATE onlava_auth.auth_identities
+UPDATE scenery_auth.auth_identities
 SET password_hash = $2,
     updated_at = now()
 WHERE id = $1
@@ -992,9 +992,9 @@ type UpdateIdentityPasswordHashParams struct {
 	PasswordHash string      `json:"password_hash"`
 }
 
-func (q *Queries) UpdateIdentityPasswordHash(ctx context.Context, arg UpdateIdentityPasswordHashParams) (OnlavaAuthAuthIdentity, error) {
+func (q *Queries) UpdateIdentityPasswordHash(ctx context.Context, arg UpdateIdentityPasswordHashParams) (SceneryAuthAuthIdentity, error) {
 	row := q.db.QueryRow(ctx, updateIdentityPasswordHash, arg.ID, arg.PasswordHash)
-	var i OnlavaAuthAuthIdentity
+	var i SceneryAuthAuthIdentity
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -1010,7 +1010,7 @@ func (q *Queries) UpdateIdentityPasswordHash(ctx context.Context, arg UpdateIden
 }
 
 const updateMembershipRole = `-- name: UpdateMembershipRole :one
-UPDATE onlava_auth.organization_memberships
+UPDATE scenery_auth.organization_memberships
 SET role = $3,
     updated_at = now()
 WHERE tenant_id = $1
@@ -1025,9 +1025,9 @@ type UpdateMembershipRoleParams struct {
 	Role     string      `json:"role"`
 }
 
-func (q *Queries) UpdateMembershipRole(ctx context.Context, arg UpdateMembershipRoleParams) (OnlavaAuthOrganizationMembership, error) {
+func (q *Queries) UpdateMembershipRole(ctx context.Context, arg UpdateMembershipRoleParams) (SceneryAuthOrganizationMembership, error) {
 	row := q.db.QueryRow(ctx, updateMembershipRole, arg.TenantID, arg.UserID, arg.Role)
-	var i OnlavaAuthOrganizationMembership
+	var i SceneryAuthOrganizationMembership
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -1043,7 +1043,7 @@ func (q *Queries) UpdateMembershipRole(ctx context.Context, arg UpdateMembership
 }
 
 const updateTenantName = `-- name: UpdateTenantName :one
-UPDATE onlava_auth.tenants
+UPDATE scenery_auth.tenants
 SET name = $2,
     updated_at = now()
 WHERE id = $1
@@ -1056,9 +1056,9 @@ type UpdateTenantNameParams struct {
 	Name string      `json:"name"`
 }
 
-func (q *Queries) UpdateTenantName(ctx context.Context, arg UpdateTenantNameParams) (OnlavaAuthTenant, error) {
+func (q *Queries) UpdateTenantName(ctx context.Context, arg UpdateTenantNameParams) (SceneryAuthTenant, error) {
 	row := q.db.QueryRow(ctx, updateTenantName, arg.ID, arg.Name)
-	var i OnlavaAuthTenant
+	var i SceneryAuthTenant
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -1070,7 +1070,7 @@ func (q *Queries) UpdateTenantName(ctx context.Context, arg UpdateTenantNamePara
 }
 
 const updateUserProfileFromProvider = `-- name: UpdateUserProfileFromProvider :one
-UPDATE onlava_auth.users
+UPDATE scenery_auth.users
 SET display_name = CASE WHEN $2::text <> '' THEN $2 ELSE display_name END,
     avatar_url = CASE WHEN $3::text <> '' THEN $3 ELSE avatar_url END,
     updated_at = now()
@@ -1084,9 +1084,9 @@ type UpdateUserProfileFromProviderParams struct {
 	Column3 string      `json:"column_3"`
 }
 
-func (q *Queries) UpdateUserProfileFromProvider(ctx context.Context, arg UpdateUserProfileFromProviderParams) (OnlavaAuthUser, error) {
+func (q *Queries) UpdateUserProfileFromProvider(ctx context.Context, arg UpdateUserProfileFromProviderParams) (SceneryAuthUser, error) {
 	row := q.db.QueryRow(ctx, updateUserProfileFromProvider, arg.ID, arg.Column2, arg.Column3)
-	var i OnlavaAuthUser
+	var i SceneryAuthUser
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
@@ -1103,16 +1103,16 @@ func (q *Queries) UpdateUserProfileFromProvider(ctx context.Context, arg UpdateU
 }
 
 const upsertAuthAttempt = `-- name: UpsertAuthAttempt :one
-INSERT INTO onlava_auth.auth_attempts (id, purpose, normalized_email, ip_hash, attempt_count)
+INSERT INTO scenery_auth.auth_attempts (id, purpose, normalized_email, ip_hash, attempt_count)
 VALUES ($1, $2, $3, $4, 1)
 ON CONFLICT (purpose, normalized_email, ip_hash)
 DO UPDATE SET attempt_count = CASE
-                WHEN onlava_auth.auth_attempts.window_started_at < now() - interval '15 minutes' THEN 1
-                ELSE onlava_auth.auth_attempts.attempt_count + 1
+                WHEN scenery_auth.auth_attempts.window_started_at < now() - interval '15 minutes' THEN 1
+                ELSE scenery_auth.auth_attempts.attempt_count + 1
               END,
               window_started_at = CASE
-                WHEN onlava_auth.auth_attempts.window_started_at < now() - interval '15 minutes' THEN now()
-                ELSE onlava_auth.auth_attempts.window_started_at
+                WHEN scenery_auth.auth_attempts.window_started_at < now() - interval '15 minutes' THEN now()
+                ELSE scenery_auth.auth_attempts.window_started_at
               END,
               last_attempt_at = now()
 RETURNING id, purpose, normalized_email, ip_hash, window_started_at, attempt_count, last_attempt_at
@@ -1125,14 +1125,14 @@ type UpsertAuthAttemptParams struct {
 	IpHash          string      `json:"ip_hash"`
 }
 
-func (q *Queries) UpsertAuthAttempt(ctx context.Context, arg UpsertAuthAttemptParams) (OnlavaAuthAuthAttempt, error) {
+func (q *Queries) UpsertAuthAttempt(ctx context.Context, arg UpsertAuthAttemptParams) (SceneryAuthAuthAttempt, error) {
 	row := q.db.QueryRow(ctx, upsertAuthAttempt,
 		arg.ID,
 		arg.Purpose,
 		arg.NormalizedEmail,
 		arg.IpHash,
 	)
-	var i OnlavaAuthAuthAttempt
+	var i SceneryAuthAuthAttempt
 	err := row.Scan(
 		&i.ID,
 		&i.Purpose,

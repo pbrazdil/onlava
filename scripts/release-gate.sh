@@ -2,10 +2,10 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${ONLAVA_RELEASE_GATE_LOG_DIR:-"$ROOT/.onlava/release-gate/$(date -u +%Y%m%dT%H%M%SZ)"}"
-onlava_bin_was_set="${ONLAVA_BIN+x}"
-ONLAVA_BIN="${ONLAVA_BIN:-onlava}"
-EXTERNAL_APP_ROOT="${ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT:-}"
+LOG_DIR="${SCENERY_RELEASE_GATE_LOG_DIR:-"$ROOT/.scenery/release-gate/$(date -u +%Y%m%dT%H%M%SZ)"}"
+scenery_bin_was_set="${SCENERY_BIN+x}"
+SCENERY_BIN="${SCENERY_BIN:-scenery}"
+EXTERNAL_APP_ROOT="${SCENERY_RELEASE_GATE_EXTERNAL_APP_ROOT:-}"
 
 mkdir -p "$LOG_DIR"
 
@@ -86,7 +86,7 @@ import sys
 path = Path(sys.argv[1])
 repo = sys.argv[2]
 text = path.read_text()
-updated = text.replace("replace github.com/pbrazdil/onlava => ../../..", f"replace github.com/pbrazdil/onlava => {repo}")
+updated = text.replace("replace scenery.sh => ../../..", f"replace scenery.sh => {repo}")
 if updated == text:
     raise SystemExit(f"expected fixture replace directive in {path}")
 path.write_text(updated)
@@ -100,7 +100,7 @@ start_app() {
   local cache
   cache="$(mktemp -d)"
   cleanup_items+=("rm -rf '$cache'")
-  ONLAVA_DEV_CACHE_DIR="$cache" "$ONLAVA_BIN" run --app-root "$app_root" --listen "$addr" >"$log" 2>&1 &
+  SCENERY_DEV_CACHE_DIR="$cache" "$SCENERY_BIN" run --app-root "$app_root" --listen "$addr" >"$log" 2>&1 &
   local pid=$!
   cleanup_items+=("kill -INT $pid >/dev/null 2>&1 || true; wait $pid >/dev/null 2>&1 || true")
   wait_for_http "http://$addr/service.CallPrivate"
@@ -132,20 +132,20 @@ ui_builds() {
 
 self_harness() {
   cd "$ROOT"
-  run "$ONLAVA_BIN" harness self --json --write
+  run "$SCENERY_BIN" harness self --json --write
 }
 
-install_onlava() {
+install_scenery() {
   cd "$ROOT"
-  run go install ./cmd/onlava
-  if [[ -z "$onlava_bin_was_set" ]]; then
+  run go install ./cmd/scenery
+  if [[ -z "$scenery_bin_was_set" ]]; then
     local gobin
     gobin="$(go env GOBIN)"
     if [[ -z "$gobin" ]]; then
       gobin="$(go env GOPATH)/bin"
     fi
-    ONLAVA_BIN="$gobin/onlava"
-    export ONLAVA_BIN
+    SCENERY_BIN="$gobin/scenery"
+    export SCENERY_BIN
   fi
 }
 
@@ -172,7 +172,7 @@ for raw in sys.stdin.buffer.read().split(b"\0"):
     shutil.copy2(src, out)
 PY
   cd "$tmp/src"
-  run go install ./cmd/onlava
+  run go install ./cmd/scenery
 }
 
 fixture_smoke() {
@@ -191,21 +191,21 @@ fixture_smoke() {
 
 external_app_smoke() {
   if [[ -z "$EXTERNAL_APP_ROOT" ]]; then
-    printf 'skipping external app smoke; set ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT to enable\n'
+    printf 'skipping external app smoke; set SCENERY_RELEASE_GATE_EXTERNAL_APP_ROOT to enable\n'
     return
   fi
-  [[ -d "$EXTERNAL_APP_ROOT" ]] || die "ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT does not exist: $EXTERNAL_APP_ROOT"
-  [[ -f "$EXTERNAL_APP_ROOT/.onlava.json" ]] || die "ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT is not an onlava app: $EXTERNAL_APP_ROOT"
-  run "$ONLAVA_BIN" inspect app --json --app-root "$EXTERNAL_APP_ROOT"
-  run "$ONLAVA_BIN" check --json --app-root "$EXTERNAL_APP_ROOT"
+  [[ -d "$EXTERNAL_APP_ROOT" ]] || die "SCENERY_RELEASE_GATE_EXTERNAL_APP_ROOT does not exist: $EXTERNAL_APP_ROOT"
+  [[ -f "$EXTERNAL_APP_ROOT/.scenery.json" ]] || die "SCENERY_RELEASE_GATE_EXTERNAL_APP_ROOT is not a Scenery app: $EXTERNAL_APP_ROOT"
+  run "$SCENERY_BIN" inspect app --json --app-root "$EXTERNAL_APP_ROOT"
+  run "$SCENERY_BIN" check --json --app-root "$EXTERNAL_APP_ROOT"
 }
 
 onlv_two_worktree_smoke() {
-  if [[ -z "${ONLAVA_ONLV_SMOKE_ROOT:-}" && -z "${ONLAVA_RELEASE_GATE_EXTERNAL_APP_ROOT:-}" && ! -d "/Users/petrbrazdil/Repos/onlv" ]]; then
-    printf 'skipping ONLV two-worktree smoke; set ONLAVA_ONLV_SMOKE_ROOT to enable\n'
+  if [[ -z "${SCENERY_ONLV_SMOKE_ROOT:-}" && -z "${SCENERY_RELEASE_GATE_EXTERNAL_APP_ROOT:-}" && ! -d "/Users/petrbrazdil/Repos/onlv" ]]; then
+    printf 'skipping ONLV two-worktree smoke; set SCENERY_ONLV_SMOKE_ROOT to enable\n'
     return
   fi
-  run env ONLAVA_BIN="$ONLAVA_BIN" ONLAVA_ONLV_SMOKE_LOG_DIR="$LOG_DIR/onlv-two-worktree" "$ROOT/scripts/onlv-two-worktree-smoke.sh"
+  run env SCENERY_BIN="$SCENERY_BIN" SCENERY_ONLV_SMOKE_LOG_DIR="$LOG_DIR/onlv-two-worktree" "$ROOT/scripts/onlv-two-worktree-smoke.sh"
 }
 
 router_safety() {
@@ -218,7 +218,7 @@ router_safety() {
   addr="127.0.0.1:$port"
   log="$LOG_DIR/router-safety-app.log"
   start_app "$app" "$addr" "$log" >/dev/null
-  for path in /__onlava/config /platform.Stats /debug/pprof/heap; do
+  for path in /__scenery/config /platform.Stats /debug/pprof/heap; do
     status="$(curl -sS -o /dev/null -w '%{http_code}' "http://$addr$path")"
     [[ "$status" == "404" ]] || die "$path returned $status, want 404"
   done
@@ -231,7 +231,7 @@ secrets_gate() {
   copy_fixture secrets "$tmp"
   app="$tmp/secrets"
   rm -f "$app/.env"
-  if output="$("$ONLAVA_BIN" run --app-root "$app" --listen "127.0.0.1:$(free_port)" --env production 2>&1)"; then
+  if output="$("$SCENERY_BIN" run --app-root "$app" --listen "127.0.0.1:$(free_port)" --env production 2>&1)"; then
     printf '%s\n' "$output"
     die "production run succeeded with missing declared secrets"
   fi
@@ -245,7 +245,7 @@ secrets_gate() {
   port="$(free_port)"
   addr="127.0.0.1:$port"
   log="$LOG_DIR/secrets-smoke-app.log"
-  ONLAVA_DEV_CACHE_DIR="$tmp/cache" "$ONLAVA_BIN" run --app-root "$app" --listen "$addr" >"$log" 2>&1 &
+  SCENERY_DEV_CACHE_DIR="$tmp/cache" "$SCENERY_BIN" run --app-root "$app" --listen "$addr" >"$log" 2>&1 &
   local pid=$!
   cleanup_items+=("kill -INT $pid >/dev/null 2>&1 || true; wait $pid >/dev/null 2>&1 || true")
   wait_for_http "http://$addr/secrets"
@@ -258,7 +258,7 @@ artifact_hygiene() {
   cd "$ROOT"
   local bad
   bad="$(find . \
-    \( -path './.git' -o -path './.onlava' -o -path './.codex-tmp' -o -path './ui/node_modules' \) -prune \
+    \( -path './.git' -o -path './.scenery' -o -path './.codex-tmp' -o -path './ui/node_modules' \) -prune \
     -o \( -name '.DS_Store' -o -name '__MACOSX' \) -print)"
   if [[ -n "$bad" ]]; then
     printf '%s\n' "$bad"
@@ -271,12 +271,12 @@ artifact_hygiene() {
   copy_fixture basic "$tmp"
   app="$tmp/basic"
   cache="$tmp/cache"
-  mkdir -p "$app/.onlava/state" "$app/node_modules" "$app/.git"
+  mkdir -p "$app/.scenery/state" "$app/node_modules" "$app/.git"
   printf 'SHOULD_NOT_COPY=1\n' >"$app/.env"
   printf 'SHOULD_NOT_COPY_LOCAL=1\n' >"$app/.env.local"
   printf 'junk\n' >"$app/.DS_Store"
-  ONLAVA_DEV_CACHE_DIR="$cache" "$ONLAVA_BIN" build --app-root "$app" -o "$tmp/basic-app"
-  bad="$(find "$cache" \( -name '.env' -o -name '.env.*' -o -name '.git' -o -name '.onlava' -o -name 'node_modules' -o -name '.DS_Store' -o -name '__MACOSX' \) -print)"
+  SCENERY_DEV_CACHE_DIR="$cache" "$SCENERY_BIN" build --app-root "$app" -o "$tmp/basic-app"
+  bad="$(find "$cache" \( -name '.env' -o -name '.env.*' -o -name '.git' -o -name '.scenery' -o -name 'node_modules' -o -name '.DS_Store' -o -name '__MACOSX' \) -print)"
   if [[ -n "$bad" ]]; then
     printf '%s\n' "$bad"
     die "build workspace copied local artifacts"
@@ -289,13 +289,13 @@ main() {
   need curl
   need python3
 
-  printf 'onlava release gate\nroot: %s\nlogs: %s\n' "$ROOT" "$LOG_DIR"
+  printf 'scenery release gate\nroot: %s\nlogs: %s\n' "$ROOT" "$LOG_DIR"
 
   step "full go tests" full_go_tests
   step "race tests" race_tests
   step "go lint" lint_go
   step "ui build" ui_builds
-  step "install onlava" install_onlava
+  step "install scenery" install_scenery
   step "ONLV two-worktree smoke" onlv_two_worktree_smoke
   step "self harness" self_harness
   step "clean checkout install" clean_checkout_install

@@ -31,7 +31,7 @@ export function DashboardPage({
         : "grid-cols-[minmax(0,1fr)]";
 
   return (
-    <section data-onlava-ui="DashboardPage" className={cn("flex h-full min-h-0 flex-col", className)}>
+    <section data-scenery-ui="DashboardPage" className={cn("flex h-full min-h-0 flex-col", className)}>
       <header data-slot="header" className="shrink-0 border-b border-border px-5 py-4">
         <div className="flex min-w-0 items-start justify-between gap-4">
           <div className="min-w-0">

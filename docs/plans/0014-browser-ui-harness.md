@@ -4,12 +4,12 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-onlava should make dashboard behavior legible to agents through a browser harness. The self-harness currently checks Go, schemas, docs, and static UI architecture. It does not yet open the dashboard in a browser, assert DOM markers, collect screenshots, capture console errors, or report failed network requests.
+scenery should make dashboard behavior legible to agents through a browser harness. The self-harness currently checks Go, schemas, docs, and static UI architecture. It does not yet open the dashboard in a browser, assert DOM markers, collect screenshots, capture console errors, or report failed network requests.
 
 The goal is:
 
 ```text
-onlava harness ui --json
+scenery harness ui --json
         |
         v
 start/reuse local app + dashboard
@@ -25,23 +25,23 @@ return screenshots, console logs, network failures, DOM marker status
 
 - [x] (2026-05-09) Created this ExecPlan and linked it from `docs/plans/active.md`.
 - [x] (2026-05-09) Decided on `chromedp` for the first browser runner.
-- [x] (2026-05-09) Added `onlava harness ui --json`.
+- [x] (2026-05-09) Added `scenery harness ui --json`.
 - [x] (2026-05-09) Added core dashboard route visits for home, API Explorer, service catalog, traces, Data Explorer, and DB Explorer.
-- [x] (2026-05-09) Captured route screenshots under `.onlava/harness/ui/screenshots/`.
+- [x] (2026-05-09) Captured route screenshots under `.scenery/harness/ui/screenshots/`.
 - [x] (2026-05-09) Captured console errors and failed network requests as JSONL artifacts.
-- [x] (2026-05-09) Emitted `onlava.harness.ui.v1` JSON.
+- [x] (2026-05-09) Emitted `scenery.harness.ui.v1` JSON.
 - [x] (2026-05-09) Added schema, local-contract docs, and command tests.
 
 ## Surprises & Discoveries
 
 - The dashboard already has stable `AppShell` and `DataExplorerLayout` markers, so the first browser harness can verify useful route health without adding route-specific markers everywhere.
-- The harness can use a temporary `onlava dev --json` subprocess with an isolated dashboard port. That keeps the command app-facing without wiring browser checks into the long-lived dev supervisor.
+- The harness can use a temporary `scenery dev --json` subprocess with an isolated dashboard port. That keeps the command app-facing without wiring browser checks into the long-lived dev supervisor.
 
 ## Decision Log
 
 - Decision: use `chromedp` rather than Playwright or a shell wrapper for the first pass.
   Rationale: it keeps the browser runner inside Go, captures screenshots/console/network events directly, and avoids introducing a Node-side browser test harness into the CLI path.
-- Decision: keep `onlava harness ui --json` out of the default `onlava harness self --json --write` path.
+- Decision: keep `scenery harness ui --json` out of the default `scenery harness self --json --write` path.
   Rationale: browser discovery is heavier and more environment-sensitive than static and build checks; users and agents should invoke it explicitly.
 - Decision: allow `--dashboard-url` for reuse of an existing dashboard.
   Rationale: it makes debugging a running local session fast and avoids restarting apps when the dashboard is already up.
@@ -57,7 +57,7 @@ Relevant files:
 ```text
 PLAN.md
 docs/local-contract.md
-cmd/onlava/*harness*
+cmd/scenery/*harness*
 ui/src/components/layouts/*
 ui/src/routes/*
 docs/schemas/*
@@ -89,10 +89,10 @@ Record the decision before implementation.
 
 ## Interfaces and Dependencies
 
-- Add a versioned `onlava.harness.ui.v1` JSON surface.
-- Keep the command separate from default `onlava harness self` until the browser path is proven reliable.
+- Add a versioned `scenery.harness.ui.v1` JSON surface.
+- Keep the command separate from default `scenery harness self` until the browser path is proven reliable.
 - If a browser automation dependency is added, record the rationale and update dependency checks.
-- Reuse dashboard DOM markers from onlava layouts.
+- Reuse dashboard DOM markers from scenery layouts.
 
 ## Plan of Work
 
@@ -105,14 +105,14 @@ Define the JSON contract first, then add the CLI command and a minimal route run
 Add:
 
 ```text
-docs/schemas/onlava.harness.ui.v1.schema.json
+docs/schemas/scenery.harness.ui.v1.schema.json
 ```
 
 Shape:
 
 ```json
 {
-  "schema_version": "onlava.harness.ui.v1",
+  "schema_version": "scenery.harness.ui.v1",
   "ok": true,
   "routes": [],
   "artifacts": [],
@@ -125,7 +125,7 @@ Shape:
 Add:
 
 ```sh
-onlava harness ui --json [--repo-root <path>] [--app-root <path>] [--headed]
+scenery harness ui --json [--repo-root <path>] [--app-root <path>] [--headed]
 ```
 
 ### Milestone 3: Route checks
@@ -144,9 +144,9 @@ DB Explorer route
 Assert stable DOM markers:
 
 ```text
-data-onlava-ui="AppShell"
-data-onlava-ui="DashboardPage"
-data-onlava-ui="DataExplorerLayout"
+data-scenery-ui="AppShell"
+data-scenery-ui="DashboardPage"
+data-scenery-ui="DataExplorerLayout"
 ```
 
 ### Milestone 4: Artifacts
@@ -154,7 +154,7 @@ data-onlava-ui="DataExplorerLayout"
 Write artifacts under:
 
 ```text
-.onlava/harness/ui/
+.scenery/harness/ui/
   screenshots/
   console.jsonl
   network.jsonl
@@ -167,7 +167,7 @@ Do not add browser harness to the default fast self-harness immediately. Add opt
 ## Concrete Steps
 
 1. Add the JSON schema and local-contract entry.
-2. Add `onlava harness ui --json` CLI parsing.
+2. Add `scenery harness ui --json` CLI parsing.
 3. Implement dashboard URL discovery or startup rules.
 4. Visit the first route and assert a DOM marker.
 5. Add screenshots and console/network collection.
@@ -176,10 +176,10 @@ Do not add browser harness to the default fast self-harness immediately. Add opt
 ## Validation and Acceptance
 
 ```sh
-go test ./cmd/onlava
-go install ./cmd/onlava
-onlava harness ui --json --app-root testdata/apps/basic
-onlava harness self --json --write
+go test ./cmd/scenery
+go install ./cmd/scenery
+scenery harness ui --json --app-root testdata/apps/basic
+scenery harness self --json --write
 ```
 
 Acceptance criteria:
@@ -194,8 +194,8 @@ Acceptance criteria:
 
 ## Idempotence and Recovery
 
-The harness should write artifacts under a deterministic `.onlava/harness/ui/` path and may overwrite previous local UI harness artifacts. A failed route check should not leave child processes running.
+The harness should write artifacts under a deterministic `.scenery/harness/ui/` path and may overwrite previous local UI harness artifacts. A failed route check should not leave child processes running.
 
 ## Artifacts and Notes
 
-Expected artifacts include `docs/schemas/onlava.harness.ui.v1.schema.json`, command tests, screenshots, console/network logs, and documentation updates.
+Expected artifacts include `docs/schemas/scenery.harness.ui.v1.schema.json`, command tests, screenshots, console/network logs, and documentation updates.

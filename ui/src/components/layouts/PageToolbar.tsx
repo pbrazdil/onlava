@@ -20,7 +20,7 @@ export type PageToolbarProps = {
 
 export function PageToolbar({ primaryAction, secondaryActions = [], children, className }: PageToolbarProps) {
   return (
-    <div data-onlava-ui="PageToolbar" className={cn("flex items-center justify-end gap-2", className)}>
+    <div data-scenery-ui="PageToolbar" className={cn("flex items-center justify-end gap-2", className)}>
       {children}
       {secondaryActions.map((action, index) => (
         <Button

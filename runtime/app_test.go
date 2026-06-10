@@ -23,7 +23,7 @@ func TestPrintRuntimeBanner(t *testing.T) {
 
 	text := out.String()
 	for _, want := range []string{
-		"onlava development server running!",
+		"scenery development server running!",
 		"Your API is running at:",
 		"https://api.test.localhost",
 		"Development Dashboard URL:",
@@ -38,7 +38,7 @@ func TestPrintRuntimeBanner(t *testing.T) {
 }
 
 func TestLaunchedBySupervisor(t *testing.T) {
-	t.Setenv("ONLAVA_DEV_SUPERVISOR", "1")
+	t.Setenv("SCENERY_DEV_SUPERVISOR", "1")
 	if !launchedBySupervisor() {
 		t.Fatal("expected launchedBySupervisor to be true")
 	}
@@ -58,7 +58,7 @@ func TestRuntimeRoleFromEnv(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("ONLAVA_ROLE", tt.value)
+			t.Setenv("SCENERY_ROLE", tt.value)
 			got, err := runtimeRoleFromEnv()
 			if err != nil {
 				t.Fatalf("runtimeRoleFromEnv() error = %v", err)
@@ -71,7 +71,7 @@ func TestRuntimeRoleFromEnv(t *testing.T) {
 }
 
 func TestRuntimeRoleFromEnvRejectsUnknown(t *testing.T) {
-	t.Setenv("ONLAVA_ROLE", "web")
+	t.Setenv("SCENERY_ROLE", "web")
 	if _, err := runtimeRoleFromEnv(); err == nil {
 		t.Fatal("expected unsupported role error")
 	}
@@ -124,12 +124,12 @@ func TestSupervisorParentMonitorShouldCancel(t *testing.T) {
 }
 
 func TestSupervisorPIDFromEnv(t *testing.T) {
-	t.Setenv("ONLAVA_DEV_SUPERVISOR_PID", "4321")
+	t.Setenv("SCENERY_DEV_SUPERVISOR_PID", "4321")
 	if got := supervisorPIDFromEnv(); got != 4321 {
 		t.Fatalf("supervisorPIDFromEnv() = %d, want 4321", got)
 	}
 
-	t.Setenv("ONLAVA_DEV_SUPERVISOR_PID", "bad")
+	t.Setenv("SCENERY_DEV_SUPERVISOR_PID", "bad")
 	if got := supervisorPIDFromEnv(); got != 0 {
 		t.Fatalf("supervisorPIDFromEnv() with invalid value = %d, want 0", got)
 	}

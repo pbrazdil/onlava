@@ -15,9 +15,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/pbrazdil/onlava/auth"
-	"github.com/pbrazdil/onlava/internal/model"
-	"github.com/pbrazdil/onlava/internal/runtimeapi"
+	"scenery.sh/auth"
+	"scenery.sh/internal/model"
+	"scenery.sh/internal/runtimeapi"
 )
 
 type directive struct {
@@ -148,7 +148,7 @@ func App(root, name string) (*model.App, error) {
 						continue
 					}
 					if pkg.Service.Struct != nil {
-						errs = append(errs, fmt.Sprintf("duplicate onlava:service directive in service %s", pkg.Service.Name))
+						errs = append(errs, fmt.Sprintf("duplicate scenery:service directive in service %s", pkg.Service.Name))
 						continue
 					}
 					ss.Service = pkg.Service
@@ -198,10 +198,10 @@ func App(root, name string) (*model.App, error) {
 	}
 
 	if len(authHandlers) > 1 {
-		errs = append(errs, "only one onlava:authhandler is supported per application")
+		errs = append(errs, "only one scenery:authhandler is supported per application")
 	}
 	if !foundDirective {
-		errs = append(errs, "no onlava directives found in application")
+		errs = append(errs, "no scenery directives found in application")
 	}
 	if len(authHandlers) == 1 {
 		authHandlers[0].Service.AuthHandler = authHandlers[0]
@@ -213,29 +213,29 @@ func App(root, name string) (*model.App, error) {
 		if svc.Struct != nil {
 			for _, ep := range svc.Endpoints {
 				if ep.Receiver != nil && ep.Receiver.TypeName != svc.Struct.TypeName {
-					errs = append(errs, fmt.Sprintf("endpoint %s.%s receiver %s does not match onlava:service struct %s", svc.Name, ep.Name, ep.Receiver.TypeName, svc.Struct.TypeName))
+					errs = append(errs, fmt.Sprintf("endpoint %s.%s receiver %s does not match scenery:service struct %s", svc.Name, ep.Name, ep.Receiver.TypeName, svc.Struct.TypeName))
 				}
 			}
 			if svc.AuthHandler != nil && svc.AuthHandler.Receiver != nil && svc.AuthHandler.Receiver.TypeName != svc.Struct.TypeName {
-				errs = append(errs, fmt.Sprintf("auth handler %s receiver %s does not match onlava:service struct %s", svc.AuthHandler.Name, svc.AuthHandler.Receiver.TypeName, svc.Struct.TypeName))
+				errs = append(errs, fmt.Sprintf("auth handler %s receiver %s does not match scenery:service struct %s", svc.AuthHandler.Name, svc.AuthHandler.Receiver.TypeName, svc.Struct.TypeName))
 			}
 			for _, mw := range svc.Middleware {
 				if mw.Receiver != nil && mw.Receiver.TypeName != svc.Struct.TypeName {
-					errs = append(errs, fmt.Sprintf("middleware %s receiver %s does not match onlava:service struct %s", mw.Name, mw.Receiver.TypeName, svc.Struct.TypeName))
+					errs = append(errs, fmt.Sprintf("middleware %s receiver %s does not match scenery:service struct %s", mw.Name, mw.Receiver.TypeName, svc.Struct.TypeName))
 				}
 			}
 		} else {
 			for _, ep := range svc.Endpoints {
 				if ep.Receiver != nil {
-					errs = append(errs, fmt.Sprintf("endpoint %s.%s uses receiver %s but service %s has no onlava:service struct", svc.Name, ep.Name, ep.Receiver.TypeName, svc.Name))
+					errs = append(errs, fmt.Sprintf("endpoint %s.%s uses receiver %s but service %s has no scenery:service struct", svc.Name, ep.Name, ep.Receiver.TypeName, svc.Name))
 				}
 			}
 			if svc.AuthHandler != nil && svc.AuthHandler.Receiver != nil {
-				errs = append(errs, fmt.Sprintf("auth handler %s uses receiver %s but service %s has no onlava:service struct", svc.AuthHandler.Name, svc.AuthHandler.Receiver.TypeName, svc.Name))
+				errs = append(errs, fmt.Sprintf("auth handler %s uses receiver %s but service %s has no scenery:service struct", svc.AuthHandler.Name, svc.AuthHandler.Receiver.TypeName, svc.Name))
 			}
 			for _, mw := range svc.Middleware {
 				if mw.Receiver != nil {
-					errs = append(errs, fmt.Sprintf("middleware %s uses receiver %s but service %s has no onlava:service struct", mw.Name, mw.Receiver.TypeName, svc.Name))
+					errs = append(errs, fmt.Sprintf("middleware %s uses receiver %s but service %s has no scenery:service struct", mw.Name, mw.Receiver.TypeName, svc.Name))
 				}
 			}
 		}
@@ -368,7 +368,7 @@ func parseEndpoint(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir *
 		Package:      pkg,
 		File:         file,
 		Name:         fn.Name.Name,
-		ImplName:     "onlavaInternalImpl" + fn.Name.Name,
+		ImplName:     "sceneryInternalImpl" + fn.Name.Name,
 		Decl:         fn,
 		Object:       sigObj,
 		Access:       runtimeapi.Private,
@@ -538,14 +538,14 @@ func parseMiddleware(pkg *model.Package, file *model.File, fn *ast.FuncDecl, dir
 
 func parseServiceStruct(pkg *model.Package, file *model.File, decl *ast.GenDecl) (*model.ServiceStruct, error) {
 	if len(decl.Specs) != 1 {
-		return nil, fmt.Errorf("onlava:service must be declared on a single struct type")
+		return nil, fmt.Errorf("scenery:service must be declared on a single struct type")
 	}
 	spec, ok := decl.Specs[0].(*ast.TypeSpec)
 	if !ok {
-		return nil, fmt.Errorf("onlava:service must annotate a type declaration")
+		return nil, fmt.Errorf("scenery:service must annotate a type declaration")
 	}
 	if _, ok := spec.Type.(*ast.StructType); !ok {
-		return nil, fmt.Errorf("onlava:service must annotate a struct type")
+		return nil, fmt.Errorf("scenery:service must annotate a struct type")
 	}
 	typeName := spec.Name.Name
 	ss := &model.ServiceStruct{
@@ -561,8 +561,8 @@ func parseServiceStruct(pkg *model.Package, file *model.File, decl *ast.GenDecl)
 		},
 		Decl:        decl,
 		TypeSpec:    spec,
-		GetterName:  "onlavaInternalGet" + typeName,
-		InstanceVar: "onlavaInternalService" + typeName,
+		GetterName:  "sceneryInternalGet" + typeName,
+		InstanceVar: "sceneryInternalService" + typeName,
 	}
 	if initObj := pkg.GoPkg.Types.Scope().Lookup("init" + typeName); initObj != nil {
 		if sig, ok := initObj.Type().(*types.Signature); ok && sig.Params().Len() == 0 && sig.Results().Len() == 2 {
@@ -629,8 +629,8 @@ func parseDirective(group *ast.CommentGroup) *directive {
 
 func directiveBody(comment string) (string, bool) {
 	text := strings.TrimSpace(strings.TrimPrefix(comment, "//"))
-	if strings.HasPrefix(text, "onlava:") {
-		return strings.TrimPrefix(text, "onlava:"), true
+	if strings.HasPrefix(text, "scenery:") {
+		return strings.TrimPrefix(text, "scenery:"), true
 	}
 	return "", false
 }
@@ -1003,7 +1003,7 @@ func validateTemporalRuntimeCalls(pkg *model.Package) []string {
 			if !ok {
 				return true
 			}
-			if aliases[ident.Name] != "github.com/pbrazdil/onlava/temporal" {
+			if aliases[ident.Name] != "scenery.sh/temporal" {
 				return true
 			}
 			switch sel.Sel.Name {
@@ -1126,7 +1126,7 @@ func isTemporalConfigType(expr ast.Expr, typeName string, aliases map[string]str
 	if !ok {
 		return false
 	}
-	return aliases[ident.Name] == "github.com/pbrazdil/onlava/temporal"
+	return aliases[ident.Name] == "scenery.sh/temporal"
 }
 
 func literalStringValue(pkg *model.Package, expr ast.Expr) (string, bool) {
@@ -1160,9 +1160,9 @@ func runtimeImportAliases(file *ast.File) map[string]string {
 		importPath := strings.Trim(imp.Path.Value, "\"")
 		defaultAlias := ""
 		switch importPath {
-		case "github.com/pbrazdil/onlava/temporal":
+		case "scenery.sh/temporal":
 			defaultAlias = "temporal"
-		case "github.com/pbrazdil/onlava/cron":
+		case "scenery.sh/cron":
 			defaultAlias = "cron"
 		default:
 			continue
@@ -1178,7 +1178,7 @@ func runtimeImportAliases(file *ast.File) map[string]string {
 
 func runtimeDeclarationKind(importPath, callName string) (model.RuntimeDeclarationKind, int, bool) {
 	switch importPath {
-	case "github.com/pbrazdil/onlava/temporal":
+	case "scenery.sh/temporal":
 		switch callName {
 		case "NewWorkflow":
 			return model.RuntimeDeclarationTemporalWorkflow, 0, true
@@ -1187,7 +1187,7 @@ func runtimeDeclarationKind(importPath, callName string) (model.RuntimeDeclarati
 		case "NewExternalActivity":
 			return model.RuntimeDeclarationTemporalExternalActivity, 0, true
 		}
-	case "github.com/pbrazdil/onlava/cron":
+	case "scenery.sh/cron":
 		if callName == "NewJob" {
 			return model.RuntimeDeclarationCronJob, 0, true
 		}
@@ -1338,11 +1338,11 @@ func paramKind(t types.Type) (runtimeapi.ParamKind, bool) {
 }
 
 func isAuthUIDType(t types.Type) bool {
-	return isNamedType(t, "github.com/pbrazdil/onlava/auth", "UID")
+	return isNamedType(t, "scenery.sh/auth", "UID")
 }
 
 func isMiddlewareNamedType(t types.Type, name string) bool {
-	return isNamedType(t, "github.com/pbrazdil/onlava/middleware", name)
+	return isNamedType(t, "scenery.sh/middleware", name)
 }
 
 func calledObject(pkg *packages.Package, fun ast.Expr) types.Object {

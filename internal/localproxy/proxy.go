@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pbrazdil/onlava/internal/envpolicy"
+	"scenery.sh/internal/envpolicy"
 )
 
 const (
@@ -84,23 +84,23 @@ type Proxy struct {
 }
 
 func Enabled() bool {
-	return envBool("ONLAVA_LOCAL_PROXY", false)
+	return envBool("SCENERY_LOCAL_PROXY", false)
 }
 
 func HTTPPort() int {
-	return envInt("ONLAVA_LOCAL_PROXY_HTTP_PORT", defaultHTTPPort)
+	return envInt("SCENERY_LOCAL_PROXY_HTTP_PORT", defaultHTTPPort)
 }
 
 func HTTPSPort() int {
-	return envInt("ONLAVA_LOCAL_PROXY_HTTPS_PORT", defaultHTTPSPort)
+	return envInt("SCENERY_LOCAL_PROXY_HTTPS_PORT", defaultHTTPSPort)
 }
 
 func SkipInstallTrust() bool {
-	return envBool("ONLAVA_LOCAL_PROXY_SKIP_TRUST_INSTALL", true)
+	return envBool("SCENERY_LOCAL_PROXY_SKIP_TRUST_INSTALL", true)
 }
 
 func FrontendOverride(name string) string {
-	value := strings.TrimSpace(envpolicy.Get("ONLAVA_FRONTEND_" + frontendEnvName(name) + "_ADDR"))
+	value := strings.TrimSpace(envpolicy.Get("SCENERY_FRONTEND_" + frontendEnvName(name) + "_ADDR"))
 	if value == "" {
 		return ""
 	}
@@ -116,7 +116,7 @@ func DiscoverWorkspace(root, fallback string) string {
 }
 
 func DiscoverFrontendUpstream(appRoot string, frontend FrontendConfig) string {
-	if envBool("ONLAVA_DISABLE_FRONTEND_PROXY", false) {
+	if envBool("SCENERY_DISABLE_FRONTEND_PROXY", false) {
 		return ""
 	}
 	if override := FrontendOverride(frontend.Name); override != "" {

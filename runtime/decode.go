@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pbrazdil/onlava/errs"
+	"scenery.sh/errs"
 )
 
 func convertScalar(kind ParamKind, value string) (any, error) {

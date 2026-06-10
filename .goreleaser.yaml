@@ -1,11 +1,11 @@
 version: 2
 
-project_name: onlava
+project_name: scenery
 
 builds:
-  - id: onlava
-    main: ./cmd/onlava
-    binary: onlava
+  - id: scenery
+    main: ./cmd/scenery
+    binary: scenery
     env:
       - CGO_ENABLED=0
     goos:
@@ -20,15 +20,15 @@ builds:
     ldflags:
       - >-
         -s -w
-        -X main.onlavaVersion={{ .Version }}
-        -X main.onlavaCommit={{ .Commit }}
-        -X main.onlavaBuiltAt={{ .Date }}
+        -X main.sceneryVersion={{ .Version }}
+        -X main.sceneryCommit={{ .Commit }}
+        -X main.sceneryBuiltAt={{ .Date }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - id: onlava
+  - id: scenery
     ids:
-      - onlava
+      - scenery
     formats:
       - tar.gz
     format_overrides:
@@ -58,5 +58,5 @@ changelog:
 
 release:
   github:
-    owner: pbrazdil
-    name: onlava
+    owner: scenery-sh
+    name: scenery

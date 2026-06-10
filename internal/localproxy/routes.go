@@ -61,7 +61,7 @@ func proxyRoutes(cfg Config) (routeTable, error) {
 			continue
 		}
 		if cfg.APIUpstream != "" {
-			if err := appendRoute(frontend.Host, cfg.APIUpstream, false, "/__onlava/config"); err != nil {
+			if err := appendRoute(frontend.Host, cfg.APIUpstream, false, "/__scenery/config"); err != nil {
 				return nil, err
 			}
 		}
