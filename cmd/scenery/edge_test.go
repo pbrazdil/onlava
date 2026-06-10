@@ -94,6 +94,34 @@ func TestParseEdgeHelperLaunchStatusUsesTopLevelState(t *testing.T) {
 	}
 }
 
+func TestEdgeHelperPlistUsesSystemEdgeRoute(t *testing.T) {
+	plist := edgeHelperPlist(edgeHelperOptions{
+		OwnerUID:          501,
+		OwnerGID:          20,
+		OwnerHome:         "/Users/test/.scenery",
+		HelperTargetState: "/Users/test/.scenery/run/edge-target.json",
+		RouterAddr:        "127.0.0.1:9440",
+	})
+	want := strings.Join([]string{
+		"<string>system</string>",
+		"<string>edge</string>",
+		"<string>privileged-helper</string>",
+		"<string>run</string>",
+	}, "\n\t\t")
+	if !strings.Contains(plist, want) {
+		t.Fatalf("edge helper plist route missing system edge helper command:\n%s", plist)
+	}
+	removedTopLevelRoute := strings.Join([]string{
+		"<string>/usr/local/libexec/scenery-edge-helper</string>",
+		"<string>edge</string>",
+		"<string>privileged-helper</string>",
+		"<string>run</string>",
+	}, "\n\t\t")
+	if strings.Contains(plist, removedTopLevelRoute) {
+		t.Fatalf("edge helper plist uses removed top-level edge command:\n%s", plist)
+	}
+}
+
 func TestValidateEdgeAgentHealthRejectsFallbackRouterAddr(t *testing.T) {
 	err := validateEdgeAgentHealth(localagent.HealthResponse{
 		RouterAddr:   "127.0.0.1:58090",

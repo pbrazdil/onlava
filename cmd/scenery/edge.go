@@ -39,6 +39,10 @@ const (
 	edgeHelperPlistPath  = "/Library/LaunchDaemons/dev.scenery.edge-helper.plist"
 	edgeHelperSupportDir = "/Library/Application Support/Scenery/edge-helper"
 	edgeHelperLogPath    = "/Library/Application Support/Scenery/edge-helper/edge-helper.log"
+
+	legacyOnlavaEdgeHelperLabel      = "dev.onlava.edge-helper"
+	legacyOnlavaEdgeHelperBinaryPath = "/usr/local/libexec/onlava-edge-helper"
+	legacyOnlavaEdgeHelperPlistPath  = "/Library/LaunchDaemons/dev.onlava.edge-helper.plist"
 )
 
 type edgeOptions struct {
@@ -786,7 +790,7 @@ func edgeDNSInstallResolver(domain, listen string) error {
 	if err != nil {
 		return err
 	}
-	run := exec.Command("sudo", exe, "edge", "dns-helper", "install", "--domain", domain, "--nameserver", host, "--port", port)
+	run := exec.Command("sudo", exe, "system", "edge", "dns-helper", "install", "--domain", domain, "--nameserver", host, "--port", port)
 	run.Stdout = os.Stdout
 	run.Stderr = os.Stderr
 	run.Stdin = os.Stdin
@@ -804,7 +808,7 @@ func edgeDNSUninstallResolver(domain string) error {
 	if err != nil {
 		return err
 	}
-	run := exec.Command("sudo", exe, "edge", "dns-helper", "uninstall", "--domain", domain)
+	run := exec.Command("sudo", exe, "system", "edge", "dns-helper", "uninstall", "--domain", domain)
 	run.Stdout = os.Stdout
 	run.Stderr = os.Stderr
 	run.Stdin = os.Stdin
@@ -1514,7 +1518,7 @@ func edgePrivilegedInstall() error {
 		return err
 	}
 	args := []string{
-		exe, "edge", "privileged-helper", "install",
+		exe, "system", "edge", "privileged-helper", "install",
 		"--owner-uid", strconv.Itoa(os.Getuid()),
 		"--owner-gid", strconv.Itoa(os.Getgid()),
 		"--owner-home", paths.Home,
@@ -1563,7 +1567,7 @@ func edgePrivilegedUninstall() error {
 	if err != nil {
 		return err
 	}
-	run := exec.Command("sudo", exe, "edge", "privileged-helper", "uninstall")
+	run := exec.Command("sudo", exe, "system", "edge", "privileged-helper", "uninstall")
 	run.Stdout = os.Stdout
 	run.Stderr = os.Stderr
 	run.Stdin = os.Stdin
@@ -1694,6 +1698,7 @@ func edgePrivilegedHelperInstall(opts edgeHelperOptions) error {
 	if err := copyRootHelperBinary(exe, edgeHelperBinaryPath); err != nil {
 		return err
 	}
+	stopLegacyOnlavaEdgeHelper()
 	if err := stopStaleRootCaddyEdge(opts.OwnerHome, 2*time.Second); err != nil {
 		return err
 	}
@@ -1712,6 +1717,12 @@ func edgePrivilegedHelperInstall(opts edgeHelperOptions) error {
 		return fmt.Errorf("launchctl kickstart: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func stopLegacyOnlavaEdgeHelper() {
+	_ = exec.Command("launchctl", "bootout", "system/"+legacyOnlavaEdgeHelperLabel).Run()
+	_ = os.Remove(legacyOnlavaEdgeHelperPlistPath)
+	_ = os.Remove(legacyOnlavaEdgeHelperBinaryPath)
 }
 
 func edgePrivilegedHelperUninstall() error {
@@ -1893,6 +1904,7 @@ func edgeHelperPlist(opts edgeHelperOptions) string {
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
+		<string>system</string>
 		<string>edge</string>
 		<string>privileged-helper</string>
 		<string>run</string>
