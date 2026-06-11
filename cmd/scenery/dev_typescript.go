@@ -104,7 +104,6 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 	if err != nil {
 		return nil, err
 	}
-	var worker *runningTypeScriptWorker
 	process, err := startDevManagedProcess(s.ctx, devProcessStartRequest{
 		Name:    "typescript",
 		Kind:    "worker",
@@ -116,9 +115,6 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 		Stdout:  s.processOutputWriter(os.Stdout),
 		Stderr:  s.processOutputWriter(os.Stderr),
 		OnOutput: func(pid int, stream string, data []byte) {
-			if worker == nil {
-				return
-			}
 			source := devdash.DevSource{
 				ID:     "worker:typescript",
 				Kind:   "worker",
@@ -134,7 +130,7 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 	if err != nil {
 		return nil, err
 	}
-	worker = &runningTypeScriptWorker{
+	worker := &runningTypeScriptWorker{
 		process: process,
 		cmd:     process.Cmd,
 		pid:     fmt.Sprintf("%d", process.PID),

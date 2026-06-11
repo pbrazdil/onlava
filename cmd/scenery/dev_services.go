@@ -261,7 +261,7 @@ func managedElectricEnv(cfg app.Config, session *localagent.Session, baseEnv []s
 }
 
 func (s *devSupervisor) ensureManagedElectric(ctx context.Context) error {
-	if s == nil || s.electric != nil {
+	if s == nil || s.currentElectric() != nil {
 		return nil
 	}
 	if _, _, ok := managedElectricDeclared(s.cfg); !ok {
@@ -278,33 +278,35 @@ func (s *devSupervisor) ensureManagedElectric(ctx context.Context) error {
 	if plan.Upstream != "" {
 		return nil
 	}
-	if s.agent == nil || s.agentSession == nil {
+	agentSession := s.currentAgentSession()
+	if s.agent == nil || agentSession == nil {
 		return fmt.Errorf("dev.services.%s requires an active agent-backed scenery dev runtime", plan.ServiceName)
 	}
-	service, backend, err := startManagedElectricService(ctx, s.root, s.cfg, s.agentSession, plan, baseEnv, s.agent)
+	service, backend, err := startManagedElectricService(ctx, s.root, s.cfg, agentSession, plan, baseEnv, s.agent)
 	if err != nil {
 		return err
 	}
+	s.mu.Lock()
 	s.electric = service
-	backends := copyManagedBackends(s.agentSession.Backends)
+	s.mu.Unlock()
+	backends := copyManagedBackends(agentSession.Backends)
 	backends[plan.Route] = backend
 	session, err := s.agent.Register(ctx, localagent.RegisterRequest{
-		BaseAppID:   s.cfg.AppID(),
+		BaseAppID:   s.activeAppID(),
 		AppRoot:     s.root,
-		SessionID:   s.agentSession.SessionID,
-		Branch:      s.agentSession.Branch,
-		Status:      firstNonEmpty(s.agentSession.Status, "starting"),
+		SessionID:   agentSession.SessionID,
+		Branch:      agentSession.Branch,
+		Status:      firstNonEmpty(agentSession.Status, "starting"),
 		OwnerPID:    os.Getpid(),
-		AppPID:      s.agentSession.AppPID,
-		Processes:   s.sessionProcesses(s.agentSession.AppPID),
+		AppPID:      agentSession.AppPID,
+		Processes:   s.sessionProcessesFor(agentSession, agentSession.AppPID),
 		Backends:    backends,
 		ReportToken: s.reportToken,
 	})
 	if err != nil {
 		return err
 	}
-	s.agentSession = &session
-	s.setSessionIdentity(&session)
+	s.storeAgentSession(&session)
 	if s.console != nil && s.console.verbose {
 		s.console.Event("electric.managed", map[string]any{
 			"route":  plan.Route,

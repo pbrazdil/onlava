@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -90,15 +91,14 @@ func TestDevManagedProcessWaitReadyProbeUsesFakeTicker(t *testing.T) {
 			done:       make(chan struct{}),
 			outputDone: make(chan struct{}),
 		}
-		var calls int
+		var calls atomic.Int64
 		errCh := make(chan error, 1)
 		go func() {
 			errCh <- process.WaitReady(context.Background(), devProcessReadyRequest{
 				Timeout:  5 * time.Second,
 				Interval: 50 * time.Millisecond,
 				Probe: func(context.Context) error {
-					calls++
-					if calls < 3 {
+					if calls.Add(1) < 3 {
 						return os.ErrNotExist
 					}
 					return nil
@@ -107,25 +107,25 @@ func TestDevManagedProcessWaitReadyProbeUsesFakeTicker(t *testing.T) {
 		}()
 
 		synctest.Wait()
-		if calls != 0 {
-			t.Fatalf("probe calls before first tick = %d, want 0", calls)
+		if got := calls.Load(); got != 0 {
+			t.Fatalf("probe calls before first tick = %d, want 0", got)
 		}
 		time.Sleep(50 * time.Millisecond)
 		synctest.Wait()
-		if calls != 1 {
-			t.Fatalf("probe calls after first tick = %d, want 1", calls)
+		if got := calls.Load(); got != 1 {
+			t.Fatalf("probe calls after first tick = %d, want 1", got)
 		}
 		time.Sleep(50 * time.Millisecond)
 		synctest.Wait()
-		if calls != 2 {
-			t.Fatalf("probe calls after second tick = %d, want 2", calls)
+		if got := calls.Load(); got != 2 {
+			t.Fatalf("probe calls after second tick = %d, want 2", got)
 		}
 		time.Sleep(50 * time.Millisecond)
 		if err := <-errCh; err != nil {
 			t.Fatalf("WaitReady returned error: %v", err)
 		}
-		if calls != 3 {
-			t.Fatalf("probe calls after success = %d, want 3", calls)
+		if got := calls.Load(); got != 3 {
+			t.Fatalf("probe calls after success = %d, want 3", got)
 		}
 	})
 }

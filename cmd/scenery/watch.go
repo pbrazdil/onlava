@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode"
@@ -484,11 +485,16 @@ func scanWatchedFiles(root string) (fileSnapshot, error) {
 		return nil, err
 	}
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		if err != nil {
-			return err
+			// Tolerate entries vanishing or turning unreadable mid-scan; a
+			// transient walk error must not abort the watch loop.
+			if path == root && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if d != nil && d.IsDir() && path != root {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		rel, err := filepath.Rel(root, path)
@@ -516,11 +522,8 @@ func scanWatchedFiles(root string) (fileSnapshot, error) {
 		}
 
 		info, err := d.Info()
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		if err != nil {
-			return err
+			return nil
 		}
 		snapshot[rel] = fileStamp{
 			modTime: info.ModTime().UTC().Round(0),
@@ -600,14 +603,43 @@ func isWatchedRootDotFile(rel string) bool {
 	}
 }
 
+type embedPatternCacheEntry struct {
+	stamp    fileStamp
+	patterns []string
+}
+
+// embedPatternCache memoizes parsed //go:embed patterns per Go file so repeated
+// watch scans stat files instead of re-reading every .go file in the app.
+var embedPatternCache sync.Map
+
+func embedPatternsForFile(path string, info fs.FileInfo) []string {
+	stamp := fileStamp{modTime: info.ModTime().UTC().Round(0), size: info.Size()}
+	if cached, ok := embedPatternCache.Load(path); ok {
+		entry := cached.(embedPatternCacheEntry)
+		if entry.stamp == stamp {
+			return entry.patterns
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	patterns := parseGoEmbedPatterns(string(data))
+	embedPatternCache.Store(path, embedPatternCacheEntry{stamp: stamp, patterns: patterns})
+	return patterns
+}
+
 func discoverEmbeddedWatchFiles(root string) (map[string]struct{}, error) {
 	files := make(map[string]struct{})
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		if err != nil {
-			return err
+			if path == root && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if d != nil && d.IsDir() && path != root {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
@@ -625,14 +657,11 @@ func discoverEmbeddedWatchFiles(root string) (map[string]struct{}, error) {
 		if filepath.Ext(rel) != ".go" || d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
-		data, err := os.ReadFile(path)
-		if errors.Is(err, os.ErrNotExist) {
+		info, err := d.Info()
+		if err != nil {
 			return nil
 		}
-		if err != nil {
-			return err
-		}
-		patterns := parseGoEmbedPatterns(string(data))
+		patterns := embedPatternsForFile(path, info)
 		if len(patterns) == 0 {
 			return nil
 		}
@@ -721,11 +750,8 @@ func addEmbeddedPatternFiles(root, pkgDir, pattern string, files map[string]stru
 
 func addEmbeddedPath(root, path string, includeHidden bool, files map[string]struct{}) error {
 	info, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
 	if err != nil {
-		return err
+		return nil
 	}
 	if !info.IsDir() {
 		rel, err := filepath.Rel(root, path)
@@ -738,11 +764,11 @@ func addEmbeddedPath(root, path string, includeHidden bool, files map[string]str
 		return nil
 	}
 	return filepath.WalkDir(path, func(child string, d fs.DirEntry, err error) error {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		if err != nil {
-			return err
+			if d != nil && d.IsDir() && child != path {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		rel, err := filepath.Rel(root, child)
 		if err != nil {
@@ -827,10 +853,11 @@ func snapshotFingerprint(snapshot fileSnapshot) string {
 }
 
 type fileChangeWatcher struct {
-	events  chan struct{}
-	watcher *fsnotify.Watcher
-	root    string
-	done    chan struct{}
+	events       chan struct{}
+	watcher      *fsnotify.Watcher
+	root         string
+	resolvedRoot string
+	done         chan struct{}
 }
 
 func newFileChangeWatcher(root string) (*fileChangeWatcher, error) {
@@ -838,11 +865,16 @@ func newFileChangeWatcher(root string) (*fileChangeWatcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		resolvedRoot = root
+	}
 	fw := &fileChangeWatcher{
-		events:  make(chan struct{}, 1),
-		watcher: underlying,
-		root:    root,
-		done:    make(chan struct{}),
+		events:       make(chan struct{}, 1),
+		watcher:      underlying,
+		root:         root,
+		resolvedRoot: resolvedRoot,
+		done:         make(chan struct{}),
 	}
 	if err := fw.addTree(root); err != nil {
 		_ = underlying.Close()
@@ -887,10 +919,25 @@ func (fw *fileChangeWatcher) run() {
 	}
 }
 
+// relativeToRoot maps an event path to a root-relative path. fsnotify reports
+// symlink-resolved paths (macOS reports /private/tmp/... for /tmp/...), so a
+// path that escapes the configured root is retried against the resolved root
+// before being treated as foreign.
+func (fw *fileChangeWatcher) relativeToRoot(path string) (string, bool) {
+	for _, root := range []string{fw.root, fw.resolvedRoot} {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return rel, true
+	}
+	return "", false
+}
+
 func (fw *fileChangeWatcher) handleEvent(event fsnotify.Event) {
 	path := filepath.Clean(event.Name)
-	rel, err := filepath.Rel(fw.root, path)
-	if err != nil {
+	rel, ok := fw.relativeToRoot(path)
+	if !ok {
 		fw.signal()
 		return
 	}
@@ -918,20 +965,16 @@ func (fw *fileChangeWatcher) signal() {
 
 func (fw *fileChangeWatcher) addTree(root string) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		if err != nil {
-			return err
+			if d != nil && d.IsDir() && path != root {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if !d.IsDir() {
 			return nil
 		}
-		rel, err := filepath.Rel(fw.root, path)
-		if err != nil {
-			return err
-		}
-		if rel != "." && shouldIgnoreWatchPath(rel) {
+		if rel, ok := fw.relativeToRoot(path); ok && rel != "." && shouldIgnoreWatchPath(rel) {
 			return filepath.SkipDir
 		}
 		return fw.watcher.Add(path)
