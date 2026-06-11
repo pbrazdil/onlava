@@ -17,22 +17,23 @@ package testlimit
 
 import (
 	"flag"
-	"os"
 	"runtime"
 	"strconv"
+
+	"scenery.sh/internal/envpolicy"
 )
 
 const maxTestProcs = 4
 
 func init() {
-	if os.Getenv("GOMAXPROCS") != "" {
+	if envpolicy.Get("GOMAXPROCS") != "" {
 		return
 	}
 	n := min(runtime.GOMAXPROCS(0), maxTestProcs)
 	runtime.GOMAXPROCS(n)
 	// Spawned Go subprocesses (go build, scenery binaries, agents) inherit
 	// the cap through the environment.
-	_ = os.Setenv("GOMAXPROCS", strconv.Itoa(n))
+	_ = envpolicy.Set("GOMAXPROCS", strconv.Itoa(n))
 }
 
 // RaiseTestParallelism lifts the -test.parallel default (which follows the
