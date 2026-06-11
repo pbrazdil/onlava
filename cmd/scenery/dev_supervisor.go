@@ -255,8 +255,8 @@ func (s *devSupervisor) Close() error {
 				errs = append(errs, err)
 			}
 		}
-		if s.agent != nil && s.agentSession != nil {
-			if _, _, err := s.agent.DeleteOwnedSession(context.Background(), *s.agentSession, false); err != nil {
+		if session := s.currentAgentSession(); s.agent != nil && session != nil {
+			if _, _, err := s.agent.DeleteOwnedSession(context.Background(), *session, false); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -266,7 +266,7 @@ func (s *devSupervisor) Close() error {
 }
 
 func (s *devSupervisor) Start(ctx context.Context) error {
-	s.setSessionIdentity(s.agentSession)
+	s.setSessionIdentity(s.currentAgentSession())
 	s.updateAgentSession(ctx, "starting", "")
 	s.eventSink().Emit(ctx, devdash.DevSource{ID: "supervisor", Kind: "supervisor", Name: "supervisor", Status: "starting"}, "info", "dev supervisor starting", map[string]any{
 		"listen_addr":    s.addr,
@@ -413,10 +413,12 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		return s.handleCompileError(ctx, metadata, apiEncoding, err)
 	}
 
-	previous := s.currentApp()
-	previousTS := s.currentTypeScriptWorker()
+	// Detach before stopping so the exit watchers treat this as an intentional
+	// restart rather than a crash; otherwise handleExit races the restart and
+	// can register the session as "stopped" after the new app is running.
+	previous := s.detachCurrentApp()
+	previousTS := s.detachTypeScriptWorker()
 	var current *runningApp
-	var currentTS *runningTypeScriptWorker
 	if err := s.console.Phase("Starting scenery application", func() error {
 		if previous != nil {
 			if err := previous.stop(); err != nil {
@@ -433,8 +435,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 			return err
 		}
 		if plan.TypeScript != nil {
-			currentTS, err = s.startTypeScriptWorker(ctx, *plan.TypeScript)
-			if err != nil {
+			if _, err = s.startTypeScriptWorker(ctx, *plan.TypeScript); err != nil {
 				_ = current.stop()
 				return err
 			}
@@ -446,9 +447,6 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 
 	s.mu.Lock()
 	s.current = current
-	if currentTS == nil {
-		s.typescript = nil
-	}
 	s.mu.Unlock()
 
 	s.setCompiling(false, "")
@@ -507,8 +505,9 @@ func effectiveDevConfigForModel(cfg app.Config, appModel *model.App) app.Config 
 }
 
 func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, metadata, apiEncoding json.RawMessage) (*runningApp, error) {
+	agentSession := s.currentAgentSession()
 	binary := result.Binary
-	if sessionBinary, err := prepareSessionAppBinary(s.agentSession, result.Binary); err != nil {
+	if sessionBinary, err := prepareSessionAppBinary(agentSession, result.Binary); err != nil {
 		return nil, err
 	} else if sessionBinary != "" {
 		binary = sessionBinary
@@ -541,21 +540,20 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		return nil, err
 	}
 	env = append(env, managedEnv...)
-	electricEnv, err := managedElectricEnv(s.cfg, s.agentSession, env)
+	electricEnv, err := managedElectricEnv(s.cfg, agentSession, env)
 	if err != nil {
 		return nil, err
 	}
 	env = append(env, electricEnv...)
 	if s.proxy != nil {
 		env = append(env, "SCENERY_PUBLIC_BASE_URL="+s.proxy.Routes().APIURL)
-	} else if s.agentSession != nil && s.agentSession.Routes[localagent.RouteAPI] != "" {
-		env = append(env, "SCENERY_PUBLIC_BASE_URL="+s.agentSession.Routes[localagent.RouteAPI])
+	} else if agentSession != nil && agentSession.Routes[localagent.RouteAPI] != "" {
+		env = append(env, "SCENERY_PUBLIC_BASE_URL="+agentSession.Routes[localagent.RouteAPI])
 	}
 	env = append(env, s.sessionAuthEnv()...)
 	if err := backendAvailableBeforeStartup(s.backend); err != nil {
 		return nil, fmt.Errorf("app listen address %s is unavailable before startup: %w", s.addr, err)
 	}
-	var app *runningApp
 	process, err := startDevManagedProcess(ctx, devProcessStartRequest{
 		Name:    "api",
 		Kind:    "app",
@@ -566,9 +564,6 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		Stdout:  s.processOutputWriter(os.Stdout),
 		Stderr:  s.processOutputWriter(os.Stderr),
 		OnOutput: func(pid int, stream string, data []byte) {
-			if app == nil {
-				return
-			}
 			source := devdash.DevSource{
 				ID:     "api",
 				Kind:   "app",
@@ -584,7 +579,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 	if err != nil {
 		return nil, err
 	}
-	app = &runningApp{
+	app := &runningApp{
 		process:  process,
 		cmd:      process.Cmd,
 		buildDir: result.Dir,
@@ -817,7 +812,7 @@ func (s *devSupervisor) managedAppEnv(ctx context.Context, baseEnv []string) ([]
 		return nil, nil
 	}
 	if _, svc, ok := managedPostgresDeclared(s.cfg); ok && postgresServiceUsesBranching(svc) {
-		env, resolution, connection, err := dbBranchManagedPostgresEnv(ctx, s.root, s.cfg, s.agentSession)
+		env, resolution, connection, err := dbBranchManagedPostgresEnv(ctx, s.root, s.cfg, s.currentAgentSession())
 		status := "running"
 		message := "database branch lease ready"
 		if err != nil {
@@ -837,7 +832,7 @@ func (s *devSupervisor) managedAppEnv(ctx context.Context, baseEnv []string) ([]
 		}
 		return env, nil
 	}
-	env, err := managedPostgresEnv(ctx, s.cfg, s.agentSession, baseEnv, s.agent)
+	env, err := managedPostgresEnv(ctx, s.cfg, s.currentAgentSession(), baseEnv, s.agent)
 	if err != nil {
 		return nil, err
 	}
@@ -869,24 +864,25 @@ func (s *devSupervisor) appDatabaseAuthorityEnv(baseEnv []string) []string {
 }
 
 func (s *devSupervisor) sessionIdentityEnv() []string {
-	if s == nil || s.agentSession == nil {
+	session := s.currentAgentSession()
+	if session == nil {
 		return nil
 	}
-	baseAppID := strings.TrimSpace(s.agentSession.BaseAppID)
+	baseAppID := strings.TrimSpace(session.BaseAppID)
 	if baseAppID == "" {
 		baseAppID = s.activeAppID()
 	}
-	runtimeAppID := strings.TrimSpace(s.agentSession.RuntimeAppID)
+	runtimeAppID := strings.TrimSpace(session.RuntimeAppID)
 	if runtimeAppID == "" {
 		runtimeAppID = baseAppID
 	}
 	return []string{
-		"SCENERY_SESSION_ID=" + strings.TrimSpace(s.agentSession.SessionID),
+		"SCENERY_SESSION_ID=" + strings.TrimSpace(session.SessionID),
 		"SCENERY_BASE_APP_ID=" + baseAppID,
 		"SCENERY_RUNTIME_APP_ID=" + runtimeAppID,
-		"SCENERY_APP_ROOT_HASH=" + appRootHash(s.agentSession.AppRoot),
-		"SCENERY_BRANCH=" + strings.TrimSpace(s.agentSession.Branch),
-		"SCENERY_WORKTREE=" + appWorktreeName(s.agentSession.AppRoot),
+		"SCENERY_APP_ROOT_HASH=" + appRootHash(session.AppRoot),
+		"SCENERY_BRANCH=" + strings.TrimSpace(session.Branch),
+		"SCENERY_WORKTREE=" + appWorktreeName(session.AppRoot),
 	}
 }
 
@@ -916,8 +912,8 @@ func (s *devSupervisor) devReportURL() string {
 				return rawURL
 			}
 		}
-		if s.agentSession != nil {
-			if rawURL := reportURLForBackend(s.agentSession.Backends[localagent.RouteDashboard]); rawURL != "" {
+		if session := s.currentAgentSession(); session != nil {
+			if rawURL := reportURLForBackend(session.Backends[localagent.RouteDashboard]); rawURL != "" {
 				return rawURL
 			}
 		}
@@ -935,14 +931,18 @@ func reportURLForBackend(backend localagent.Backend) string {
 }
 
 func (s *devSupervisor) sessionTemporalEnv() []string {
-	if s == nil || s.agentSession == nil || !s.cfg.Temporal.Enabled {
+	if s == nil || !s.cfg.Temporal.Enabled {
 		return nil
 	}
-	sessionID := strings.TrimSpace(s.agentSession.SessionID)
+	session := s.currentAgentSession()
+	if session == nil {
+		return nil
+	}
+	sessionID := strings.TrimSpace(session.SessionID)
 	if sessionID == "" {
 		return nil
 	}
-	baseAppID := strings.TrimSpace(s.agentSession.BaseAppID)
+	baseAppID := strings.TrimSpace(session.BaseAppID)
 	if baseAppID == "" {
 		baseAppID = s.activeAppID()
 	}
@@ -1405,6 +1405,37 @@ func (s *devSupervisor) currentSessionID() string {
 	return s.status.SessionID
 }
 
+// currentAgentSession returns the latest agent session snapshot. Stored
+// sessions are immutable: writers register a refreshed session with the agent
+// and publish it via storeAgentSession instead of mutating fields in place.
+func (s *devSupervisor) currentAgentSession() *localagent.Session {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.agentSession
+}
+
+func (s *devSupervisor) storeAgentSession(session *localagent.Session) {
+	if s == nil || session == nil {
+		return
+	}
+	s.mu.Lock()
+	s.agentSession = session
+	s.mu.Unlock()
+	s.setSessionIdentity(session)
+}
+
+func (s *devSupervisor) currentElectric() *managedElectricService {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.electric
+}
+
 func (s *devSupervisor) setGrafanaState(state devdash.GrafanaState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1450,8 +1481,8 @@ func (s *devSupervisor) apiURL() string {
 	if s.proxy != nil && s.proxy.Routes().APIURL != "" {
 		return s.proxy.Routes().APIURL
 	}
-	if s.agentSession != nil && s.agentSession.Routes[localagent.RouteAPI] != "" {
-		return s.agentSession.Routes[localagent.RouteAPI]
+	if session := s.currentAgentSession(); session != nil && session.Routes[localagent.RouteAPI] != "" {
+		return session.Routes[localagent.RouteAPI]
 	}
 	return "http://" + s.addr
 }
@@ -1460,8 +1491,8 @@ func (s *devSupervisor) dashboardURL() string {
 	if s.proxy != nil && s.proxy.Routes().ConsoleURL != "" {
 		return localproxy.ConsoleAppURL(s.proxy.Routes(), s.activeAppID())
 	}
-	if s.agentSession != nil && s.agentSession.Routes[localagent.RouteDashboard] != "" {
-		return s.agentSession.Routes[localagent.RouteDashboard]
+	if session := s.currentAgentSession(); session != nil && session.Routes[localagent.RouteDashboard] != "" {
+		return session.Routes[localagent.RouteDashboard]
 	}
 	return "http://" + devdash.ListenAddr() + "/" + url.PathEscape(s.activeAppID())
 }
@@ -1470,8 +1501,8 @@ func (s *devSupervisor) temporalURL() string {
 	if s.proxy != nil && s.proxy.Routes().TemporalURL != "" {
 		return s.proxy.Routes().TemporalURL
 	}
-	if s.agentSession != nil && s.agentSession.Routes[localagent.RouteTemporal] != "" {
-		return s.agentSession.Routes[localagent.RouteTemporal]
+	if session := s.currentAgentSession(); session != nil && session.Routes[localagent.RouteTemporal] != "" {
+		return session.Routes[localagent.RouteTemporal]
 	}
 	return s.temporal.URL()
 }
@@ -1487,8 +1518,8 @@ func (s *devSupervisor) frontendURLs() map[string]string {
 	if s.proxy != nil {
 		return frontendURLs(s.proxy.Routes())
 	}
-	if s.agentSession != nil {
-		return frontendURLsFromAgentRoutes(s.agentSession.Routes, s.cfg.Proxy.Frontends)
+	if session := s.currentAgentSession(); session != nil {
+		return frontendURLsFromAgentRoutes(session.Routes, s.cfg.Proxy.Frontends)
 	}
 	return nil
 }
@@ -1627,8 +1658,10 @@ func (s *devSupervisor) startGrafana(ctx context.Context) error {
 		s.grafana = grafana
 		state := grafana.State()
 		if s.registerAgentSessionBackend(ctx, localagent.RouteGrafana, backendFromHTTPURL(grafana.URL())) {
-			if route := strings.TrimSpace(s.agentSession.Routes[localagent.RouteGrafana]); route != "" {
-				state = grafanaStateWithBaseURL(state, route)
+			if session := s.currentAgentSession(); session != nil {
+				if route := strings.TrimSpace(session.Routes[localagent.RouteGrafana]); route != "" {
+					state = grafanaStateWithBaseURL(state, route)
+				}
 			}
 		}
 		s.setGrafanaState(state)
@@ -1649,25 +1682,29 @@ func (s *devSupervisor) startGrafana(ctx context.Context) error {
 }
 
 func (s *devSupervisor) registerAgentSessionBackend(ctx context.Context, route string, backend localagent.Backend) bool {
+	if s == nil || s.agent == nil {
+		return false
+	}
 	route = strings.TrimSpace(route)
 	backend.Network = strings.TrimSpace(backend.Network)
 	backend.Addr = strings.TrimSpace(backend.Addr)
-	if s == nil || s.agent == nil || s.agentSession == nil || route == "" || backend.Addr == "" {
+	session := s.currentAgentSession()
+	if session == nil || route == "" || backend.Addr == "" {
 		return false
 	}
 	if backend.Network == "" {
 		backend.Network = "tcp"
 	}
-	backends := copyManagedBackends(s.agentSession.Backends)
+	backends := copyManagedBackends(session.Backends)
 	backends[route] = backend
-	session, err := s.agent.Register(ctx, localagent.RegisterRequest{
-		BaseAppID:   s.cfg.AppID(),
+	updated, err := s.agent.Register(ctx, localagent.RegisterRequest{
+		BaseAppID:   s.activeAppID(),
 		AppRoot:     s.root,
-		SessionID:   s.agentSession.SessionID,
-		Branch:      s.agentSession.Branch,
-		Status:      firstNonEmpty(s.agentSession.Status, "starting"),
+		SessionID:   session.SessionID,
+		Branch:      session.Branch,
+		Status:      firstNonEmpty(session.Status, "starting"),
 		OwnerPID:    os.Getpid(),
-		AppPID:      s.agentSession.AppPID,
+		AppPID:      session.AppPID,
 		Backends:    backends,
 		ReportToken: s.reportToken,
 	})
@@ -1675,8 +1712,7 @@ func (s *devSupervisor) registerAgentSessionBackend(ctx context.Context, route s
 		slog.Warn("failed to register scenery agent session backend", "route", route, "err", err)
 		return false
 	}
-	s.agentSession = &session
-	s.setSessionIdentity(&session)
+	s.storeAgentSession(&updated)
 	return true
 }
 
@@ -1765,6 +1801,17 @@ func (s *devSupervisor) plannedGrafanaPublicURL() string {
 }
 
 func (s *devSupervisor) activeAppID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.activeAppIDLocked()
+}
+
+// activeAppIDLocked requires s.mu to be held. The s.cfg fallback only applies
+// before setAppIdentity has run, when no other goroutines are active.
+func (s *devSupervisor) activeAppIDLocked() string {
+	if s.status.ID != "" {
+		return s.status.ID
+	}
 	return s.cfg.AppID()
 }
 
@@ -1807,10 +1854,16 @@ func (s *devSupervisor) dashboardRootForApp(ctx context.Context, appID string) (
 }
 
 func (s *devSupervisor) dashboardVictoria() dashboardVictoria {
-	if s == nil || s.victoria == nil {
+	if s == nil {
 		return nil
 	}
-	return s.victoria
+	s.mu.RLock()
+	victoria := s.victoria
+	s.mu.RUnlock()
+	if victoria == nil {
+		return nil
+	}
+	return victoria
 }
 
 func (s *devSupervisor) setAppIdentity(cfg app.Config) {
@@ -1849,7 +1902,9 @@ func (s *devSupervisor) startLocalProxy() error {
 	if err != nil {
 		return err
 	}
+	s.mu.Lock()
 	s.proxy = proxy
+	s.mu.Unlock()
 	if s.grafana != nil && proxy.Routes().GrafanaURL != "" {
 		state := grafanaStateWithBaseURL(s.grafana.State(), proxy.Routes().GrafanaURL)
 		s.setGrafanaState(state)
@@ -2043,6 +2098,10 @@ func (s *devSupervisor) statusFor(ctx context.Context, appID string) (devdash.Ap
 		}
 	}
 	routeID := firstNonEmpty(app.RouteID, app.ID)
+	s.mu.RLock()
+	routes := s.statusDashboardRoutesLocked(app.SessionID)
+	aliases := s.statusDashboardAliasesLocked(app.SessionID)
+	s.mu.RUnlock()
 	return devdash.AppStatus{
 		Running:      app.Running,
 		AppID:        routeID,
@@ -2055,13 +2114,14 @@ func (s *devSupervisor) statusFor(ctx context.Context, appID string) (devdash.Ap
 		Addr:         app.ListenAddr,
 		APIEncoding:  app.APIEncoding,
 		Grafana:      decodeGrafanaState(app.Grafana),
-		Routes:       s.statusDashboardRoutesLocked(app.SessionID),
-		Aliases:      s.statusDashboardAliasesLocked(app.SessionID),
+		Routes:       routes,
+		Aliases:      aliases,
 		Compiling:    app.Compiling,
 		CompileError: app.CompileError,
 	}, nil
 }
 
+// statusDashboardRoutesLocked requires s.mu to be held.
 func (s *devSupervisor) statusDashboardRoutesLocked(sessionID string) map[string]string {
 	if s == nil {
 		return nil
@@ -2075,13 +2135,14 @@ func (s *devSupervisor) statusDashboardRoutesLocked(sessionID string) map[string
 		}
 	}
 	if s.proxy != nil {
-		if routes := visibleDashboardRoutesFromProxy(s.proxy.Routes(), s.activeAppID()); len(routes) > 0 {
+		if routes := visibleDashboardRoutesFromProxy(s.proxy.Routes(), s.activeAppIDLocked()); len(routes) > 0 {
 			return routes
 		}
 	}
 	return nil
 }
 
+// statusDashboardAliasesLocked requires s.mu to be held.
 func (s *devSupervisor) statusDashboardAliasesLocked(sessionID string) map[string]string {
 	if s == nil || s.agentSession == nil {
 		return nil
@@ -2102,34 +2163,37 @@ func randomToken() (string, error) {
 }
 
 func (s *devSupervisor) updateAgentSession(ctx context.Context, status, appPID string) {
-	if s == nil || s.agent == nil || s.agentSession == nil {
+	if s == nil || s.agent == nil {
 		return
 	}
-	session, err := s.agent.Register(ctx, localagent.RegisterRequest{
-		BaseAppID:   s.cfg.AppID(),
+	session := s.currentAgentSession()
+	if session == nil {
+		return
+	}
+	updated, err := s.agent.Register(ctx, localagent.RegisterRequest{
+		BaseAppID:   s.activeAppID(),
 		AppRoot:     s.root,
-		SessionID:   s.agentSession.SessionID,
-		Branch:      s.agentSession.Branch,
+		SessionID:   session.SessionID,
+		Branch:      session.Branch,
 		Status:      status,
 		OwnerPID:    os.Getpid(),
 		AppPID:      appPID,
-		Processes:   s.sessionProcesses(appPID),
-		Backends:    s.agentSession.Backends,
+		Processes:   s.sessionProcessesFor(session, appPID),
+		Backends:    session.Backends,
 		ReportToken: s.reportToken,
 	})
 	if err != nil {
 		slog.Warn("failed to update scenery agent session", "err", err)
 		return
 	}
-	s.agentSession = &session
-	s.setSessionIdentity(&session)
+	s.storeAgentSession(&updated)
 }
 
-func (s *devSupervisor) sessionProcesses(appPID string) map[string]localagent.Process {
-	if s == nil || s.agentSession == nil {
+func (s *devSupervisor) sessionProcessesFor(session *localagent.Session, appPID string) map[string]localagent.Process {
+	if s == nil || session == nil {
 		return nil
 	}
-	processes := copySessionProcesses(s.agentSession.Processes)
+	processes := copySessionProcesses(session.Processes)
 	if pid := atoiPID(appPID); pid > 0 {
 		processes[localagent.RouteAPI] = localagent.Process{PID: pid}
 	}
@@ -2138,8 +2202,8 @@ func (s *devSupervisor) sessionProcesses(appPID string) map[string]localagent.Pr
 			processes["worker-typescript"] = localagent.Process{PID: pid}
 		}
 	}
-	if s.electric != nil {
-		if pid := s.electric.PID(); pid > 0 {
+	if electric := s.currentElectric(); electric != nil {
+		if pid := electric.PID(); pid > 0 {
 			processes["electric"] = localagent.Process{PID: pid}
 		}
 	}

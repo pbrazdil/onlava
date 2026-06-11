@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
+
 	localagent "scenery.sh/internal/agent"
 	"scenery.sh/internal/app"
 )
@@ -100,6 +102,66 @@ func TestShouldIgnoreWatchPath(t *testing.T) {
 		if got := shouldIgnoreWatchPath(tt.path); got != tt.want {
 			t.Fatalf("shouldIgnoreWatchPath(%q) = %v, want %v", tt.path, got, tt.want)
 		}
+	}
+}
+
+func TestFileChangeWatcherHandlesResolvedRootEventPaths(t *testing.T) {
+	target := t.TempDir()
+	root := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(target, root); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	writeWatchFile(t, root, "svc/api.go", "package svc\n")
+
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("EvalSymlinks returned error: %v", err)
+	}
+	fw := &fileChangeWatcher{
+		events:       make(chan struct{}, 1),
+		root:         root,
+		resolvedRoot: resolvedRoot,
+	}
+
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatalf("EvalSymlinks returned error: %v", err)
+	}
+
+	fw.handleEvent(fsnotify.Event{Name: filepath.Join(resolved, "svc", "api.go"), Op: fsnotify.Write})
+	select {
+	case <-fw.Events():
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected change signal for event path under the resolved root")
+	}
+
+	fw.handleEvent(fsnotify.Event{Name: filepath.Join(resolved, ".git", "index"), Op: fsnotify.Write})
+	select {
+	case <-fw.Events():
+		t.Fatal("expected ignored path under the resolved root to not signal")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestScanWatchedFilesToleratesUnreadableDirs(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("directory permissions are not enforced for root")
+	}
+	root := t.TempDir()
+	writeWatchFile(t, root, "svc/api.go", "package svc\n")
+	writeWatchFile(t, root, "blocked/inner.go", "package blocked\n")
+	blocked := filepath.Join(root, "blocked")
+	if err := os.Chmod(blocked, 0); err != nil {
+		t.Fatalf("chmod returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
+
+	snapshot, err := scanWatchedFiles(root)
+	if err != nil {
+		t.Fatalf("scanWatchedFiles returned error: %v", err)
+	}
+	if _, ok := snapshot["svc/api.go"]; !ok {
+		t.Fatalf("snapshot missing svc/api.go: %+v", snapshot)
 	}
 }
 
