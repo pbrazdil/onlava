@@ -221,7 +221,7 @@ scenery task graph --json [--app-root <path>]
 scenery validate [<profile>] [--app-root <path>] [--json] [--write] [--dry-run]
 scenery validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
 scenery harness [--app-root <path>] [--json] [--write] [--with-validation[=<profile>]]
-scenery harness self [--repo-root <path>] [--json] [--write] [--quick|--race|--release]
+scenery harness self [--repo-root <path>] [--json] [--write] [--quick|--race|--release] [--fresh-tests]
 scenery harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
 scenery inspect app|routes|services|endpoints|wire|build|paths|generators|temporal --json [--app-root <path>]
 scenery inspect docs --json [--repo-root <path>]
@@ -345,6 +345,9 @@ Run the self-harness when making substantial changes:
 ```sh
 scenery harness self --json --write
 ```
+
+Self-harness Go test steps use the Go test result cache by default; add
+`--fresh-tests` when you need a fresh `-count=1` run.
 
 Run the JSON/wire benchmark:
 

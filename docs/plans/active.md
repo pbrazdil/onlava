@@ -31,7 +31,7 @@ reuse IDs; this list can still be ordered by current priority.
   - Status: active
   - Owner: scenery runtime / test infrastructure
   - Created: 2026-05-28
-  - Focus: fix flaky Grafana version probing, silence expected CLI warnings in tests, add timing reports, and reduce warm-cache `go test -count=1 ./...` runtime.
+  - Focus: keep the default cached `go test ./...` path fast and quiet while preserving explicit fresh `-count=1` validation for targeted no-cache checks.
 - [0059 Frozen Toolchain Manifest and Managed Tool Store](0059-frozen-toolchain-manifest.md)
   - Status: active
   - Owner: scenery runtime / release tooling / agent DX

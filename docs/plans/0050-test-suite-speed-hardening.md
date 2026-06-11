@@ -164,6 +164,7 @@ The longer goal is a warm-cache full-suite runtime near five seconds. That requi
 - [x] 2026-05-29: Rebuilt `scenery` and refreshed the default self-harness after the seven-second budget change. The Go gate passed at 6.260s with no timing errors, zero drift diagnostics, and 10 schema validations.
 - [x] 2026-06-01: Changed the default self-harness total timing budget from hard-fail to advisory while preserving the complete `go test -count=1 ... ./...` run and timing artifact. Release-mode self-harness can still enforce the total budget when maintainers intentionally want a hard speed gate.
 - [x] 2026-06-07: Raised release-mode self-harness total timing enforcement from seven seconds to twenty seconds. Default self-harness still records the seven-second advisory target, while `scenery harness self --release --json --write` now tolerates current full-suite variance without weakening package/test timing warnings or the complete `go test ./...` scope.
+- [x] 2026-06-11: Changed the default self-harness Go test command from `go test -count=1 -json ./...` to cached `go test -json ./...`, and added `--fresh-tests` for the explicit no-result-cache path. Changed-area recommendations now prefer cached `go test` commands by default.
 
 ## Surprises & Discoveries
 
@@ -404,6 +405,9 @@ The longer goal is a warm-cache full-suite runtime near five seconds. That requi
 - Decision: Retune the self-harness full-suite command to `go test -count=1 -p 10 -parallel 8 -json ./...`.
   Rationale: After removing the separate relocated-tests package, lower package fanout performed better in current direct JSON samples while preserving the complete `./...` suite and assertions.
   Date/Author: 2026-05-29 / Codex.
+- Decision: Use Go's test result cache by default in self-harness Go test steps, with `--fresh-tests` for explicit no-cache validation.
+  Rationale: The everyday harness and changed-area recommendations should behave like normal `go test` so repeated validation benefits from the result cache. Fresh `-count=1` runs remain available when a maintainer intentionally wants to bypass cached test results.
+  Date/Author: 2026-06-11 / Codex.
 - Decision: Keep the dashboard/removed agent transport integration test focused on dashboard/proxy/removed agent transport/reload behavior rather than reusing the broad `basic` fixture.
   Rationale: `TestSceneryRunBasicApp` already covers the `basic` fixture's auth, raw endpoint, CORS, typed request, and status behavior. The dashboard test's required behavior is the dev platform surface around a public endpoint, and a smaller synthetic app preserves that scope with less reload build work.
   Date/Author: 2026-05-29 / Codex.

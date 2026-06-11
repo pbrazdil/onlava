@@ -253,7 +253,7 @@ scenery validate inspect <profile> [--app-root <path>] [--json]
 scenery validate graph [<profile>] [--app-root <path>] --json
 scenery validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
 scenery harness [--app-root <path>] --json --write
-scenery harness self [--repo-root <path>] --summary --write
+scenery harness self [--repo-root <path>] --summary --write [--fresh-tests]
 scenery inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|observability --json [--app-root <path>]
 scenery inspect docs --json [--repo-root <path>]
 scenery traces list --json [--app-root <path>]
@@ -285,6 +285,9 @@ scenery worktree create <name> [--from <branch>] [--app-root <path>] [--json]
 scenery worktree list [--app-root <path>] [--json]
 scenery worktree remove <name> [--app-root <path>] [--db] [--json]
 ```
+
+Self-harness Go test steps use the Go test result cache by default. Pass
+`--fresh-tests` when a fresh `-count=1` run is intentionally required.
 
 ## Validation Before Finishing
 

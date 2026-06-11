@@ -228,9 +228,9 @@ func populateHarnessChangedAreaReport(repoRoot string, report *harnessChangedAre
 				change.Package = pkg.ImportPath
 				packageSet[pkg.ImportPath] = true
 				if pkg.RelDir == "." {
-					commandSet["go test -count=1 ."] = true
+					commandSet["go test ."] = true
 				} else {
-					commandSet["go test -count=1 ./"+filepath.ToSlash(pkg.RelDir)] = true
+					commandSet["go test ./"+filepath.ToSlash(pkg.RelDir)] = true
 				}
 			}
 		}
@@ -242,7 +242,7 @@ func populateHarnessChangedAreaReport(repoRoot string, report *harnessChangedAre
 	report.RecommendedCommands = sortedStringSet(commandSet)
 	if len(report.ChangedFiles) > 0 {
 		report.RecommendedCommands = appendUniqueSorted(report.RecommendedCommands,
-			"go test -count=1 ./...",
+			"go test ./...",
 			"scenery harness self --summary --write",
 		)
 	}
@@ -489,11 +489,11 @@ func harnessDevEventBackendPath(path string) bool {
 }
 
 func runHarnessGoTestTimingStep(ctx context.Context, repoRoot string, artifactCtxs ...harnessArtifactContext) (harnessStep, *harnessTestTimingReport) {
-	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, defaultHarnessTestTimingBudgets(), artifactCtxs...)
+	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, defaultHarnessTestTimingBudgets(), false, artifactCtxs...)
 }
 
-func runHarnessGoTestTimingStepForMode(ctx context.Context, repoRoot, mode string, artifactCtxs ...harnessArtifactContext) (harnessStep, *harnessTestTimingReport) {
-	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, harnessTestTimingBudgetsForMode(mode), artifactCtxs...)
+func runHarnessGoTestTimingStepForMode(ctx context.Context, repoRoot, mode string, freshTests bool, artifactCtxs ...harnessArtifactContext) (harnessStep, *harnessTestTimingReport) {
+	return runHarnessGoTestTimingStepWithBudgets(ctx, repoRoot, harnessTestTimingBudgetsForMode(mode), freshTests, artifactCtxs...)
 }
 
 func harnessTestTimingBudgetsForMode(mode string) harnessTestTimingBudgets {
@@ -505,9 +505,9 @@ func harnessTestTimingBudgetsForMode(mode string) harnessTestTimingBudgets {
 	return budgets
 }
 
-func runHarnessGoTestTimingStepWithBudgets(ctx context.Context, repoRoot string, budgets harnessTestTimingBudgets, artifactCtxs ...harnessArtifactContext) (harnessStep, *harnessTestTimingReport) {
+func runHarnessGoTestTimingStepWithBudgets(ctx context.Context, repoRoot string, budgets harnessTestTimingBudgets, freshTests bool, artifactCtxs ...harnessArtifactContext) (harnessStep, *harnessTestTimingReport) {
 	started := time.Now()
-	command := harnessSelfGoTestCommand()
+	command := harnessSelfGoTestCommandWithCacheMode(freshTests)
 	testEnv := harnessSelfGoTestEnv()
 	evidence := newHarnessEvidence(command, repoRoot, started)
 	step := harnessStep{

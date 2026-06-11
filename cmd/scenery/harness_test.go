@@ -28,7 +28,7 @@ func TestParseHarnessArgs(t *testing.T) {
 func TestParseHarnessSelfArgs(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseHarnessSelfArgs([]string{"--repo-root", "/tmp/scenery", "--json", "--write", "--quick"})
+	opts, err := parseHarnessSelfArgs([]string{"--repo-root", "/tmp/scenery", "--json", "--write", "--quick", "--fresh-tests"})
 	if err != nil {
 		t.Fatalf("parseHarnessSelfArgs returned error: %v", err)
 	}
@@ -40,6 +40,9 @@ func TestParseHarnessSelfArgs(t *testing.T) {
 	}
 	if opts.Mode != harnessSelfModeQuick {
 		t.Fatalf("mode = %q, want quick", opts.Mode)
+	}
+	if !opts.FreshTests {
+		t.Fatalf("fresh tests = false, want true")
 	}
 	if _, err := parseHarnessSelfArgs([]string{"--quick", "--race"}); err == nil {
 		t.Fatal("expected conflicting harness self modes to fail")
@@ -53,8 +56,17 @@ func TestHarnessSelfGoTestCommandRunsFullSuiteInJSONMode(t *testing.T) {
 	t.Parallel()
 
 	got := strings.Join(harnessSelfGoTestCommand(), " ")
-	if got != "go test -count=1 -json ./..." {
+	if got != "go test -json ./..." {
 		t.Fatalf("harnessSelfGoTestCommand() = %q", got)
+	}
+}
+
+func TestHarnessSelfFreshGoTestCommandDisablesTestCache(t *testing.T) {
+	t.Parallel()
+
+	got := strings.Join(harnessSelfFreshGoTestCommand(), " ")
+	if got != "go test -count=1 -json ./..." {
+		t.Fatalf("harnessSelfFreshGoTestCommand() = %q", got)
 	}
 }
 
@@ -160,7 +172,7 @@ func TestBuildHarnessChangedAreaReportRecommendsPackageCommands(t *testing.T) {
 	if !foundCLI {
 		t.Fatalf("changed files did not include cmd/scenery/main.go: %+v", report.ChangedFiles)
 	}
-	if !stringSliceContains(report.RecommendedCommands, "go test -count=1 ./cmd/scenery") {
+	if !stringSliceContains(report.RecommendedCommands, "go test ./cmd/scenery") {
 		t.Fatalf("recommended commands = %+v", report.RecommendedCommands)
 	}
 	if !stringSliceContains(report.RecommendedCommands, "scenery harness self --summary --write") {
@@ -293,7 +305,7 @@ func TestWriteHarnessSelfOracleArtifacts(t *testing.T) {
 		ChangedArea: &harnessChangedAreaReport{
 			SchemaVersion:       harnessChangedAreaSchema,
 			ChangedFiles:        []harnessChangedFile{{Path: "cmd/scenery/harness.go", Status: "modified", Category: "cli"}},
-			RecommendedCommands: []string{"go test -count=1 ./cmd/scenery"},
+			RecommendedCommands: []string{"go test ./cmd/scenery"},
 			RiskFlags:           []string{"harness-contract"},
 		},
 		TestTiming: &harnessTestTimingReport{
@@ -318,7 +330,7 @@ func TestWriteHarnessSelfOracleArtifacts(t *testing.T) {
 					Path:          ".scenery/harness/artifacts/20260529T000000Z/go-test.jsonl",
 					SchemaVersion: "go.test.jsonl",
 				}},
-				ReproCommand: "cd " + root + " && go test -count=1 -json ./...",
+				ReproCommand: "cd " + root + " && go test -json ./...",
 			},
 		}},
 		NextActions: []string{"scenery harness self --summary --write"},
@@ -347,16 +359,16 @@ func TestWriteHarnessSelfOracleArtifacts(t *testing.T) {
 	if contextPack.SchemaVersion != harnessAgentContextSchema {
 		t.Fatalf("agent context schema = %q", contextPack.SchemaVersion)
 	}
-	if !stringSliceContains(contextPack.RecommendedCommands, "go test -count=1 ./cmd/scenery") {
+	if !stringSliceContains(contextPack.RecommendedCommands, "go test ./cmd/scenery") {
 		t.Fatalf("agent context commands = %+v", contextPack.RecommendedCommands)
 	}
 	if len(contextPack.FailingSteps) != 1 || contextPack.FailingSteps[0].FirstFileToRead != ".scenery/harness/test-timing-latest.json" {
 		t.Fatalf("failing steps = %+v", contextPack.FailingSteps)
 	}
-	if !stringSliceContains(contextPack.RerunCommands, "cd "+root+" && go test -count=1 -json ./...") {
+	if !stringSliceContains(contextPack.RerunCommands, "cd "+root+" && go test -json ./...") {
 		t.Fatalf("rerun commands = %+v", contextPack.RerunCommands)
 	}
-	if !stringSliceContains(contextPack.ChangedAreaRecommendedCommands, "go test -count=1 ./cmd/scenery") {
+	if !stringSliceContains(contextPack.ChangedAreaRecommendedCommands, "go test ./cmd/scenery") {
 		t.Fatalf("changed-area commands = %+v", contextPack.ChangedAreaRecommendedCommands)
 	}
 	if !stringSliceContains(contextPack.RiskClassification, "CLI contract") || !stringSliceContains(contextPack.RiskClassification, "release") {

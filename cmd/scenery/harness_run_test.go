@@ -281,7 +281,7 @@ func TestChangedAreaIgnoresLocalHarnessArtifacts(t *testing.T) {
 	if len(report.IgnoredFiles) != 3 {
 		t.Fatalf("ignored files = %+v", report.IgnoredFiles)
 	}
-	if stringSliceContains(report.RecommendedCommands, "go test -count=1 ./...") || stringSliceContains(report.RecommendedCommands, "scenery harness self --summary --write") {
+	if stringSliceContains(report.RecommendedCommands, "go test ./...") || stringSliceContains(report.RecommendedCommands, "scenery harness self --summary --write") {
 		t.Fatalf("ignored-only changes recommended commands: %+v", report.RecommendedCommands)
 	}
 }

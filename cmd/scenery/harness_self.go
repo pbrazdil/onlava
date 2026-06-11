@@ -16,11 +16,12 @@ import (
 )
 
 type harnessSelfOptions struct {
-	RepoRoot string
-	JSON     bool
-	Write    bool
-	Mode     string
-	Output   string
+	RepoRoot   string
+	JSON       bool
+	Write      bool
+	Mode       string
+	Output     string
+	FreshTests bool
 }
 
 type harnessSelfResponse struct {
@@ -96,14 +97,14 @@ func runSceneryHarnessSelf(ctx context.Context, stdout io.Writer, args []string)
 
 	switch opts.Mode {
 	case harnessSelfModeQuick:
-		resp.Steps = append(resp.Steps, runHarnessAffectedPackageTestsStep(ctx, repoRoot, changedArea, artifactCtx))
+		resp.Steps = append(resp.Steps, runHarnessAffectedPackageTestsStep(ctx, repoRoot, changedArea, opts.FreshTests, artifactCtx))
 	case harnessSelfModeDefault, harnessSelfModeRace, harnessSelfModeRelease:
 		localSceneryPath := harnessLocalSceneryBinaryPath(repoRoot)
 		resp.Steps = append(resp.Steps,
 			runHarnessLocalSceneryBuildStep(ctx, repoRoot, localSceneryPath, artifactCtx),
 			runHarnessSceneryBinaryStep(repoRoot, localSceneryPath),
 		)
-		goTestStep, testTiming := runHarnessGoTestTimingStepForMode(ctx, repoRoot, opts.Mode, artifactCtx)
+		goTestStep, testTiming := runHarnessGoTestTimingStepForMode(ctx, repoRoot, opts.Mode, opts.FreshTests, artifactCtx)
 		resp.TestTiming = testTiming
 		resp.Steps = append(resp.Steps,
 			goTestStep,
@@ -191,7 +192,19 @@ const (
 )
 
 func harnessSelfGoTestCommand() []string {
-	return []string{"go", "test", "-count=1", "-json", "./..."}
+	return harnessSelfGoTestCommandWithCacheMode(false)
+}
+
+func harnessSelfFreshGoTestCommand() []string {
+	return harnessSelfGoTestCommandWithCacheMode(true)
+}
+
+func harnessSelfGoTestCommandWithCacheMode(freshTests bool) []string {
+	command := []string{"go", "test"}
+	if freshTests {
+		command = append(command, "-count=1")
+	}
+	return append(command, "-json", "./...")
 }
 
 func harnessSelfGoTestEnv() []string {
@@ -278,6 +291,8 @@ func parseHarnessSelfArgs(args []string) (harnessSelfOptions, error) {
 			opts.Output = harnessSelfOutputFull
 		case "--write":
 			opts.Write = true
+		case "--fresh-tests":
+			opts.FreshTests = true
 		case "--quick":
 			if opts.Mode != harnessSelfModeDefault {
 				return harnessSelfOptions{}, fmt.Errorf("only one harness self mode may be selected")

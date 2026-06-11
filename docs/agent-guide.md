@@ -61,6 +61,9 @@ go test ./cmd/scenery
 scenery harness self --summary --write
 ```
 
+The self-harness Go test steps use the Go test result cache by default; add
+`--fresh-tests` only when a no-result-cache `-count=1` run is required.
+
 Do not run `go install ./cmd/scenery` during agent validation unless a human
 explicitly asks. Multiple worktrees share the installed `scenery` binary; the
 self-harness builds `.scenery/harness/bin/scenery` inside the current worktree for

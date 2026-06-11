@@ -83,7 +83,7 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 	}
 	artifactEvidencePayload := harnessEvidence{
 		SchemaVersion: harnessArtifactEvidenceSchema,
-		Command:       []string{"go", "test", "-count=1", "-json", "./..."},
+		Command:       []string{"go", "test", "-json", "./..."},
 		CWD:           repoRoot,
 		StartedAt:     "2026-06-07T00:00:00Z",
 		DurationMS:    1234,
@@ -94,7 +94,7 @@ func buildHarnessSchemaValidationReport(repoRoot string, resp harnessSelfRespons
 			Path:          ".scenery/harness/artifacts/20260607T000000Z/go-test.jsonl",
 			SchemaVersion: "go.test.jsonl",
 		}},
-		ReproCommand: "cd " + repoRoot + " && go test -count=1 -json ./...",
+		ReproCommand: "cd " + repoRoot + " && go test -json ./...",
 	}
 	var helpJSON bytes.Buffer
 	helpPayload := map[string]any{}

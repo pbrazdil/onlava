@@ -662,7 +662,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-07",
       "review_after": "2026-07-07",
-      "summary": "Active ExecPlan for fixing flaky Grafana version probing, expected CLI warnings, timing reports, and warm-cache Go test runtime.",
+      "summary": "Active ExecPlan for keeping cached Go test validation fast and quiet while preserving explicit fresh no-cache checks.",
       "tags": [
         "plans",
         "execplans",

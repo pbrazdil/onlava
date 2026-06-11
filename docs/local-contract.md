@@ -377,7 +377,7 @@ scenery validate inspect <profile> [--app-root <path>] [--json]
 scenery validate graph [<profile>] [--app-root <path>] --json
 scenery validate changed [--base <ref>] [--app-root <path>] [--json] [--write] [--dry-run]
 scenery harness [--app-root <path>] [--json] [--write] [--with-validation[=<profile>]]
-scenery harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--quick|--race|--release]
+scenery harness self [--repo-root <path>] [--summary|--json|--json=summary|--json=full] [--write] [--quick|--race|--release] [--fresh-tests]
 scenery harness ui --json [--app-root <path>] [--dashboard-url <url>] [--headed] [--write]
 scenery inspect app|routes|services|endpoints|wire|build|paths|generators|temporal|observability|validation --json [--app-root <path>]
 scenery inspect docs --json [--repo-root <path>]
@@ -620,6 +620,7 @@ scenery harness self --json --write
 - green summary output should stay under 12 KB; failed summary output should stay under 32 KB while preserving the first actionable failure and artifact references
 - it validates the scenery repo itself instead of a target app
 - it runs docs knowledge validation, `scenery inspect docs --json`, architecture checks, UI static architecture checks, Go package tests, parallel dev-session safety, live Postgres branch lifecycle safety, dashboard UI typecheck/build, UI freshness checks, worktree-local `go build -o .scenery/harness/bin/scenery ./cmd/scenery`, and local binary freshness checks
+- self-harness Go test steps use the Go test result cache by default. Pass `--fresh-tests` to add `-count=1` to the self-harness Go test commands when a fresh no-result-cache run is required.
 - the default, race, and release self-harness modes start a managed Postgres dev cell under a temporary agent home, create two branch databases, check branch data isolation with `psql`, exercise reset, restore, diff, delete, and prune, and tear the temporary cell down. This proof requires Docker or local Postgres tooling plus `psql`. `--quick` intentionally skips it.
 - agents must not run `go install ./cmd/scenery` unless a human explicitly requests updating the shared installed `scenery` binary; multiple worktrees may otherwise overwrite each other's CLI
 - architecture checks fail on unapproved direct dependencies, forbidden framework imports, CLI package boundary violations, missing generated/vendored ignore markers, and non-generated source/code files over 2500 lines; Markdown docs are not subject to line-count size checks
@@ -1236,7 +1237,7 @@ Example output:
   "evidence": [
     {
       "schema_version": "scenery.harness.artifact.v1",
-      "command": ["go", "test", "-count=1", "-json", "./..."],
+      "command": ["go", "test", "-json", "./..."],
       "cwd": "/repo/scenery",
       "started_at": "2026-06-07T20:45:00Z",
       "duration_ms": 1234,
@@ -1249,7 +1250,7 @@ Example output:
           "schema_version": "go.test.jsonl"
         }
       ],
-      "repro_command": "cd /repo/scenery && go test -count=1 -json ./..."
+      "repro_command": "cd /repo/scenery && go test -json ./..."
     }
   ]
 }

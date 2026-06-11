@@ -785,7 +785,7 @@ func runHarnessFixtureInspect(repoRoot, subject, appRoot string) harnessStep {
 	return step
 }
 
-func runHarnessAffectedPackageTestsStep(ctx context.Context, repoRoot string, changedArea *harnessChangedAreaReport, artifactCtxs ...harnessArtifactContext) harnessStep {
+func runHarnessAffectedPackageTestsStep(ctx context.Context, repoRoot string, changedArea *harnessChangedAreaReport, freshTests bool, artifactCtxs ...harnessArtifactContext) harnessStep {
 	patternSet := map[string]bool{}
 	if changedArea != nil {
 		for _, file := range changedArea.ChangedFiles {
@@ -805,14 +805,22 @@ func runHarnessAffectedPackageTestsStep(ctx context.Context, repoRoot string, ch
 	if len(patterns) == 0 {
 		return harnessStep{
 			Name:       "affected package tests",
-			Command:    []string{"go", "test", "-count=1"},
+			Command:    harnessAffectedPackageTestCommand(nil, freshTests),
 			OK:         true,
 			DurationMS: 0,
 			Summary:    map[string]any{"packages": 0},
 		}
 	}
-	command := append([]string{"go", "test", "-count=1"}, patterns...)
+	command := harnessAffectedPackageTestCommand(patterns, freshTests)
 	return runHarnessExecStep(ctx, repoRoot, "affected package tests", command, artifactCtxs...)
+}
+
+func harnessAffectedPackageTestCommand(patterns []string, freshTests bool) []string {
+	command := []string{"go", "test"}
+	if freshTests {
+		command = append(command, "-count=1")
+	}
+	return append(command, patterns...)
 }
 
 func annotateHarnessStepEffects(steps []harnessStep) {
