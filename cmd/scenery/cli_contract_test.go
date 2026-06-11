@@ -12,7 +12,7 @@ func TestRootHelpIsOrienting(t *testing.T) {
 	if !strings.Contains(help, "Scenery - build, run, and inspect app services.") {
 		t.Fatalf("root help missing product line:\n%s", help)
 	}
-	if !strings.Contains(help, "scenery help <command>") || !strings.Contains(help, "Local session:") || !strings.Contains(help, "App resources:") {
+	if !strings.Contains(help, "scenery help <command>") || !strings.Contains(help, "Local dev:") || !strings.Contains(help, "App resources:") {
 		t.Fatalf("root help missing orientation sections:\n%s", help)
 	}
 	if strings.Contains(help, "--app-root") || strings.Contains(help, "scenery logs query") {
@@ -175,8 +175,11 @@ func TestCanonicalCommandParsers(t *testing.T) {
 	if _, err := parseDevArgs([]string{"--app-root", "/tmp/app", "--detach"}); err != nil {
 		t.Fatalf("parse up args: %v", err)
 	}
-	if _, err := parseStatusArgs([]string{"--json", "--app-root", "/tmp/app", "--session", "current"}); err != nil {
+	if _, err := parseStatusArgs([]string{"--json", "--app-root", "/tmp/app"}); err != nil {
 		t.Fatalf("parse ps args: %v", err)
+	}
+	if _, err := parseStatusArgs([]string{"--session", "current"}); err == nil || !strings.Contains(err.Error(), "use --app-root") {
+		t.Fatalf("parse ps --session error = %v", err)
 	}
 	if err := workerCommand([]string{"deployment"}); err == nil || !strings.Contains(err.Error(), "scenery worker deployment") {
 		t.Fatalf("worker deployment usage error = %v", err)

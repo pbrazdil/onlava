@@ -16,8 +16,7 @@ func useFakeBuildGoRunner(t *testing.T) {
 		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
 			return nil
 		}
-		if len(args) >= 4 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" {
-			out := args[3]
+		if out, ok := fakeBuildOutputArg(args); ok {
 			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 				return err
 			}
@@ -26,4 +25,16 @@ func useFakeBuildGoRunner(t *testing.T) {
 		return fmt.Errorf("unexpected fake go command: %v", args)
 	})
 	t.Cleanup(restore)
+}
+
+func fakeBuildOutputArg(args []string) (string, bool) {
+	if len(args) < 5 || args[0] != "build" || args[len(args)-1] != "./scenery_internal_main" {
+		return "", false
+	}
+	for i := 1; i < len(args)-2; i++ {
+		if args[i] == "-buildvcs=false" && args[i+1] == "-o" {
+			return args[i+2], true
+		}
+	}
+	return "", false
 }

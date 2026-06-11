@@ -549,47 +549,19 @@ func TestPrepareDevAgentSessionPrefersTCPWhenRequested(t *testing.T) {
 	waitForTestAgentServer(t, agentDone)
 }
 
-func TestPrepareDevAgentSessionUsesExplicitSessionID(t *testing.T) {
+func TestPrepareDevAgentSessionUsesStableAppRootSessionID(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	agentDone := startTestAgentServer(t, ctx)
 
 	root := t.TempDir()
-	_, session, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{SessionID: "review-a"})
+	_, session, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{})
 	defer restore()
 	if err != nil {
 		t.Fatalf("prepareDevAgentSession: %v", err)
 	}
-	if session.SessionID != "review-a" {
-		t.Fatalf("session id = %q, want review-a", session.SessionID)
-	}
-
-	cancel()
-	waitForTestAgentServer(t, agentDone)
-}
-
-func TestPrepareDevAgentSessionNewSessionAddsSuffix(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	agentDone := startTestAgentServer(t, ctx)
-
-	root := t.TempDir()
-	_, first, _, restoreFirst, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{NewSession: true})
-	defer restoreFirst()
-	if err != nil {
-		t.Fatalf("prepareDevAgentSession first: %v", err)
-	}
-	_, second, _, restoreSecond, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{NewSession: true})
-	defer restoreSecond()
-	if err != nil {
-		t.Fatalf("prepareDevAgentSession second: %v", err)
-	}
-	if first.SessionID == second.SessionID {
-		t.Fatalf("new sessions reused id %q", first.SessionID)
-	}
-	wantPrefix := localagent.SessionID(root, "")
-	if !strings.HasPrefix(first.SessionID, wantPrefix+"-") || !strings.HasPrefix(second.SessionID, wantPrefix+"-") {
-		t.Fatalf("new session ids = %q and %q, want %q-*", first.SessionID, second.SessionID, wantPrefix)
+	if want := localagent.SessionID(root, ""); session.SessionID != want {
+		t.Fatalf("session id = %q, want %q", session.SessionID, want)
 	}
 
 	cancel()
@@ -650,7 +622,7 @@ func TestRejectLiveDuplicateDevSessionUsesEffectiveOwnerPID(t *testing.T) {
 		_ = owner.Wait()
 	}()
 	sessionID := "review-a"
-	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+	err := rejectLiveDuplicateDevSession(root, []localagent.Session{
 		{
 			SessionID: sessionID,
 			AppRoot:   root,
@@ -683,7 +655,7 @@ func TestRejectLiveDuplicateDevSessionHandlesSpaceyAppRoots(t *testing.T) {
 		_ = owner.Wait()
 	}()
 	sessionID := "review-a"
-	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+	err := rejectLiveDuplicateDevSession(root, []localagent.Session{
 		{
 			SessionID: sessionID,
 			AppRoot:   root,
@@ -699,13 +671,12 @@ func TestRejectLiveDuplicateDevSessionHandlesSpaceyAppRoots(t *testing.T) {
 
 func TestRejectLiveDuplicateDevSessionIgnoresWrapperCommandText(t *testing.T) {
 	root := t.TempDir()
-	sessionID := "review-a"
 	binDir := t.TempDir()
 	fakeScenery := filepath.Join(binDir, "scenery")
 	if err := os.WriteFile(fakeScenery, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wrapperStyle := exec.Command("sh", fakeScenery, "up", "--app-root", root, "--session", sessionID)
+	wrapperStyle := exec.Command("sh", fakeScenery, "up", "--app-root", root)
 	if err := wrapperStyle.Start(); err != nil {
 		t.Fatalf("start wrapper-style owner fixture: %v", err)
 	}
@@ -713,7 +684,7 @@ func TestRejectLiveDuplicateDevSessionIgnoresWrapperCommandText(t *testing.T) {
 		_ = wrapperStyle.Process.Kill()
 		_ = wrapperStyle.Wait()
 	}()
-	reorderedStyle := exec.Command("sh", fakeScenery, "--session", sessionID, "--app-root", root, "up")
+	reorderedStyle := exec.Command("sh", fakeScenery, "--app-root", root, "up")
 	if err := reorderedStyle.Start(); err != nil {
 		t.Fatalf("start reordered-style owner fixture: %v", err)
 	}
@@ -721,15 +692,15 @@ func TestRejectLiveDuplicateDevSessionIgnoresWrapperCommandText(t *testing.T) {
 		_ = reorderedStyle.Process.Kill()
 		_ = reorderedStyle.Wait()
 	}()
-	if err := rejectLiveDuplicateDevSession(root, sessionID, nil); err != nil {
+	if err := rejectLiveDuplicateDevSession(root, nil); err != nil {
 		t.Fatalf("duplicate error = %v, want nil for unregistered command text", err)
 	}
 }
 
-func TestRejectLiveDuplicateDevSessionAllowsCurrentOwner(t *testing.T) {
+func TestRejectLiveDuplicateDevSessionBlocksCurrentOwner(t *testing.T) {
 	root := t.TempDir()
 	sessionID := "review-a"
-	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+	err := rejectLiveDuplicateDevSession(root, []localagent.Session{
 		{
 			SessionID: sessionID,
 			AppRoot:   root,
@@ -738,8 +709,8 @@ func TestRejectLiveDuplicateDevSessionAllowsCurrentOwner(t *testing.T) {
 			Owner:     localagent.CaptureOwner(os.Getpid(), "test"),
 		},
 	})
-	if err != nil {
-		t.Fatalf("duplicate error = %v, want nil for current owner", err)
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("duplicate error = %v, want already running for current owner", err)
 	}
 }
 
@@ -754,7 +725,7 @@ func TestRejectLiveDuplicateDevSessionBlocksVerifiedAncestorOwner(t *testing.T) 
 	if err := localagent.VerifyOwner(ancestorOwner); err != nil {
 		t.Skipf("parent process is not inspectable: %v", err)
 	}
-	err := rejectLiveDuplicateDevSession(root, sessionID, []localagent.Session{
+	err := rejectLiveDuplicateDevSession(root, []localagent.Session{
 		{
 			SessionID: sessionID,
 			AppRoot:   root,

@@ -143,7 +143,7 @@ func firstFileForHarnessStep(repoRoot string, step harnessStep) string {
 		return ".scenery/harness/schema-validation-latest.json"
 	case "dashboard ui typecheck", "dashboard ui build", "dashboard ui fresh":
 		return "ui"
-	case "parallel dev sessions":
+	case "parallel worktree runtimes":
 		return ".scenery/harness/agent-context.json"
 	default:
 		if step.Evidence != nil && len(step.Evidence.Artifacts) > 0 {

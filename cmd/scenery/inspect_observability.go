@@ -295,7 +295,7 @@ func buildInspectTraceQueryRecord(appID string, opts inspectTraceQueryOptions) i
 		Status:    opts.Status,
 		Sort:      "started_at_desc",
 		AvailableFilters: []string{
-			"--session current|<id>",
+			"--app-root",
 			"--service",
 			"--endpoint",
 			"--trace-id",

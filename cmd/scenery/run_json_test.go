@@ -48,11 +48,11 @@ func TestParseServeArgsRejectsDevFlags(t *testing.T) {
 func TestParseDevArgs(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app", "--session", "review-a", "--detach", "--claim-aliases"})
+	opts, err := parseDevArgs([]string{"--port", "4444", "--listen", "0.0.0.0", "--verbose", "--json", "--app-root", "/tmp/app", "--detach", "--claim-aliases"})
 	if err != nil {
 		t.Fatalf("parseDevArgs returned error: %v", err)
 	}
-	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.PortSet || !opts.ListenSet || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" || opts.SessionID != "review-a" || !opts.Detach || !opts.ClaimAliases {
+	if opts.Port != 4444 || opts.Listen != "0.0.0.0" || !opts.PortSet || !opts.ListenSet || !opts.Verbose || !opts.JSON || opts.AppRoot != "/tmp/app" || !opts.Detach || !opts.ClaimAliases {
 		t.Fatalf("opts = %+v", opts)
 	}
 }
@@ -69,11 +69,14 @@ func TestParseDevArgsRejectsLegacyProxyFlags(t *testing.T) {
 	}
 }
 
-func TestParseDevArgsRejectsSessionAndNewSession(t *testing.T) {
+func TestParseDevArgsRejectsSessionSelection(t *testing.T) {
 	t.Parallel()
 
-	if _, err := parseDevArgs([]string{"--session", "review-a", "--new-session"}); err == nil {
-		t.Fatal("expected --session with --new-session to fail")
+	if _, err := parseDevArgs([]string{"--session", "review-a"}); err == nil || !strings.Contains(err.Error(), "one app root has one live dev runtime") {
+		t.Fatalf("expected --session to fail with one-runtime guidance, got %v", err)
+	}
+	if _, err := parseDevArgs([]string{"--new-session"}); err == nil || !strings.Contains(err.Error(), "Git worktree") {
+		t.Fatalf("expected --new-session to fail with worktree guidance, got %v", err)
 	}
 }
 
@@ -84,7 +87,7 @@ func TestDevCommandUsesWatcherPath(t *testing.T) {
 	called := false
 	runWithWatchFunc = func(listen devListenRequest, verbose, jsonMode bool, appRoot string) error {
 		called = true
-		if listen.Network != "tcp" || listen.Addr != "127.0.0.1:4444" || !listen.Explicit || listen.SessionID != "review-a" || !listen.ClaimAliases || !verbose || !jsonMode || appRoot != "/tmp/app" {
+		if listen.Network != "tcp" || listen.Addr != "127.0.0.1:4444" || !listen.Explicit || !listen.ClaimAliases || !verbose || !jsonMode || appRoot != "/tmp/app" {
 			t.Fatalf("watch args = %+v %v %v %q", listen, verbose, jsonMode, appRoot)
 		}
 		if got := getenvForTest("SCENERY_LOCAL_PROXY"); got != "" {
@@ -93,7 +96,7 @@ func TestDevCommandUsesWatcherPath(t *testing.T) {
 		return nil
 	}
 
-	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app", "--session", "review-a", "--claim-aliases"}); err != nil {
+	if err := devCommand([]string{"--port", "4444", "--verbose", "--json", "--app-root", "/tmp/app", "--claim-aliases"}); err != nil {
 		t.Fatalf("devCommand returned error: %v", err)
 	}
 	if !called {

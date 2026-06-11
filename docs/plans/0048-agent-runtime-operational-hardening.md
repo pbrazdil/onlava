@@ -4,7 +4,7 @@ This ExecPlan is a living document. Update Progress, Surprises & Discoveries, De
 
 ## Purpose / Big Picture
 
-The current `main` branch is close to the intended agent-native local-dev local-runtime end state: `scenery dev` defaults to agent-routed sessions, owner metadata exists for sessions and substrates, frontend routes are session-scoped, ONLV has moved to agent-native defaults, and the router preserves public host/proto/port context.
+The current `main` branch is close to the intended agent-native local-dev local-runtime end state: `scenery dev` defaults to an agent-routed app-root runtime, owner metadata exists for internal runtime records and substrates, frontend routes are runtime-scoped, ONLV has moved to agent-native defaults, and the router preserves public host/proto/port context.
 
 The remaining work is operational hardening. The default path must stay agent-safe even when older environment variables are exported, cleanup must not leave managed databases behind, ordinary agent restarts must not interrupt live shared substrates, the legacy machine-global proxy must be removed from the normal `scenery dev` surface, `dev.setup` needs a lifecycle policy, and the real two-worktree ONLV smoke must be an executable release gate.
 
@@ -16,6 +16,7 @@ This file is the active ExecPlan for the 2026-05-28 source-review findings about
 
 - [x] 2026-05-27: Created this follow-on ExecPlan from a source review of current `main` and the remaining agent-native local-dev operational risks.
 - [x] 2026-05-28: Revalidated the missing-work list against source and refreshed this plan as the active source-review ExecPlan. The cleanup command is now `scenery prune`, and the obsolete spelling has no compatibility alias.
+- [x] 2026-06-11: Updated the active runtime contract for one live Scenery dev runtime per app root. Git worktrees are the supported way to run multiple live code copies; internal session IDs remain only for routing, state, and observability compatibility.
 - [ ] Phase 0: Record the current agent-safe default baseline with tests, install, harness, and live ONLV URL checks.
 - [ ] Phase 1.1: Make dev dashboard/log storage agent-owned in agent mode even when `SCENERY_DEV_CACHE_DIR` is exported.
 - [ ] Phase 1.2: Add DB-aware prune and prune stale managed Postgres substrate session metadata.
@@ -28,16 +29,18 @@ This file is the active ExecPlan for the 2026-05-28 source-review findings about
 ## Surprises & Discoveries
 
 - 2026-05-27: Agent home is decoupled from `SCENERY_DEV_CACHE_DIR`, but `cmd/scenery/devdash_store.go` still checks `SCENERY_DEV_CACHE_DIR` before the active agent. `cmd/scenery/watch.go` only forces the agent dashboard store when `SCENERY_DEV_CACHE_DIR` is empty, so a globally exported old cache dir can still split logs/traces/dashboard state. Source review on 2026-05-28 confirmed this is still open.
-- 2026-05-27: `cmd/scenery/agent.go` implements `scenery prune --older-than` without `--db`, `--state`, or `--all`. The current command deletes stale sessions and state roots, but it does not drop managed per-session Postgres databases or prune `session.<id>` substrate metadata. Source review on 2026-05-28 confirmed this is still open.
+- 2026-05-27: `cmd/scenery/agent.go` implements `scenery prune --older-than` without `--db`, `--state`, or `--all`. The current command deletes stale runtime records and state roots, but it does not drop managed runtime Postgres databases or prune `session.<id>` substrate metadata. Source review on 2026-05-28 confirmed this is still open.
 - 2026-05-28: The stale-session cleanup command is now `scenery prune` with no compatibility alias. The obsolete spelling is intentionally removed.
-- 2026-05-27: `internal/agent/server.go` verifies substrate owners before signaling, but `Server.Close()` still walks registered substrates and interrupts verified component PIDs. An ordinary `scenery agent restart` can therefore disrupt live shared Postgres, Electric, Temporal, Victoria, or Grafana substrates used by running app sessions. Source review on 2026-05-28 confirmed this is still open.
+- 2026-05-27: `internal/agent/server.go` verifies substrate owners before signaling, but `Server.Close()` still walks registered substrates and interrupts verified component PIDs. An ordinary `scenery agent restart` can therefore disrupt live shared Postgres, Electric, Temporal, Victoria, or Grafana substrates used by running app runtimes. Source review on 2026-05-28 confirmed this is still open.
 - 2026-05-27: `cmd/scenery/main.go` still lets `scenery dev --proxy` enable the legacy local proxy path after printing a warning. The underlying `internal/localproxy` defaults remain machine-global ports `80` and `443`, so warning-only behavior is still a footgun for parallel worktrees. Source review on 2026-05-28 confirmed this is still open.
 - 2026-05-27: `cmd/scenery/dev_supervisor.go` runs all `dev.setup` commands inside every `RebuildAndRestart` after compile and before app start. This is fine for fast idempotent scripts but will become expensive once setup includes migrations, seed data, imports, or codegen. Source review on 2026-05-28 confirmed this is still open.
 - 2026-05-27: `cmd/scenery/harness_parallel.go` contains a self-harness parallel session check, but this plan still requires a high-signal ONLV two-worktree smoke script that starts the real target app with managed Postgres, Electric, frontend, Temporal, logs, traces, and teardown as an executable release gate. Source review on 2026-05-28 confirmed the current harness check is still synthetic and in-process.
+- 2026-06-11: Explicit session-selection flags conflict with the current product rule. Parallel live development should be expressed as multiple Git worktrees, not multiple user-named runtimes from one app directory.
 
 ## Decision Log
 
 - Decision: Keep this as a follow-on hardening plan instead of reopening the agent-native local-dev architecture.
+- Decision: One app root can have at most one live Scenery dev runtime. Internal `session_id` values remain compatibility labels for routes, state directories, logs, traces, metrics, manifests, and cleanup, but they are no longer a user-managed workflow.
   Rationale: The current implementation has reached the right shape. The remaining risks are operational edges around storage ownership, destructive cleanup, restart semantics, legacy escape hatches, setup frequency, and release gating.
   Date/Author: 2026-05-27 / Codex.
 - Decision: Prioritize the `SCENERY_DEV_CACHE_DIR` dashboard split first.
@@ -70,18 +73,18 @@ Relevant implementation files:
 - `cmd/scenery/devdash_store.go` owns dashboard/log/trace store root selection through `openDevdashStore()` and `devdashCacheRoot()`.
 - `cmd/scenery/agent.go` owns `scenery agent`, `scenery agent restart`, `scenery down`, and `scenery prune` argument parsing and command behavior.
 - `internal/agent/server.go` owns the agent control/router server lifecycle and currently signals verified substrate component processes from `Server.Close()`.
-- `cmd/scenery/dev_services.go` owns managed Postgres and Electric substrate setup and the per-session database metadata that must be pruned.
+- `cmd/scenery/dev_services.go` owns managed Postgres and Electric substrate setup and the runtime database metadata that must be pruned.
 - `cmd/scenery/dev_supervisor.go` owns `RebuildAndRestart` and the current unconditional `dev.setup` execution.
 - `internal/app/root.go` and `docs/schemas/scenery.config.v1.schema.json` define `.scenery.json` config shape, including the current `dev.setup` string list.
-- `cmd/scenery/harness_parallel.go` contains the existing self-harness parallel dev-session check.
+- `cmd/scenery/harness_parallel.go` contains the existing self-harness parallel worktree runtime check.
 - `docs/local-contract.md` and `docs/environment.md` document local runtime behavior and environment variables.
 
 Terms used in this plan:
 
-- Agent mode means the default local-dev path where `scenery dev` ensures the local scenery agent, registers a session, and routes public URLs through the agent router.
+- Agent mode means the default local-dev path where `scenery dev` ensures the local scenery agent, registers an app-root runtime, and routes public URLs through the agent router.
 - Dev dashboard store means the SQLite-backed local dashboard/log/trace store opened by `openDevdashStore()`.
 - Substrate means an agent-managed shared dependency such as Postgres, Electric, Temporal, Victoria, or Grafana.
-- Managed session database means the per-session Postgres database recorded in substrate metadata as `session.<id>`.
+- Managed runtime database means the per-runtime Postgres database recorded in substrate metadata as `session.<id>`.
 - Legacy local proxy means the older local HTTPS proxy enabled through `--proxy`, `--trust`, or `SCENERY_LOCAL_PROXY`, with machine-global HTTP/HTTPS ports.
 
 ## Milestones
@@ -111,9 +114,9 @@ Finally add setup policies and the ONLV release gate. `dev.setup` entries should
 ## Concrete Steps
 
 1. Phase 0 baseline:
-   - Run from `/Users/petrbrazdil/Repos/scenery`: `go test ./...`, `go install ./cmd/scenery`, and `scenery harness self --json --write`.
+   - Run from `/Users/petrbrazdil/Repos/scenery`: `go test ./...` and `scenery harness self --json --write`. Do not run `go install ./cmd/scenery` during agent validation unless a human explicitly asks.
    - Run from `/Users/petrbrazdil/Repos/onlv`: `just dev`, `just urls`, and `just psql`.
-   - Record in this plan whether the default ONLV URLs are agent-routed session URLs for API, `pulse`, `blog`, Electric, and console, and confirm the default path does not require fixed `4000`, `4321`, `5173`, `5433`, `3000`, `9401`, `8428`, `9428`, `10428`, or `10429`.
+   - Record in this plan whether the default ONLV URLs are agent-routed runtime URLs for API, `pulse`, `blog`, Electric, and console, and confirm the default path does not require fixed `4000`, `4321`, `5173`, `5433`, `3000`, `9401`, `8428`, `9428`, `10428`, or `10429`.
 2. Dev dashboard store ownership:
    - Change `devdashCacheRoot()` semantics to use `SCENERY_DEVDASH_CACHE_DIR` first, then `<agent-dir>/dashboard` when the agent is active, then `SCENERY_DEV_CACHE_DIR`, then the existing legacy user-cache fallback.
    - Stop setting `SCENERY_DEV_CACHE_DIR` to the dashboard path in `prepareDevAgentSession`; if an override is needed for child process store selection, use `SCENERY_DEVDASH_CACHE_DIR`.
@@ -152,7 +155,6 @@ Default repo validation after each substantial slice:
 
 ```text
 go test ./...
-go install ./cmd/scenery
 scenery harness self --json --write
 ```
 
@@ -160,21 +162,21 @@ Dev dashboard storage acceptance:
 
 ```text
 SCENERY_DEV_CACHE_DIR=/tmp/scenery-old-cache scenery dev --app-root .
-scenery logs --session current --app-root .
-scenery status --json --app-root .
+scenery logs --app-root .
+scenery ps --json --app-root .
 ```
 
-All three commands must read the same agent-visible session data in agent mode.
+All three commands must read the same agent-visible runtime data in agent mode.
 
 DB cleanup acceptance:
 
 ```text
-scenery dev --new-session
-scenery down --all --session <id>
-scenery status --json
+scenery dev --app-root .
+scenery down --all --app-root .
+scenery ps --json
 ```
 
-The Postgres substrate metadata must no longer contain `session.<id>` URL/endpoint entries, and the managed database for that session must no longer exist. `scenery prune --older-than 14d --db` and `scenery prune --older-than 14d --all` must have equivalent DB cleanup behavior for eligible stale sessions.
+The Postgres substrate metadata must no longer contain `session.<id>` URL/endpoint entries, and the managed database for that runtime must no longer exist. `scenery prune --older-than 14d --db` and `scenery prune --older-than 14d --all` must have equivalent DB cleanup behavior for eligible stale runtime records.
 
 Agent restart acceptance:
 
@@ -203,7 +205,7 @@ Setup policy acceptance:
 
 Two-worktree gate acceptance:
 
-- The gate proves two ONLV worktrees have different `session_id`, different `runtime_app_id`, Unix-socket API backends, session-scoped frontend/Electric/Grafana/Temporal routes, different managed DB names, different Temporal task queues, session-scoped logs/traces, and no teardown bleed from session A to session B.
+- The gate proves two ONLV worktrees have different internal `session_id`, different `runtime_app_id`, Unix-socket API backends, runtime-scoped frontend/Electric/Grafana/Temporal routes, different managed DB names, different Temporal task queues, runtime-scoped logs/traces, and no teardown bleed from worktree A to worktree B.
 - The gate fails if any fixed global port or shared DB/task queue leaks back into the default path.
 
 ## Idempotence and Recovery

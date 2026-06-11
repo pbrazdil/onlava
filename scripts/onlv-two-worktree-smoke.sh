@@ -28,16 +28,16 @@ PY
 }
 
 cleanup_items=()
-session_ids=()
+app_roots=()
 AGENT_HOME=""
 AGENT_PID=""
 EDGE_STARTED=0
 
 cleanup() {
-  local id item
-  for id in "${session_ids[@]:-}"; do
+  local app_root item
+  for app_root in "${app_roots[@]:-}"; do
     if [[ -n "$AGENT_HOME" ]]; then
-      SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" down --session "$id" --all >/dev/null 2>&1 || true
+      SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" down --app-root "$app_root" --all >/dev/null 2>&1 || true
     fi
   done
   if [[ -n "$AGENT_PID" ]]; then
@@ -45,7 +45,7 @@ cleanup() {
     wait "$AGENT_PID" >/dev/null 2>&1 || true
   fi
   if [[ "$EDGE_STARTED" == "1" && -n "$AGENT_HOME" ]]; then
-    SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" edge uninstall --json >/dev/null 2>&1 || true
+    SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" system edge uninstall --json >/dev/null 2>&1 || true
   fi
   if [[ -n "$AGENT_HOME" ]]; then
     pkill -f "$AGENT_HOME" >/dev/null 2>&1 || true
@@ -115,7 +115,7 @@ prepare_worktree "$WT_B"
 start_edge() {
   local out="$LOG_DIR/edge-install.json"
   local err="$LOG_DIR/edge-install.stderr"
-  if "$SCENERY_BIN" edge install --json >"$out" 2>"$err"; then
+  if "$SCENERY_BIN" system edge install --json >"$out" 2>"$err"; then
     EDGE_STARTED=1
     return 0
   fi
@@ -137,20 +137,20 @@ start_session() {
   local wt="$1"
   local name="$2"
   local out="$LOG_DIR/$name-detach.json"
-  SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" dev --app-root "$wt" --new-session --detach --json >"$out"
+  SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" up --app-root "$wt" --detach --json >"$out"
   json_get "$out" "session.session_id"
 }
 
 SESSION_A="$(start_session "$WT_A" a)"
-session_ids+=("$SESSION_A")
+app_roots+=("$WT_A")
 SESSION_B="$(start_session "$WT_B" b)"
-session_ids+=("$SESSION_B")
+app_roots+=("$WT_B")
 
 STATUS="$LOG_DIR/status.json"
 wait_for_sessions_ready() {
   local deadline=$((SECONDS + 180))
   while (( SECONDS < deadline )); do
-    SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" status --json >"$STATUS"
+    SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" ps --json >"$STATUS"
     if python3 - "$STATUS" "$SESSION_A" "$SESSION_B" <<'PY'
 import json
 import sys
@@ -173,7 +173,7 @@ PY
     sleep 1
   done
   printf 'timed out waiting for ONLV sessions to register all routes\n' >&2
-  SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" status --json >&2 || true
+  SCENERY_AGENT_HOME="$AGENT_HOME" "$SCENERY_BIN" ps --json >&2 || true
   return 1
 }
 

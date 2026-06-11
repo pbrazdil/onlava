@@ -88,7 +88,7 @@ func (c *DevSessionController) Prepare(ctx context.Context) (*PreparedDevSession
 		if requiresPortlessEdge {
 			return prepared, fmt.Errorf("proxy.route_base_domain %q requires the scenery agent and local edge; agent unavailable: %w", routeNamespace.BaseDomain, err)
 		}
-		fmt.Fprintf(os.Stderr, "scenery: agent unavailable; continuing without routed session URLs: %v\n", err)
+		fmt.Fprintf(os.Stderr, "scenery: agent unavailable; continuing without routed app URLs: %v\n", err)
 		prepared.Backend = fallback
 		return prepared, nil
 	}
@@ -96,7 +96,7 @@ func (c *DevSessionController) Prepare(ctx context.Context) (*PreparedDevSession
 		if requiresPortlessEdge {
 			return prepared, fmt.Errorf("proxy.route_base_domain %q requires the scenery agent dashboard for edge probing; dashboard unavailable: %w", routeNamespace.BaseDomain, err)
 		}
-		fmt.Fprintf(os.Stderr, "scenery: agent dashboard unavailable; continuing without routed session URLs: %v\n", err)
+		fmt.Fprintf(os.Stderr, "scenery: agent dashboard unavailable; continuing without routed app URLs: %v\n", err)
 		prepared.Backend = fallback
 		return prepared, nil
 	}
@@ -132,15 +132,7 @@ func (c *DevSessionController) Prepare(ctx context.Context) (*PreparedDevSession
 	if listen.Addr != "" {
 		backends[localagent.RouteAPI] = localagent.Backend{Network: "tcp", Addr: listen.Addr}
 	}
-	sessionID := strings.TrimSpace(listen.SessionID)
-	if listen.NewSession {
-		generated, err := localagent.UniqueSessionID(root, "")
-		if err != nil {
-			return prepared, err
-		}
-		sessionID = generated
-	}
-	if err := rejectLiveDuplicateDevSession(root, sessionID, existingSessions); err != nil {
+	if err := rejectLiveDuplicateDevSession(root, existingSessions); err != nil {
 		return prepared, err
 	}
 	if requiresPortlessEdge {
@@ -151,7 +143,6 @@ func (c *DevSessionController) Prepare(ctx context.Context) (*PreparedDevSession
 	session, err := client.Register(ctx, localagent.RegisterRequest{
 		BaseAppID:      cfg.AppID(),
 		AppRoot:        root,
-		SessionID:      sessionID,
 		Status:         "starting",
 		OwnerPID:       os.Getpid(),
 		Backends:       backends,

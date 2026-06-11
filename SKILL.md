@@ -5,7 +5,7 @@ description: Use when building, running, debugging, inspecting, validating, or g
 
 # scenery
 
-scenery is a Go-native service runtime and local development platform. It runs app sessions, exposes capabilities for inspection and action, and hides backing substrate details unless you intentionally debug them. Apps are ordinary Go modules with a `.scenery.json` app root and `//scenery:` directives in Go source.
+scenery is a Go-native service runtime and local development platform. It runs app-root dev runtimes, exposes capabilities for inspection and action, and hides backing substrate details unless you intentionally debug them. Apps are ordinary Go modules with a `.scenery.json` app root and `//scenery:` directives in Go source.
 
 This skill is the portable agent entrypoint. It teaches shared scenery behavior, but it does not replace app-local instructions. Client apps should also keep a small `AGENTS.md` with app root, frontend roots, generated client paths, required environment names, validation commands, and product invariants. In target apps, read the root `AGENTS.md` and every child `AGENTS.md` on the path to files you expect to touch before editing non-trivial changes.
 
@@ -27,8 +27,8 @@ scenery inspect endpoints --json
 scenery inspect wire --json
 scenery system toolchain verify --json
 scenery logs --jsonl --limit 200
-scenery inspect observability --json --session current
-scenery logs query --json --session current --since 15m --query 'error OR panic'
+scenery inspect observability --json
+scenery logs query --json --since 15m --query 'error OR panic'
 scenery harness --json --write
 scenery validate quick --json --write
 ```
@@ -42,6 +42,7 @@ Run `scenery doctor --json` before deep app debugging when local readiness is in
 ## Mental Model
 
 - `.scenery.json` marks the app root.
+- App-required Go build tags or build-time flags belong in `.scenery.json` as `build.go_flags`, for example `["-tags=roofmapnet_native"]`; Scenery applies them to app builds and generated-workspace tests.
 - Go source is the app model.
 - `scenery up` starts the supervised local platform: app process, rebuild/restart loop, dashboard, API Explorer, logs, traces, metrics, managed dev services when configured, and optional frontend routing through the local agent.
 - `scenery serve` starts a headless API-role server and does not start dashboard, proxy, or watch mode.
@@ -133,11 +134,11 @@ scenery console
 scenery down
 ```
 
-`scenery up --json` emits JSONL. `scenery up --detach` starts an agent-backed app session. `scenery logs --follow` follows session logs. `scenery console` opens the source-aware terminal console. Agent session `routes` are canonical; configured friendly hosts appear separately in `aliases` only for the live session that owns the free alias. If an app explicitly configures `proxy.route_base_domain`, `scenery up` requires the local edge to be ready and fails loudly with DNS, privileged listener, Caddy, and router diagnostics instead of publishing internal `:9440` router URLs as user-facing session routes. Use `scenery up --claim-aliases` only for intentional live alias transfer.
+`scenery up --json` emits JSONL. `scenery up --detach` starts the app root's agent-backed dev runtime. `scenery logs --follow` follows that runtime's logs. `scenery console` opens the source-aware terminal console. Agent `routes` are canonical; configured friendly hosts appear separately in `aliases` only for the live app root that owns the free alias. If an app explicitly configures `proxy.route_base_domain`, `scenery up` requires the local edge to be ready and fails loudly with DNS, privileged listener, Caddy, and router diagnostics instead of publishing internal `:9440` router URLs as user-facing routes. Use `scenery up --claim-aliases` only for intentional live alias transfer.
 
 Use `scenery system edge dns install`, `scenery system edge privileged install`, `scenery system edge install`, then `scenery system edge trust` when a browser needs trusted wildcard local HTTPS on `127.0.0.1:443`. The DNS command owns wildcard `local.dev` resolution through managed dnsmasq; the privileged helper owns only the default HTTPS loopback listener and forwards raw TCP to user-owned Caddy on an unprivileged loopback port. Do not run Caddy, the agent router, or `scenery system edge install` as root. `scenery system edge` uses managed dnsmasq and Caddy from the toolchain. `scenery system edge trust` uses a temporary admin-only Caddy process and does not require the port-443 edge to already be running.
 
-For managed Postgres, app processes, setup commands, DB setup, and workers receive `DatabaseURL` as the app database authority. Scenery does not inject `DATABASE_URL` into those app-facing environments; treat `SCENERY_MANAGED_DATABASE_URL` as tooling/debug metadata. The shared Postgres substrate records only physical-server metadata; the session database URL/name is a session env lease, not a global substrate key. To use an explicit external DB with declared managed Postgres, set `SCENERY_DEV_POSTGRES_EXTERNAL=1` and provide `DatabaseURL`; `DATABASE_URL` is ignored.
+For managed Postgres, app processes, setup commands, DB setup, and workers receive `DatabaseURL` as the app database authority. Scenery does not inject `DATABASE_URL` into those app-facing environments; treat `SCENERY_MANAGED_DATABASE_URL` as tooling/debug metadata. The shared Postgres substrate records only physical-server metadata; the runtime database URL/name is a runtime env lease, not a global substrate key. To use an explicit external DB with declared managed Postgres, set `SCENERY_DEV_POSTGRES_EXTERNAL=1` and provide `DatabaseURL`; `DATABASE_URL` is ignored.
 
 For Electric-backed frontend writes, generated TypeScript `WithMeta` methods include parsed `txid` metadata. Use `observeAPIResponseTxid` around the app's Electric/TanStack observer so a post-commit sync timeout is reported as `SyncObservationError` instead of an API mutation failure.
 
@@ -163,13 +164,13 @@ scenery inspect app --json
 scenery inspect routes --json
 scenery inspect endpoints --json
 scenery inspect paths --json
-scenery logs --session current --jsonl --limit 200
-scenery logs --session current --source api --level error --jsonl --limit 200
-scenery inspect observability --json --session current
-scenery logs query --json --session current --since 15m --query 'error OR panic'
-scenery traces list --json --session current --since 15m --slowest
-scenery metrics list --json --session current --since 1h
-scenery metrics query --json --session current --since 15m --step 5s --promql 'scenery_request_duration_seconds'
+scenery logs --jsonl --limit 200
+scenery logs --source api --level error --jsonl --limit 200
+scenery inspect observability --json
+scenery logs query --json --since 15m --query 'error OR panic'
+scenery traces list --json --since 15m --slowest
+scenery metrics list --json --since 1h
+scenery metrics query --json --since 15m --step 5s --promql 'scenery_request_duration_seconds'
 scenery system toolchain list --json
 scenery system toolchain verify --json
 ```
@@ -200,7 +201,7 @@ Keep `scenery generate` for file generation only. `scenery generate sqlc` may re
 
 Use `scenery db apply` for schema/app database mutation only. Use `scenery db seed` for initial data such as `SERVICE/db/seed.sql`; changed previously-applied seeds and destructive seed SQL fail closed with path/line diagnostics. Use `scenery db setup` for apply then seed. `scenery up` runs this setup lifecycle before app startup when DB setup inputs exist, then skips it on ordinary rebuilds until `database.apply` config or seed file hashes change.
 
-For managed Postgres branch work, use `scenery db postgres status --json` to inspect the shared local Postgres dev cell, `scenery db postgres start --json`/`stop --json` to manage it, `scenery db branch status --json` to inspect `.scenery/worktree-db.json`, and `scenery db branch list --json` to inspect Scenery-owned local branch leases in `branches.json` under the agent Postgres state root. The phase-one provider supports `dev.services.postgres.kind: "postgres"`, `mode: "local"`, `isolation: "database"`, and `branch_strategy: "template_database"`. `checkout` creates or reuses a branch database from the protected parent template database and records a ready endpoint without persisting raw connection URLs. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes its lease, `expire` updates lease metadata, `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable, and `restore` currently maps to template reset. `scenery up`, session-aware `scenery db psql`, DB setup, and Electric consume ready branch endpoints and fail explicitly when the lease is missing, expired, protected, or endpoint-less. The default `scenery harness self --json --write` path includes the live Postgres branch lifecycle proof; use `--quick` for the smaller self-harness mode.
+For managed Postgres branch work, use `scenery db postgres status --json` to inspect the shared local Postgres dev cell, `scenery db postgres start --json`/`stop --json` to manage it, `scenery db branch status --json` to inspect `.scenery/worktree-db.json`, and `scenery db branch list --json` to inspect Scenery-owned local branch leases in `branches.json` under the agent Postgres state root. The phase-one provider supports `dev.services.postgres.kind: "postgres"`, `mode: "local"`, `isolation: "database"`, and `branch_strategy: "template_database"`. `checkout` creates or reuses a branch database from the protected parent template database and records a ready endpoint without persisting raw connection URLs. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes its lease, `expire` updates lease metadata, `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable, and `restore` currently maps to template reset. `scenery up`, `scenery db psql`, DB setup, and Electric consume ready branch endpoints and fail explicitly when the lease is missing, expired, protected, or endpoint-less. The default `scenery harness self --json --write` path includes the live Postgres branch lifecycle proof; use `--quick` for the smaller self-harness mode.
 
 ## Tasks
 
@@ -225,13 +226,13 @@ billing/tasks/reconcile/main.go
 Use `docs/local-contract.md` for the full grammar. Common agent commands:
 
 ```text
-scenery up [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [--json] [--detach]
-scenery logs --follow [--app-root <path>] [--session current|<id>] [--jsonl|--json]
-scenery console [--app-root <path>] [--session current|<id>]
+scenery up [--app-root <path>] [--claim-aliases] [--json] [--detach]
+scenery logs --follow [--app-root <path>] [--jsonl|--json]
+scenery console [--app-root <path>]
 scenery system edge install|trust|status|restart|uninstall|dns|privileged [--json]
 scenery help <command>|all|--json
-scenery ps [--json] [--app-root <path>] [--session <id>] [--watch]
-scenery down [--app-root <path>] [--session <id>] [--json]
+scenery ps [--json] [--app-root <path>] [--watch]
+scenery down [--app-root <path>] [--json]
 scenery serve [--app-root <path>] [--env <name>] [--log-format text|json]
 scenery worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
 scenery version --json
@@ -258,13 +259,13 @@ scenery inspect app|routes|services|endpoints|wire|build|paths|generators|tempor
 scenery inspect docs --json [--repo-root <path>]
 scenery traces list --json [--app-root <path>]
 scenery metrics list --json [--app-root <path>]
-scenery logs query [--app-root <path>] [--session current|<id>] --query <logsql> [--json]
-scenery logs tail [--app-root <path>] [--session current|<id>] --query <logsql> [--since <duration>] [--jsonl]
-scenery metrics query --json [--app-root <path>] [--session current|<id>] --promql <query>
-scenery metrics labels --json [--app-root <path>] [--session current|<id>] [--match <selector>]
-scenery metrics series --json [--app-root <path>] [--session current|<id>] --match <selector>
+scenery logs query [--app-root <path>] --query <logsql> [--json]
+scenery logs tail [--app-root <path>] --query <logsql> [--since <duration>] [--jsonl]
+scenery metrics query --json [--app-root <path>] --promql <query>
+scenery metrics labels --json [--app-root <path>] [--match <selector>]
+scenery metrics series --json [--app-root <path>] --match <selector>
 scenery traces clear --json [--app-root <path>]
-scenery logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--jsonl|--json]
+scenery logs [--app-root <path>] [--limit <n>] [--jsonl|--json]
 scenery test [--app-root <path>] [go test flags/packages...]
 scenery generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 scenery db psql [--app-root <path>] [psql args...]

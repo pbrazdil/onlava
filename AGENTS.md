@@ -6,7 +6,7 @@ Optimize for agents: prefer concise rules, exact commands, and machine-readable 
 
 ## Core Model
 
-- Scenery runs my app session.
+- Scenery runs my app runtime.
 - Scenery gives me capabilities.
 - Scenery lets agents inspect and act safely.
 - Scenery hides the substrate unless I intentionally debug the substrate.
@@ -71,14 +71,14 @@ Use a multi-context domain docs layout with root `CONTEXT-MAP.md` plus per-conte
 
 ## Current Mental Model
 
-scenery is a Go-native service runtime and local development platform. Think in app sessions and capability surfaces first; Grafana, Victoria, Temporal dev server, local proxying, generated cache files, hidden ports, and local stores are substrate details unless the task is explicitly debugging that substrate.
+scenery is a Go-native service runtime and local development platform. Think in app roots, app runtimes, and capability surfaces first; Grafana, Victoria, Temporal dev server, local proxying, generated cache files, hidden ports, and local stores are substrate details unless the task is explicitly debugging that substrate.
 
 - App roots are marked by `.scenery.json`.
 - Go source is the app model: services, endpoints, auth handlers, middleware, Temporal declarations, cron jobs, and generated clients are discovered from code.
 - `scenery serve` builds once and starts a headless API-role runtime.
 - `scenery task run <domain>:<name> -- [args...]` runs an app-local code task.
 - `scenery worker` builds once and starts a worker-role runtime for cron and native Temporal workers.
-- `scenery up` starts the app session: supervised app process, file watching, dashboard, API explorer, logs, traces, metrics, managed dev services, and optional frontend routing.
+- `scenery up` starts the app root's one live dev runtime: supervised app process, file watching, dashboard, API explorer, logs, traces, metrics, managed dev services, and optional frontend routing.
 - Public and auth endpoints are externally reachable. Private endpoints are internal-only and must be called through generated helpers.
 - Typed endpoints decode path/query/header/cookie/body inputs into Go values and encode typed responses.
 - Generated internal calls preserve route, private access, auth context, tracing, and error semantics.
@@ -141,9 +141,9 @@ Use `scenery doctor --json` before expensive troubleshooting when the failure ma
 Use runtime commands according to intent:
 
 ```text
-scenery up [--app-root <path>] [--session <id>|--new-session] [--json] [--detach]
-scenery logs --follow [--app-root <path>] [--session current|<id>] [--jsonl]
-scenery down [--app-root <path>] [--session <id>] [--db] [--state] [--all] [--json]
+scenery up [--app-root <path>] [--json] [--detach]
+scenery logs --follow [--app-root <path>] [--jsonl]
+scenery down [--app-root <path>] [--db] [--state] [--all] [--json]
 scenery serve [--app-root <path>] [--env <name>] [--log-format text|json]
 scenery task list [--app-root <path>] [--json]
 scenery task inspect <target> [--app-root <path>] [--lang go|typescript] [--json]
@@ -156,7 +156,7 @@ scenery generate client [<app-id>] --lang typescript --output <path> [--app-root
 scenery db psql|apply|seed|setup|reset|drop|snapshot [--app-root <path>]
 ```
 
-`scenery up` is the preferred local loop for agents because it runs the app session and exposes safe capabilities: dashboard, logs, traces, metrics, session routing, and managed dev services. `scenery serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `scenery task` is for configured tasks and app-local code tasks.
+`scenery up` is the preferred local loop for agents because it runs the app root's one live dev runtime and exposes safe capabilities: dashboard, logs, traces, metrics, routed local URLs, and managed dev services. Use a Git worktree for another live code copy. `scenery serve` is for headless API execution and must not be expected to expose dev/admin endpoints, dashboard, proxy, or watch behavior. `scenery task` is for configured tasks and app-local code tasks.
 
 ## Documentation Update Rules
 

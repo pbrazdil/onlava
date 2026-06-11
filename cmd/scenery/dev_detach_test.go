@@ -138,9 +138,6 @@ func TestRejectDetachedDuplicateDevSessionRejectsLiveOwner(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("rejectDetachedDuplicateDevSession error = %v, want already running", err)
 	}
-	if err := rejectDetachedDuplicateDevSession(ctx, client, root, devOptions{NewSession: true}); err != nil {
-		t.Fatalf("new detached session should bypass duplicate check: %v", err)
-	}
 
 	cancel()
 	waitForTestAgentServer(t, agentDone)
@@ -153,8 +150,8 @@ func TestWriteDetachedDevResultJSON(t *testing.T) {
 		SchemaVersion: "scenery.dev.detach.v1",
 		PID:           123,
 		LogPath:       "/tmp/dev.log",
-		AttachCommand: `scenery logs --follow --app-root "/tmp/app" --session app-abc`,
-		DownCommand:   "scenery down --session app-abc",
+		AttachCommand: `scenery logs --follow --app-root "/tmp/app"`,
+		DownCommand:   `scenery down --app-root "/tmp/app"`,
 		Session: localagent.Session{
 			SessionID: "app-abc",
 			OwnerPID:  123,
@@ -182,10 +179,12 @@ func TestWriteDetachedDevResultTextSeparatesAliases(t *testing.T) {
 	result := detachedDevResult{
 		PID:           123,
 		LogPath:       "/tmp/dev.log",
-		AttachCommand: `scenery logs --follow --app-root "/tmp/app" --session app-abc`,
-		DownCommand:   "scenery down --session app-abc",
+		AttachCommand: `scenery logs --follow --app-root "/tmp/app"`,
+		DownCommand:   `scenery down --app-root "/tmp/app"`,
 		Session: localagent.Session{
 			SessionID: "app-abc",
+			AppRoot:   "/tmp/app",
+			Status:    "starting",
 			Routes: map[string]string{
 				localagent.RouteAPI: "https://api.app-abc.demo.localhost/",
 			},
@@ -194,8 +193,8 @@ func TestWriteDetachedDevResultTextSeparatesAliases(t *testing.T) {
 			},
 			AliasConflicts: map[string]localagent.AliasLease{
 				"web": {
-					Host:      "demo.localhost",
-					SessionID: "other-session",
+					Host:    "demo.localhost",
+					AppRoot: "/tmp/other-app",
 				},
 			},
 		},
@@ -206,9 +205,12 @@ func TestWriteDetachedDevResultTextSeparatesAliases(t *testing.T) {
 	}
 	output := buf.String()
 	for _, want := range []string{
-		"canonical routes:\n  api: https://api.app-abc.demo.localhost/",
-		"friendly aliases:\n  api: https://api.demo.localhost/",
-		"friendly alias conflicts:\n  web: demo.localhost owned by session other-session",
+		"[+] Running 1/1\n - App /tmp/app  Starting  pid=123",
+		"Use:\n  status  scenery ps --app-root \"/tmp/app\"\n  logs    scenery logs --follow --app-root \"/tmp/app\"\n  stop    scenery down --app-root \"/tmp/app\"",
+		"Log file: /tmp/dev.log",
+		"Routes currently registered:\n  api        https://api.app-abc.demo.localhost/",
+		"Aliases currently claimed:\n  api        https://api.demo.localhost/",
+		"Aliases held by other app roots:\n  web        demo.localhost owned by /tmp/other-app",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output missing %q:\n%s", want, output)

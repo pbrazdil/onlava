@@ -48,9 +48,6 @@ type devConsoleErrorGroup struct {
 }
 
 func runSceneryConsoleOrFallback(ctx context.Context, stdin *os.File, stdout io.Writer, opts logsOptions) error {
-	if opts.Session == "" {
-		opts.Session = "current"
-	}
 	if !isTerminal(stdin) || !writerIsTerminal(stdout) || strings.EqualFold(envpolicy.Get("TERM"), "dumb") || envpolicy.Get("CI") != "" {
 		return runSceneryLogsFunc(ctx, stdout, logArgsFromOptions(opts, true))
 	}
@@ -239,7 +236,7 @@ func renderDevConsole(snapshot devConsoleSnapshot) string {
 	if selected == "" {
 		selected = "all"
 	}
-	fmt.Fprintf(&b, "scenery up session: %s / %s\n", firstNonEmpty(snapshot.AppName, snapshot.AppRoot), firstNonEmpty(snapshot.SessionID, "current"))
+	fmt.Fprintf(&b, "scenery dev runtime: %s\n", firstNonEmpty(snapshot.AppName, snapshot.AppRoot))
 	fmt.Fprintf(&b, "[%s]", tabLabel("all", selected == "all"))
 	for i, source := range snapshot.Sources {
 		label := source.Source.ID

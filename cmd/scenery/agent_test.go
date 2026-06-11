@@ -196,15 +196,15 @@ func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 	output = captureStdout(t, func() error {
 		return statusCommand([]string{"--app-root", appRoot})
 	})
-	if !strings.Contains(output, "SESSION") || !strings.Contains(output, "STATUS") || !strings.Contains(output, "API") {
+	if !strings.Contains(output, "APP ROOT") || !strings.Contains(output, "STATUS") || !strings.Contains(output, "API") {
 		t.Fatalf("human status output missing table header:\n%s", output)
 	}
-	if !strings.Contains(output, session.SessionID) || !strings.Contains(output, "http://api.") {
-		t.Fatalf("human status output missing session or API route:\n%s", output)
+	if strings.Contains(output, "SESSION") || !strings.Contains(output, appRoot) || !strings.Contains(output, "http://api.") {
+		t.Fatalf("human status output should show app root entries and API route:\n%s", output)
 	}
 
 	output = captureStdout(t, func() error {
-		return downCommand([]string{"--session", session.SessionID, "--json"})
+		return downCommand([]string{"--app-root", appRoot, "--json"})
 	})
 	var down downResponse
 	if err := json.Unmarshal([]byte(output), &down); err != nil {
@@ -213,7 +213,7 @@ func TestStatusAndDownCommandsUseAgent(t *testing.T) {
 	if down.SchemaVersion != "scenery.down.v1" || down.SessionID != session.SessionID || !down.Deleted || down.RecordPreserved {
 		t.Fatalf("down json = %+v", down)
 	}
-	if len(down.Messages) == 0 || !strings.Contains(down.Messages[len(down.Messages)-1], session.SessionID) {
+	if len(down.Messages) == 0 || !strings.Contains(down.Messages[len(down.Messages)-1], appRoot) {
 		t.Fatalf("down json missing stop message: %+v", down)
 	}
 	sessions, err := client.List(ctx, appRoot)
@@ -470,12 +470,15 @@ func TestDeleteStoppedSessionRecordPreservesOwnerClaimedFromOwnerlessSession(t *
 func TestParseDownArgsCleanupFlags(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseDownArgs([]string{"--app-root", "/tmp/app", "--session", "session-a", "--db", "--state", "--all", "--json"})
+	opts, err := parseDownArgs([]string{"--app-root", "/tmp/app", "--db", "--state", "--all", "--json"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.AppRoot != "/tmp/app" || opts.SessionID != "session-a" || !opts.DB || !opts.State || !opts.All || !opts.JSON {
+	if opts.AppRoot != "/tmp/app" || !opts.DB || !opts.State || !opts.All || !opts.JSON {
 		t.Fatalf("opts = %+v", opts)
+	}
+	if _, err := parseDownArgs([]string{"--session", "session-a"}); err == nil || !strings.Contains(err.Error(), "use --app-root") {
+		t.Fatalf("parseDownArgs --session error = %v", err)
 	}
 }
 
@@ -536,9 +539,9 @@ func TestDownCommandRemovesSessionState(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := captureStdout(t, func() error {
-		return downCommand([]string{"--session", session.SessionID, "--state"})
+		return downCommand([]string{"--app-root", appRoot, "--state"})
 	})
-	if !strings.Contains(output, "removed scenery session state") {
+	if !strings.Contains(output, "removed scenery dev runtime state") {
 		t.Fatalf("down output = %q", output)
 	}
 	if _, err := os.Stat(session.StateRoot); !os.IsNotExist(err) {

@@ -17,6 +17,7 @@ var ErrRootNotFound = errors.New("no .scenery.json found in current directory or
 type Config struct {
 	Name          string                `json:"name"`
 	ID            string                `json:"id"`
+	Build         BuildConfig           `json:"build"`
 	Proxy         ProxyConfig           `json:"proxy"`
 	Dev           DevConfig             `json:"dev"`
 	Generators    GeneratorsConfig      `json:"generators"`
@@ -33,6 +34,10 @@ func (c Config) AppID() string {
 		return c.ID
 	}
 	return c.Name
+}
+
+type BuildConfig struct {
+	GoFlags []string `json:"go_flags"`
 }
 
 type ProxyConfig struct {

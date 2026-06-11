@@ -36,12 +36,12 @@ During local debugging:
 
 ```sh
 scenery up
-scenery inspect observability --json --session current
-scenery logs --session current --jsonl --limit 200
-scenery logs query --json --session current --since 15m --query 'error OR panic'
-scenery traces list --json --session current --since 15m --slowest
-scenery metrics list --json --session current --since 1h
-scenery metrics query --json --session current --since 15m --step 5s --promql 'scenery_request_duration_seconds'
+scenery inspect observability --json
+scenery logs --jsonl --limit 200
+scenery logs query --json --since 15m --query 'error OR panic'
+scenery traces list --json --since 15m --slowest
+scenery metrics list --json --since 1h
+scenery metrics query --json --since 15m --step 5s --promql 'scenery_request_duration_seconds'
 ```
 
 Before finishing app work:
@@ -143,10 +143,12 @@ No. The skill is necessary shared context, but it is intentionally generic.
 Use three layers in client apps such as `github.com/pbrazdil/onlv`:
 
 1. **Installable scenery skill** for the scenery app model, CLI, validation, and generated client workflow.
-2. **App-local `AGENTS.md`** for app root, frontend roots, generated output paths, required environment names, test commands, UI conventions, product invariants, and deployment assumptions.
+2. **App-local `AGENTS.md`** for app root, frontend roots, generated output paths, required environment names, app-required build flags, test commands, UI conventions, product invariants, and deployment assumptions.
 3. **Machine-readable scenery commands** for the current app shape: `scenery inspect ... --json`.
 
 This avoids duplicating stale runtime documentation into every client app while still giving agents the local context they need.
+
+When an app needs Go build tags or other app-owned build-time flags, prefer `.scenery.json` `build.go_flags` such as `["-tags=roofmapnet_native"]` over asking every agent to export `GOFLAGS` before `scenery up`, `scenery check`, or `scenery test`.
 
 ## CLI Surfaces For Agents
 
@@ -170,11 +172,11 @@ Prefer JSON when output will feed another tool or decision.
 | Run app quality gate | `scenery validate quick --json --write`, `scenery validate changed --json --write`, or `scenery validate full --json --write` |
 | Inspect app validation gates | `scenery inspect validation --json`, `scenery validate graph full --json` |
 | Run repo validation snapshot | `scenery harness self --summary --write` |
-| Follow logs | `scenery logs --jsonl --session current --limit 200` |
-| Query logs | `scenery logs query --json --session current --query 'error OR panic'` |
-| Inspect observability | `scenery inspect observability --json --session current` |
-| Inspect traces/metrics | `scenery traces list --json --session current`, `scenery metrics list --json --session current` |
-| Query metrics | `scenery metrics query --json --session current --promql 'scenery_request_duration_seconds'` |
+| Follow logs | `scenery logs --jsonl --limit 200` |
+| Query logs | `scenery logs query --json --query 'error OR panic'` |
+| Inspect observability | `scenery inspect observability --json` |
+| Inspect traces/metrics | `scenery traces list --json`, `scenery metrics list --json` |
+| Query metrics | `scenery metrics query --json --promql 'scenery_request_duration_seconds'` |
 | Generate TypeScript client | `scenery generate client --lang typescript --output <path>` |
 | Run configured generation | `scenery generate --dry-run --json`, then `scenery generate` |
 | Apply configured DB lifecycle | `scenery db apply --json` |
@@ -185,28 +187,28 @@ Prefer JSON when output will feed another tool or decision.
 | Pin this worktree to a Postgres branch | `scenery db branch checkout <name> --json` |
 | Inspect local Postgres branch leases | `scenery db branch list --json` |
 | Create a code worktree with a Postgres branch pin | `scenery worktree create <name> --json` |
-| Human session status | `scenery ps` |
-| Machine session status | `scenery ps --json` |
+| Human dev runtime status | `scenery ps` |
+| Machine dev runtime status | `scenery ps --json` |
 | Run repo-local task | `scenery task list`, `scenery task run <name>` |
 | Run app-local code task | `scenery task list --json`, `scenery task run <domain>:<name> -- [args...]` |
 
-When local dev fails because the host may be missing Go, disk space, memory, Docker engine readiness, or optional tools, run `scenery doctor --json` first. Stay on scenery command surfaces for ordinary app work. Use `scenery help --json` for machine-readable command discovery, `scenery help all` for the grouped human command reference, and `scenery ps --json` when session status will feed another tool. Inspect managed dnsmasq, Caddy, Grafana, Victoria, Temporal CLI, Postgres, or Electric details only when intentionally debugging the substrate. Shared substrate failures are visible in `scenery ps --json` under `substrates`, including exit metadata and stdout/stderr log paths. Managed Postgres substrate rows describe the reusable physical server only; per-session database URL/name values are exposed through session env. Postgres branch leases live under the agent Postgres state root, and `.scenery/worktree-db.json` pins the current app root or worktree to a branch database. Electric remains session-scoped and is published as a session backend, not a global substrate. Do not install global binaries as a hidden fix; use `scenery system edge dns install` for wildcard local DNS, `scenery system edge install` for Caddy, `scenery system toolchain sync --json` for managed app-root tools, set documented per-tool env overrides for tools that have them, or document the configured external service.
+When local dev fails because the host may be missing Go, disk space, memory, Docker engine readiness, or optional tools, run `scenery doctor --json` first. Stay on scenery command surfaces for ordinary app work. Use `scenery help --json` for machine-readable command discovery, `scenery help all` for the grouped human command reference, and `scenery ps --json` when dev runtime status will feed another tool. Inspect managed dnsmasq, Caddy, Grafana, Victoria, Temporal CLI, Postgres, or Electric details only when intentionally debugging the substrate. Shared substrate failures are visible in `scenery ps --json` under `substrates`, including exit metadata and stdout/stderr log paths. Managed Postgres substrate rows describe the reusable physical server only; per-runtime database URL/name values are exposed through the dev runtime environment. Postgres branch leases live under the agent Postgres state root, and `.scenery/worktree-db.json` pins the current app root or worktree to a branch database. Electric remains scoped to the dev runtime and is published as an internal backend, not a global substrate. Do not install global binaries as a hidden fix; use `scenery system edge dns install` for wildcard local DNS, `scenery system edge install` for Caddy, `scenery system toolchain sync --json` for managed app-root tools, set documented per-tool env overrides for tools that have them, or document the configured external service.
 
 Use non-JSON output only for human inspection.
 
 ## Runtime Command Choice
 
-- Use `scenery up` to run the app session and expose capabilities for local development, debugging, agents, dashboard, logs, traces, metrics, managed dev services, and frontend routing.
-- Use `scenery up --detach` when the local agent should keep the dev session running.
+- Use `scenery up` to run the app root's one live dev runtime and expose capabilities for local development, debugging, agents, dashboard, logs, traces, metrics, managed dev services, and frontend routing. Use a Git worktree for another live code copy.
+- Use `scenery up --detach` when the local agent should keep that dev runtime running in the background.
 - Use `scenery system edge dns install`, `scenery system edge privileged install`, `scenery system edge install`, and `scenery system edge trust` when the browser needs trusted wildcard local HTTPS on `127.0.0.1:443`; dnsmasq owns wildcard local DNS, the privileged helper owns that port, forwards raw TCP to user-owned Caddy, and the edge syncs managed dnsmasq/Caddy as needed. If an app explicitly configures `proxy.route_base_domain`, `scenery up` requires that edge path and fails loudly with DNS, privileged listener, Caddy, and router diagnostics instead of publishing internal `:9440` router URLs as user-facing session routes.
-- Use `scenery logs --follow` to follow a current detached or agent session.
-- Use `scenery down` to stop a session; add `--db`, `--state`, or `--all` only when destructive cleanup is intended.
+- Use `scenery logs --follow` to follow the current app root's detached or agent-backed runtime.
+- Use `scenery down` to stop the current app root's dev runtime; add `--db`, `--state`, or `--all` only when destructive cleanup is intended.
 - Use `scenery serve` for headless API-role execution. Do not expect dashboard, proxy, watch mode, or dev/admin endpoints.
 - Use `scenery worker` for worker-role execution of native Temporal workers and cron.
 - Use `scenery build` for a deployable binary artifact.
 - Use `scenery generate` for configured file-producing generators. `scenery generate sqlc` is generated-source work only; it must not apply schema or seed data.
 - Use `scenery db apply` to mutate schema/app database setup only. Use `scenery db seed` to apply service-local initial data only; changed previously-applied seeds and destructive seed SQL fail closed with path/line diagnostics. Use `scenery db setup` for the one-command local setup path: apply then seed. `scenery up` runs that setup lifecycle before app startup when DB setup inputs exist, and skips it on ordinary rebuilds until `database.apply` config or seed file hashes change.
-- Use `scenery db postgres status --json`, `scenery db postgres start --json`, `scenery db postgres stop --json`, `scenery db branch status --json`, and `scenery db branch list --json` for managed Postgres branch work. Branch pins live at `.scenery/worktree-db.json`; Scenery-owned local branch leases live in `branches.json` under the agent Postgres state root. The phase-one branch provider supports local database isolation through `branch_strategy: "template_database"`: checkout creates or reuses a branch database from the parent template database and records a ready endpoint without persisting raw connection URLs. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes its lease, `expire` updates lease metadata, `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable, and `restore` currently maps to template reset. `scenery up`, session-aware `scenery db psql`, DB setup, and Electric consume ready branch endpoints and fail explicitly when the lease is missing, expired, protected, or endpoint-less. The default `scenery harness self --json --write` path includes the live Postgres branch lifecycle proof; use `--quick` for the smaller self-harness mode.
+- Use `scenery db postgres status --json`, `scenery db postgres start --json`, `scenery db postgres stop --json`, `scenery db branch status --json`, and `scenery db branch list --json` for managed Postgres branch work. Branch pins live at `.scenery/worktree-db.json`; Scenery-owned local branch leases live in `branches.json` under the agent Postgres state root. The phase-one branch provider supports local database isolation through `branch_strategy: "template_database"`: checkout creates or reuses a branch database from the parent template database and records a ready endpoint without persisting raw connection URLs. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes its lease, `expire` updates lease metadata, `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable, and `restore` currently maps to template reset. `scenery up`, `scenery db psql`, DB setup, and Electric consume ready branch endpoints and fail explicitly when the lease is missing, expired, protected, or endpoint-less. The default `scenery harness self --json --write` path includes the live Postgres branch lifecycle proof; use `--quick` for the smaller self-harness mode.
 - Use `scenery task list`, `scenery task inspect <target>`, and `scenery task run <target>` for configured repo tasks and app-local code tasks. Configured tasks use plain names; code tasks use `<domain>:<name>`, and task arguments must appear after `--`.
 - Use `scenery task run <name>` only for repo-local workflows that are not core scenery lifecycle commands.
 - Use `scenery validate` for app-owned quality gates defined in `.scenery.json`. `scenery harness` remains the framework-owned app-model proof; `scenery validate quick|changed|full --json --write` runs app-specific tasks/profiles and writes `.scenery/harness/validation/latest.json`.
@@ -277,7 +279,7 @@ scenery system edge privileged install
 scenery system edge install
 scenery system edge trust
 scenery up --detach
-scenery logs --session current --jsonl --limit 200
+scenery logs --jsonl --limit 200
 ```
 
 Expected evidence:
@@ -326,11 +328,11 @@ scenery logs --jsonl --limit 200
 Slow or failing request:
 
 ```sh
-scenery inspect observability --json --session current
-scenery logs query --json --session current --since 15m --query 'error OR panic'
-scenery traces list --json --session current --since 15m --slowest
-scenery metrics list --json --session current --since 1h
-scenery metrics query --json --session current --since 15m --step 5s --promql 'scenery_request_duration_seconds'
+scenery inspect observability --json
+scenery logs query --json --since 15m --query 'error OR panic'
+scenery traces list --json --since 15m --slowest
+scenery metrics list --json --since 1h
+scenery metrics query --json --since 15m --step 5s --promql 'scenery_request_duration_seconds'
 ```
 
 Generated client mismatch:

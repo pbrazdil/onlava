@@ -179,7 +179,7 @@ func TestSceneryTestPassesThroughGoTestFlags(t *testing.T) {
 	t.Cleanup(func() { execGoTestCommand = oldExec })
 
 	root := t.TempDir()
-	writeTestAppFile(t, root, ".scenery.json", `{"name":"flagapp"}`)
+	writeTestAppFile(t, root, ".scenery.json", `{"name":"flagapp","build":{"go_flags":["-tags=roofmapnet_native"]}}`)
 	writeTestAppFile(t, root, "go.mod", "module example.com/flagapp\n\ngo 1.26.3\n")
 	writeTestAppFile(t, root, "svc/api.go", "package svc\n\nimport \"context\"\n\n//scenery:api public\nfunc Ping(context.Context) error { return nil }\n")
 
@@ -193,8 +193,8 @@ func TestSceneryTestPassesThroughGoTestFlags(t *testing.T) {
 		t.Fatalf("test command name = %q, want go", gotName)
 	}
 	got := strings.Join(gotArgs, "\x00")
-	want := strings.Join([]string{"test", "./svc", "-run", "TestOne"}, "\x00")
+	want := strings.Join([]string{"test", "-tags=roofmapnet_native", "./svc", "-run", "TestOne"}, "\x00")
 	if got != want {
-		t.Fatalf("go test args = %#v, want %#v", gotArgs, []string{"test", "./svc", "-run", "TestOne"})
+		t.Fatalf("go test args = %#v, want %#v", gotArgs, []string{"test", "-tags=roofmapnet_native", "./svc", "-run", "TestOne"})
 	}
 }

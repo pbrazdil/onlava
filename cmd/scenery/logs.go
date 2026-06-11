@@ -103,15 +103,15 @@ func attachLogArgs(args []string) ([]string, error) {
 }
 
 func logArgsFromOptions(opts logsOptions, follow bool) []string {
-	if opts.Session == "" {
-		opts.Session = "current"
-	}
-	out := []string{"--session", opts.Session, "--limit", strconv.Itoa(opts.Limit), "--stream", opts.Stream}
+	out := []string{"--limit", strconv.Itoa(opts.Limit), "--stream", opts.Stream}
 	if follow {
 		out = append([]string{"--follow"}, out...)
 	}
 	if opts.AppRoot != "" {
 		out = append(out, "--app-root", opts.AppRoot)
+	}
+	if opts.Session != "" {
+		out = append(out, "--session", opts.Session)
 	}
 	if opts.JSONL {
 		out = append(out, "--jsonl")
@@ -163,9 +163,12 @@ func runSceneryLogs(ctx context.Context, stdout io.Writer, args []string) error 
 	}
 	defer store.Close()
 
-	record, sessionRecord, err := devdashAppRecordForSession(ctx, store, appID, sessionID)
+	record, sessionRecord, err := devdashAppRecordForRuntime(ctx, store, appID, sessionID, appRoot)
 	if err != nil {
 		return fmt.Errorf("no local logs found for %q; run `scenery up` or `scenery serve` first", appID)
+	}
+	if sessionID == "" && sessionRecord {
+		sessionID = strings.TrimSpace(record.SessionID)
 	}
 	if !sessionRecord && sessionID == "" && record.Root != "" && record.Root != appRoot {
 		return fmt.Errorf("local logs for %q belong to %s, not %s", appID, record.Root, appRoot)
@@ -347,22 +350,28 @@ func resolveLogsVictoriaStack(ctx context.Context, allowDefault bool) *victoriaS
 
 func resolveLogsSessionID(ctx context.Context, value, appRoot string) (string, error) {
 	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", nil
-	}
-	if value != "current" {
+	if value != "" && value != "current" {
 		return value, nil
 	}
 	client, err := localagent.DefaultClient()
 	if err != nil {
-		return "", err
+		if value == "current" {
+			return "", err
+		}
+		return "", nil
 	}
 	sessions, err := client.List(ctx, appRoot)
 	if err != nil {
-		return "", err
+		if value == "current" {
+			return "", err
+		}
+		return "", nil
 	}
 	if len(sessions) == 0 {
-		return "", fmt.Errorf("no scenery agent session found for %s", appRoot)
+		if value == "current" {
+			return "", fmt.Errorf("no scenery dev runtime found for app root %s", appRoot)
+		}
+		return "", nil
 	}
 	return sessions[0].SessionID, nil
 }

@@ -41,7 +41,7 @@ func TestRenderDevConsoleShowsSourcesLogsAndExpandedJSON(t *testing.T) {
 
 	out := renderDevConsole(snapshot)
 	for _, want := range []string{
-		"scenery up session: billing / feature-x",
+		"scenery dev runtime: billing",
 		"worker:typescript",
 		"activity failed",
 		"activity=SyncUser",
@@ -62,13 +62,13 @@ func TestAttachTUIFallsBackToLogsWhenNotTerminal(t *testing.T) {
 	runSceneryLogsFunc = func(ctx context.Context, stdout io.Writer, args []string) error {
 		called = true
 		got := strings.Join(args, "\x00")
-		want := strings.Join([]string{"--follow", "--session", "session-123", "--limit", "200", "--stream", "all", "--source", "api"}, "\x00")
+		want := strings.Join([]string{"--follow", "--limit", "200", "--stream", "all", "--source", "api"}, "\x00")
 		if got != want {
 			t.Fatalf("fallback logs args = %#v, want %#v", args, strings.Split(want, "\x00"))
 		}
 		return nil
 	}
-	if err := attachCommand([]string{"--tui", "--session", "session-123", "--source", "api"}); err != nil {
+	if err := attachCommand([]string{"--tui", "--source", "api"}); err != nil {
 		t.Fatalf("attachCommand returned error: %v", err)
 	}
 	if !called {

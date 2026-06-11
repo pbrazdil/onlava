@@ -109,21 +109,21 @@ func runDetachedDev(args []string, opts devOptions) error {
 		SchemaVersion: "scenery.dev.detach.v1",
 		PID:           session.OwnerPID,
 		LogPath:       logPath,
-		AttachCommand: fmt.Sprintf("scenery logs --follow --app-root %q --session %s", root, session.SessionID),
-		DownCommand:   fmt.Sprintf("scenery down --session %s", session.SessionID),
+		AttachCommand: fmt.Sprintf("scenery logs --follow --app-root %q", root),
+		DownCommand:   fmt.Sprintf("scenery down --app-root %q", root),
 		Session:       session,
 	})
 }
 
 func rejectDetachedDuplicateDevSession(ctx context.Context, client *localagent.Client, root string, opts devOptions) error {
-	if client == nil || opts.NewSession {
+	if client == nil {
 		return nil
 	}
 	sessions, err := client.List(ctx, root)
 	if err != nil {
 		return err
 	}
-	return rejectLiveDuplicateDevSession(root, opts.SessionID, sessions)
+	return rejectLiveDuplicateDevSession(root, sessions)
 }
 
 func detachedDevChildMode() bool {
@@ -214,30 +214,77 @@ func writeDetachedDevResult(w io.Writer, jsonMode bool, result detachedDevResult
 		enc.SetIndent("", "  ")
 		return enc.Encode(result)
 	}
-	fmt.Fprintf(w, "started scenery session %s (pid %d)\n", result.Session.SessionID, result.PID)
+	fmt.Fprintln(w, "[+] Running 1/1")
+	fmt.Fprintf(
+		w,
+		" - App %s  %s  pid=%d\n\n",
+		detachedDevAppLabel(result.Session),
+		detachedDevDisplayStatus(result.Session.Status),
+		result.PID,
+	)
+	fmt.Fprintln(w, "Use:")
+	if statusCommand := detachedDevStatusCommand(result.Session); statusCommand != "" {
+		fmt.Fprintf(w, "  status  %s\n", statusCommand)
+	}
+	fmt.Fprintf(w, "  logs    %s\n", result.AttachCommand)
+	fmt.Fprintf(w, "  stop    %s\n", result.DownCommand)
+	fmt.Fprintf(w, "\nLog file: %s\n", result.LogPath)
 	if len(result.Session.Routes) > 0 {
-		fmt.Fprintln(w, "canonical routes:")
+		fmt.Fprintln(w, "\nRoutes currently registered:")
 	}
 	for _, name := range sortedRouteNames(result.Session.Routes) {
-		fmt.Fprintf(w, "  %s: %s\n", name, result.Session.Routes[name])
+		fmt.Fprintf(w, "  %-10s %s\n", name, result.Session.Routes[name])
 	}
 	if len(result.Session.Aliases) > 0 {
-		fmt.Fprintln(w, "friendly aliases:")
+		fmt.Fprintln(w, "\nAliases currently claimed:")
 	}
 	for _, name := range sortedRouteNames(result.Session.Aliases) {
-		fmt.Fprintf(w, "  %s: %s\n", name, result.Session.Aliases[name])
+		fmt.Fprintf(w, "  %-10s %s\n", name, result.Session.Aliases[name])
 	}
 	if len(result.Session.AliasConflicts) > 0 {
-		fmt.Fprintln(w, "friendly alias conflicts:")
+		fmt.Fprintln(w, "\nAliases held by other app roots:")
 	}
 	for _, name := range sortedAliasConflictNames(result.Session.AliasConflicts) {
 		conflict := result.Session.AliasConflicts[name]
-		fmt.Fprintf(w, "  %s: %s owned by session %s\n", name, conflict.Host, conflict.SessionID)
+		fmt.Fprintf(w, "  %-10s %s owned by %s\n", name, conflict.Host, aliasConflictOwnerLabel(conflict))
 	}
-	fmt.Fprintf(w, "logs: %s\n", result.LogPath)
-	fmt.Fprintf(w, "attach: %s\n", result.AttachCommand)
-	fmt.Fprintf(w, "stop: %s\n", result.DownCommand)
 	return nil
+}
+
+func detachedDevAppLabel(session localagent.Session) string {
+	if value := strings.TrimSpace(session.AppRoot); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(session.BaseAppID); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(session.SessionID); value != "" {
+		return value
+	}
+	return "app"
+}
+
+func aliasConflictOwnerLabel(conflict localagent.AliasLease) string {
+	if value := strings.TrimSpace(conflict.AppRoot); value != "" {
+		return value
+	}
+	return "another app root"
+}
+
+func detachedDevDisplayStatus(status string) string {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return "Starting"
+	}
+	return strings.ToUpper(status[:1]) + strings.ToLower(status[1:])
+}
+
+func detachedDevStatusCommand(session localagent.Session) string {
+	appRoot := strings.TrimSpace(session.AppRoot)
+	if appRoot == "" {
+		return "scenery ps"
+	}
+	return fmt.Sprintf("scenery ps --app-root %q", appRoot)
 }
 
 func sortedAliasConflictNames(conflicts map[string]localagent.AliasLease) []string {

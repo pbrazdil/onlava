@@ -787,6 +787,49 @@ func TestRegistryRejectsDuplicateLiveSessionOwner(t *testing.T) {
 	}
 }
 
+func TestRegistryRejectsSecondLiveSessionForAppRoot(t *testing.T) {
+	root := t.TempDir()
+	secondOwner := exec.Command("sleep", "30")
+	if err := secondOwner.Start(); err != nil {
+		t.Fatalf("start second owner fixture: %v", err)
+	}
+	defer func() {
+		_ = secondOwner.Process.Kill()
+		_ = secondOwner.Wait()
+	}()
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "sessions.json"), "127.0.0.1:9440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "review-a",
+		Status:    "running",
+		OwnerPID:  os.Getpid(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "review-c",
+		Status:    "starting",
+		OwnerPID:  os.Getpid(),
+	}); err == nil || !strings.Contains(err.Error(), "already running for app root") {
+		t.Fatalf("second live app-root session from same owner error = %v, want already running", err)
+	}
+	if _, err := registry.Upsert(RegisterRequest{
+		BaseAppID: "demo",
+		AppRoot:   root,
+		SessionID: "review-b",
+		Status:    "starting",
+		OwnerPID:  secondOwner.Process.Pid,
+	}); err == nil || !strings.Contains(err.Error(), "already running for app root") {
+		t.Fatalf("second live app-root session error = %v, want already running", err)
+	}
+}
+
 func TestRegistryRejectsDuplicateWhenOwnerPIDMovedPastStaleOwnerField(t *testing.T) {
 	root := t.TempDir()
 	duplicate := exec.Command("sleep", "30")

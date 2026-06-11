@@ -12,16 +12,15 @@ import (
 
 func writeStatusTable(w io.Writer, sessions []localagent.Session) {
 	if len(sessions) == 0 {
-		fmt.Fprintln(w, "No scenery sessions found.")
+		fmt.Fprintln(w, "No Scenery dev app roots found.")
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "SESSION\tSTATUS\tAPP\tAPI\tUPDATED")
+	fmt.Fprintln(tw, "APP ROOT\tSTATUS\tAPI\tUPDATED")
 	for _, session := range sessions {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			statusTableValue(session.SessionID),
-			statusTableValue(session.Status),
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
 			statusTableValue(session.AppRoot),
+			statusTableValue(session.Status),
 			statusTableValue(statusSessionAPIURL(session)),
 			statusTableUpdated(session.UpdatedAt),
 		)

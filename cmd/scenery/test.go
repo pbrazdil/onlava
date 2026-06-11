@@ -62,7 +62,8 @@ func runSceneryTestOutput(ctx context.Context, args []string, stdout io.Writer) 
 		return err
 	}
 
-	goArgs := append([]string{"test"}, opts.GoArgs...)
+	goArgs := append([]string{"test"}, result.GoBuildFlags...)
+	goArgs = append(goArgs, opts.GoArgs...)
 	err, output := runGeneratedWorkspaceGoTest(ctx, testDir, goArgs, false)
 	if err == nil {
 		_, _ = stdout.Write(output)
@@ -77,7 +78,7 @@ func prepareTestWorkspace(ctx context.Context, appRoot string, cfg app.Config) (
 	graphFingerprint := ""
 	if snapshot, err := scanWatchedFiles(appRoot); err == nil {
 		graphFingerprint = snapshotFingerprint(snapshot)
-		if cached, ok, err := build.LoadCachedGraph(appRoot, cfg.Name, graphFingerprint); err != nil {
+		if cached, ok, err := build.LoadCachedGraph(appRoot, cfg, graphFingerprint); err != nil {
 			return nil, err
 		} else if ok {
 			reused, err := build.RefreshCachedWorkspace(appRoot, cached.Result)

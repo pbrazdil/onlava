@@ -119,7 +119,7 @@ func rejectInternalRouterRoutesForConfiguredEdge(baseDomain string, session loca
 		}
 		port := u.Port()
 		if u.Scheme == "https" && port != "" && port != "443" {
-			return fmt.Errorf("Edge is not ready; refusing to publish portless %s URLs.\n\nSession route %s resolved to internal/diagnostic router URL %s.\n\nFix:\n  scenery system edge restart\n  scenery system edge status", firstNonEmpty(normalizeRouteNamespaceHost(baseDomain), localagent.DefaultRouteBaseDomain), route, raw)
+			return fmt.Errorf("Edge is not ready; refusing to publish portless %s URLs.\n\nApp route %s resolved to internal/diagnostic router URL %s.\n\nFix:\n  scenery system edge restart\n  scenery system edge status", firstNonEmpty(normalizeRouteNamespaceHost(baseDomain), localagent.DefaultRouteBaseDomain), route, raw)
 		}
 	}
 	return nil

@@ -169,6 +169,10 @@ func (r *Registry) Upsert(req RegisterRequest) (Session, error) {
 		existingPID := firstPositive(existing.OwnerPID, existing.Owner.PID)
 		return Session{}, fmt.Errorf("scenery up session %q is already running for app root %s under owner PID %d", sessionID, existing.AppRoot, existingPID)
 	}
+	if blocking, ok := r.blockingAppRootSessionLocked(session); ok {
+		blockingPID := firstPositive(blocking.OwnerPID, blocking.Owner.PID)
+		return Session{}, fmt.Errorf("scenery up is already running for app root %s under owner PID %d; use a separate Git worktree for another live code copy", session.AppRoot, blockingPID)
+	}
 	session.Aliases, session.AliasConflicts = r.claimAliasesLocked(session, req.ClaimAliases)
 	r.sessions[session.SessionID] = session
 	r.currentByAppRoot[filepath.Clean(session.AppRoot)] = session.SessionID
@@ -180,6 +184,37 @@ func (r *Registry) Upsert(req RegisterRequest) (Session, error) {
 		return Session{}, err
 	}
 	return session, nil
+}
+
+func (r *Registry) blockingAppRootSessionLocked(next Session) (Session, bool) {
+	nextRoot := filepath.Clean(next.AppRoot)
+	for _, existing := range r.sessions {
+		if existing.SessionID == next.SessionID || filepath.Clean(existing.AppRoot) != nextRoot {
+			continue
+		}
+		if sessionBlocksAppRootRegistration(existing) {
+			return existing, true
+		}
+	}
+	return Session{}, false
+}
+
+func sessionBlocksAppRootRegistration(existing Session) bool {
+	existingPID := firstPositive(existing.OwnerPID, existing.Owner.PID)
+	if existingPID <= 0 {
+		return false
+	}
+	owner := existing.Owner
+	if owner.PID != existingPID {
+		owner = Owner{}
+	}
+	if owner.PID <= 0 {
+		owner.PID = existingPID
+	}
+	if VerifyOwner(owner) == nil {
+		return true
+	}
+	return ownerProcessInspectable(existingPID)
 }
 
 func requestMayClaimSession(req RegisterRequest, existing, next Session) bool {

@@ -62,7 +62,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Repo-local operating manual for agents changing scenery itself, including the session/capability model, validation, docs review-due signals, drift handling, AGENTS hierarchy, and client-app instruction rules.",
+      "summary": "Repo-local operating manual for agents changing scenery itself, including the app-root runtime/capability model, validation, docs review-due signals, drift handling, AGENTS hierarchy, and client-app instruction rules.",
       "tags": [
         "agents",
         "repo",
@@ -79,7 +79,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Concise installed-skill entrypoint for using current scenery apps through app sessions and capabilities, including target-app AGENTS hierarchy checks, CLI JSON, scoped observability queries, managed toolchain diagnostics, browser UI harness validation, app validation profiles, docs review-due signals, debugging, databases, generated clients, and validation loops.",
+      "summary": "Concise installed-skill entrypoint for using current scenery apps through app-root dev runtimes and capabilities, including target-app AGENTS hierarchy checks, CLI JSON, scoped observability queries, managed toolchain diagnostics, browser UI harness validation, app validation profiles, docs review-due signals, debugging, databases, generated clients, and validation loops.",
       "tags": [
         "skill",
         "agents",
@@ -96,7 +96,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Agent workflow guide for using CLI JSON, app-session capabilities, scoped observability queries, managed toolchain commands, app validation profiles, cache artifacts, TypeScript clients, and app-local AGENTS hierarchy.",
+      "summary": "Agent workflow guide for using CLI JSON, app-root runtime capabilities, scoped observability queries, managed toolchain commands, app validation profiles, cache artifacts, TypeScript clients, and app-local AGENTS hierarchy.",
       "tags": [
         "agents",
         "cli",
@@ -165,7 +165,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-08",
       "review_after": "2026-07-07",
-      "summary": "Frozen local developer and agent-facing contract for scenery CLI, JSON schemas, app-session capabilities, scoped observability queries, harness evidence artifacts, validation profile artifacts, UI harness journey artifacts, cache artifacts, toolchain store, generators, configured tasks, code tasks, and local runtime surfaces.",
+      "summary": "Frozen local developer and agent-facing contract for scenery CLI, JSON schemas, app-root runtime capabilities, scoped observability queries, harness evidence artifacts, validation profile artifacts, UI harness journey artifacts, cache artifacts, toolchain store, generators, configured tasks, code tasks, and local runtime surfaces.",
       "tags": [
         "contract",
         "cli",
@@ -590,7 +590,7 @@
       "freshness": "current",
       "last_reviewed": "2026-06-09",
       "review_after": "2026-07-09",
-      "summary": "Completed ExecPlan for making ONLV consume the agent-native local development model by default through scenery-owned dev sessions, routes, Postgres, Electric, and docs.",
+      "summary": "Completed ExecPlan for making ONLV consume the agent-native local development model by default through scenery-owned dev runtimes, routes, Postgres, Electric, and docs.",
       "tags": [
         "plans",
         "execplans",

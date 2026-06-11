@@ -43,13 +43,13 @@ type helpManifest struct {
 }
 
 var rootHelpGroups = []helpRootGroup{
-	{Name: "Local session", Entries: []helpRootEntry{
-		{Command: "up", Summary: "Start a local dev session"},
-		{Command: "ps", Summary: "Show local sessions"},
-		{Command: "logs", Summary: "Read, follow, or query session logs"},
+	{Name: "Local dev", Entries: []helpRootEntry{
+		{Command: "up", Summary: "Start a local dev runtime"},
+		{Command: "ps", Summary: "Show local dev app roots"},
+		{Command: "logs", Summary: "Read, follow, or query dev logs"},
 		{Command: "console", Summary: "Open the source-aware dev console"},
-		{Command: "down", Summary: "Stop a session"},
-		{Command: "prune", Summary: "Remove old stopped session state"},
+		{Command: "down", Summary: "Stop a local dev runtime"},
+		{Command: "prune", Summary: "Remove old stopped dev state"},
 	}},
 	{Name: "Build and runtime", Entries: []helpRootEntry{
 		{Command: "serve", Summary: "Run the API server once"},
@@ -81,7 +81,7 @@ var rootHelpGroups = []helpRootGroup{
 }
 
 var helpReferenceGroups = []helpReferenceGroup{
-	{Name: "Local session", Commands: []string{
+	{Name: "Local dev", Commands: []string{
 		"scenery up",
 		"scenery ps",
 		"scenery logs",
@@ -198,31 +198,31 @@ var helpReferenceGroups = []helpReferenceGroup{
 var helpCommands = []helpCommandEntry{
 	{
 		Command:   "up",
-		Group:     "Local session",
-		Summary:   "Start a supervised local dev session.",
-		Usage:     []string{"scenery up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]"},
-		Flags:     []string{"--port <n>", "--listen <addr>", "--app-root <path>", "--session <id>", "--new-session", "--claim-aliases", "-v, --verbose", "--json", "--detach"},
+		Group:     "Local dev",
+		Summary:   "Start a supervised local dev runtime.",
+		Usage:     []string{"scenery up [--port <n>] [--listen <addr>] [--app-root <path>] [--claim-aliases] [-v|--verbose] [--json] [--detach]"},
+		Flags:     []string{"--port <n>", "--listen <addr>", "--app-root <path>", "--claim-aliases", "-v, --verbose", "--json", "--detach"},
 		JSON:      true,
 		Stability: "stable",
 	},
 	{
 		Command:   "ps",
-		Group:     "Local session",
-		Summary:   "Show local dev sessions.",
-		Usage:     []string{"scenery ps [--json] [--app-root <path>] [--session <id>] [--watch]"},
-		Flags:     []string{"--json", "--app-root <path>", "--session <id>", "--watch"},
+		Group:     "Local dev",
+		Summary:   "Show local dev app roots.",
+		Usage:     []string{"scenery ps [--json] [--app-root <path>] [--watch]"},
+		Flags:     []string{"--json", "--app-root <path>", "--watch"},
 		Notes:     []string{"Human table output is the default.", "`--json` emits scenery.agent.status.v1 for agents and automation."},
 		JSON:      true,
 		Stability: "stable",
 	},
 	{
 		Command:     "logs",
-		Group:       "Local session",
-		Summary:     "Read, follow, or query session logs.",
+		Group:       "Local dev",
+		Summary:     "Read, follow, or query dev logs.",
 		Usage:       []string{"scenery logs [flags]", "scenery logs query --query <logsql> [flags]", "scenery logs tail --query <logsql> [flags]"},
 		Subcommands: []string{"query", "tail"},
 		Flags: []string{
-			"--app-root <path>", "--session current|<id>", "--since <duration>",
+			"--app-root <path>", "--since <duration>",
 			"--limit <n>", "--fields <csv>", "--json", "--jsonl",
 			"--stream all|stdout|stderr", "--source <id>", "--kind <kind>",
 			"--level <level>", "--grep <text>", "-f, --follow",
@@ -232,24 +232,24 @@ var helpCommands = []helpCommandEntry{
 	},
 	{
 		Command:   "console",
-		Group:     "Local session",
+		Group:     "Local dev",
 		Summary:   "Open the source-aware dev console.",
-		Usage:     []string{"scenery console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]"},
-		Flags:     []string{"--app-root <path>", "--session current|<id>", "--source <id>", "--kind <kind>", "--level <level>", "--grep <text>", "--since <duration>", "--backend auto|victoria"},
+		Usage:     []string{"scenery console [--app-root <path>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]"},
+		Flags:     []string{"--app-root <path>", "--source <id>", "--kind <kind>", "--level <level>", "--grep <text>", "--since <duration>", "--backend auto|victoria"},
 		Stability: "stable",
 	},
 	{
 		Command:   "down",
-		Group:     "Local session",
-		Summary:   "Stop a local session.",
-		Usage:     []string{"scenery down [--app-root <path>] [--session <id>] [--db] [--state] [--all] [--json]"},
-		Flags:     []string{"--app-root <path>", "--session <id>", "--db", "--state", "--all", "--json"},
+		Group:     "Local dev",
+		Summary:   "Stop a local dev runtime.",
+		Usage:     []string{"scenery down [--app-root <path>] [--db] [--state] [--all] [--json]"},
+		Flags:     []string{"--app-root <path>", "--db", "--state", "--all", "--json"},
 		JSON:      true,
 		Stability: "stable",
 	},
 	{
 		Command:   "prune",
-		Group:     "Local session",
+		Group:     "Local dev",
 		Summary:   "Remove old stopped session state.",
 		Usage:     []string{"scenery prune --older-than <duration> [--app-root <path>] [--json]"},
 		Flags:     []string{"--older-than <duration>", "--app-root <path>", "--json"},
@@ -428,9 +428,9 @@ var helpCommands = []helpCommandEntry{
 		Command:     "traces",
 		Group:       "Observability",
 		Summary:     "List or clear local traces.",
-		Usage:       []string{"scenery traces list [--json] [--session current|<id>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest] [--app-root <path>]", "scenery traces clear --json [--app-root <path>]"},
+		Usage:       []string{"scenery traces list [--json] [--app-root <path>] [--service <name>] [--endpoint <name>] [--trace-id <id>] [--status ok|error] [--min-duration-ms <n>] [--since <duration>] [--limit <n>] [--slowest]", "scenery traces clear --json [--app-root <path>]"},
 		Subcommands: []string{"list", "clear"},
-		Flags:       []string{"--json", "--session current|<id>", "--service <name>", "--endpoint <name>", "--trace-id <id>", "--status ok|error", "--min-duration-ms <n>", "--since <duration>", "--limit <n>", "--slowest", "--app-root <path>"},
+		Flags:       []string{"--json", "--app-root <path>", "--service <name>", "--endpoint <name>", "--trace-id <id>", "--status ok|error", "--min-duration-ms <n>", "--since <duration>", "--limit <n>", "--slowest"},
 		JSON:        true,
 		Stability:   "stable",
 	},
@@ -438,9 +438,9 @@ var helpCommands = []helpCommandEntry{
 		Command:     "metrics",
 		Group:       "Observability",
 		Summary:     "List, query, and inspect local metrics.",
-		Usage:       []string{"scenery metrics list [--json] [--session current|<id>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>] [--app-root <path>]", "scenery metrics query [--json] [--app-root <path>] [--session current|<id>] --promql <query> [--instant] [--since <duration>] [--start <time>] [--end <time>] [--step <duration>] [--timeout <duration>] [--limit <n>]", "scenery metrics labels|series [--json] [--app-root <path>] [--session current|<id>] --match <selector> [flags]"},
+		Usage:       []string{"scenery metrics list [--json] [--app-root <path>] [--service <name>] [--endpoint <name>] [--status ok|error] [--since <duration>] [--limit <n>]", "scenery metrics query [--json] [--app-root <path>] --promql <query> [--instant] [--since <duration>] [--start <time>] [--end <time>] [--step <duration>] [--timeout <duration>] [--limit <n>]", "scenery metrics labels|series [--json] [--app-root <path>] --match <selector> [flags]"},
 		Subcommands: []string{"list", "query", "labels", "series"},
-		Flags:       []string{"--json", "--app-root <path>", "--session current|<id>", "--promql <query>", "--match <selector>", "--instant", "--since <duration>", "--start <time>", "--end <time>", "--step <duration>", "--timeout <duration>", "--limit <n>"},
+		Flags:       []string{"--json", "--app-root <path>", "--promql <query>", "--match <selector>", "--instant", "--since <duration>", "--start <time>", "--end <time>", "--step <duration>", "--timeout <duration>", "--limit <n>"},
 		JSON:        true,
 		Stability:   "stable",
 	},

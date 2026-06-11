@@ -133,8 +133,6 @@ type devOptions struct {
 	Verbose      bool
 	JSON         bool
 	AppRoot      string
-	SessionID    string
-	NewSession   bool
 	Detach       bool
 	ClaimAliases bool
 	Trust        bool
@@ -145,8 +143,6 @@ type devListenRequest struct {
 	Addr         string
 	Explicit     bool
 	PreferTCP    bool
-	SessionID    string
-	NewSession   bool
 	ClaimAliases bool
 }
 
@@ -189,27 +185,20 @@ func parseDevArgs(args []string) (devOptions, error) {
 			}
 			opts.AppRoot = args[i]
 		case "--session":
-			i++
-			if i >= len(args) {
-				return devOptions{}, fmt.Errorf("missing value for --session")
-			}
-			opts.SessionID = args[i]
+			return devOptions{}, fmt.Errorf("scenery up no longer accepts --session; one app root has one live dev runtime, so use --app-root or a separate Git worktree")
 		case "--new-session":
-			opts.NewSession = true
+			return devOptions{}, fmt.Errorf("scenery up no longer accepts --new-session; use a separate Git worktree for another live code copy")
 		case "--claim-aliases":
 			opts.ClaimAliases = true
 		default:
 			return devOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
-	if strings.TrimSpace(opts.SessionID) != "" && opts.NewSession {
-		return devOptions{}, fmt.Errorf("--session and --new-session cannot be used together")
-	}
 	return opts, nil
 }
 
 func legacyDevProxyError(source string) error {
-	return fmt.Errorf("%s no longer enables the legacy local proxy in `scenery up`; use the default agent-routed session URLs, or run `scenery system edge dns install`, `scenery system edge privileged install`, `scenery system edge install`, then `scenery system edge trust` to prepare trusted local HTTPS", source)
+	return fmt.Errorf("%s no longer enables the legacy local proxy in `scenery up`; use the default agent-routed app URLs, or run `scenery system edge dns install`, `scenery system edge privileged install`, `scenery system edge install`, then `scenery system edge trust` to prepare trusted local HTTPS", source)
 }
 
 func resolveDevListenRequest(opts devOptions) devListenRequest {
@@ -218,14 +207,10 @@ func resolveDevListenRequest(opts devOptions) devListenRequest {
 			Network:      "tcp",
 			Addr:         resolveListenAddr(opts.Listen, opts.Port),
 			Explicit:     true,
-			SessionID:    opts.SessionID,
-			NewSession:   opts.NewSession,
 			ClaimAliases: opts.ClaimAliases,
 		}
 	}
 	return devListenRequest{
-		SessionID:    opts.SessionID,
-		NewSession:   opts.NewSession,
 		ClaimAliases: opts.ClaimAliases,
 	}
 }

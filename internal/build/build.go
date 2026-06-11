@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -48,6 +49,7 @@ type Result struct {
 	GeneratedFiles            []string
 	ReuseCompiled             bool
 	Ephemeral                 bool
+	GoBuildFlags              []string
 }
 
 type buildState struct {
@@ -62,11 +64,12 @@ type buildState struct {
 	APIEncoding               []byte   `json:"api_encoding,omitempty"`
 	SourceFiles               []string `json:"source_files,omitempty"`
 	GeneratedFiles            []string `json:"generated_files,omitempty"`
+	GoBuildFlags              []string `json:"go_build_flags,omitempty"`
 }
 
 const (
 	buildStateFile    = ".scenery-build-state.json"
-	buildStateVersion = "2"
+	buildStateVersion = "3"
 )
 
 type PrepareOptions struct {
@@ -176,6 +179,7 @@ func App(appRoot string, cfg app.Config) (*Result, error) {
 }
 
 func LoadReusableBinary(appRoot string, cfg app.Config) (*Result, bool, error) {
+	goBuildFlags := normalizeGoBuildFlags(cfg.Build.GoFlags)
 	sourceFingerprint, err := currentAppSourceFingerprint(appRoot)
 	if err != nil {
 		return nil, false, err
@@ -202,7 +206,8 @@ func LoadReusableBinary(appRoot string, cfg app.Config) (*Result, bool, error) {
 		state.SourceFingerprint != sourceFingerprint ||
 		state.GeneratorFingerprint == "" ||
 		state.GeneratorFingerprint != generatorFingerprint ||
-		state.BuildFingerprint == "" {
+		state.BuildFingerprint == "" ||
+		!slices.Equal(state.GoBuildFlags, goBuildFlags) {
 		return nil, false, nil
 	}
 	binary := filepath.Join(workspaceDir, workspaceBinaryName(appRoot, state.BuildFingerprint))
@@ -227,11 +232,13 @@ func LoadReusableBinary(appRoot string, cfg app.Config) (*Result, bool, error) {
 		SourceFiles:               append([]string(nil), state.SourceFiles...),
 		GeneratedFiles:            append([]string(nil), state.GeneratedFiles...),
 		ReuseCompiled:             true,
+		GoBuildFlags:              append([]string(nil), goBuildFlags...),
 	}
 	return result, true, nil
 }
 
 func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptions) (*Result, error) {
+	goBuildFlags := normalizeGoBuildFlags(cfg.Build.GoFlags)
 	artifacts, err := writeGeneratedInspectArtifacts(appRoot, cfg, model)
 	if err != nil {
 		return nil, err
@@ -288,7 +295,7 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 		return nil, err
 	}
 	needsTidy := state.DependencyFingerprint != depFingerprint
-	buildFingerprint, err := workspaceBuildFingerprint(workspaceDir, sourceFiles, generatedFiles)
+	buildFingerprint, err := workspaceBuildFingerprint(workspaceDir, goBuildFlags, sourceFiles, generatedFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -308,6 +315,7 @@ func Prepare(appRoot string, model *model.App, cfg app.Config, opts PrepareOptio
 		ReuseCompiled:             buildFingerprint != "" && pathExists(binary),
 		SourceFiles:               sourceFiles,
 		GeneratedFiles:            generatedFiles,
+		GoBuildFlags:              append([]string(nil), goBuildFlags...),
 	}
 	if err := WriteLatestBuildManifest(result, "prepared"); err != nil {
 		return nil, err
@@ -441,6 +449,7 @@ func savePrimedWorkspace(result *Result) error {
 		APIEncoding:               append([]byte(nil), result.APIEncoding...),
 		SourceFiles:               append([]string(nil), result.SourceFiles...),
 		GeneratedFiles:            append([]string(nil), result.GeneratedFiles...),
+		GoBuildFlags:              append([]string(nil), result.GoBuildFlags...),
 	}); err != nil {
 		return err
 	}
@@ -471,7 +480,7 @@ func CompileContext(ctx context.Context, result *Result) error {
 			return err
 		}
 	}
-	err = runGoContext(ctx, result.Dir, goBuildArgs(result.Binary)...)
+	err = runGoContext(ctx, result.Dir, goBuildArgs(result.Binary, result.GoBuildFlags)...)
 	if err != nil && (result.NeedsTidy || goBuildNeedsWorkspaceTidy(err)) {
 		if tidyErr := tidyWorkspace(ctx, result); tidyErr != nil {
 			return tidyErr
@@ -479,7 +488,7 @@ func CompileContext(ctx context.Context, result *Result) error {
 		if saveErr := savePrimedWorkspace(result); saveErr != nil {
 			return saveErr
 		}
-		err = runGoContext(ctx, result.Dir, goBuildArgs(result.Binary)...)
+		err = runGoContext(ctx, result.Dir, goBuildArgs(result.Binary, result.GoBuildFlags)...)
 	}
 	if err != nil {
 		return err
@@ -1390,8 +1399,24 @@ func runGoContext(ctx context.Context, dir string, args ...string) error {
 	return runGo(ctx, dir, args...)
 }
 
-func goBuildArgs(binary string) []string {
-	return []string{"build", "-buildvcs=false", "-o", binary, "./scenery_internal_main"}
+func normalizeGoBuildFlags(flags []string) []string {
+	normalized := make([]string, 0, len(flags))
+	for _, flag := range flags {
+		flag = strings.TrimSpace(flag)
+		if flag == "" {
+			continue
+		}
+		normalized = append(normalized, flag)
+	}
+	return normalized
+}
+
+func goBuildArgs(binary string, flags []string) []string {
+	args := make([]string, 0, 5+len(flags))
+	args = append(args, "build")
+	args = append(args, normalizeGoBuildFlags(flags)...)
+	args = append(args, "-buildvcs=false", "-o", binary, "./scenery_internal_main")
+	return args
 }
 
 func workspaceDir(appRoot, appName string) (string, error) {
@@ -1471,6 +1496,7 @@ type StateInfo struct {
 	APIEncodingPresent        bool
 	SourceFiles               []string
 	GeneratedFiles            []string
+	GoBuildFlags              []string
 }
 
 func ReadStateInfo(appRoot, appName string) (*StateInfo, error) {
@@ -1500,6 +1526,7 @@ func ReadStateInfo(appRoot, appName string) (*StateInfo, error) {
 	info.APIEncodingPresent = len(state.APIEncoding) > 0
 	info.SourceFiles = append([]string(nil), state.SourceFiles...)
 	info.GeneratedFiles = append([]string(nil), state.GeneratedFiles...)
+	info.GoBuildFlags = append([]string(nil), state.GoBuildFlags...)
 	return info, nil
 }
 

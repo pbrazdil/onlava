@@ -18,11 +18,11 @@ import (
 func TestParseLogsArgs(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseLogsArgs([]string{"--app-root", "/tmp/app", "--limit", "50", "--stream", "stderr", "--session", "current", "--follow", "--jsonl", "--source", "api", "--kind", "app", "--level", "error", "--grep", "boom", "--since", "15m", "--backend", "victoria"})
+	opts, err := parseLogsArgs([]string{"--app-root", "/tmp/app", "--limit", "50", "--stream", "stderr", "--follow", "--jsonl", "--source", "api", "--kind", "app", "--level", "error", "--grep", "boom", "--since", "15m", "--backend", "victoria"})
 	if err != nil {
 		t.Fatalf("parseLogsArgs returned error: %v", err)
 	}
-	if opts.AppRoot != "/tmp/app" || opts.Limit != 50 || opts.Stream != "stderr" || opts.Session != "current" || !opts.Follow || !opts.JSONL || opts.Source != "api" || opts.Kind != "app" || opts.Level != "error" || opts.Grep != "boom" || opts.Since != 15*time.Minute || opts.Backend != logsBackendVictoria {
+	if opts.AppRoot != "/tmp/app" || opts.Limit != 50 || opts.Stream != "stderr" || opts.Session != "" || !opts.Follow || !opts.JSONL || opts.Source != "api" || opts.Kind != "app" || opts.Level != "error" || opts.Grep != "boom" || opts.Since != 15*time.Minute || opts.Backend != logsBackendVictoria {
 		t.Fatalf("unexpected logs options: %#v", opts)
 	}
 }
@@ -46,7 +46,7 @@ func TestAttachLogArgsDefaultsToCurrentSessionFollow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attachLogArgs returned error: %v", err)
 	}
-	want := []string{"--follow", "--session", "current", "--limit", "25", "--stream", "stderr", "--app-root", "/tmp/app", "--jsonl"}
+	want := []string{"--follow", "--limit", "25", "--stream", "stderr", "--app-root", "/tmp/app", "--jsonl"}
 	if strings.Join(args, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("attach args = %#v, want %#v", args, want)
 	}
@@ -58,13 +58,13 @@ func TestAttachCommandUsesLogsFollow(t *testing.T) {
 	called := false
 	runSceneryLogsFunc = func(ctx context.Context, stdout io.Writer, args []string) error {
 		called = true
-		want := []string{"--follow", "--session", "session-123", "--limit", "200", "--stream", "all"}
+		want := []string{"--follow", "--limit", "200", "--stream", "all", "--source", "api"}
 		if strings.Join(args, "\x00") != strings.Join(want, "\x00") {
 			t.Fatalf("logs args = %#v, want %#v", args, want)
 		}
 		return nil
 	}
-	if err := attachCommand([]string{"--session", "session-123"}); err != nil {
+	if err := attachCommand([]string{"--source", "api"}); err != nil {
 		t.Fatalf("attachCommand returned error: %v", err)
 	}
 	if !called {
@@ -148,7 +148,7 @@ func TestRunSceneryLogsFiltersStream(t *testing.T) {
 	}
 }
 
-func TestRunSceneryLogsFiltersSession(t *testing.T) {
+func TestRunSceneryLogsFiltersAppRootRuntime(t *testing.T) {
 	root := t.TempDir()
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheRoot)
@@ -164,6 +164,7 @@ func TestRunSceneryLogsFiltersSession(t *testing.T) {
 	ctx := context.Background()
 	if err := store.UpsertApp(ctx, devdash.AppRecord{
 		ID:         "logsapp",
+		SessionID:  "session-a",
 		Name:       "logsapp",
 		Root:       root,
 		ListenAddr: "127.0.0.1:4000",
@@ -178,7 +179,7 @@ func TestRunSceneryLogsFiltersSession(t *testing.T) {
 	)
 
 	var buf bytes.Buffer
-	if err := runSceneryLogs(ctx, &buf, []string{"--app-root", root, "--session", "session-a"}); err != nil {
+	if err := runSceneryLogs(ctx, &buf, []string{"--app-root", root}); err != nil {
 		t.Fatalf("runSceneryLogs returned error: %v", err)
 	}
 	if got := buf.String(); got != "a\n" {
@@ -212,7 +213,7 @@ func TestRunSceneryLogsUsesSessionAppRecordWhenLatestAppRootDiffers(t *testing.T
 	installLogsVictoriaStack(t, testOutputEvent("logsapp", "session-a", 1, "stdout", "session-a\n"))
 
 	var buf bytes.Buffer
-	if err := runSceneryLogs(ctx, &buf, []string{"--app-root", root, "--session", "session-a"}); err != nil {
+	if err := runSceneryLogs(ctx, &buf, []string{"--app-root", root}); err != nil {
 		t.Fatalf("runSceneryLogs returned error: %v", err)
 	}
 	if got := buf.String(); got != "session-a\n" {
@@ -308,6 +309,7 @@ func TestRunSceneryLogsFiltersStructuredEvents(t *testing.T) {
 	ctx := context.Background()
 	if err := store.UpsertApp(ctx, devdash.AppRecord{
 		ID:        "logsapp",
+		SessionID: "session-a",
 		Name:      "logsapp",
 		Root:      root,
 		Running:   true,
@@ -321,7 +323,7 @@ func TestRunSceneryLogsFiltersStructuredEvents(t *testing.T) {
 	}...)
 
 	var buf bytes.Buffer
-	if err := runSceneryLogs(ctx, &buf, []string{"--app-root", root, "--session", "session-a", "--source", "worker:typescript", "--level", "error", "--grep", "SyncUser"}); err != nil {
+	if err := runSceneryLogs(ctx, &buf, []string{"--app-root", root, "--source", "worker:typescript", "--level", "error", "--grep", "SyncUser"}); err != nil {
 		t.Fatalf("runSceneryLogs returned error: %v", err)
 	}
 	if got := strings.TrimSpace(buf.String()); got != "ERROR activity failed activity=SyncUser" {

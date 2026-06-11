@@ -30,19 +30,17 @@ type agentOptions struct {
 }
 
 type statusOptions struct {
-	AppRoot   string
-	SessionID string
-	JSON      bool
-	Watch     bool
+	AppRoot string
+	JSON    bool
+	Watch   bool
 }
 
 type downOptions struct {
-	AppRoot   string
-	SessionID string
-	DB        bool
-	State     bool
-	All       bool
-	JSON      bool
+	AppRoot string
+	DB      bool
+	State   bool
+	All     bool
+	JSON    bool
 }
 
 type downResponse struct {
@@ -360,11 +358,7 @@ func parseStatusArgs(args []string) (statusOptions, error) {
 			}
 			opts.AppRoot = args[i]
 		case "--session":
-			i++
-			if i >= len(args) {
-				return statusOptions{}, fmt.Errorf("missing value for --session")
-			}
-			opts.SessionID = args[i]
+			return statusOptions{}, fmt.Errorf("scenery ps no longer accepts --session; use --app-root to inspect an app directory")
 		default:
 			return statusOptions{}, fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -376,15 +370,6 @@ func writeStatus(ctx context.Context, client *localagent.Client, appRoot string,
 	sessions, err := client.List(ctx, appRoot)
 	if err != nil {
 		return err
-	}
-	if opts.SessionID != "" {
-		filtered := sessions[:0]
-		for _, session := range sessions {
-			if session.SessionID == opts.SessionID {
-				filtered = append(filtered, session)
-			}
-		}
-		sessions = filtered
 	}
 	sessions = markInconsistentStatusSessions(sessions)
 	if opts.JSON {
@@ -547,9 +532,10 @@ func downCommand(args []string) error {
 		DBCleanup:     opts.DB,
 		StateCleanup:  opts.State,
 	}
+	runtimeLabel := firstNonEmpty(appRoot, deletedSession.AppRoot, session.AppRoot, deletedSession.SessionID, session.SessionID)
 	if !deleted {
 		resp.RecordPreserved = true
-		resp.Messages = append(resp.Messages, fmt.Sprintf("stopped scenery session %s processes; preserved active session record because the owner changed", session.SessionID))
+		resp.Messages = append(resp.Messages, fmt.Sprintf("stopped scenery dev runtime processes for %s; preserved active runtime record because the owner changed", runtimeLabel))
 		if opts.JSON {
 			return writeDownJSON(os.Stdout, resp)
 		}
@@ -571,7 +557,7 @@ func downCommand(args []string) error {
 			return err
 		}
 		resp.StateRootRemoved = deletedSession.StateRoot
-		stateMessage := fmt.Sprintf("removed scenery session state %s", deletedSession.StateRoot)
+		stateMessage := fmt.Sprintf("removed scenery dev runtime state %s", deletedSession.StateRoot)
 		resp.Messages = append(resp.Messages, stateMessage)
 		if !opts.JSON {
 			fmt.Fprintln(os.Stdout, stateMessage)
@@ -582,14 +568,14 @@ func downCommand(args []string) error {
 		}
 		if removedPin {
 			resp.DBBranchPinRemoved = true
-			pinMessage := fmt.Sprintf("removed scenery database branch pin for session %s", deletedSession.SessionID)
+			pinMessage := fmt.Sprintf("removed scenery database branch pin for dev runtime %s", runtimeLabel)
 			resp.Messages = append(resp.Messages, pinMessage)
 			if !opts.JSON {
 				fmt.Fprintln(os.Stdout, pinMessage)
 			}
 		}
 	}
-	stopMessage := fmt.Sprintf("stopped scenery session %s", deletedSession.SessionID)
+	stopMessage := fmt.Sprintf("stopped scenery dev runtime for %s", runtimeLabel)
 	resp.Messages = append(resp.Messages, stopMessage)
 	if opts.JSON {
 		return writeDownJSON(os.Stdout, resp)
@@ -661,31 +647,18 @@ func stopDeletedSessionProcesses(ctx context.Context, session localagent.Session
 }
 
 func resolveDownSession(ctx context.Context, client *localagent.Client, opts downOptions) (localagent.Session, error) {
-	sessionID := strings.TrimSpace(opts.SessionID)
-	if sessionID == "" {
-		appRoot, err := resolveStatusAppRoot(opts.AppRoot)
-		if err != nil {
-			return localagent.Session{}, err
-		}
-		sessions, err := client.List(ctx, appRoot)
-		if err != nil {
-			return localagent.Session{}, err
-		}
-		if len(sessions) == 0 {
-			return localagent.Session{}, fmt.Errorf("no scenery agent session found for %s", appRoot)
-		}
-		return sessions[0], nil
-	}
-	sessions, err := client.List(ctx, "")
+	appRoot, err := resolveStatusAppRoot(opts.AppRoot)
 	if err != nil {
 		return localagent.Session{}, err
 	}
-	for _, session := range sessions {
-		if session.SessionID == sessionID {
-			return session, nil
-		}
+	sessions, err := client.List(ctx, appRoot)
+	if err != nil {
+		return localagent.Session{}, err
 	}
-	return localagent.Session{}, fmt.Errorf("no scenery agent session found for %s", sessionID)
+	if len(sessions) == 0 {
+		return localagent.Session{}, fmt.Errorf("no scenery dev runtime found for app root %s", appRoot)
+	}
+	return sessions[0], nil
 }
 
 func parseDownArgs(args []string) (downOptions, error) {
@@ -699,11 +672,7 @@ func parseDownArgs(args []string) (downOptions, error) {
 			}
 			opts.AppRoot = args[i]
 		case "--session":
-			i++
-			if i >= len(args) {
-				return downOptions{}, fmt.Errorf("missing value for --session")
-			}
-			opts.SessionID = args[i]
+			return downOptions{}, fmt.Errorf("scenery down no longer accepts --session; use --app-root to stop an app directory's dev runtime")
 		case "--db":
 			opts.DB = true
 		case "--state":
@@ -885,9 +854,9 @@ func dropSessionManagedDatabase(ctx context.Context, appRoot string, session loc
 			return "", err
 		}
 		if !removed {
-			return fmt.Sprintf("no local database branch lease to remove for session %s", session.SessionID), nil
+			return "no local database branch lease to remove for this dev runtime", nil
 		}
-		return fmt.Sprintf("removed local database branch lease %s for session %s", branch, session.SessionID), nil
+		return fmt.Sprintf("removed local database branch lease %s for this dev runtime", branch), nil
 	}
 	baseEnv, err := appEnvWithDotEnv(envpolicy.Environ(), appRoot)
 	if err != nil {
@@ -910,7 +879,7 @@ func dropSessionManagedDatabase(ctx context.Context, appRoot string, session loc
 	if err := dropManagedPostgresDatabase(ctx, plan.AdminURL, plan.DatabaseName); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("dropped scenery managed database for session %s", session.SessionID), nil
+	return "dropped scenery managed database for this dev runtime", nil
 }
 
 func removeDBWorktreeDBPinIfConfigured(appRoot string) (bool, error) {

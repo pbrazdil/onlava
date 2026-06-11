@@ -229,23 +229,35 @@ func sanitizeRouteLabel(value string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func rejectLiveDuplicateDevSession(root, sessionID string, existing []localagent.Session) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		sessionID = localagent.SessionID(root, discoverDevGitBranch(root))
-	}
+func rejectLiveDuplicateDevSession(root string, existing []localagent.Session) error {
 	for _, session := range existing {
-		if cleanAbsPath(session.AppRoot) != cleanAbsPath(root) || strings.TrimSpace(session.SessionID) != sessionID {
+		if cleanAbsPath(session.AppRoot) != cleanAbsPath(root) {
 			continue
 		}
-		if sessionOwnerLive(session) {
-			pid := firstPositiveInt(session.OwnerPID, session.Owner.PID)
-			if pid > 0 && pid != os.Getpid() {
-				return fmt.Errorf("scenery up session %q is already running for app root %s under owner PID %d", sessionID, root, pid)
-			}
+		pid, live := sessionOwnerProcessLive(session)
+		if live {
+			return fmt.Errorf("scenery up is already running for app root %s under owner PID %d; stop it with `scenery down --app-root %q`, or use a separate Git worktree for another live code copy", root, pid, root)
 		}
 	}
 	return nil
+}
+
+func sessionOwnerProcessLive(session localagent.Session) (int, bool) {
+	ownerPID := firstPositiveInt(session.OwnerPID, session.Owner.PID)
+	if ownerPID <= 0 {
+		return 0, false
+	}
+	owner := session.Owner
+	if owner.PID != ownerPID {
+		owner = localagent.CaptureOwner(ownerPID, "scenery up")
+	} else if owner.PID <= 0 {
+		owner.PID = ownerPID
+	}
+	if localagent.VerifyOwner(owner) == nil {
+		return ownerPID, true
+	}
+	_, ok := inspectProcess(ownerPID)
+	return ownerPID, ok
 }
 
 func discoverDevGitBranch(root string) string {

@@ -12,7 +12,7 @@ scenery is used in production. The stable v0 surface is intentionally small and 
 
 - **Go source is the app model.** Services, APIs, auth handlers, middleware, Temporal workflows and activities, and cron jobs are discovered from Go code.
 - **One local app server.** `scenery serve` builds once and starts a headless, production-like HTTP server.
-- **Full local dev loop.** `scenery up` runs the app session with file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
+- **Full local dev loop.** `scenery up` runs the app root's one live dev runtime with file watching, rebuild/restart supervision, dashboard, API explorer, logs, traces, metrics, Grafana, and optional HTTPS local domains.
 - **Typed HTTP by default.** scenery decodes path params, query params, headers, cookies, and JSON bodies into Go structs, then encodes typed responses.
 - **Generated internal calls.** Endpoint-to-endpoint calls are rewritten to generated helpers so private access, auth context, and routing semantics are preserved.
 - **Inspectable by tools and agents.** `scenery inspect`, `scenery check`, `scenery logs`, `scenery harness`, and `scenery validate` expose machine-readable JSON contracts.
@@ -93,6 +93,12 @@ Create `.scenery.json`:
 {"name":"hello"}
 ```
 
+When an app requires Go build tags or other build-time flags, keep them in the app config instead of exporting `GOFLAGS` for every command:
+
+```json
+{"name":"hello","build":{"go_flags":["-tags=roofmapnet_native"]}}
+```
+
 Create `go.mod`:
 
 ```go
@@ -157,9 +163,9 @@ scenery logs --follow
 scenery console
 ```
 
-`--detach` starts an agent-backed dev session in the background and returns after the session is registered. `scenery logs --follow` follows the current session logs from VictoriaLogs. `scenery console` opens a source-aware terminal console when attached to a real TTY. `scenery down` stops the current or selected session.
+`--detach` starts the app root's agent-backed dev runtime in the background and returns after it is registered. `scenery logs --follow` follows that app root's logs from VictoriaLogs. `scenery console` opens a source-aware terminal console when attached to a real TTY. `scenery down` stops the app root's one live runtime. Use Git worktrees when you need multiple live code copies.
 
-`scenery up` uses canonical agent-routed session URLs from `.scenery.json` proxy config. Generated local routes default to `https://api.<session>.local.dev`, `https://console.<session>.local.dev`, and frontend routes under the same `local.dev` base. If `proxy.route_base_domain` is explicitly configured, the local edge is required for normal browser-facing URLs: startup fails loudly when DNS, the privileged listener, Caddy, or the HTTPS probe is not ready instead of publishing internal `:9440` router URLs as session routes. Configured hosts are exposed separately as friendly aliases only when the live session owns that free alias. Stale alias leases are reclaimed after owner verification; use `scenery up --claim-aliases` only when intentionally transferring live aliases to this session. Use `scenery system edge dns install`, `scenery system edge privileged install`, `scenery system edge install`, and `scenery system edge trust` when you want trusted wildcard local HTTPS routes on the default HTTPS port; edge syncs managed dnsmasq and Caddy when needed and keeps Caddy user-owned.
+`scenery up` uses canonical agent-routed app URLs from `.scenery.json` proxy config. Generated local routes default to `https://api.<route-id>.local.dev`, `https://console.<route-id>.local.dev`, and frontend routes under the same `local.dev` base. The route id is internal state, not something users select. If `proxy.route_base_domain` is explicitly configured, the local edge is required for normal browser-facing URLs: startup fails loudly when DNS, the privileged listener, Caddy, or the HTTPS probe is not ready instead of publishing internal `:9440` router URLs as app routes. Configured hosts are exposed separately as friendly aliases only when the live app root owns that free alias. Stale alias leases are reclaimed after owner verification; use `scenery up --claim-aliases` only when intentionally transferring live aliases to this app root. Use `scenery system edge dns install`, `scenery system edge privileged install`, `scenery system edge install`, and `scenery system edge trust` when you want trusted wildcard local HTTPS routes on the default HTTPS port; edge syncs managed dnsmasq and Caddy when needed and keeps Caddy user-owned.
 
 Example proxy config:
 
@@ -185,15 +191,15 @@ Example proxy config:
 ## CLI Overview
 
 ```text
-scenery up [--port <n>] [--listen <addr>] [--app-root <path>] [--session <id>|--new-session] [--claim-aliases] [-v|--verbose] [--json] [--detach]
-scenery logs --follow [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json]
-scenery console [--app-root <path>] [--session current|<id>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
+scenery up [--port <n>] [--listen <addr>] [--app-root <path>] [--claim-aliases] [-v|--verbose] [--json] [--detach]
+scenery logs --follow [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [--jsonl|--json]
+scenery console [--app-root <path>] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria]
 scenery system agent [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 scenery system agent restart [--socket <path>] [--router-listen <addr>] [--router-tls|--router-http] [--trust] [--json]
 scenery system edge install|trust|status|restart|uninstall|dns|privileged [--json]
 scenery help <command>|all|--json
-scenery ps [--json] [--app-root <path>] [--session <id>] [--watch]
-scenery down [--app-root <path>] [--session <id>] [--db] [--state] [--all] [--json]
+scenery ps [--json] [--app-root <path>] [--watch]
+scenery down [--app-root <path>] [--db] [--state] [--all] [--json]
 scenery prune --older-than <duration> [--app-root <path>] [--json]
 scenery serve [--port <n>] [--listen <addr>] [--app-root <path>] [--env <name>] [--log-format text|json]
 scenery worker [--task-queue <name>[,<name>]]... [--app-root <path>] [--env <name>] [--log-format text|json]
@@ -228,7 +234,7 @@ scenery inspect docs --json [--repo-root <path>]
 scenery traces list --json [--app-root <path>]
 scenery metrics list --json [--app-root <path>]
 scenery traces clear --json [--app-root <path>]
-scenery logs [--app-root <path>] [--session current|<id>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
+scenery logs [--app-root <path>] [--limit <n>] [--stream all|stdout|stderr] [--source <id>] [--kind <kind>] [--level <level>] [--grep <text>] [--since <duration>] [--backend auto|victoria] [-f|--follow] [--jsonl|--json]
 scenery test [--app-root <path>] [go test flags/packages...]
 scenery generate client [<app-id>] --lang typescript --output <path> [--app-root <path>]
 scenery db psql [--app-root <path>] [psql args...]
@@ -287,7 +293,7 @@ The DB lifecycle split uses `scenery db apply` for schema/app database mutation,
 
 `scenery up` runs the setup lifecycle before app startup when DB setup inputs exist, using the same managed `DatabaseURL` that the app receives. Rebuilds skip setup until the apply config or seed file hashes change.
 
-`scenery db postgres install|start|status|logs|stop|restart|uninstall --json` manages the shared local Postgres dev cell. `scenery db branch status --json` inspects the worktree branch pin at `.scenery/worktree-db.json`, and `scenery db branch list --json` lists Scenery-owned local branch leases in `branches.json` under `~/.scenery/agent/postgres/` or the `SCENERY_AGENT_HOME` equivalent. Branch status and list distinguish missing, expired, protected parent, and ready local leases. Ready leases may include redacted endpoint metadata but never raw connection URLs, and protected parent leases do not expose endpoint or app-session connection metadata.
+`scenery db postgres install|start|status|logs|stop|restart|uninstall --json` manages the shared local Postgres dev cell. `scenery db branch status --json` inspects the worktree branch pin at `.scenery/worktree-db.json`, and `scenery db branch list --json` lists Scenery-owned local branch leases in `branches.json` under `~/.scenery/agent/postgres/` or the `SCENERY_AGENT_HOME` equivalent. Branch status and list distinguish missing, expired, protected parent, and ready local leases. Ready leases may include redacted endpoint metadata but never raw connection URLs, and protected parent leases do not expose endpoint or app-runtime connection metadata.
 
 Postgres branch creation is implemented for `dev.services.postgres.kind: "postgres"`, `mode: "local"`, `isolation: "database"`, and `branch_strategy: "template_database"`. `scenery db branch checkout <name> --json` writes the local pin, ensures the parent template database exists, clones or reuses the branch database from that template, and records a ready endpoint. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes the lease, `expire` updates lease metadata, and `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable. `scenery worktree create <name> --json` creates a Git worktree and writes the target Postgres branch pin, rolling the worktree back if pin creation or branch ensure fails. `scenery up`, `scenery db psql`, DB setup, and Electric consume ready branch endpoints.
 
@@ -312,14 +318,14 @@ scenery exposes local development logs, traces, metrics, and Grafana through app
 Useful commands:
 
 ```sh
-scenery logs --session current --limit 200
+scenery logs --limit 200
 scenery logs --follow
 scenery console
-scenery logs --session current --source api --level error --jsonl --limit 200
+scenery logs --source api --level error --jsonl --limit 200
 scenery inspect routes --json
 scenery inspect endpoints --json
-scenery traces list --json --session current --since 15m --slowest
-scenery metrics list --json --session current --since 1h
+scenery traces list --json --since 15m --slowest
+scenery metrics list --json --since 1h
 scenery ps --json
 scenery harness --json --write
 ```

@@ -10,6 +10,9 @@
     "id": {
       "type": "string"
     },
+    "build": {
+      "$ref": "#/$defs/build"
+    },
     "proxy": {
       "type": "object",
       "description": "Local proxy and dev route configuration. The removed legacy proxy host key is intentionally unsupported; use dev session routes, api_host, console_host, and frontends instead.",
@@ -122,6 +125,18 @@
   ],
   "additionalProperties": false,
   "$defs": {
+    "build": {
+      "type": "object",
+      "description": "Scenery-owned Go build configuration for the generated app runtime.",
+      "properties": {
+        "go_flags": {
+          "type": ["array", "null"],
+          "description": "Literal argv entries passed to Scenery-owned go build and generated-workspace go test invocations. Use one array item per argument, for example [\"-tags=roofmapnet_native\"].",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
     "endpointFilter": {
       "type": "object",
       "properties": {

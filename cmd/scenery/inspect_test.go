@@ -628,7 +628,7 @@ func TestRunSceneryInspectBuildUsesLatestManifest(t *testing.T) {
     "binary_exists": true,
     "build_state_path": "/tmp/custom-workspace/.scenery-build-state.json",
     "build_state_exists": true,
-    "build_state_version": "2",
+    "build_state_version": "3",
     "dependency_fingerprint": "dep123",
     "graph_fingerprint": "graph123",
     "metadata_present": true,

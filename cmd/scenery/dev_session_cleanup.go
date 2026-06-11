@@ -23,7 +23,7 @@ func cleanupStaleDevSessionProcesses(ctx context.Context, current localagent.Ses
 	var errs []error
 	seen := map[int]bool{}
 	for _, session := range previous {
-		if !sameAgentSession(current, session) {
+		if !sameDevSessionCleanupScope(current, session) {
 			continue
 		}
 		errs = append(errs, stopStaleRegisteredSessionProcesses(ctx, current, session, seen))
@@ -36,6 +36,17 @@ func cleanupStaleDevSessionProcesses(ctx context.Context, current localagent.Ses
 func sameAgentSession(a, b localagent.Session) bool {
 	return cleanAbsPath(a.AppRoot) == cleanAbsPath(b.AppRoot) &&
 		strings.TrimSpace(a.SessionID) == strings.TrimSpace(b.SessionID)
+}
+
+func sameDevSessionCleanupScope(current, previous localagent.Session) bool {
+	if sameAgentSession(current, previous) {
+		return true
+	}
+	if cleanAbsPath(current.AppRoot) != cleanAbsPath(previous.AppRoot) {
+		return false
+	}
+	_, live := sessionOwnerProcessLive(previous)
+	return !live
 }
 
 func stopStaleRegisteredSessionProcesses(ctx context.Context, current, previous localagent.Session, seen map[int]bool) error {

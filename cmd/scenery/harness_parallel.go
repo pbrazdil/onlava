@@ -23,7 +23,7 @@ var runHarnessParallelDevCheckFunc = runHarnessParallelDevCheck
 func runHarnessParallelDevStep(ctx context.Context, repoRoot string) harnessStep {
 	started := time.Now()
 	step := harnessStep{
-		Name:    "parallel dev sessions",
+		Name:    "parallel worktree runtimes",
 		Command: []string{"scenery", "harness", "self", "internal:parallel-dev", repoRoot},
 	}
 	summary, diagnostics, err := runHarnessParallelDevCheckFunc(ctx)
@@ -126,12 +126,12 @@ func runHarnessParallelDevCheck(parent context.Context) (map[string]any, []check
 	cfgA := harnessParallelConfig(frontendA)
 	cfgB := harnessParallelConfig(frontendB)
 
-	sessionA, restoreA, err := prepareHarnessParallelSession(ctx, rootA, cfgA, "parallel-a", electricA)
+	sessionA, restoreA, err := prepareHarnessParallelSession(ctx, rootA, cfgA, electricA)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer restoreA()
-	sessionB, restoreB, err := prepareHarnessParallelSession(ctx, rootB, cfgB, "parallel-b", electricB)
+	sessionB, restoreB, err := prepareHarnessParallelSession(ctx, rootB, cfgB, electricB)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -201,7 +201,7 @@ func runHarnessParallelDevCheck(parent context.Context) (map[string]any, []check
 		"diagnostics":     len(diagnostics),
 	}
 	if hasErrorDiagnostics(diagnostics) {
-		return summary, diagnostics, fmt.Errorf("parallel dev session isolation check failed")
+		return summary, diagnostics, fmt.Errorf("parallel worktree runtime isolation check failed")
 	}
 	return summary, diagnostics, nil
 }
@@ -230,7 +230,7 @@ func harnessParallelConfig(frontendAddr string) app.Config {
 	}
 }
 
-func prepareHarnessParallelSession(ctx context.Context, root string, cfg app.Config, sessionID, electricAddr string) (*localagent.Session, func(), error) {
+func prepareHarnessParallelSession(ctx context.Context, root string, cfg app.Config, electricAddr string) (*localagent.Session, func(), error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, func() {}, err
 	}
@@ -241,7 +241,7 @@ func prepareHarnessParallelSession(ctx context.Context, root string, cfg app.Con
 	if err := envpolicy.Set(devElectricUpstreamEnv, "http://"+electricAddr); err != nil {
 		return nil, func() {}, err
 	}
-	client, session, _, restore, err := prepareDevAgentSession(ctx, root, cfg, devListenRequest{SessionID: sessionID})
+	client, session, _, restore, err := prepareDevAgentSession(ctx, root, cfg, devListenRequest{})
 	if hadElectric {
 		_ = envpolicy.Set(devElectricUpstreamEnv, prevElectric)
 	} else {
@@ -309,10 +309,10 @@ func validateHarnessParallelState(ctx context.Context, server *localagent.Server
 			return
 		}
 		diagnostics = append(diagnostics, checkDiagnostic{
-			Stage:           "parallel dev sessions",
+			Stage:           "parallel worktree runtimes",
 			Severity:        "error",
 			Message:         message,
-			SuggestedAction: "Fix local agent session isolation, then rerun `scenery harness self --json`.",
+			SuggestedAction: "Fix local agent runtime isolation, then rerun `scenery harness self --json`.",
 		})
 	}
 	check(sessionA.SessionID != "" && sessionB.SessionID != "" && sessionA.SessionID != sessionB.SessionID, "sessions must have distinct IDs")

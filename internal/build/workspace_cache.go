@@ -105,8 +105,9 @@ func loadBuildState(root string) (buildState, error) {
 	return state, nil
 }
 
-func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, bool, error) {
-	root, err := workspaceDir(appRoot, appName)
+func LoadCachedGraph(appRoot string, cfg app.Config, graphFingerprint string) (*CachedGraph, bool, error) {
+	goBuildFlags := normalizeGoBuildFlags(cfg.Build.GoFlags)
+	root, err := workspaceDir(appRoot, cfg.Name)
 	if err != nil {
 		return nil, false, err
 	}
@@ -127,6 +128,9 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 	if state.GeneratorFingerprint == "" || state.GeneratorFingerprint != generatorFingerprint {
 		return nil, false, nil
 	}
+	if !slices.Equal(state.GoBuildFlags, goBuildFlags) {
+		return nil, false, nil
+	}
 	if _, err := os.Stat(filepath.Join(root, "scenery_internal_main", "main.go")); err != nil {
 		return nil, false, nil
 	}
@@ -135,7 +139,8 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 	}
 	result := &Result{
 		AppRoot:                   appRoot,
-		AppName:                   appName,
+		AppName:                   cfg.Name,
+		AppID:                     cfg.ID,
 		Dir:                       root,
 		Binary:                    filepath.Join(root, workspaceBinaryName(appRoot, state.BuildFingerprint)),
 		NeedsTidy:                 false,
@@ -149,6 +154,7 @@ func LoadCachedGraph(appRoot, appName, graphFingerprint string) (*CachedGraph, b
 		APIEncoding:               append(json.RawMessage(nil), state.APIEncoding...),
 		SourceFiles:               append([]string(nil), state.SourceFiles...),
 		GeneratedFiles:            append([]string(nil), state.GeneratedFiles...),
+		GoBuildFlags:              append([]string(nil), goBuildFlags...),
 	}
 	return &CachedGraph{
 		Result:      result,
@@ -198,7 +204,7 @@ func RefreshCachedWorkspaceWithOptions(appRoot string, result *Result, opts Refr
 	}
 	result.NeedsTidy = result.DependencyFingerprint != depFingerprint
 	result.DependencyFingerprint = depFingerprint
-	buildFingerprint, err := workspaceBuildFingerprint(result.Dir, result.SourceFiles, result.GeneratedFiles)
+	buildFingerprint, err := workspaceBuildFingerprint(result.Dir, result.GoBuildFlags, result.SourceFiles, result.GeneratedFiles)
 	if err != nil {
 		return false, err
 	}
@@ -257,7 +263,7 @@ func saveBuildState(root string, state buildState) error {
 	return os.WriteFile(filepath.Join(root, buildStateFile), data, 0o644)
 }
 
-func workspaceBuildFingerprint(root string, groups ...[]string) (string, error) {
+func workspaceBuildFingerprint(root string, goBuildFlags []string, groups ...[]string) (string, error) {
 	files := map[string]struct{}{}
 	for _, group := range groups {
 		for _, rel := range group {
@@ -274,6 +280,12 @@ func workspaceBuildFingerprint(root string, groups ...[]string) (string, error) 
 	}
 	sort.Strings(paths)
 	h := sha256.New()
+	_, _ = h.Write([]byte("go_build_flags"))
+	_, _ = h.Write([]byte{0})
+	for _, flag := range normalizeGoBuildFlags(goBuildFlags) {
+		_, _ = h.Write([]byte(flag))
+		_, _ = h.Write([]byte{0})
+	}
 	for _, rel := range paths {
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {

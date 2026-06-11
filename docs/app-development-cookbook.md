@@ -10,6 +10,12 @@ Create `.scenery.json`:
 {"name":"hello"}
 ```
 
+If the app needs Go build tags or other build-time flags, add them as literal argv entries:
+
+```json
+{"name":"hello","build":{"go_flags":["-tags=roofmapnet_native"]}}
+```
+
 Create `go.mod`:
 
 ```go
@@ -453,11 +459,11 @@ scenery worktree create feature-my-branch --from main --json
 
 `scenery db apply` mutates schema or app-owned database setup only. It does not run SQLC generation or seed files. `scenery db seed` applies initial data such as `SERVICE/db/seed.sql` only, records successful runs in a small internal ledger, skips unchanged seeds, and fails closed if a previously-applied seed changes or if seed SQL contains destructive setup patterns such as `DROP`, `TRUNCATE`, or broad `DELETE`. `scenery db setup` runs apply, then seed.
 
-During `scenery up`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the session-managed `DatabaseURL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
+During `scenery up`, the supervisor runs this DB setup lifecycle before starting the app when `database.apply` or seed files are present. It reuses the runtime-managed `DatabaseURL` env and skips setup on ordinary rebuilds until the `database.apply` config or seed file hashes change.
 
 `SERVICE/db/seed.sql` is data, not Atlas schema input and not SQLC input. The first seed implementation fails closed when a previously-applied seed changes or destructive seed SQL is detected, rather than offering force or reseed escape hatches.
 
-For managed branch configs, `.scenery.json` can declare `dev.services.postgres.kind: "postgres"` with `mode: "local"`, `isolation: "database"`, and `branch_strategy: "template_database"`. `scenery db postgres start --json` prepares the shared local Postgres dev cell, `scenery db postgres status --json` inspects it, and `scenery db branch checkout <name> --json` writes `.scenery/worktree-db.json`, ensures the parent template database exists, creates or reuses the branch database, and records redacted endpoint metadata. `scenery db branch list --json` reads Scenery-owned local leases from `branches.json`, and `scenery db branch status --json` can report missing, expired, protected, or ready local leases. A ready lease may expose redacted endpoint metadata so `scenery up`, session-aware `scenery db psql`, DB setup, and Electric can synthesize a process-local `DatabaseURL`. Missing, expired, protected, or endpoint-less leases fail explicitly. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes the lease, `expire` updates local registry metadata, `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable, `scenery down --state` removes the local worktree pin, and `scenery worktree create <name> --json` creates a Git worktree, writes the target pin, and runs branch-provider ensure. The default `scenery harness self --json --write` path includes the live Postgres branch lifecycle proof; use `--quick` when that live proof is intentionally out of scope.
+For managed branch configs, `.scenery.json` can declare `dev.services.postgres.kind: "postgres"` with `mode: "local"`, `isolation: "database"`, and `branch_strategy: "template_database"`. `scenery db postgres start --json` prepares the shared local Postgres dev cell, `scenery db postgres status --json` inspects it, and `scenery db branch checkout <name> --json` writes `.scenery/worktree-db.json`, ensures the parent template database exists, creates or reuses the branch database, and records redacted endpoint metadata. `scenery db branch list --json` reads Scenery-owned local leases from `branches.json`, and `scenery db branch status --json` can report missing, expired, protected, or ready local leases. A ready lease may expose redacted endpoint metadata so `scenery up`, `scenery db psql`, DB setup, and Electric can synthesize a process-local `DatabaseURL`. Missing, expired, protected, or endpoint-less leases fail explicitly. `reset` recreates the branch from the parent template, `delete` drops the branch database and removes the lease, `expire` updates local registry metadata, `prune` removes expired non-current branch databases when the Postgres admin substrate is reachable, `scenery down --state` removes the local worktree pin, and `scenery worktree create <name> --json` creates a Git worktree, writes the target pin, and runs branch-provider ensure. The default `scenery harness self --json --write` path includes the live Postgres branch lifecycle proof; use `--quick` when that live proof is intentionally out of scope.
 
 ## Electric Txid Observation
 
@@ -492,7 +498,7 @@ scenery system edge install
 scenery system edge trust
 ```
 
-The session-scoped URLs in `routes` are canonical. Generated routes default to `api.<session>.local.dev`, frontend routes under `<frontend>.<session>.local.dev`, and direct browser API calls should use the generated API route. Configured hosts appear as friendly aliases only for the live session that owns the free alias. Use `scenery up --claim-aliases` only when intentionally transferring live aliases to the current session.
+The URLs in `routes` are canonical for the app root's live dev runtime. Generated routes default to `api.<route-id>.local.dev`, frontend routes under `<frontend>.<route-id>.local.dev`, and direct browser API calls should use the generated API route. The route id is internal state, not a user-selected runtime name. Configured hosts appear as friendly aliases only for the live app root that owns the free alias. Use `scenery up --claim-aliases` only when intentionally transferring live aliases to the current app root.
 
 Common failure: trying to bind the agent router or Caddy itself to `127.0.0.1:443` as a normal user. The default-port HTTPS path is managed DNS plus the privileged loopback helper on `127.0.0.1:443`, forwarding raw TCP to user-owned Caddy on a high loopback port, with the agent router kept on its internal loopback upstream. Run `scenery system edge dns install` and `scenery system edge privileged install` once as the normal user, then `scenery system edge install` to prepare user-owned Caddy. Do not run `sudo scenery system edge install`. `scenery system edge trust` trusts the local Caddy CA through a temporary admin-only Caddy process, so it does not require the port-443 edge to already be running. Trusting the local Caddy CA should be a one-time setup unless the CA changes.
 
@@ -508,11 +514,11 @@ scenery inspect app --json
 scenery inspect routes --json
 scenery inspect endpoints --json
 scenery logs --limit 200
-scenery inspect observability --json --session current
-scenery logs query --json --session current --since 15m --query 'error OR panic'
+scenery inspect observability --json
+scenery logs query --json --since 15m --query 'error OR panic'
 scenery traces list --json --since 15m
 scenery metrics list --json --since 1h
-scenery metrics query --json --session current --since 15m --step 5s --promql 'scenery_request_duration_seconds'
+scenery metrics query --json --since 15m --step 5s --promql 'scenery_request_duration_seconds'
 ```
 
 For generated paths:

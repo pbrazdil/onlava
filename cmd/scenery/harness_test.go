@@ -209,7 +209,7 @@ func TestBuildHarnessChangedAreaReportRecommendsDevEventParity(t *testing.T) {
 	})
 
 	report := buildHarnessChangedAreaReport(context.Background(), root)
-	if !stringSliceContains(report.RecommendedCommands, "scenery logs --session current --backend victoria --limit 500 --jsonl") {
+	if !stringSliceContains(report.RecommendedCommands, "scenery logs --backend victoria --limit 500 --jsonl") {
 		t.Fatalf("recommended commands = %+v", report.RecommendedCommands)
 	}
 	if !stringSliceContains(report.RiskFlags, "victoria-dev-event-read-path") {

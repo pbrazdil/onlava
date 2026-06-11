@@ -46,6 +46,40 @@ func TestDiscoverRootAcceptsPostgresBranchConfig(t *testing.T) {
 	}
 }
 
+func TestDiscoverRootAcceptsBuildGoFlags(t *testing.T) {
+	root := t.TempDir()
+	writeAppTestFile(t, root, ".scenery.json", `{
+		"name": "nativeapp",
+		"build": {
+			"go_flags": ["-tags=roofmapnet_native", "-gcflags=all=-N -l"]
+		}
+	}`)
+
+	_, cfg, err := DiscoverRoot(root)
+	if err != nil {
+		t.Fatalf("DiscoverRoot returned error: %v", err)
+	}
+	if got, want := strings.Join(cfg.Build.GoFlags, "\x00"), "-tags=roofmapnet_native\x00-gcflags=all=-N -l"; got != want {
+		t.Fatalf("Build.GoFlags = %#v, want %#v", cfg.Build.GoFlags, []string{"-tags=roofmapnet_native", "-gcflags=all=-N -l"})
+	}
+}
+
+func TestDiscoverRootRejectsUnknownBuildField(t *testing.T) {
+	root := t.TempDir()
+	writeAppTestFile(t, root, ".scenery.json", `{
+		"name": "nativeapp",
+		"build": {
+			"go_flags": ["-tags=roofmapnet_native"],
+			"shell": "GOFLAGS=-tags=roofmapnet_native"
+		}
+	}`)
+
+	_, _, err := DiscoverRoot(root)
+	if err == nil || !strings.Contains(err.Error(), `unknown .scenery.json field "build.shell"`) {
+		t.Fatalf("DiscoverRoot unknown field error = %v", err)
+	}
+}
+
 func TestDiscoverRootRejectsUnknownPostgresBranchField(t *testing.T) {
 	root := t.TempDir()
 	writeAppTestFile(t, root, ".scenery.json", `{

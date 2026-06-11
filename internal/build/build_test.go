@@ -546,6 +546,50 @@ func TestCompileRunsTidyOnlyAfterBuildFailure(t *testing.T) {
 	}
 }
 
+func TestCompilePassesConfiguredGoBuildFlags(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
+	appDir := t.TempDir()
+	writeBuildTestFile(t, appDir, ".scenery.json", `{"name":"smoke"}`)
+
+	workspace, err := workspaceDir(appDir, "smoke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBuildTestFile(t, workspace, "go.mod", "module example.com/smoke\n\ngo 1.26.3\n")
+	writeBuildTestFile(t, workspace, "scenery_internal_main/main.go", "package main\n\nfunc main() {}\n")
+
+	var got []string
+	old := runGo
+	runGo = func(_ context.Context, _ string, args ...string) error {
+		got = append([]string(nil), args...)
+		out, ok := fakeGoBuildOutput(args)
+		if !ok {
+			return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
+		}
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	}
+	t.Cleanup(func() { runGo = old })
+
+	result := &Result{
+		AppRoot:      appDir,
+		AppName:      "smoke",
+		Dir:          workspace,
+		Binary:       filepath.Join(workspace, "scenery-app"),
+		GoBuildFlags: []string{"-tags=roofmapnet_native", " ", "-gcflags=all=-N -l"},
+	}
+	if err := Compile(result); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	want := []string{"build", "-tags=roofmapnet_native", "-gcflags=all=-N -l", "-buildvcs=false", "-o", result.Binary, "./scenery_internal_main"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("go build args = %#v, want %#v", got, want)
+	}
+}
+
 func TestCompileRetriesTidyWhenBuildReportsStaleGoMod(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
@@ -691,6 +735,47 @@ func Changed() {}
 	}
 }
 
+func TestPrepareIncludesGoBuildFlagsInFingerprint(t *testing.T) {
+	useFakeGoRunner(t)
+	cacheDir := t.TempDir()
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	firstCfg := appcfg.Config{
+		Name:  "buildtest",
+		Build: appcfg.BuildConfig{GoFlags: []string{"-tags=roofmapnet_native"}},
+	}
+	first, err := Prepare(appDir, model, firstCfg, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("first prepare: %v", err)
+	}
+	if err := Compile(first); err != nil {
+		t.Fatalf("first compile: %v", err)
+	}
+
+	secondCfg := appcfg.Config{
+		Name:  "buildtest",
+		Build: appcfg.BuildConfig{GoFlags: []string{"-tags=roofmapnet_portable"}},
+	}
+	second, err := Prepare(appDir, model, secondCfg, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("second prepare: %v", err)
+	}
+	if first.BuildFingerprint == second.BuildFingerprint {
+		t.Fatalf("expected build flags to affect fingerprint %q", first.BuildFingerprint)
+	}
+	if first.Binary == second.Binary {
+		t.Fatalf("expected build flags to affect binary path %q", first.Binary)
+	}
+	if second.ReuseCompiled {
+		t.Fatal("expected changed build flags to avoid reusing compiled binary")
+	}
+}
+
 func TestLoadReusableBinaryRequiresMatchingSourceFingerprint(t *testing.T) {
 	useFakeGoRunner(t)
 	cacheDir := t.TempDir()
@@ -728,6 +813,49 @@ func TestLoadReusableBinaryRequiresMatchingSourceFingerprint(t *testing.T) {
 	}
 	if ok || reused != nil {
 		t.Fatalf("expected source change to reject cached binary, got ok=%v result=%#v", ok, reused)
+	}
+}
+
+func TestLoadReusableBinaryRequiresMatchingGoBuildFlags(t *testing.T) {
+	useFakeGoRunner(t)
+	cacheDir := t.TempDir()
+	t.Setenv("SCENERY_DEV_CACHE_DIR", cacheDir)
+	appDir := newBuildTestApp(t)
+	cfg := appcfg.Config{
+		Name:  "buildtest",
+		Build: appcfg.BuildConfig{GoFlags: []string{"-tags=roofmapnet_native"}},
+	}
+
+	model, err := parse.App(appDir, "buildtest")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	result, err := Prepare(appDir, model, cfg, PrepareOptions{})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if err := Compile(result); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	reused, ok, err := LoadReusableBinary(appDir, cfg)
+	if err != nil {
+		t.Fatalf("LoadReusableBinary() error = %v", err)
+	}
+	if !ok || reused == nil {
+		t.Fatal("expected reusable binary with matching build flags")
+	}
+
+	changedCfg := appcfg.Config{
+		Name:  "buildtest",
+		Build: appcfg.BuildConfig{GoFlags: []string{"-tags=roofmapnet_portable"}},
+	}
+	reused, ok, err = LoadReusableBinary(appDir, changedCfg)
+	if err != nil {
+		t.Fatalf("LoadReusableBinary() after build flag change error = %v", err)
+	}
+	if ok || reused != nil {
+		t.Fatalf("expected build flag change to reject cached binary, got ok=%v result=%#v", ok, reused)
 	}
 }
 
@@ -1131,7 +1259,7 @@ func TestSyncWorkspaceRemovesStaleFiles(t *testing.T) {
 func TestLoadCachedGraph(t *testing.T) {
 	appDir, _ := newCachedBuildTestWorkspace(t, "graph-1")
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1152,11 +1280,52 @@ func TestLoadCachedGraph(t *testing.T) {
 	}
 }
 
+func TestLoadCachedGraphRequiresMatchingGoBuildFlags(t *testing.T) {
+	appDir, result := newCachedBuildTestWorkspace(t, "graph-1")
+	flags := []string{"-tags=roofmapnet_native"}
+
+	state, err := loadBuildState(result.Dir)
+	if err != nil {
+		t.Fatalf("loadBuildState() error = %v", err)
+	}
+	buildFingerprint, err := workspaceBuildFingerprint(result.Dir, flags, state.SourceFiles, state.GeneratedFiles)
+	if err != nil {
+		t.Fatalf("workspaceBuildFingerprint() error = %v", err)
+	}
+	state.GoBuildFlags = append([]string(nil), flags...)
+	state.BuildFingerprint = buildFingerprint
+	if err := saveBuildState(result.Dir, state); err != nil {
+		t.Fatalf("saveBuildState() error = %v", err)
+	}
+
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{
+		Name:  "buildtest",
+		Build: appcfg.BuildConfig{GoFlags: flags},
+	}, "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() with matching flags error = %v", err)
+	}
+	if !ok || cached == nil {
+		t.Fatal("expected cached graph with matching build flags")
+	}
+	if strings.Join(cached.Result.GoBuildFlags, "\x00") != strings.Join(flags, "\x00") {
+		t.Fatalf("cached build flags = %#v, want %#v", cached.Result.GoBuildFlags, flags)
+	}
+
+	cached, ok, err = LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
+	if err != nil {
+		t.Fatalf("LoadCachedGraph() with missing flags error = %v", err)
+	}
+	if ok || cached != nil {
+		t.Fatalf("expected missing build flags to reject cached graph, got ok=%v cached=%#v", ok, cached)
+	}
+}
+
 func TestCompileCachedGraphWritesLatestBuildManifest(t *testing.T) {
 	useFakeGoRunner(t)
 	appDir, _ := newCachedBuildTestWorkspace(t, "graph-1")
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1204,7 +1373,7 @@ func TestLoadCachedGraphRejectsOldBuildStateVersion(t *testing.T) {
 		t.Fatalf("write old build state: %v", err)
 	}
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1226,7 +1395,7 @@ func TestLoadCachedGraphRejectsGeneratorFingerprintMismatch(t *testing.T) {
 		t.Fatalf("save stale build state: %v", err)
 	}
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1244,7 +1413,7 @@ func TestRefreshCachedWorkspaceResyncsMissingSourceFiles(t *testing.T) {
 	newFile := "svc/helper.go"
 	writeBuildTestFile(t, appDir, newFile, "package svc\n\nfunc helper() {}\n")
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1279,7 +1448,7 @@ func TestRefreshCachedWorkspaceFallsBackWhenSourceFileMissing(t *testing.T) {
 		t.Fatalf("remove source file: %v", err)
 	}
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1307,7 +1476,7 @@ func TestRefreshCachedWorkspaceMarksNeedsTidyWhenImportsChange(t *testing.T) {
 import _ "rsc.io/quote"
 `)
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1352,7 +1521,7 @@ func TestRefreshCachedWorkspaceSeedsDependencyFingerprintBeforeReuse(t *testing.
 		t.Fatalf("write stale workspace go.sum: %v", err)
 	}
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1385,7 +1554,7 @@ func TestRefreshCachedWorkspaceFallsBackWhenGeneratedFileMissing(t *testing.T) {
 		t.Fatalf("remove generated file: %v", err)
 	}
 
-	cached, ok, err := LoadCachedGraph(appDir, "buildtest", "graph-1")
+	cached, ok, err := LoadCachedGraph(appDir, appcfg.Config{Name: "buildtest"}, "graph-1")
 	if err != nil {
 		t.Fatalf("LoadCachedGraph() error = %v", err)
 	}
@@ -1516,7 +1685,7 @@ func Hello(ctx context.Context) error { return nil }
 	}
 	sourceFiles := []string{"go.mod", "svc/api.go"}
 	generatedFiles := []string{"scenery_internal_main/main.go", "svc/scenery.gen.go"}
-	buildFingerprint, err := workspaceBuildFingerprint(workspace, sourceFiles, generatedFiles)
+	buildFingerprint, err := workspaceBuildFingerprint(workspace, nil, sourceFiles, generatedFiles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1588,8 +1757,7 @@ func useFakeGoRunner(t *testing.T) {
 		if len(args) >= 2 && args[0] == "mod" && args[1] == "tidy" {
 			return nil
 		}
-		if len(args) == 5 && args[0] == "build" && args[1] == "-buildvcs=false" && args[2] == "-o" && args[4] == "./scenery_internal_main" {
-			out := args[3]
+		if out, ok := fakeGoBuildOutput(args); ok {
 			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 				return err
 			}
@@ -1598,4 +1766,16 @@ func useFakeGoRunner(t *testing.T) {
 		return fmt.Errorf("unexpected fake go command: go %s", strings.Join(args, " "))
 	}
 	t.Cleanup(func() { runGo = old })
+}
+
+func fakeGoBuildOutput(args []string) (string, bool) {
+	if len(args) < 5 || args[0] != "build" || args[len(args)-1] != "./scenery_internal_main" {
+		return "", false
+	}
+	for i := 1; i < len(args)-2; i++ {
+		if args[i] == "-buildvcs=false" && args[i+1] == "-o" {
+			return args[i+2], true
+		}
+	}
+	return "", false
 }

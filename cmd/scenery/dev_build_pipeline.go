@@ -64,7 +64,7 @@ func (s *devSupervisor) prepareDevRuntimePlan(ctx context.Context, initial bool,
 	)
 	graphFingerprint := snapshotFingerprint(snapshot)
 	if err := s.console.Phase("Building scenery application graph", func() error {
-		cached, _, err = build.LoadCachedGraph(s.root, s.cfg.Name, graphFingerprint)
+		cached, _, err = build.LoadCachedGraph(s.root, s.cfg, graphFingerprint)
 		if err != nil {
 			return err
 		}

@@ -147,7 +147,7 @@ func resolveManagedPostgresPlan(cfg app.Config, session *localagent.Session, env
 		return nil, nil
 	}
 	if session == nil || strings.TrimSpace(session.SessionID) == "" {
-		return nil, fmt.Errorf("dev.services.%s requires an active scenery agent session", name)
+		return nil, fmt.Errorf("dev.services.%s requires an active agent-backed scenery dev runtime", name)
 	}
 	isolation := firstNonEmpty(strings.TrimSpace(svc.Isolation), devPostgresDefaultIsolation)
 	if isolation != devPostgresDefaultIsolation {
@@ -279,7 +279,7 @@ func (s *devSupervisor) ensureManagedElectric(ctx context.Context) error {
 		return nil
 	}
 	if s.agent == nil || s.agentSession == nil {
-		return fmt.Errorf("dev.services.%s requires an active scenery agent session", plan.ServiceName)
+		return fmt.Errorf("dev.services.%s requires an active agent-backed scenery dev runtime", plan.ServiceName)
 	}
 	service, backend, err := startManagedElectricService(ctx, s.root, s.cfg, s.agentSession, plan, baseEnv, s.agent)
 	if err != nil {
@@ -1819,7 +1819,7 @@ func currentAgentSessionForAppRoot(ctx context.Context, appRoot string) (*locala
 		return nil, err
 	}
 	if len(sessions) == 0 {
-		return nil, fmt.Errorf("no scenery agent session found for %s", appRoot)
+		return nil, fmt.Errorf("no scenery dev runtime found for app root %s", appRoot)
 	}
 	return &sessions[0], nil
 }

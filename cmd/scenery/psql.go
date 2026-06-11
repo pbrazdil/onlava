@@ -183,10 +183,6 @@ func dbDropCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	session, err := currentAgentSessionForAppRoot(context.Background(), appRoot)
-	if err != nil {
-		return err
-	}
 	plan, err := managedPostgresPlanForCurrentSession(context.Background(), appRoot, cfg, baseEnv)
 	if err != nil {
 		return err
@@ -197,7 +193,7 @@ func dbDropCommand(args []string) error {
 	if err := dropManagedPostgresDatabase(context.Background(), plan.AdminURL, plan.DatabaseName); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stdout, "dropped scenery managed database %s for session %s\n", plan.DatabaseName, session.SessionID)
+	fmt.Fprintf(os.Stdout, "dropped scenery managed database %s for current dev runtime\n", plan.DatabaseName)
 	return nil
 }
 

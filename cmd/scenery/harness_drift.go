@@ -293,8 +293,8 @@ func buildHarnessCLIContractReport(repoRoot string, diagnostics []checkDiagnosti
 			_, err := parseHarnessSelfArgs([]string{"--repo-root", repoRoot, "--json"})
 			return err
 		}},
-		{name: "ps", needle: "scenery ps [--json] [--app-root <path>] [--session <id>] [--watch]", mode: "parse", smoke: func() error {
-			_, err := parseStatusArgs([]string{"--json", "--app-root", repoRoot, "--session", "current", "--watch"})
+		{name: "ps", needle: "scenery ps [--json] [--app-root <path>] [--watch]", mode: "parse", smoke: func() error {
+			_, err := parseStatusArgs([]string{"--json", "--app-root", repoRoot, "--watch"})
 			return err
 		}},
 	} {
@@ -838,7 +838,7 @@ func harnessStepEffects(step harnessStep) []string {
 		}
 	}
 	switch step.Name {
-	case "parallel dev sessions":
+	case "parallel worktree runtimes":
 		set["loopback-network"] = true
 		set["ports"] = true
 		set["agent-socket"] = true
