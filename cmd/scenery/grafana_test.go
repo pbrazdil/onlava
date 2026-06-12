@@ -42,7 +42,7 @@ func TestGrafanaConfigDefaults(t *testing.T) {
 	if cfg.RootDir != filepath.Join(root, ".scenery", "grafana") {
 		t.Fatalf("root dir = %q", cfg.RootDir)
 	}
-	if cfg.Version != "13.0.1+security-01" {
+	if cfg.Version != "13.0.2" {
 		t.Fatalf("version = %q", cfg.Version)
 	}
 	if cfg.Port != grafanaDefaultPort || cfg.URL != "http://127.0.0.1:10429" {
@@ -82,7 +82,7 @@ func TestRenderGrafanaProvisioning(t *testing.T) {
 		!strings.Contains(string(ini), "root_url = https://grafana.acme.localhost/") ||
 		!strings.Contains(string(ini), "org_role = Viewer") ||
 		!strings.Contains(string(ini), "viewers_can_edit = true") ||
-		!strings.Contains(string(ini), "preinstall_sync = victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1") {
+		!strings.Contains(string(ini), "preinstall_sync = victoriametrics-metrics-datasource@0.25.0,victoriametrics-logs-datasource@0.28.0") {
 		t.Fatalf("unexpected grafana.ini:\n%s", ini)
 	}
 
@@ -264,9 +264,9 @@ func TestGrafanaChildEnvFiltersGFOverrides(t *testing.T) {
 func TestGrafanaChecksumFromResponseAcceptsGrafanaDistNames(t *testing.T) {
 	t.Parallel()
 
-	body := "16ab83288e2a95f661d1234d0ecac0e2cfc2fa5a7209b0977bbe8a5b4940c67e  dist/grafana_13.0.1+security-01_25720641773_darwin_arm64.tar.gz\n"
-	got := grafanaChecksumFromResponse(body, "grafana-13.0.1+security-01.darwin-arm64.tar.gz")
-	if got != "16ab83288e2a95f661d1234d0ecac0e2cfc2fa5a7209b0977bbe8a5b4940c67e" {
+	body := "fb4729934fd8e3a348312c4cec5ff2143f4c4c22670be63c272d3277c6d774ea  dist/grafana_13.0.2_25720641773_darwin_arm64.tar.gz\n"
+	got := grafanaChecksumFromResponse(body, "grafana-13.0.2.darwin-arm64.tar.gz")
+	if got != "fb4729934fd8e3a348312c4cec5ff2143f4c4c22670be63c272d3277c6d774ea" {
 		t.Fatalf("checksum = %q", got)
 	}
 }

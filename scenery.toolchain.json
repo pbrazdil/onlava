@@ -20,23 +20,23 @@
     {
       "name": "grafana",
       "kind": "binary",
-      "version": "13.0.1+security-01",
+      "version": "13.0.2",
       "license": "AGPL-3.0-only",
       "default_binary": "grafana",
       "binaries": ["grafana", "grafana-server"],
       "platforms": {
         "linux/amd64": {
           "archive": "tar.gz",
-          "url": "https://dl.grafana.com/oss/release/grafana-13.0.1+security-01.linux-amd64.tar.gz",
-          "sha256": "18cf05e98afb786ef9c2ad4cc77db628a1449672b262a7f1fc1d5211b780965c",
+          "url": "https://dl.grafana.com/oss/release/grafana-13.0.2.linux-amd64.tar.gz",
+          "sha256": "6720d8b0b48d92e2b33b7bf30b38480c12964ccd87285e5e754aa554165edf2d",
           "extract": "bin/grafana",
           "home": true,
           "strip_components": 1
         },
         "darwin/arm64": {
           "archive": "tar.gz",
-          "url": "https://dl.grafana.com/oss/release/grafana-13.0.1+security-01.darwin-arm64.tar.gz",
-          "sha256": "16ab83288e2a95f661d1234d0ecac0e2cfc2fa5a7209b0977bbe8a5b4940c67e",
+          "url": "https://dl.grafana.com/oss/release/grafana-13.0.2.darwin-arm64.tar.gz",
+          "sha256": "fb4729934fd8e3a348312c4cec5ff2143f4c4c22670be63c272d3277c6d774ea",
           "extract": "bin/grafana",
           "home": true,
           "strip_components": 1
@@ -46,21 +46,21 @@
     {
       "name": "caddy",
       "kind": "binary",
-      "version": "2.11.3",
+      "version": "2.11.4",
       "license": "Apache-2.0",
       "default_binary": "caddy",
       "binaries": ["caddy"],
       "platforms": {
         "linux/amd64": {
           "archive": "tar.gz",
-          "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.3/caddy_2.11.3_linux_amd64.tar.gz",
-          "sha256": "3894577b14657feab3624d782f64175050211e52a228a6f57b4f24f4b0d970f3",
+          "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_linux_amd64.tar.gz",
+          "sha256": "527fbf917c39189a1e3b31d34fa955601680b2d5c8055d2a87b8b9588dec7bb9",
           "extract": "caddy"
         },
         "darwin/arm64": {
           "archive": "tar.gz",
-          "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.3/caddy_2.11.3_mac_arm64.tar.gz",
-          "sha256": "b37757be82ef630dddf359e6f1685731a1c657576ce80c469e0e3e6a8fb49e9d",
+          "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_mac_arm64.tar.gz",
+          "sha256": "9efb0af2d6cf09cfb5053c0e51721b9b3d4956d346234f39368d943d25a3c9a7",
           "extract": "caddy"
         }
       }
@@ -68,15 +68,15 @@
     {
       "name": "dnsmasq",
       "kind": "binary",
-      "version": "2.92",
+      "version": "2.93",
       "license": "GPL-2.0-only OR GPL-3.0-only",
       "default_binary": "dnsmasq",
       "binaries": ["dnsmasq"],
       "platforms": {
         "linux/amd64": {
           "archive": "tar.gz",
-          "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.92.tar.gz",
-          "sha256": "fd908e79ff37f73234afcb6d3363f78353e768703d92abd8e3220ade6819b1e1",
+          "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.93.tar.gz",
+          "sha256": "cc967771abdafeb43d10db18932d6b59fd4bed2c69c22acf8cb96aff6920d55f",
           "extract": "dnsmasq",
           "strip_components": 1,
           "build": [
@@ -86,8 +86,8 @@
         },
         "darwin/arm64": {
           "archive": "tar.gz",
-          "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.92.tar.gz",
-          "sha256": "fd908e79ff37f73234afcb6d3363f78353e768703d92abd8e3220ade6819b1e1",
+          "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.93.tar.gz",
+          "sha256": "cc967771abdafeb43d10db18932d6b59fd4bed2c69c22acf8cb96aff6920d55f",
           "extract": "dnsmasq",
           "strip_components": 1,
           "build": [
@@ -100,39 +100,39 @@
     {
       "name": "victoriametrics-metrics-datasource",
       "kind": "plugin",
-      "version": "0.24.0",
+      "version": "0.25.0",
       "license": "Apache-2.0"
     },
     {
       "name": "victoriametrics-logs-datasource",
       "kind": "plugin",
-      "version": "0.27.1",
+      "version": "0.28.0",
       "license": "Apache-2.0"
     },
     {
       "name": "victoria-metrics",
       "kind": "binary",
-      "version": "v1.141.0",
+      "version": "v1.145.0",
       "license": "Apache-2.0",
       "default_binary": "victoria-metrics-prod",
       "binaries": ["victoria-metrics-prod", "victoria-metrics"],
       "platforms": {
         "linux/amd64": {
           "archive": "tar.gz",
-          "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.141.0/victoria-metrics-linux-amd64-v1.141.0.tar.gz",
-          "sha256": "774cba5b382d7ee132a9152aee3916cf34dd52fae1d6d17146d0b9157bc6de14",
+          "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.145.0/victoria-metrics-linux-amd64-v1.145.0.tar.gz",
+          "sha256": "1d6d47a4dd7f64ec534529fae6169b5d6b74a4bbe3f1e853b489d1f52404e409",
           "extract": "victoria-metrics-prod"
         },
         "darwin/arm64": {
           "archive": "tar.gz",
-          "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.141.0/victoria-metrics-darwin-arm64-v1.141.0.tar.gz",
-          "sha256": "7d07254740bb5201ea8d85f110f6a80f827b8b28615ca1c6a4adf1cfae85719a",
+          "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.145.0/victoria-metrics-darwin-arm64-v1.145.0.tar.gz",
+          "sha256": "4d2f4aa3e53b9344e6c914217720ba8870d743e54826e02d97aa1fe935391fae",
           "extract": "victoria-metrics-prod"
         }
       },
       "images": [
         {
-          "ref": "victoriametrics/victoria-metrics:v1.141.0",
+          "ref": "victoriametrics/victoria-metrics:v1.145.0",
           "optional": true,
           "usage": "dev.observability.metrics",
           "stability": "unstable"
@@ -172,27 +172,27 @@
     {
       "name": "victoria-traces",
       "kind": "binary",
-      "version": "v0.8.1",
+      "version": "v0.9.2",
       "license": "Apache-2.0",
       "default_binary": "victoria-traces-prod",
       "binaries": ["victoria-traces-prod", "victoria-traces"],
       "platforms": {
         "linux/amd64": {
           "archive": "tar.gz",
-          "url": "https://github.com/VictoriaMetrics/VictoriaTraces/releases/download/v0.8.1/victoria-traces-linux-amd64-v0.8.1.tar.gz",
-          "sha256": "86cb09c1da3f63dedc8a0c4ebb8d30710ff4175c4611dd710ec77f679fdd913a",
+          "url": "https://github.com/VictoriaMetrics/VictoriaTraces/releases/download/v0.9.2/victoria-traces-linux-amd64-v0.9.2.tar.gz",
+          "sha256": "1ba0379b075c725c563924991fe41a0cc34f353e4b3a6ed0c1af1ff7a977f07e",
           "extract": "victoria-traces-prod"
         },
         "darwin/arm64": {
           "archive": "tar.gz",
-          "url": "https://github.com/VictoriaMetrics/VictoriaTraces/releases/download/v0.8.1/victoria-traces-darwin-arm64-v0.8.1.tar.gz",
-          "sha256": "459727de68402ed38a59a2ba8271cc331d27a53799add6dfbabaf3bfc4bd3057",
+          "url": "https://github.com/VictoriaMetrics/VictoriaTraces/releases/download/v0.9.2/victoria-traces-darwin-arm64-v0.9.2.tar.gz",
+          "sha256": "c6ca08319ec0183f733a580bec1451a024d867fd6e19770f73ea3f6e2ea90ebf",
           "extract": "victoria-traces-prod"
         }
       },
       "images": [
         {
-          "ref": "victoriametrics/victoria-traces:v0.8.1",
+          "ref": "victoriametrics/victoria-traces:v0.9.2",
           "optional": true,
           "usage": "dev.observability.traces",
           "stability": "unstable"
@@ -215,21 +215,21 @@
     {
       "name": "temporal-cli",
       "kind": "binary",
-      "version": "1.7.0",
+      "version": "1.7.2",
       "license": "MIT",
       "default_binary": "temporal",
       "binaries": ["temporal"],
       "platforms": {
         "linux/amd64": {
           "archive": "tar.gz",
-          "url": "https://github.com/temporalio/cli/releases/download/v1.7.0/temporal_cli_1.7.0_linux_amd64.tar.gz",
-          "sha256": "8b5de72e622f4ae062d0d5d948ca398de6212d63b2f25766a1cb810a3dc2d0ed",
+          "url": "https://github.com/temporalio/cli/releases/download/v1.7.2/temporal_cli_1.7.2_linux_amd64.tar.gz",
+          "sha256": "e2f548af84e820b7d71f25fc6461a4e6a1ab7cdb6a80fde3c375641b0772375b",
           "extract": "temporal"
         },
         "darwin/arm64": {
           "archive": "tar.gz",
-          "url": "https://github.com/temporalio/cli/releases/download/v1.7.0/temporal_cli_1.7.0_darwin_arm64.tar.gz",
-          "sha256": "88a59ea7b1a51309a873e2a914360865123d5b36528d55f8d7c34c6d79007fda",
+          "url": "https://github.com/temporalio/cli/releases/download/v1.7.2/temporal_cli_1.7.2_darwin_arm64.tar.gz",
+          "sha256": "561ac68bdb6c16c8e8cbbd49f12578218ff1776007c3f3ae0d0196c8c9a73e79",
           "extract": "temporal"
         }
       }
