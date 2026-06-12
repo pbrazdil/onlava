@@ -1817,12 +1817,8 @@ func validateEdgeTarget(path string, ownerUID, ownerGID int) (string, error) {
 	if info.Mode().Perm()&0o022 != 0 {
 		return "", fmt.Errorf("edge target metadata %s must not be group/world writable", path)
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return "", fmt.Errorf("edge target metadata %s has unsupported stat type", path)
-	}
-	if int(stat.Uid) != ownerUID || int(stat.Gid) != ownerGID {
-		return "", fmt.Errorf("edge target metadata owner %d:%d does not match expected %d:%d", stat.Uid, stat.Gid, ownerUID, ownerGID)
+	if err := validateEdgeTargetOwner(path, info, ownerUID, ownerGID); err != nil {
+		return "", err
 	}
 	state, err := localagent.LoadEdgeTargetState(path)
 	if err != nil {
