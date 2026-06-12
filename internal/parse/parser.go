@@ -229,6 +229,7 @@ func App(root, name string) (*model.App, error) {
 	sortMiddleware(root, middlewares)
 	app.Middleware = middlewares
 	errs = append(errs, attachGeneratedModelEndpoints(app)...)
+	errs = append(errs, validateGeneratedEndpointCollisions(app)...)
 
 	for _, svc := range app.Services {
 		if svc.Struct != nil {
@@ -409,10 +410,6 @@ func attachGeneratedModelEndpoints(app *model.App) []string {
 				errs = append(errs, sourceDiagnostic(entity.Package, entity.TokenPos, err.Error()))
 				continue
 			}
-			if collision := generatedEndpointCollision(entity.Package.Service, ep); collision != "" {
-				errs = append(errs, sourceDiagnostic(entity.Package, entity.TokenPos, collision))
-				continue
-			}
 			entity.Package.Service.Generated = append(entity.Package.Service.Generated, ep)
 		}
 		for _, override := range entity.CRUD.Overrides {
@@ -429,10 +426,7 @@ func buildGeneratedModelEndpoint(entity *model.Entity, action model.EntityCRUDAc
 	if idField == nil {
 		return nil, fmt.Errorf("model %s needs an ID field before CRUD endpoints can be generated", entity.Name)
 	}
-	tablePath := "/" + strings.Trim(strings.TrimSpace(entity.Table), "/")
-	if tablePath == "/" {
-		tablePath = "/" + strings.ToLower(entity.Name)
-	}
+	routeBase := model.EntityCRUDRouteBase(entity)
 	ep := &model.GeneratedModelEndpoint{
 		Service:   entity.Package.Service,
 		Package:   entity.Package,
@@ -444,27 +438,27 @@ func buildGeneratedModelEndpoint(entity *model.Entity, action model.EntityCRUDAc
 	switch action {
 	case model.EntityCRUDList:
 		ep.Name = "List" + entity.Name + "s"
-		ep.Path = tablePath
+		ep.Path = routeBase
 		ep.Methods = []string{"GET"}
 	case model.EntityCRUDGet:
 		ep.Name = "Get" + entity.Name
-		ep.Path = tablePath + "/:id"
+		ep.Path = routeBase + "/:id"
 		ep.Methods = []string{"GET"}
 		ep.PathParams = []model.Param{{Name: "id", Kind: generatedIDParamKind(*idField)}}
 	case model.EntityCRUDCreate:
 		ep.Name = "Create" + entity.Name
-		ep.Path = tablePath
+		ep.Path = routeBase
 		ep.Methods = []string{"POST"}
 		ep.HasPayload = true
 	case model.EntityCRUDUpdate:
 		ep.Name = "Update" + entity.Name
-		ep.Path = tablePath + "/:id"
+		ep.Path = routeBase + "/:id"
 		ep.Methods = []string{"PATCH"}
 		ep.PathParams = []model.Param{{Name: "id", Kind: generatedIDParamKind(*idField)}}
 		ep.HasPayload = true
 	case model.EntityCRUDDelete:
 		ep.Name = "Delete" + entity.Name
-		ep.Path = tablePath + "/:id"
+		ep.Path = routeBase + "/:id"
 		ep.Methods = []string{"DELETE"}
 		ep.PathParams = []model.Param{{Name: "id", Kind: generatedIDParamKind(*idField)}}
 	default:
@@ -519,37 +513,93 @@ func primaryKeyField(entity *model.Entity) *model.EntityField {
 	return nil
 }
 
-func generatedEndpointCollision(svc *model.Service, generated *model.GeneratedModelEndpoint) string {
-	if svc == nil || generated == nil {
-		return ""
+func validateGeneratedEndpointCollisions(app *model.App) []string {
+	if app == nil {
+		return nil
 	}
-	for _, ep := range svc.Endpoints {
-		if ep.Name == generated.Name {
-			return fmt.Sprintf("generated model endpoint %s collides with endpoint name in service %s; declare model.Override or model.Disable for the action", generated.Name, svc.Name)
+	var errs []string
+	namesByService := map[string]map[string]string{}
+	var routes []routeOwner
+	for _, svc := range app.Services {
+		if svc == nil {
+			continue
 		}
-		if pathsCollide(ep.Path, generated.Path) && methodsCollide(ep.Methods, generated.Methods) {
-			return fmt.Sprintf("generated model endpoint %s %s collides with endpoint %s.%s; declare model.Override or model.Disable for the action", strings.Join(generated.Methods, ","), generated.Path, svc.Name, ep.Name)
+		if namesByService[svc.Name] == nil {
+			namesByService[svc.Name] = map[string]string{}
+		}
+		for _, ep := range svc.Endpoints {
+			namesByService[svc.Name][ep.Name] = svc.Name + "." + ep.Name
+			routes = append(routes, routeOwner{id: svc.Name + "." + ep.Name, path: ep.Path, methods: ep.Methods})
 		}
 	}
-	return ""
+	for _, svc := range app.Services {
+		if svc == nil {
+			continue
+		}
+		for _, ep := range svc.Generated {
+			if existing := namesByService[svc.Name][ep.Name]; existing != "" {
+				errs = append(errs, sourceDiagnostic(ep.Package, ep.Entity.TokenPos, fmt.Sprintf("generated model endpoint %s collides with endpoint name %s in service %s; declare model.Override or model.Disable for the action", ep.Name, existing, svc.Name)))
+			}
+			for _, existing := range routes {
+				if routeOwnersCollide(existing, routeOwner{path: ep.Path, methods: ep.Methods}) {
+					errs = append(errs, sourceDiagnostic(ep.Package, ep.Entity.TokenPos, fmt.Sprintf("generated model endpoint %s %s collides with endpoint %s at %s; declare model.Override or model.Disable for the action", strings.Join(ep.Methods, ","), ep.Path, existing.id, existing.path)))
+				}
+			}
+			namesByService[svc.Name][ep.Name] = svc.Name + "." + ep.Name
+			routes = append(routes, routeOwner{id: svc.Name + "." + ep.Name, path: ep.Path, methods: ep.Methods})
+		}
+	}
+	return errs
 }
 
-func pathsCollide(a, b string) bool {
-	return strings.TrimSuffix(a, "/") == strings.TrimSuffix(b, "/")
+type routeOwner struct {
+	id      string
+	path    string
+	methods []string
 }
 
-func methodsCollide(a, b []string) bool {
+func routeOwnersCollide(left, right routeOwner) bool {
+	if normalizeRoutePattern(left.path) != normalizeRoutePattern(right.path) {
+		return false
+	}
+	return routeMethodsCollide(left.methods, right.methods)
+}
+
+func routeMethodsCollide(a, b []string) bool {
 	if len(a) == 0 || len(b) == 0 {
 		return true
 	}
 	for _, left := range a {
+		left = strings.ToUpper(strings.TrimSpace(left))
 		for _, right := range b {
-			if left == "*" || right == "*" || strings.EqualFold(left, right) {
+			right = strings.ToUpper(strings.TrimSpace(right))
+			if left == "" || right == "" || left == "*" || right == "*" || left == right {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func normalizeRoutePattern(path string) string {
+	path = strings.TrimSuffix(strings.TrimSpace(path), "/")
+	if path == "" {
+		path = "/"
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	for i, part := range parts {
+		if strings.HasPrefix(part, ":") {
+			parts[i] = ":"
+			continue
+		}
+		if strings.HasPrefix(part, "*") {
+			parts[i] = "*"
+		}
+	}
+	if len(parts) == 1 && parts[0] == "" {
+		return "/"
+	}
+	return "/" + strings.Join(parts, "/")
 }
 
 func serviceHasEndpoint(svc *model.Service, name string) bool {

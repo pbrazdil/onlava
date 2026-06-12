@@ -411,6 +411,7 @@ func TestModelDSLParseBuildsStaticIR(t *testing.T) {
 	if len(app.Services) != 1 || len(app.Services[0].Generated) != 4 {
 		t.Fatalf("generated endpoints = %+v", app.Services)
 	}
+	generatedPaths := map[string]string{}
 	for _, ep := range app.Services[0].Generated {
 		if !ep.Generated {
 			t.Fatalf("generated endpoint not marked generated: %+v", ep)
@@ -421,6 +422,10 @@ func TestModelDSLParseBuildsStaticIR(t *testing.T) {
 		if ep.Name == "DeleteTask" {
 			t.Fatalf("disabled delete endpoint was generated: %+v", ep)
 		}
+		generatedPaths[ep.Name] = ep.Path
+	}
+	if generatedPaths["ListTasks"] != "/tasks/tasks" || generatedPaths["GetTask"] != "/tasks/tasks/:id" {
+		t.Fatalf("generated paths = %+v", generatedPaths)
 	}
 	if len(app.Views) != 1 {
 		t.Fatalf("views = %+v", app.Views)
@@ -431,6 +436,71 @@ func TestModelDSLParseBuildsStaticIR(t *testing.T) {
 	}
 	if strings.Join(view.Columns, ",") != "Title,Status,CreatedAt" || len(view.Slots) != 1 || view.Slots[0].Name != "TaskStatusBadge" {
 		t.Fatalf("view projection = %+v", view)
+	}
+}
+
+func TestModelDSLGeneratedCRUDUsesServiceScopedRouteBase(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, root, "go.mod", "module example.com/modelroutes\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => "+repoRoot(t)+"\n")
+	writeFile(t, root, "tasksnew/model.go", `package tasksnew
+
+import "scenery.sh/model"
+
+//scenery:service
+type Service struct{}
+
+//scenery:model
+type Task struct { ID string }
+
+var _ = model.Entity[Task](model.Table("tasks"), model.Generate(model.ActionList, model.ActionCreate))
+`)
+	app, err := parse.App(root, "modelroutes")
+	if err != nil {
+		t.Fatalf("parse app: %v", err)
+	}
+	if len(app.Services) != 1 || app.Services[0].Name != "tasksnew" || len(app.Services[0].Generated) != 2 {
+		t.Fatalf("services = %+v", app.Services)
+	}
+	paths := map[string]string{}
+	methods := map[string]string{}
+	for _, ep := range app.Services[0].Generated {
+		paths[ep.Name] = ep.Path
+		methods[ep.Name] = strings.Join(ep.Methods, ",")
+	}
+	if paths["ListTasks"] != "/tasksnew/tasks" || methods["ListTasks"] != "GET" {
+		t.Fatalf("list endpoint path/method = %s %s", methods["ListTasks"], paths["ListTasks"])
+	}
+	if paths["CreateTask"] != "/tasksnew/tasks" || methods["CreateTask"] != "POST" {
+		t.Fatalf("create endpoint path/method = %s %s", methods["CreateTask"], paths["CreateTask"])
+	}
+}
+
+func TestModelDSLGeneratedCRUDRouteCollisionIsAppWide(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, root, "go.mod", "module example.com/modelroutecollision\n\ngo 1.26.3\n\nrequire scenery.sh v0.0.0\n\nreplace scenery.sh => "+repoRoot(t)+"\n")
+	writeFile(t, root, "alpha/model.go", `package alpha
+
+import "scenery.sh/model"
+
+//scenery:model
+type Task struct { ID string }
+
+var _ = model.Entity[Task](model.Table("tasks"), model.Generate(model.ActionList))
+`)
+	writeFile(t, root, "zeta/routes.go", `package zeta
+
+import "context"
+
+//scenery:api auth path=/alpha/tasks method=GET
+func Existing(ctx context.Context) error { return nil }
+`)
+	_, err := parse.App(root, "modelroutecollision")
+	if err == nil || !strings.Contains(err.Error(), `generated model endpoint GET /alpha/tasks collides with endpoint zeta.Existing at /alpha/tasks`) {
+		t.Fatalf("parse error = %v, want app-wide generated route collision", err)
 	}
 }
 
@@ -504,6 +574,43 @@ type Task struct { Status string }
 var TaskList = page.Collection[Task]{Slots: []page.ComponentRef{page.Component("MissingSlot")}}
 `,
 			want: `page.Component("MissingSlot") did not resolve to a TypeScript component file`,
+		},
+		{
+			name: "generated handwritten route collision",
+			body: `package tasksnew
+
+import (
+	"context"
+
+	"scenery.sh/model"
+)
+
+//scenery:api auth path=/tasksnew/tasks method=GET
+func Existing(ctx context.Context) error { return nil }
+
+//scenery:model
+type Task struct { ID string }
+
+var _ = model.Entity[Task](model.Table("tasks"), model.Generate(model.ActionList))
+`,
+			want: `generated model endpoint GET /tasksnew/tasks collides with endpoint tasksnew.Existing at /tasksnew/tasks`,
+		},
+		{
+			name: "generated generated route collision",
+			body: `package tasks
+
+import "scenery.sh/model"
+
+//scenery:model
+type Task struct { ID string }
+
+//scenery:model
+type TaskArchive struct { ID string }
+
+var _ = model.Entity[Task](model.Table("tasks"), model.Generate(model.ActionList))
+var _ = model.Entity[TaskArchive](model.Table("tasks"), model.Generate(model.ActionList))
+`,
+			want: `generated model endpoint GET /tasks/tasks collides with endpoint tasks.ListTasks at /tasks/tasks`,
 		},
 	}
 

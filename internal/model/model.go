@@ -170,6 +170,24 @@ func EntityQualifiedTable(entity *Entity) string {
 	return EntityDatabaseSchema(entity) + "." + strings.TrimSpace(entity.Table)
 }
 
+func EntityCRUDRouteBase(entity *Entity) string {
+	if entity == nil {
+		return "/app/model"
+	}
+	service := safeRouteSegment(EntityService(entity))
+	if service == "" {
+		service = "app"
+	}
+	table := safeRouteSegment(entity.Table)
+	if table == "" {
+		table = safeRouteSegment(entity.Name)
+	}
+	if table == "" {
+		table = "model"
+	}
+	return "/" + service + "/" + table
+}
+
 func safeDatabaseIdent(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	var b strings.Builder
@@ -193,6 +211,26 @@ func safeDatabaseIdent(value string) string {
 	if out[0] >= '0' && out[0] <= '9' {
 		return "s_" + out
 	}
+	return out
+}
+
+func safeRouteSegment(value string) string {
+	value = strings.ToLower(strings.Trim(strings.TrimSpace(value), "/"))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if ok {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
 	return out
 }
 

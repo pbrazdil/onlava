@@ -121,7 +121,7 @@ func TestGenerateModelCRUDBackend(t *testing.T) {
 		`update \"tasks\".\"tasks\" set %s where \"id\" = $%d and \"tenant_id\" = $%d returning`,
 		`"CreateTask"`,
 		`Access:                sceneryruntime.Auth`,
-		`"/tasks"`,
+		`"/tasks/tasks"`,
 		"sceneryModelUpdateTask(ctx, pathArgs[0], payload.(TaskPatch))",
 	} {
 		if !strings.Contains(got, want) {

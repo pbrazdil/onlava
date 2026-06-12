@@ -134,10 +134,10 @@ func TestRunSceneryInspectOutputsModelDSLJSON(t *testing.T) {
 			path    string
 			methods string
 		}{
-			"tasks.ListTasks":  {access: "auth", path: "/tasks", methods: "GET"},
-			"tasks.GetTask":    {access: "auth", path: "/tasks/:id", methods: "GET"},
-			"tasks.CreateTask": {access: "auth", path: "/tasks", methods: "POST"},
-			"tasks.UpdateTask": {access: "auth", path: "/tasks/:id", methods: "PATCH"},
+			"tasks.ListTasks":  {access: "auth", path: "/tasks/tasks", methods: "GET"},
+			"tasks.GetTask":    {access: "auth", path: "/tasks/tasks/:id", methods: "GET"},
+			"tasks.CreateTask": {access: "auth", path: "/tasks/tasks", methods: "POST"},
+			"tasks.UpdateTask": {access: "auth", path: "/tasks/tasks/:id", methods: "PATCH"},
 		}
 		if len(generated) != len(want) {
 			t.Fatalf("generated endpoints = %+v, want %+v", generated, want)
