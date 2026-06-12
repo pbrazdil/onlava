@@ -4,6 +4,8 @@ This file is the repo-local operating manual for AI agents changing `scenery.sh`
 
 Optimize for agents: prefer concise rules, exact commands, and machine-readable contracts over long prose.
 
+Never spawn subagents or background agent tasks in this repo. Do all exploration, review, and implementation work yourself in the main session, even for large multi-file reviews.
+
 ## Core Model
 
 - Scenery runs my app runtime.
