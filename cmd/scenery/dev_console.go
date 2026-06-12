@@ -69,9 +69,13 @@ type devConsoleErrorGroup struct {
 
 func runSceneryConsoleOrFallback(ctx context.Context, stdin *os.File, stdout io.Writer, opts logsOptions) error {
 	if !isTerminal(stdin) || !writerIsTerminal(stdout) || strings.EqualFold(envpolicy.Get("TERM"), "dumb") || envpolicy.Get("CI") != "" {
-		return runSceneryLogsFunc(ctx, stdout, logArgsFromOptions(opts, true))
+		return runSceneryConsoleLogsFallback(ctx, stdout, opts)
 	}
 	return runSceneryConsole(ctx, stdin, stdout, opts)
+}
+
+func runSceneryConsoleLogsFallback(ctx context.Context, stdout io.Writer, opts logsOptions) error {
+	return runSceneryLogsFunc(ctx, stdout, logArgsFromOptions(opts, true))
 }
 
 func runSceneryConsole(ctx context.Context, stdin *os.File, stdout io.Writer, opts logsOptions) (err error) {
@@ -111,7 +115,7 @@ func runSceneryConsole(ctx context.Context, stdin *os.File, stdout io.Writer, op
 	if restore, rawErr := enterRawTerminal(stdin); rawErr == nil {
 		restoreTerminal = restore
 	} else {
-		return rawErr
+		return runSceneryConsoleLogsFallback(ctx, stdout, opts)
 	}
 	fmt.Fprint(stdout, "\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?1000h\x1b[?1006h")
 	terminalActive = true
@@ -848,7 +852,9 @@ func compactJSONFields(fields json.RawMessage) string {
 	return strings.Join(parts, " ")
 }
 
-func enterRawTerminal(stdin *os.File) (func(), error) {
+var enterRawTerminal = defaultEnterRawTerminal
+
+func defaultEnterRawTerminal(stdin *os.File) (func(), error) {
 	if !isTerminal(stdin) {
 		return func() {}, nil
 	}
