@@ -241,7 +241,7 @@ func prepareHarnessParallelSession(ctx context.Context, root string, cfg app.Con
 	if err := envpolicy.Set(devElectricUpstreamEnv, "http://"+electricAddr); err != nil {
 		return nil, func() {}, err
 	}
-	client, session, _, restore, err := prepareDevAgentSession(ctx, root, cfg, devListenRequest{})
+	client, session, _, restore, err := prepareDevAgentSession(ctx, root, cfg, devListenRequest{}, nil)
 	if hadElectric {
 		_ = envpolicy.Set(devElectricUpstreamEnv, prevElectric)
 	} else {

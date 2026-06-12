@@ -13,9 +13,20 @@ import (
 )
 
 type DevSessionController struct {
-	root   string
-	cfg    app.Config
-	listen devListenRequest
+	root    string
+	cfg     app.Config
+	listen  devListenRequest
+	console *runConsole
+}
+
+// runPhase reports a timed run-output step when a console is attached so
+// session preparation time (agent connect, frontend dev servers) is visible
+// in `scenery up` instead of disappearing into unaccounted wall time.
+func (c *DevSessionController) runPhase(title string, fn func() error) error {
+	if c.console == nil {
+		return fn()
+	}
+	return c.console.Phase(title, fn)
 }
 
 type PreparedDevSession struct {
@@ -26,8 +37,8 @@ type PreparedDevSession struct {
 	Cleanup           func()
 }
 
-func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, listen devListenRequest) (*localagent.Client, *localagent.Session, devBackend, func(), error) {
-	prepared, err := (&DevSessionController{root: root, cfg: cfg, listen: listen}).Prepare(ctx)
+func prepareDevAgentSession(ctx context.Context, root string, cfg app.Config, listen devListenRequest, console *runConsole) (*localagent.Client, *localagent.Session, devBackend, func(), error) {
+	prepared, err := (&DevSessionController{root: root, cfg: cfg, listen: listen, console: console}).Prepare(ctx)
 	if err != nil {
 		if prepared != nil && prepared.Cleanup != nil {
 			prepared.Cleanup()
@@ -83,20 +94,32 @@ func (c *DevSessionController) Prepare(ctx context.Context) (*PreparedDevSession
 			_ = envpolicy.Unset("SCENERY_DEV_DASHBOARD_ADDR")
 		})
 	}
-	client, err := localagent.Ensure(ctx)
-	if err != nil {
-		if requiresPortlessEdge {
-			return prepared, fmt.Errorf("proxy.route_base_domain %q requires the scenery agent and local edge; agent unavailable: %w", routeNamespace.BaseDomain, err)
+	var client *localagent.Client
+	agentUnavailable := false
+	if err := c.runPhase("Connecting scenery dev agent", func() error {
+		var err error
+		client, err = localagent.Ensure(ctx)
+		if err != nil {
+			if requiresPortlessEdge {
+				return fmt.Errorf("proxy.route_base_domain %q requires the scenery agent and local edge; agent unavailable: %w", routeNamespace.BaseDomain, err)
+			}
+			fmt.Fprintf(os.Stderr, "scenery: agent unavailable; continuing without routed app URLs: %v\n", err)
+			agentUnavailable = true
+			return nil
 		}
-		fmt.Fprintf(os.Stderr, "scenery: agent unavailable; continuing without routed app URLs: %v\n", err)
-		prepared.Backend = fallback
-		return prepared, nil
+		if err := ensureDevAgentDashboardBackend(ctx, client); err != nil {
+			if requiresPortlessEdge {
+				return fmt.Errorf("proxy.route_base_domain %q requires the scenery agent dashboard for edge probing; dashboard unavailable: %w", routeNamespace.BaseDomain, err)
+			}
+			fmt.Fprintf(os.Stderr, "scenery: agent dashboard unavailable; continuing without routed app URLs: %v\n", err)
+			agentUnavailable = true
+			return nil
+		}
+		return nil
+	}); err != nil {
+		return prepared, err
 	}
-	if err := ensureDevAgentDashboardBackend(ctx, client); err != nil {
-		if requiresPortlessEdge {
-			return prepared, fmt.Errorf("proxy.route_base_domain %q requires the scenery agent dashboard for edge probing; dashboard unavailable: %w", routeNamespace.BaseDomain, err)
-		}
-		fmt.Fprintf(os.Stderr, "scenery: agent dashboard unavailable; continuing without routed app URLs: %v\n", err)
+	if agentUnavailable {
 		prepared.Backend = fallback
 		return prepared, nil
 	}
@@ -135,64 +158,78 @@ func (c *DevSessionController) Prepare(ctx context.Context) (*PreparedDevSession
 	if err := rejectLiveDuplicateDevSession(root, existingSessions); err != nil {
 		return prepared, err
 	}
-	if requiresPortlessEdge {
-		if _, err := checkConfiguredEdgeReadiness(ctx, client, routeNamespace.BaseDomain); err != nil {
-			return prepared, err
-		}
-	}
-	session, err := client.Register(ctx, localagent.RegisterRequest{
-		BaseAppID:      cfg.AppID(),
-		AppRoot:        root,
-		Status:         "starting",
-		OwnerPID:       os.Getpid(),
-		Backends:       backends,
-		RouteNamespace: routeNamespace,
-		ClaimOwner:     true,
-		ClaimAliases:   listen.ClaimAliases,
-	})
-	if err != nil {
-		return prepared, err
-	}
-	if requiresPortlessEdge {
-		if err := verifyConfiguredEdgeSessionRoute(ctx, client, session, routeNamespace.BaseDomain, true); err != nil {
-			_, _ = client.Delete(ctx, session.SessionID, false)
-			return prepared, err
-		}
-	}
-	if err := cleanupStaleDevSessionProcesses(ctx, session, existingSessions); err != nil {
-		return prepared, err
-	}
+	var session localagent.Session
 	backend := fallback
-	if listen.Addr == "" {
-		backend = devBackend{
-			Network: "unix",
-			Addr:    filepath.Join(session.StateRoot, "run", "api.sock"),
+	if err := c.runPhase("Registering dev session routes", func() error {
+		if requiresPortlessEdge {
+			if _, err := checkConfiguredEdgeReadiness(ctx, client, routeNamespace.BaseDomain); err != nil {
+				return err
+			}
 		}
-		backends[localagent.RouteAPI] = localagent.Backend{Network: backend.Network, Addr: backend.Addr}
+		var err error
 		session, err = client.Register(ctx, localagent.RegisterRequest{
 			BaseAppID:      cfg.AppID(),
 			AppRoot:        root,
-			SessionID:      session.SessionID,
-			Branch:         session.Branch,
 			Status:         "starting",
 			OwnerPID:       os.Getpid(),
 			Backends:       backends,
 			RouteNamespace: routeNamespace,
+			ClaimOwner:     true,
 			ClaimAliases:   listen.ClaimAliases,
 		})
 		if err != nil {
-			return prepared, err
+			return err
 		}
 		if requiresPortlessEdge {
-			if err := verifyConfiguredEdgeSessionRoute(ctx, client, session, routeNamespace.BaseDomain, false); err != nil {
+			if err := verifyConfiguredEdgeSessionRoute(ctx, client, session, routeNamespace.BaseDomain, true); err != nil {
 				_, _ = client.Delete(ctx, session.SessionID, false)
-				return prepared, err
+				return err
 			}
 		}
-	}
-	frontendBackends, frontendProcesses, err := managedFrontendBackendsForSession(ctx, root, cfg, baseEnv, session)
-	if err != nil {
+		if err := cleanupStaleDevSessionProcesses(ctx, session, existingSessions); err != nil {
+			return err
+		}
+		if listen.Addr == "" {
+			backend = devBackend{
+				Network: "unix",
+				Addr:    filepath.Join(session.StateRoot, "run", "api.sock"),
+			}
+			backends[localagent.RouteAPI] = localagent.Backend{Network: backend.Network, Addr: backend.Addr}
+			session, err = client.Register(ctx, localagent.RegisterRequest{
+				BaseAppID:      cfg.AppID(),
+				AppRoot:        root,
+				SessionID:      session.SessionID,
+				Branch:         session.Branch,
+				Status:         "starting",
+				OwnerPID:       os.Getpid(),
+				Backends:       backends,
+				RouteNamespace: routeNamespace,
+				ClaimAliases:   listen.ClaimAliases,
+			})
+			if err != nil {
+				return err
+			}
+			if requiresPortlessEdge {
+				if err := verifyConfiguredEdgeSessionRoute(ctx, client, session, routeNamespace.BaseDomain, false); err != nil {
+					_, _ = client.Delete(ctx, session.SessionID, false)
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
 		return prepared, err
+	}
+	var frontendBackends map[string]localagent.Backend
+	var frontendProcesses []*managedFrontendProcess
+	if len(localProxyFrontends(cfg.Proxy.Frontends)) > 0 && !managedFrontendDisabled() {
+		if err := c.runPhase("Starting frontend dev servers", func() error {
+			var err error
+			frontendBackends, frontendProcesses, err = managedFrontendBackendsForSession(ctx, root, cfg, baseEnv, session)
+			return err
+		}); err != nil {
+			return prepared, err
+		}
 	}
 	prepared.FrontendProcesses = frontendProcesses
 	if len(frontendProcesses) > 0 {

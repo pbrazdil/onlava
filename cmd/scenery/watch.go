@@ -87,18 +87,24 @@ func runWithWatch(listen devListenRequest, verbose, jsonMode bool, appRoot strin
 	}
 	defer stopParentMonitor()
 
-	snapshot, err := scanWatchedFiles(root)
-	if err != nil {
+	console := newRunConsole(os.Stdout, os.Stderr, verbose, jsonMode, cfg.AppID(), root)
+
+	var snapshot fileSnapshot
+	if err := console.Phase("Scanning source files", func() error {
+		var err error
+		snapshot, err = scanWatchedFiles(root)
+		return err
+	}); err != nil {
 		return err
 	}
 
-	agentClient, agentSession, backend, restoreAgentEnv, err := prepareDevAgentSession(ctx, root, cfg, listen)
+	agentClient, agentSession, backend, restoreAgentEnv, err := prepareDevAgentSession(ctx, root, cfg, listen, console)
 	if err != nil {
 		return err
 	}
 	defer restoreAgentEnv()
 
-	supervisor, err := newDevSupervisor(ctx, root, cfg, backend, verbose, jsonMode)
+	supervisor, err := newDevSupervisor(ctx, root, cfg, backend, console)
 	if err != nil {
 		return err
 	}

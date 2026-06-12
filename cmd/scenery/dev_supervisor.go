@@ -81,7 +81,7 @@ const (
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-func newDevSupervisor(ctx context.Context, root string, cfg app.Config, backend devBackend, verbose, jsonMode bool) (*devSupervisor, error) {
+func newDevSupervisor(ctx context.Context, root string, cfg app.Config, backend devBackend, console *runConsole) (*devSupervisor, error) {
 	supervisorCtx, cancel := context.WithCancel(ctx)
 	backend = backend.normalized()
 	store, err := openDevdashStore()
@@ -96,6 +96,9 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, backend 
 		return nil, err
 	}
 	appID := cfg.AppID()
+	if console == nil {
+		console = newRunConsole(os.Stdout, os.Stderr, false, false, appID, root)
+	}
 
 	s := &devSupervisor{
 		ctx:         supervisorCtx,
@@ -106,7 +109,7 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, backend 
 		addr:        backend.Addr,
 		store:       store,
 		reportToken: token,
-		console:     newRunConsole(os.Stdout, os.Stderr, verbose, jsonMode, appID, root),
+		console:     console,
 		status: devdash.AppRecord{
 			ID:         appID,
 			Name:       cfg.Name,
@@ -288,13 +291,21 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := s.ensureManagedElectric(ctx); err != nil {
+	if err := s.console.Phase("Starting Electric sync service", func() error {
+		return s.ensureManagedElectric(ctx)
+	}); err != nil {
 		return err
 	}
-	if err := s.ensureTemporalDevServer(ctx); err != nil {
+	if err := s.console.Phase("Starting Temporal dev server", func() error {
+		return s.ensureTemporalDevServer(ctx)
+	}); err != nil {
 		return err
 	}
-	victoria := s.startVictoriaStack(ctx)
+	var victoria *victoriaStack
+	_ = s.console.Phase("Starting Victoria observability stack", func() error {
+		victoria = s.startVictoriaStack(ctx)
+		return nil
+	})
 	s.mu.Lock()
 	s.victoria = victoria
 	s.victoriaStarted = true
@@ -309,7 +320,9 @@ func (s *devSupervisor) Start(ctx context.Context) error {
 			"urls": s.victoria.URLs(),
 		})
 	}
-	if err := s.startGrafana(s.ctx); err != nil {
+	if err := s.console.Phase("Starting Grafana", func() error {
+		return s.startGrafana(s.ctx)
+	}); err != nil {
 		return err
 	}
 	if err := s.startLocalProxy(); err != nil {

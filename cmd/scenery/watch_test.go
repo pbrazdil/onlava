@@ -319,7 +319,7 @@ func TestPrepareDevAgentSessionDefaultsToUnixBackend(t *testing.T) {
 				"web": {Host: "web.demo.localhost", Upstream: "127.0.0.1:5173", AllowSharedUpstream: true},
 			},
 		},
-	}, devListenRequest{})
+	}, devListenRequest{}, nil)
 	defer restore()
 	if err != nil {
 		t.Fatalf("prepareDevAgentSession: %v", err)
@@ -489,7 +489,7 @@ func TestPrepareDevAgentSessionConfiguredRouteBaseDomainPublishesPortlessEdgeRou
 	_, session, _, restore, err := prepareDevAgentSession(ctx, t.TempDir(), app.Config{
 		Name:  "demo",
 		Proxy: app.ProxyConfig{RouteBaseDomain: "onlv.dev"},
-	}, devListenRequest{})
+	}, devListenRequest{}, nil)
 	defer restore()
 	if err != nil {
 		t.Fatalf("prepareDevAgentSession: %v", err)
@@ -532,7 +532,7 @@ func TestPrepareDevAgentSessionConfiguredRouteBaseDomainFailsLoudWhenEdgeStopped
 	_, session, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{
 		Name:  "demo",
 		Proxy: app.ProxyConfig{RouteBaseDomain: "onlv.dev"},
-	}, devListenRequest{})
+	}, devListenRequest{}, nil)
 	defer restore()
 	if err == nil {
 		t.Fatal("prepareDevAgentSession succeeded, want edge readiness failure")
@@ -588,7 +588,7 @@ func TestPrepareDevAgentSessionWithoutConfiguredRouteBaseDomainAllowsDirectRoute
 	)
 	defer restoreHooks()
 
-	_, session, _, restore, err := prepareDevAgentSession(ctx, t.TempDir(), app.Config{Name: "demo"}, devListenRequest{})
+	_, session, _, restore, err := prepareDevAgentSession(ctx, t.TempDir(), app.Config{Name: "demo"}, devListenRequest{}, nil)
 	defer restore()
 	if err != nil {
 		t.Fatalf("prepareDevAgentSession: %v", err)
@@ -608,7 +608,7 @@ func TestPrepareDevAgentSessionPrefersTCPWhenRequested(t *testing.T) {
 	agentDone := startTestAgentServer(t, ctx)
 
 	root := t.TempDir()
-	_, session, backend, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{PreferTCP: true})
+	_, session, backend, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{PreferTCP: true}, nil)
 	defer restore()
 	if err != nil {
 		t.Fatalf("prepareDevAgentSession: %v", err)
@@ -631,7 +631,7 @@ func TestPrepareDevAgentSessionUsesStableAppRootSessionID(t *testing.T) {
 	agentDone := startTestAgentServer(t, ctx)
 
 	root := t.TempDir()
-	_, session, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{})
+	_, session, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{}, nil)
 	defer restore()
 	if err != nil {
 		t.Fatalf("prepareDevAgentSession: %v", err)
@@ -677,7 +677,7 @@ func TestPrepareDevAgentSessionRejectsLiveDuplicateOwner(t *testing.T) {
 		t.Fatalf("register live owner session: %v", err)
 	}
 
-	_, _, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{})
+	_, _, _, restore, err := prepareDevAgentSession(ctx, root, app.Config{Name: "demo"}, devListenRequest{}, nil)
 	defer restore()
 	if err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("prepareDevAgentSession duplicate error = %v, want already running", err)
@@ -827,7 +827,7 @@ func TestRejectLiveDuplicateDevSessionBlocksVerifiedAncestorOwner(t *testing.T) 
 
 func TestPrepareDevAgentSessionFallsBackWhenAgentDisabled(t *testing.T) {
 	t.Setenv("SCENERY_AGENT_DISABLE", "1")
-	_, session, backend, restore, err := prepareDevAgentSession(context.Background(), t.TempDir(), app.Config{Name: "demo"}, devListenRequest{})
+	_, session, backend, restore, err := prepareDevAgentSession(context.Background(), t.TempDir(), app.Config{Name: "demo"}, devListenRequest{}, nil)
 	defer restore()
 	if err != nil {
 		t.Fatalf("prepareDevAgentSession: %v", err)
