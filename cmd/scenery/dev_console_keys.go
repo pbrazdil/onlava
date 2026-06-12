@@ -10,6 +10,7 @@ type consoleKeyKind int
 
 const (
 	consoleKeyRune consoleKeyKind = iota
+	consoleKeyIgnored
 	consoleKeyEnter
 	consoleKeyEsc
 	consoleKeyBackspace
@@ -78,7 +79,7 @@ func readConsoleEscapeKey(reader *bufio.Reader) consoleKey {
 	}
 	if next[0] != '[' && next[0] != 'O' {
 		_, _ = reader.ReadByte()
-		return consoleKey{Kind: consoleKeyEsc}
+		return consoleKey{Kind: consoleKeyIgnored}
 	}
 	prefix, _ := reader.ReadByte()
 	seq := []byte{prefix}
@@ -117,5 +118,5 @@ func readConsoleEscapeKey(reader *bufio.Reader) consoleKey {
 	if strings.HasPrefix(text, "[<65;") {
 		return consoleKey{Kind: consoleKeyMouseWheelDown}
 	}
-	return consoleKey{Kind: consoleKeyEsc}
+	return consoleKey{Kind: consoleKeyIgnored}
 }
