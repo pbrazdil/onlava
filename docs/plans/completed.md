@@ -30,6 +30,27 @@ Validation:
 - `scenery inspect docs --json`, `scenery doctor --json`, and `scenery harness self --summary --write` passed, with only existing warning-class findings.
 - ONLV passed `scenery check --json`, `go test ./...`, `just repo-harness`, `just db`, a PostgreSQL 18/`uuidv7()` branch SQL smoke, and a restarted `scenery up --json --detach` session whose `/healthy` endpoint returned `{"status":"ok"}`.
 
+## Rebrand to Scenery
+
+- Status: completed
+- Owner: scenery maintainers / release tooling / agent DX
+- Completed: 2026-06-12
+- Quality: B
+- ExecPlan: [0075 Rebrand to Scenery](0075-rebrand-scenery.md)
+
+Shipped:
+
+- Renamed the repository, module path, CLI, app model tokens, docs, CI, GoReleaser config, local state paths, and release assets to Scenery.
+- Served Go vanity import metadata from `https://scenery.sh?go-get=1`.
+- Published `v0.2.1` as the first artifact-bearing Scenery release after the public `v0.2.0` source tag failed before artifact publication.
+- Verified `go install scenery.sh/cmd/scenery@v0.2.1` installs a binary reporting `version:"v0.2.1"`.
+
+Validation:
+
+- Main CI and tag CI passed for the release commit.
+- Release-mode self-harness passed with `can_proceed:true`.
+- GoReleaser published macOS, Linux, and Windows archives for amd64 and arm64 plus checksums.
+
 ## Remove Legacy Agent Transport
 
 - Status: completed
