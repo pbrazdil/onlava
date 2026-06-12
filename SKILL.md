@@ -194,10 +194,12 @@ scenery generate client --lang typescript --output ./src/scenery-client.ts
 Regenerate committed clients after endpoint, request/response, auth, or wire-capability changes.
 Generated model CRUD endpoints are beta and appear in `scenery inspect endpoints --json`
 with `"generated": true`; generated stores use the app database selected by
-`DatabaseURL` or Scenery's managed database env. `scenery generate data --dry-run --json`
+`DatabaseURL` or Scenery's managed database env and target the app-owned service
+schema rather than `public`. `scenery generate data --dry-run --json`
 also writes beta generated frontend packages under `.scenery/gen/web/<frontend>/`
 for configured frontends with static collection pages, including runtime adapter
-factories and route registration helpers for app-owned Electric/TanStack/layout-kit wiring.
+factories and route registration helpers for app-owned Electric/TanStack/layout-kit wiring;
+generated Electric shape metadata uses the same schema-qualified table as the DB artifacts.
 
 When an app configures `generators`, prefer:
 

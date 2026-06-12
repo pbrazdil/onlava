@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -140,6 +141,59 @@ func (e *Entity) TenantField() *EntityField {
 		}
 	}
 	return nil
+}
+
+func EntityService(entity *Entity) string {
+	if entity != nil && entity.Package != nil {
+		if entity.Package.Service != nil && strings.TrimSpace(entity.Package.Service.Name) != "" {
+			return entity.Package.Service.Name
+		}
+		rel := filepath.ToSlash(entity.Package.RelDir)
+		if rel != "." && rel != "" {
+			if first, _, ok := strings.Cut(rel, "/"); ok {
+				return first
+			}
+			return rel
+		}
+	}
+	return "app"
+}
+
+func EntityDatabaseSchema(entity *Entity) string {
+	return safeDatabaseIdent(EntityService(entity))
+}
+
+func EntityQualifiedTable(entity *Entity) string {
+	if entity == nil {
+		return ""
+	}
+	return EntityDatabaseSchema(entity) + "." + strings.TrimSpace(entity.Table)
+}
+
+func safeDatabaseIdent(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if ok {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		return "app"
+	}
+	if out[0] >= '0' && out[0] <= '9' {
+		return "s_" + out
+	}
+	return out
 }
 
 type View struct {
