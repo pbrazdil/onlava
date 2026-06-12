@@ -59,9 +59,9 @@ func TestRenderToolchainStatusHidesPluginsByDefault(t *testing.T) {
 		StoreDir:       "/tmp/store",
 		Platform:       "darwin/arm64",
 		Artifacts: []toolchain.ArtifactStatus{
-			{Name: "grafana", Kind: "binary", Version: "13.0.1", Status: "missing", ManagedPath: "/tmp/store/grafana"},
-			{Name: "victoriametrics-metrics-datasource", Kind: "plugin", Version: "0.24.0", Status: "declared"},
-			{Name: "victoria-metrics", Kind: "binary", Version: "v1.141.0", Status: "missing"},
+			{Name: "grafana", Kind: "binary", Version: "13.0.2", Status: "missing", ManagedPath: "/tmp/store/grafana"},
+			{Name: "victoriametrics-metrics-datasource", Kind: "plugin", Version: "0.25.0", Status: "declared"},
+			{Name: "victoria-metrics", Kind: "binary", Version: "v1.145.0", Status: "missing"},
 		},
 	}
 	var out bytes.Buffer
@@ -71,7 +71,7 @@ func TestRenderToolchainStatusHidesPluginsByDefault(t *testing.T) {
 	if strings.Contains(out.String(), "victoriametrics-metrics-datasource") {
 		t.Fatalf("default output included plugin:\n%s", out.String())
 	}
-	if !strings.Contains(out.String(), "grafana 13.0.1 missing") || !strings.Contains(out.String(), "victoria-metrics v1.141.0 missing") {
+	if !strings.Contains(out.String(), "grafana 13.0.2 missing") || !strings.Contains(out.String(), "victoria-metrics v1.145.0 missing") {
 		t.Fatalf("default output missing binary artifacts:\n%s", out.String())
 	}
 	if strings.Contains(out.String(), "/tmp/store/grafana") {
@@ -81,7 +81,7 @@ func TestRenderToolchainStatusHidesPluginsByDefault(t *testing.T) {
 	if err := renderToolchainStatus(&out, false, true, status); err != nil {
 		t.Fatalf("renderToolchainStatus all: %v", err)
 	}
-	if !strings.Contains(out.String(), "victoriametrics-metrics-datasource 0.24.0 declared") {
+	if !strings.Contains(out.String(), "victoriametrics-metrics-datasource 0.25.0 declared") {
 		t.Fatalf("--all output omitted plugin:\n%s", out.String())
 	}
 	if !strings.Contains(out.String(), "/tmp/store/grafana") {

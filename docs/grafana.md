@@ -36,14 +36,14 @@ Environment controls:
 SCENERY_DEV_GRAFANA=auto|1|0
 SCENERY_DEV_GRAFANA_DOWNLOAD=1|0
 SCENERY_GRAFANA_BIN=/path/to/grafana
-SCENERY_GRAFANA_VERSION=13.0.1+security-01
+SCENERY_GRAFANA_VERSION=13.0.2
 SCENERY_GRAFANA_PORT=10429
 SCENERY_GRAFANA_DIR=.scenery/grafana
 SCENERY_GRAFANA_PUBLIC_URL=https://grafana.<session>.local.dev
 SCENERY_GRAFANA_REUSE_EXTERNAL=1
 SCENERY_GRAFANA_PRESERVE_GF_ENV=1
 SCENERY_GRAFANA_DOWNLOAD_SHA256=<hex>
-SCENERY_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1
+SCENERY_GRAFANA_PLUGINS_PREINSTALL_SYNC=victoriametrics-metrics-datasource@0.25.0,victoriametrics-logs-datasource@0.28.0
 ```
 
 `auto` is the default. Missing Grafana or Victoria sidecars degrades the Grafana status without stopping the app. `SCENERY_DEV_GRAFANA=1` makes Grafana required for `scenery up` startup.

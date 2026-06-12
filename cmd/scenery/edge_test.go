@@ -176,7 +176,7 @@ func TestResolveCaddyBinaryUsesManagedToolchain(t *testing.T) {
 	}
 	t.Parallel()
 	storeDir := filepath.Join(t.TempDir(), "toolchain")
-	caddy := filepath.Join(storeDir, "artifacts", "caddy", "2.11.3", currentPlatformDirForTest(), "bin", "caddy")
+	caddy := filepath.Join(storeDir, "artifacts", "caddy", "2.11.4", currentPlatformDirForTest(), "bin", "caddy")
 	if err := os.MkdirAll(filepath.Dir(caddy), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestResolveDNSMasqBinaryUsesManagedToolchain(t *testing.T) {
 	}
 	t.Parallel()
 	storeDir := filepath.Join(t.TempDir(), "toolchain")
-	dnsmasq := filepath.Join(storeDir, "artifacts", "dnsmasq", "2.92", currentPlatformDirForTest(), "bin", "dnsmasq")
+	dnsmasq := filepath.Join(storeDir, "artifacts", "dnsmasq", "2.93", currentPlatformDirForTest(), "bin", "dnsmasq")
 	if err := os.MkdirAll(filepath.Dir(dnsmasq), 0o755); err != nil {
 		t.Fatal(err)
 	}

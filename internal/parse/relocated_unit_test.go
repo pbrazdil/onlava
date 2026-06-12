@@ -430,16 +430,16 @@ func TestDevtoolsPinnedVersionsConfig(t *testing.T) {
 	t.Parallel()
 
 	cfg := devtools.PinnedVersions()
-	if cfg.Grafana.Version != "13.0.1+security-01" {
+	if cfg.Grafana.Version != "13.0.2" {
 		t.Fatalf("grafana version = %q", cfg.Grafana.Version)
 	}
-	if cfg.Victoria.Metrics.Version != "v1.141.0" {
+	if cfg.Victoria.Metrics.Version != "v1.145.0" {
 		t.Fatalf("victoria metrics version = %q", cfg.Victoria.Metrics.Version)
 	}
 	if cfg.Victoria.Logs.Version != "v1.50.0" {
 		t.Fatalf("victoria logs version = %q", cfg.Victoria.Logs.Version)
 	}
-	if cfg.Victoria.Traces.Version != "v0.8.1" {
+	if cfg.Victoria.Traces.Version != "v0.9.2" {
 		t.Fatalf("victoria traces version = %q", cfg.Victoria.Traces.Version)
 	}
 }
@@ -448,7 +448,7 @@ func TestDevtoolsGrafanaPluginPreinstallSyncPinsVersions(t *testing.T) {
 	t.Parallel()
 
 	got := devtools.GrafanaPluginPreinstallSync()
-	want := "victoriametrics-metrics-datasource@0.24.0,victoriametrics-logs-datasource@0.27.1"
+	want := "victoriametrics-metrics-datasource@0.25.0,victoriametrics-logs-datasource@0.28.0"
 	if got != want {
 		t.Fatalf("GrafanaPluginPreinstallSync = %q, want %q", got, want)
 	}

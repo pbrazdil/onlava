@@ -27,7 +27,7 @@ func TestEdgeTrustUsesTemporaryCaddyAdmin(t *testing.T) {
 	if err := localagent.EnsureDirs(paths); err != nil {
 		t.Fatal(err)
 	}
-	caddy := filepath.Join(edgeToolchainStoreDir(paths), "artifacts", "caddy", "2.11.3", currentPlatformDirForTest(), "bin", "caddy")
+	caddy := filepath.Join(edgeToolchainStoreDir(paths), "artifacts", "caddy", "2.11.4", currentPlatformDirForTest(), "bin", "caddy")
 	if err := os.MkdirAll(filepath.Dir(caddy), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestSystemTrustRunsEdgeTrust(t *testing.T) {
 	if err := localagent.EnsureDirs(paths); err != nil {
 		t.Fatal(err)
 	}
-	caddy := filepath.Join(edgeToolchainStoreDir(paths), "artifacts", "caddy", "2.11.3", currentPlatformDirForTest(), "bin", "caddy")
+	caddy := filepath.Join(edgeToolchainStoreDir(paths), "artifacts", "caddy", "2.11.4", currentPlatformDirForTest(), "bin", "caddy")
 	if err := os.MkdirAll(filepath.Dir(caddy), 0o755); err != nil {
 		t.Fatal(err)
 	}
