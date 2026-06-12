@@ -33,13 +33,13 @@ successful only when new users can install and use Scenery from the canonical
 - [x] 2026-06-10: Created this ExecPlan as `docs/plans/0075-rebrand-scenery.md`.
 - [x] 2026-06-10: Linked this plan from `docs/plans/active.md`.
 - [x] 2026-06-10: Indexed this plan in `docs/knowledge.json`.
-- [ ] Confirm `scenery.sh` serves Go vanity import metadata before any release tag.
+- [x] 2026-06-12: Confirmed `scenery.sh` serves Go vanity import metadata.
 - [x] 2026-06-10: Audited all brand-bearing paths and strings in the current tree; current-contract content has no accidental Onlava references outside this migration plan.
 - [x] 2026-06-10: Renamed repo-local code, command paths, config files, local state paths, docs, release config, schemas, and UI registry paths to Scenery.
 - [x] 2026-06-10: Validated the renamed codebase with the commands in `Validation and Acceptance`; full self-harness passes with warnings only.
 - [x] 2026-06-10: Migrated the local ONLV app to the Scenery surface and validated it with `scenery serve` plus `GET /healthy`.
 - [x] 2026-06-10: Renamed the GitHub repository to `scenery-sh/scenery`, updated its homepage to `https://scenery.sh`, and updated local `origin`.
-- [ ] Publish the first Scenery release as `v0.2.0` after vanity import and GitHub metadata are ready.
+- [x] 2026-06-12: Published the first artifact-bearing Scenery release as `v0.2.1` after `v0.2.0` failed before artifact publication.
 
 ## Surprises & Discoveries
 
@@ -52,6 +52,9 @@ successful only when new users can install and use Scenery from the canonical
 - 2026-06-10: ONLV needed an app-side migration because the Scenery rename intentionally removed old compatibility aliases. The local ONLV migration updated `.scenery.json`, Scenery imports/directives/env, generated TypeScript client references, standard auth seed paths, Justfile commands, and app-local agent instructions.
 - 2026-06-10: `scenery up --detach` for ONLV was blocked by the local edge, not by the app: Scenery refused to publish portless `onlv.dev` URLs because DNS, the privileged listener, and Caddy were not ready. Headless `scenery serve` with the managed validation DB was used for running-app validation.
 - 2026-06-10: `gh repo rename -R pbrazdil/onlava scenery --yes` succeeded first, then `gh api -X POST repos/pbrazdil/scenery/transfer -f new_owner=scenery-sh` transferred the repository into the `scenery-sh` organization. `gh repo view scenery-sh/scenery` now reports homepage `https://scenery.sh`, while local `origin` points at `git@github.com:scenery-sh/scenery.git`.
+- 2026-06-12: `https://scenery.sh?go-get=1` now serves valid `go-import` and `go-source` metadata for `scenery.sh`.
+- 2026-06-12: The first release attempt created public source tag `v0.2.0`, but GoReleaser failed before publishing artifacts because the Windows cross-build exposed a Unix-only `syscall.Stat_t` use in edge target validation.
+- 2026-06-12: `v0.2.1` supersedes `v0.2.0` as the artifact-bearing Scenery rebrand release. It includes the Windows release-build repair, published macOS/Linux/Windows amd64 and arm64 archives, and installs through `go install scenery.sh/cmd/scenery@v0.2.1`.
 
 ## Decision Log
 
@@ -71,6 +74,10 @@ successful only when new users can install and use Scenery from the canonical
   Rationale: Go custom-domain module resolution depends on `?go-get=1` metadata. The release should not publish a tag that cannot be installed by the new canonical path.
   Date/Author: 2026-06-10 / pbrazdil + Codex
 
+- Decision: Treat `v0.2.1` as the first artifact-bearing Scenery release.
+  Rationale: The public `v0.2.0` tag already existed after the failed release workflow, and moving or deleting it would be more disruptive than publishing a patch release with the release-build repair and complete release notes.
+  Date/Author: 2026-06-12 / Codex
+
 ## Outcomes & Retrospective
 
 Repo-side rebrand work is implemented and validated: Go tests pass, docs and
@@ -86,9 +93,13 @@ ONLV has been migrated locally and validated against the renamed runtime.
 `GET http://127.0.0.1:4099/healthy` returned `200 OK` with
 `{"status":"ok"}`.
 
-Release is intentionally not complete. `https://scenery.sh?go-get=1` currently
-fails during TLS handshake, so vanity import validation and the `v0.2.0` release
-must wait until the domain serves HTTPS and Go vanity metadata.
+Release is complete. `https://scenery.sh?go-get=1` serves vanity import
+metadata, main and tag CI passed, release-mode self-harness passed with
+`can_proceed:true`, GoReleaser published `v0.2.1`, and
+`go install scenery.sh/cmd/scenery@v0.2.1` installed a binary reporting
+`version:"v0.2.1"`. The public `v0.2.0` tag remains a source tag without a
+GitHub Release because its GoReleaser workflow failed before artifact
+publication; `v0.2.1` is the verified artifact release.
 
 ## Context and Orientation
 
@@ -162,9 +173,9 @@ Milestone 4 is validation and migration polish. Run Go, CLI, UI, docs, and
 self-harness validation. Audit for remaining legacy names and decide whether any
 intentional historical references need a short note explaining why they remain.
 
-Milestone 5 is release. Publish a draft GitHub release, attach GoReleaser
-artifacts, verify install by `scenery.sh`, warm or request Go proxy/pkg.go.dev
-indexing, then publish `v0.2.0` with explicit migration notes.
+Milestone 5 is release. Publish a GitHub release, attach GoReleaser artifacts,
+verify install by `scenery.sh`, warm or request Go proxy/pkg.go.dev indexing,
+then publish `v0.2.1` with explicit migration notes.
 
 ## Plan of Work
 
@@ -346,7 +357,7 @@ DNS hosting, then rerun the metadata and `go install`/`go list` checks. Do not
 publish a tag that depends on local `replace` directives or an unavailable
 custom import path.
 
-If `pkg.go.dev` indexing lags after release, verify `go list -m scenery.sh@v0.2.0`
+If `pkg.go.dev` indexing lags after release, verify `go list -m scenery.sh@v0.2.1`
 first, then request indexing from pkg.go.dev. Treat proxy/index lag as a release
 follow-up only after module resolution itself works.
 
@@ -361,7 +372,7 @@ Expected artifacts:
 - `scenery.go`.
 - `ui/registry/scenery/`.
 - Updated README migration section.
-- A `v0.2.0` draft release with explicit breaking rename notes.
+- A `v0.2.1` GitHub Release with explicit breaking rename notes.
 - Harness evidence from `scenery harness self --json --write`.
 
 The attached rebrand analysis includes a longer draft README, migration helper,
