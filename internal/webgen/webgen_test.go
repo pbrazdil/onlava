@@ -44,6 +44,11 @@ func TestBuildGeneratesFrontendBundle(t *testing.T) {
 	if !strings.Contains(files[".scenery/gen/web/web/runtime.ts"], `export function createTaskListRuntime`) {
 		t.Fatalf("runtime missing collection adapter factory:\n%s", files[".scenery/gen/web/web/runtime.ts"])
 	}
+	if !strings.Contains(files[".scenery/gen/web/web/shapes.ts"], `schema: "tasks"`) ||
+		!strings.Contains(files[".scenery/gen/web/web/shapes.ts"], `qualifiedTable: "tasks.tasks"`) ||
+		!strings.Contains(files[".scenery/gen/web/web/shapes.ts"], `shapeURL(baseURL, "tasks.tasks")`) {
+		t.Fatalf("shapes missing schema-qualified Electric target:\n%s", files[".scenery/gen/web/web/shapes.ts"])
+	}
 	if !strings.Contains(files[".scenery/gen/web/web/routes.tsx"], `export function registerGeneratedRoutes`) {
 		t.Fatalf("routes missing registration helper:\n%s", files[".scenery/gen/web/web/routes.tsx"])
 	}

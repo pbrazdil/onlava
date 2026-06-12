@@ -18,7 +18,7 @@ if (
   rendered.title !== "Tasks" ||
   rendered.entity !== "Task" ||
   rendered.collection !== "TaskList" ||
-  rendered.shapeURL !== "https://electric.local/v1/shape?table=tasks" ||
+  rendered.shapeURL !== "https://electric.local/v1/shape?table=tasks.tasks" ||
   rendered.rowCount !== 1 ||
   rendered.registeredCount !== 1
 ) {

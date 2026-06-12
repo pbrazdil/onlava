@@ -707,7 +707,7 @@ func writeGeneratedModelStore(buf *strings.Builder, im *imports, entity *model.E
 	createFields := generatedModelCreateFields(entity)
 	patchFields := generatedModelPatchFields(entity)
 	selectSQL := generatedModelSelectSQL(entity, fields)
-	table := generatedModelSQLIdent(entity.Table)
+	table := generatedModelSQLTable(entity)
 	idColumn := generatedModelSQLIdent(id.Column)
 	fmt.Fprintf(buf, "var %s = struct {\n\t%s.Mutex\n\tpool *%s.Pool\n\tdsn string\n}{}\n\n", stateName, syncPkg, pgxpoolPkg)
 	fmt.Fprintf(buf, "func %s(ctx context.Context) (*%s.Pool, error) {\n", poolFunc, pgxpoolPkg)
@@ -839,6 +839,10 @@ func generatedModelSQLIdent(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
+func generatedModelSQLTable(entity *model.Entity) string {
+	return generatedModelSQLIdent(model.EntityDatabaseSchema(entity)) + "." + generatedModelSQLIdent(entity.Table)
+}
+
 func generatedModelColumnList(fields []model.EntityField) string {
 	columns := make([]string, 0, len(fields))
 	for _, field := range fields {
@@ -848,7 +852,7 @@ func generatedModelColumnList(fields []model.EntityField) string {
 }
 
 func generatedModelSelectSQL(entity *model.Entity, fields []model.EntityField) string {
-	return "select " + generatedModelColumnList(fields) + " from " + generatedModelSQLIdent(entity.Table)
+	return "select " + generatedModelColumnList(fields) + " from " + generatedModelSQLTable(entity)
 }
 
 func generatedModelInsertSQL(entity *model.Entity, fields []model.EntityField) string {
@@ -857,7 +861,7 @@ func generatedModelInsertSQL(entity *model.Entity, fields []model.EntityField) s
 	for i := range fields {
 		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
 	}
-	return "insert into " + generatedModelSQLIdent(entity.Table) + " (" + columns + ") values (" + strings.Join(placeholders, ", ") + ") returning " + columns
+	return "insert into " + generatedModelSQLTable(entity) + " (" + columns + ") values (" + strings.Join(placeholders, ", ") + ") returning " + columns
 }
 
 func generatedModelScanArgs(fields []model.EntityField, target string) string {

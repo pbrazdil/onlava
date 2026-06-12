@@ -240,7 +240,9 @@ func renderShapes(entities map[string]*model.Entity) string {
 		fmt.Fprintf(&b, "import type { %s } from \"./models\"\n\n", strings.Join(imports, ", "))
 	}
 	b.WriteString("export interface ElectricShapeDefinition<Row> {\n")
+	b.WriteString("  schema: string\n")
 	b.WriteString("  table: string\n")
+	b.WriteString("  qualifiedTable: string\n")
 	b.WriteString("  primaryKey: keyof Row & string\n")
 	b.WriteString("  columns: readonly (keyof Row & string)[]\n")
 	b.WriteString("  url: (baseURL: string) => string\n")
@@ -251,11 +253,14 @@ func renderShapes(entities map[string]*model.Entity) string {
 	b.WriteString("}\n\n")
 	for _, name := range names {
 		entity := entities[name]
+		qualifiedTable := model.EntityQualifiedTable(entity)
 		fmt.Fprintf(&b, "export const %sShape = {\n", lowerFirst(entity.Name))
+		fmt.Fprintf(&b, "  schema: %s,\n", strconv.Quote(model.EntityDatabaseSchema(entity)))
 		fmt.Fprintf(&b, "  table: %s,\n", strconv.Quote(entity.Table))
+		fmt.Fprintf(&b, "  qualifiedTable: %s,\n", strconv.Quote(qualifiedTable))
 		fmt.Fprintf(&b, "  primaryKey: %s,\n", strconv.Quote(idColumn(entity)))
 		fmt.Fprintf(&b, "  columns: [%s],\n", quotedList(fieldColumns(storedFields(entity))))
-		fmt.Fprintf(&b, "  url: (baseURL: string) => shapeURL(baseURL, %s),\n", strconv.Quote(entity.Table))
+		fmt.Fprintf(&b, "  url: (baseURL: string) => shapeURL(baseURL, %s),\n", strconv.Quote(qualifiedTable))
 		fmt.Fprintf(&b, "} as const satisfies ElectricShapeDefinition<%sRow>\n\n", entity.Name)
 	}
 	b.WriteString("export const electricShapes = {\n")

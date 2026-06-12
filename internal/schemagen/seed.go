@@ -27,7 +27,7 @@ func BuildSeeds(appRoot string, app *model.App) ([]ServiceSeed, error) {
 		if entity == nil || len(entity.Seeds) == 0 {
 			continue
 		}
-		byService[entityService(entity)] = append(byService[entityService(entity)], entity)
+		byService[model.EntityService(entity)] = append(byService[model.EntityService(entity)], entity)
 	}
 	services := make([]string, 0, len(byService))
 	for service := range byService {
@@ -84,7 +84,7 @@ func renderServiceSeedSQL(entities []*model.Entity) (string, error) {
 			if len(columns) == 0 {
 				continue
 			}
-			fmt.Fprintf(&b, "insert into %s (", quoteSQLIdent(entity.Table))
+			fmt.Fprintf(&b, "insert into %s (", quoteSQLQualifiedTable(entity))
 			for i, field := range columns {
 				if i > 0 {
 					b.WriteString(", ")
@@ -148,4 +148,8 @@ func seedSQLLiteral(value model.EntitySeedValue) string {
 
 func quoteSQLIdent(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func quoteSQLQualifiedTable(entity *model.Entity) string {
+	return quoteSQLIdent(model.EntityDatabaseSchema(entity)) + "." + quoteSQLIdent(entity.Table)
 }
