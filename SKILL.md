@@ -195,7 +195,9 @@ Regenerate committed clients after endpoint, request/response, auth, or wire-cap
 Generated model CRUD endpoints are beta and appear in `scenery inspect endpoints --json`
 with `"generated": true`; generated stores use the app database selected by
 `DatabaseURL` or Scenery's managed database env and target the app-owned service
-schema rather than `public`. `scenery generate data --dry-run --json`
+schema rather than `public`. Generated CRUD route bases default to `/<service>/<table>`
+and `scenery check` reports collisions with handwritten or generated app routes.
+`scenery generate data --dry-run --json`
 also writes beta generated frontend packages under `.scenery/gen/web/<frontend>/`
 for configured frontends with static collection pages, including runtime adapter
 factories and route registration helpers for app-owned Electric/TanStack/layout-kit wiring;
