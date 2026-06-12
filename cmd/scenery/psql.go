@@ -146,6 +146,10 @@ func runDatabaseApplyProvider(ctx context.Context, appRoot string, cfg appcfg.Co
 }
 
 func runDatabaseApplyProviderWithEnv(ctx context.Context, appRoot string, apply appcfg.DatabaseApplyConfig, env []string) error {
+	return runDatabaseApplyProviderWithEnvIO(ctx, appRoot, apply, env, os.Stdout, os.Stderr)
+}
+
+func runDatabaseApplyProviderWithEnvIO(ctx context.Context, appRoot string, apply appcfg.DatabaseApplyConfig, env []string, stdout, stderr io.Writer) error {
 	command := strings.TrimSpace(apply.Command)
 	if command == "" {
 		return fmt.Errorf("database.apply is not configured")
@@ -161,8 +165,8 @@ func runDatabaseApplyProviderWithEnv(ctx context.Context, appRoot string, apply 
 		Program: program,
 		Args:    args,
 		Stdin:   os.Stdin,
-		Stdout:  os.Stdout,
-		Stderr:  os.Stderr,
+		Stdout:  stdout,
+		Stderr:  stderr,
 	})
 }
 

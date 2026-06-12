@@ -864,3 +864,52 @@ func TestStoreKeepsTraceSummariesDistinctBySession(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteProcessEventTruncatesOversizedPayloads(t *testing.T) {
+	t.Parallel()
+
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	ctx := context.Background()
+	huge := map[string]any{"meta": strings.Repeat("x", maxProcessEventPayloadBytes+1)}
+	if err := store.WriteProcessEvent(ctx, "app-test", "process/reload", huge); err != nil {
+		t.Fatalf("write oversized process event: %v", err)
+	}
+	if err := store.WriteProcessEvent(ctx, "app-test", "process/start", map[string]any{"pid": "42"}); err != nil {
+		t.Fatalf("write small process event: %v", err)
+	}
+
+	events, err := store.ListProcessEvents(ctx, "app-test", 10)
+	if err != nil {
+		t.Fatalf("list process events: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	for _, event := range events {
+		if len(event.PayloadJSON) > maxProcessEventPayloadBytes {
+			t.Fatalf("stored payload for %s is %d bytes, want <= %d", event.Kind, len(event.PayloadJSON), maxProcessEventPayloadBytes)
+		}
+	}
+	var truncated struct {
+		Truncated     bool `json:"truncated"`
+		OriginalBytes int  `json:"original_bytes"`
+	}
+	for _, event := range events {
+		if event.Kind != "process/reload" {
+			continue
+		}
+		if err := json.Unmarshal(event.PayloadJSON, &truncated); err != nil {
+			t.Fatalf("unmarshal truncated payload: %v", err)
+		}
+	}
+	if !truncated.Truncated || truncated.OriginalBytes <= maxProcessEventPayloadBytes {
+		t.Fatalf("truncated marker = %+v", truncated)
+	}
+}

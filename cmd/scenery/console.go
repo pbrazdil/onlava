@@ -210,9 +210,41 @@ func (c *runConsole) SetupOutput(line, stream string) {
 		c.printSetupDone("Atlas schema synced")
 	case normalized == "No database changes needed":
 		c.printSetupDone("No database changes needed")
+	case strings.HasPrefix(line, "==>"):
+		c.printSetupDetail(normalized, "")
+	case !c.verbose && isSetupNoiseLine(line):
+		// SQL chatter (psql NOTICEs, command tags) stays out of the run
+		// output; warnings, errors, and unrecognized lines still print below.
 	default:
-		c.printf(c.out, "    %s\n", line)
+		c.printf(c.out, "    %s\n", c.palette.Dim(line))
 	}
+}
+
+// isSetupNoiseLine reports informational SQL runner chatter that drowns the
+// run output: psql NOTICE/INFO lines and bare command tags such as
+// "CREATE INDEX" or "COMMENT". Warnings, errors, and anything unrecognized
+// are not noise.
+func isSetupNoiseLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "NOTICE:") || strings.HasPrefix(trimmed, "INFO:") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "psql:") {
+		rest := trimmed[len("psql:"):]
+		return strings.Contains(rest, ": NOTICE:") || strings.Contains(rest, ": INFO:")
+	}
+	for _, field := range strings.Fields(trimmed) {
+		for _, r := range field {
+			if r < 'A' || r > 'Z' {
+				return false
+			}
+		}
+	}
+	// Every word is bare uppercase: a SQL command tag like "CREATE TABLE".
+	return true
 }
 
 func (c *runConsole) printSetupDetail(label, value string) {

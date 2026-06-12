@@ -47,6 +47,11 @@ const (
 	maxStoredTraceEvents    = 6000
 	maxStoredLogEvents      = 5000
 	deferredSaveDelay       = 500 * time.Millisecond
+
+	// Process events are diagnostic breadcrumbs. A payload above this size
+	// (e.g. full app metadata on every reload) bloats devdash.json until
+	// every store refresh re-parses hundreds of megabytes of JSON.
+	maxProcessEventPayloadBytes = 64 * 1024
 )
 
 type ProcessEvent struct {
@@ -638,6 +643,15 @@ func (s *Store) WriteProcessEvent(ctx context.Context, appID, kind string, paylo
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
+	}
+	if len(data) > maxProcessEventPayloadBytes {
+		data, err = json.Marshal(map[string]any{
+			"truncated":      true,
+			"original_bytes": len(data),
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return s.withState(ctx, true, func(state *storeState) error {
 		event := ProcessEvent{

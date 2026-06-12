@@ -67,3 +67,47 @@ func TestSetupOutputWriterFlushesPartialLines(t *testing.T) {
 		t.Fatalf("output = %q", got)
 	}
 }
+
+func TestRunConsoleSetupOutputSuppressesSQLNoise(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	console := newRunConsole(&out, &bytes.Buffer{}, false, false, "demo", t.TempDir())
+
+	console.SetupOutput(`psql:/tmp/tmp.abc123:4: NOTICE:  schema "scenery_auth" already exists, skipping`, "stderr")
+	console.SetupOutput("NOTICE:  relation \"atlas_apply_cache\" already exists, skipping", "stderr")
+	console.SetupOutput("CREATE SCHEMA", "stdout")
+	console.SetupOutput("CREATE INDEX", "stdout")
+	console.SetupOutput("COMMENT", "stdout")
+	console.SetupOutput("==> Bootstrapping standard auth schema for local auth seeds", "stdout")
+	console.SetupOutput("psql:/tmp/tmp.abc123:9: ERROR:  relation does not exist", "stderr")
+	console.SetupOutput("applied 3 migrations", "stdout")
+
+	got := out.String()
+	for _, banned := range []string{"NOTICE", "CREATE SCHEMA", "CREATE INDEX", "COMMENT\n"} {
+		if strings.Contains(got, banned) {
+			t.Fatalf("setup output kept noise %q:\n%s", banned, got)
+		}
+	}
+	for _, want := range []string{
+		"  • Bootstrapping standard auth schema for local auth seeds\n",
+		"ERROR:  relation does not exist",
+		"applied 3 migrations",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("setup output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunConsoleSetupOutputVerboseKeepsSQLNoise(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	console := newRunConsole(&out, &bytes.Buffer{}, true, false, "demo", t.TempDir())
+
+	console.SetupOutput("CREATE SCHEMA", "stdout")
+	if !strings.Contains(out.String(), "CREATE SCHEMA") {
+		t.Fatalf("verbose setup output dropped SQL line:\n%s", out.String())
+	}
+}

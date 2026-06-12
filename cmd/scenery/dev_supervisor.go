@@ -400,7 +400,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		Method: "process/compile-start",
 		Params: s.appStatus(),
 	})
-	_ = s.store.WriteProcessEvent(ctx, s.activeAppID(), "compile-start", s.appStatus())
+	_ = s.store.WriteProcessEvent(ctx, s.activeAppID(), "compile-start", s.compactAppStatus())
 	if s.console != nil {
 		s.console.Event("process.compile-start", map[string]any{
 			"initial": initial,
@@ -467,7 +467,7 @@ func (s *devSupervisor) RebuildAndRestart(ctx context.Context, initial bool, sna
 		Method: method,
 		Params: s.appStatus(),
 	})
-	_ = s.store.WriteProcessEvent(ctx, s.activeAppID(), method, s.appStatus())
+	_ = s.store.WriteProcessEvent(ctx, s.activeAppID(), method, s.compactAppStatus())
 	if s.console != nil {
 		s.console.Event(method, map[string]any{
 			"pid":         current.pid,
@@ -768,12 +768,17 @@ func (s *devSupervisor) runDevDatabaseSetup(ctx context.Context, setup devDataba
 	s.eventSink().Emit(ctx, source, "info", "database setup started", map[string]any{
 		"seed_count": len(setup.Seeds),
 	})
-	if err := runDatabaseApplyProviderWithEnv(ctx, s.root, s.cfg.Database.Apply, env); err != nil {
+	applyStdout := newSetupOutputWriter(s.console, "stdout", os.Stdout)
+	applyStderr := newSetupOutputWriter(s.console, "stderr", os.Stderr)
+	applyErr := runDatabaseApplyProviderWithEnvIO(ctx, s.root, s.cfg.Database.Apply, env, applyStdout, applyStderr)
+	applyStdout.Close()
+	applyStderr.Close()
+	if applyErr != nil {
 		source.Status = "error"
 		s.eventSink().Emit(ctx, source, "error", "database apply failed", map[string]any{
-			"error": err.Error(),
+			"error": applyErr.Error(),
 		})
-		return err
+		return applyErr
 	}
 	seedResult, err := buildDBSeedResultWithEnv(ctx, s.root, s.cfg, dbSeedOptions{}, env, false)
 	if err != nil {
@@ -1232,7 +1237,7 @@ func (s *devSupervisor) handleExit(ctx context.Context, app *runningApp) {
 		Method: "process/stop",
 		Params: s.appStatus(),
 	})
-	_ = s.store.WriteProcessEvent(ctx, s.activeAppID(), "process-stop", s.appStatus())
+	_ = s.store.WriteProcessEvent(ctx, s.activeAppID(), "process-stop", s.compactAppStatus())
 	if s.console != nil {
 		s.console.Event("process.stop", map[string]any{
 			"pid": app.pid,
@@ -2035,6 +2040,16 @@ func (s *devSupervisor) handleCompileError(ctx context.Context, metadata, apiEnc
 	}
 	s.updateAgentSession(ctx, "compile-error", "")
 	return err
+}
+
+// compactAppStatus is appStatus without the Meta and APIEncoding blobs, which
+// can run to megabytes per app. Persisted process events must use this form;
+// stored events are breadcrumbs and the full model is always available live.
+func (s *devSupervisor) compactAppStatus() devdash.AppStatus {
+	status := s.appStatus()
+	status.Meta = nil
+	status.APIEncoding = nil
+	return status
 }
 
 func (s *devSupervisor) appStatus() devdash.AppStatus {

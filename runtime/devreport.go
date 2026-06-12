@@ -155,12 +155,14 @@ func (r *devReporter) loop() {
 			}
 			r.backoffBeforePost()
 			if err := r.post(env); err != nil {
-				r.failures.Add(1)
+				failures := r.failures.Add(1)
 				if shouldDisableDevReporting(err) {
 					r.disabled.Store(true)
 					return
 				}
-				fmt.Fprintf(osStderr(), "scenery: dev report failed: %v\n", err)
+				if failures == 1 {
+					fmt.Fprintf(osStderr(), "scenery: dev report failed, retrying with backoff: %v\n", err)
+				}
 				continue
 			}
 			r.failures.Store(0)
