@@ -237,6 +237,10 @@ func TestDevConsoleKeyNavigationSearchAndMouse(t *testing.T) {
 	if !state.searching || state.search != "b" || state.scroll != 0 {
 		t.Fatalf("search state = searching:%v search:%q scroll:%d", state.searching, state.search, state.scroll)
 	}
+	state.handleKey(consoleKey{Kind: consoleKeyIgnored})
+	if !state.searching || state.search != "b" {
+		t.Fatalf("ignored key changed search state: searching:%v search:%q", state.searching, state.search)
+	}
 	state.handleKey(consoleKey{Kind: consoleKeyEsc})
 	if state.searching || state.search != "" {
 		t.Fatalf("escape did not cancel search: searching:%v search:%q", state.searching, state.search)
@@ -246,13 +250,16 @@ func TestDevConsoleKeyNavigationSearchAndMouse(t *testing.T) {
 func TestReadConsoleKeyParsesEscapeSequences(t *testing.T) {
 	t.Parallel()
 
-	reader := bufio.NewReader(strings.NewReader("\x1b[A\x1b[5~\x1b[6~\x1b[<64;20;10M\x1b[<65;20;10M"))
+	reader := bufio.NewReader(strings.NewReader("\x1b[A\x1b[5~\x1b[6~\x1b[<64;20;10M\x1b[<65;20;10M\x1b[<0;20;10M\x1b[<0;20;10m\x1bf"))
 	wants := []consoleKeyKind{
 		consoleKeyUp,
 		consoleKeyPageUp,
 		consoleKeyPageDown,
 		consoleKeyMouseWheelUp,
 		consoleKeyMouseWheelDown,
+		consoleKeyIgnored,
+		consoleKeyIgnored,
+		consoleKeyIgnored,
 	}
 	for _, want := range wants {
 		key, err := readConsoleKey(reader)
