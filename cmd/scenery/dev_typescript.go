@@ -112,6 +112,7 @@ func (s *devSupervisor) startTypeScriptWorker(ctx context.Context, result worker
 		Env:     s.typeScriptWorkerEnv(baseEnv, managedEnv),
 		Stdout:  s.processOutputWriter(os.Stdout),
 		Stderr:  s.processOutputWriter(os.Stderr),
+		Filter:  s.processOutputFilter,
 		OnOutput: func(pid int, stream string, data []byte) {
 			source := devdash.DevSource{
 				ID:     "worker:typescript",

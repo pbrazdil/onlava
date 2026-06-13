@@ -258,6 +258,7 @@ scenery ps [--json] [--app-root <path>] [--watch]
 scenery down [--app-root <path>] [--json]
 scenery serve [--app-root <path>] [--env <name>] [--log-format text|json]
 scenery worker [--task-queue <name>[,<name>...]]... [--app-root <path>] [--env <name>]
+scenery worker temporal prune --stale [--yes] [--app-root <path>] [--json]
 scenery version --json
 scenery system toolchain list [--json] [--include-source-locks] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
 scenery system toolchain sync [--json] [--all] [--tool <name>] [--platform <goos/goarch>] [--images]
@@ -309,6 +310,8 @@ scenery worktree create <name> [--from <branch>] [--app-root <path>] [--json]
 scenery worktree list [--app-root <path>] [--json]
 scenery worktree remove <name> [--app-root <path>] [--db] [--json]
 ```
+
+`scenery up` warns once when the current dev session's Temporal task queues contain open workflows from an older session. Use `scenery worker temporal prune --stale --json` to inspect candidates; add `--yes` only when you intentionally want Scenery to terminate those stale workflows.
 
 Self-harness Go test steps use the Go test result cache by default. Pass
 `--fresh-tests` when a fresh `-count=1` run is intentionally required.

@@ -20,6 +20,7 @@ type devManagedProcess struct {
 	Cmd       *exec.Cmd
 	Tail      *safeLineTail
 	StartedAt time.Time
+	Filter    func(pid int, stream string, data []byte) []byte
 
 	done       chan struct{}
 	outputDone chan struct{}
@@ -41,6 +42,7 @@ type devProcessStartRequest struct {
 	Stderr    io.Writer
 	TailLines int
 	OnOutput  func(pid int, stream string, data []byte)
+	Filter    func(pid int, stream string, data []byte) []byte
 	Configure func(*exec.Cmd)
 }
 
@@ -87,6 +89,7 @@ func startDevManagedProcess(ctx context.Context, req devProcessStartRequest) (*d
 		Cmd:        cmd,
 		Tail:       &safeLineTail{limit: tailLines},
 		StartedAt:  time.Now().UTC(),
+		Filter:     req.Filter,
 		done:       make(chan struct{}),
 		outputDone: make(chan struct{}),
 	}
@@ -112,21 +115,36 @@ func (p *devManagedProcess) captureOutput(wg *sync.WaitGroup, stream string, src
 	for {
 		chunk, err := reader.ReadBytes('\n')
 		if len(chunk) > 0 {
-			if dst != nil {
-				_, _ = dst.Write(chunk)
-			}
 			plain := stripANSI(chunk)
-			if p.Tail != nil {
-				p.Tail.Add(strings.TrimRight(string(plain), "\n"))
+			output := chunk
+			eventOutput := plain
+			if reqFilter := p.outputFilter(); reqFilter != nil {
+				eventOutput = reqFilter(p.PID, stream, plain)
+				output = eventOutput
 			}
-			if onOutput != nil {
-				onOutput(p.PID, stream, plain)
+			if len(eventOutput) > 0 && dst != nil {
+				_, _ = dst.Write(output)
+			}
+			if p.Tail != nil {
+				if len(eventOutput) > 0 {
+					p.Tail.Add(strings.TrimRight(string(eventOutput), "\n"))
+				}
+			}
+			if onOutput != nil && len(eventOutput) > 0 {
+				onOutput(p.PID, stream, eventOutput)
 			}
 		}
 		if err != nil {
 			return
 		}
 	}
+}
+
+func (p *devManagedProcess) outputFilter() func(int, string, []byte) []byte {
+	if p == nil {
+		return nil
+	}
+	return p.Filter
 }
 
 func (p *devManagedProcess) WaitReady(ctx context.Context, req devProcessReadyRequest) error {
