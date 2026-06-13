@@ -72,6 +72,7 @@ type devSupervisor struct {
 	pendingDevEvents   []devdash.DevEvent
 	victoriaStarted    bool
 	dbSetupFingerprint string
+	logCollapse        *temporalActivityLogCollapser
 }
 
 const (
@@ -118,6 +119,7 @@ func newDevSupervisor(ctx context.Context, root string, cfg app.Config, backend 
 			Offline:    true,
 			UpdatedAt:  time.Now().UTC(),
 		},
+		logCollapse: newTemporalActivityLogCollapser(3),
 	}
 	uiDir, err := prepareDashboardUIDir(supervisorCtx, s.console)
 	if err != nil {
@@ -575,6 +577,7 @@ func (s *devSupervisor) startApp(ctx context.Context, result *build.Result, meta
 		Env:     env,
 		Stdout:  s.processOutputWriter(os.Stdout),
 		Stderr:  s.processOutputWriter(os.Stderr),
+		Filter:  s.processOutputFilter,
 		OnOutput: func(pid int, stream string, data []byte) {
 			source := devdash.DevSource{
 				ID:     "api",
@@ -1112,6 +1115,13 @@ func (s *devSupervisor) processOutputWriter(dst io.Writer) io.Writer {
 	return nil
 }
 
+func (s *devSupervisor) processOutputFilter(pid int, stream string, data []byte) []byte {
+	if s == nil || s.logCollapse == nil {
+		return data
+	}
+	return s.logCollapse.Filter(pid, stream, data)
+}
+
 func isExpectedOutputReadError(err error) bool {
 	return errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) || errors.Is(err, net.ErrClosed)
 }
@@ -1511,6 +1521,7 @@ func (s *devSupervisor) ensureTemporalDevServer(ctx context.Context) error {
 			"namespace": temporal.info.Namespace,
 			"ui_url":    temporal.URL(),
 		})
+		s.emitTemporalStaleWorkflowWarning(ctx)
 	}
 	return nil
 }

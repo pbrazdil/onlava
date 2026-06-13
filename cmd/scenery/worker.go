@@ -43,6 +43,9 @@ func workerCommand(args []string) error {
 	if len(args) > 0 && args[0] == "deployment" {
 		return temporalDeploymentCommand(args[1:], os.Stdout)
 	}
+	if len(args) > 0 && args[0] == "temporal" {
+		return temporalCommand(args[1:])
+	}
 	if len(args) > 0 && args[0] == "bindings" {
 		opts, err := parseWorkerBindingsArgs(args[1:])
 		if err != nil {
