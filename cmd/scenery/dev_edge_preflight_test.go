@@ -11,7 +11,7 @@ import (
 )
 
 func TestDefaultConfiguredEdgeRouteProbeRetriesTransientFailures(t *testing.T) {
-	t.Parallel()
+	withEdgeProbeRetryTiming(t, 200*time.Millisecond, 5*time.Millisecond)
 
 	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -32,9 +32,7 @@ func TestDefaultConfiguredEdgeRouteProbeRetriesTransientFailures(t *testing.T) {
 }
 
 func TestDefaultConfiguredEdgeRouteProbeGivesUpAfterWindow(t *testing.T) {
-	old := edgeProbeRetryWindow
-	edgeProbeRetryWindow = 1200 * time.Millisecond
-	t.Cleanup(func() { edgeProbeRetryWindow = old })
+	withEdgeProbeRetryTiming(t, 40*time.Millisecond, 5*time.Millisecond)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -49,7 +47,7 @@ func TestDefaultConfiguredEdgeRouteProbeGivesUpAfterWindow(t *testing.T) {
 	if !strings.Contains(err.Error(), "HTTP 500") {
 		t.Fatalf("probe error = %v, want last HTTP 500", err)
 	}
-	if elapsed := time.Since(start); elapsed < time.Second {
+	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
 		t.Fatalf("probe gave up too early: %v", elapsed)
 	}
 }
@@ -68,4 +66,16 @@ func TestConfiguredEdgeProbeFailedErrorNamesProbeNotComponents(t *testing.T) {
 			t.Fatalf("probe-failed error missing %q:\n%s", want, err)
 		}
 	}
+}
+
+func withEdgeProbeRetryTiming(t *testing.T, window, interval time.Duration) {
+	t.Helper()
+	oldWindow := edgeProbeRetryWindow
+	oldInterval := edgeProbeRetryInterval
+	edgeProbeRetryWindow = window
+	edgeProbeRetryInterval = interval
+	t.Cleanup(func() {
+		edgeProbeRetryWindow = oldWindow
+		edgeProbeRetryInterval = oldInterval
+	})
 }

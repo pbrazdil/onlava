@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -206,6 +207,95 @@ func TestManagedFrontendFailsFastWhenChildExitsBeforeReady(t *testing.T) {
 	}
 }
 
+func TestManagedFrontendBackendsStartsFrontendsConcurrently(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	appRoot := filepath.Join(root, "app")
+	markerDir := filepath.Join(root, "markers")
+	if err := os.MkdirAll(markerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	serverPath := frontendTestServerBinary(t)
+	for _, name := range []string{"alpha", "beta"} {
+		frontendRoot := filepath.Join(appRoot, "apps", name)
+		writeFrontendPackage(t, frontendRoot, `{"scripts":{"dev":"vite"}}`)
+		writeFrontendBinWithScript(t, frontendRoot, "vite", `
+set -eu
+port=""
+prev=""
+for arg in "$@"; do
+	if [ "$prev" = "--port" ]; then
+		port="$arg"
+		break
+	fi
+	prev="$arg"
+done
+name="${PWD##*/}"
+touch "$SCENERY_FRONTEND_TEST_MARKER_DIR/$name.started"
+while [ ! -f "$SCENERY_FRONTEND_TEST_MARKER_DIR/go" ]; do
+	sleep 0.05
+done
+SCENERY_FRONTEND_TEST_SERVER_HELPER=1 exec "$SCENERY_FRONTEND_TEST_SERVER" -test.run '^TestManagedFrontendTestServerHelper$' -- "$port"
+`)
+	}
+	cfg := app.Config{
+		Name: "demo",
+		Proxy: app.ProxyConfig{
+			Frontends: map[string]app.FrontendConfig{
+				"alpha": {Root: "apps/alpha"},
+				"beta":  {Root: "apps/beta"},
+			},
+		},
+	}
+	type frontendResult struct {
+		backends  map[string]localagent.Backend
+		processes []*managedFrontendProcess
+		err       error
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	done := make(chan frontendResult, 1)
+	baseEnv := []string{
+		"HOME=" + os.Getenv("HOME"),
+		"PATH=" + os.Getenv("PATH"),
+		"SCENERY_FRONTEND_TEST_MARKER_DIR=" + markerDir,
+		"SCENERY_FRONTEND_TEST_SERVER=" + serverPath,
+	}
+	go func() {
+		backends, processes, err := managedFrontendBackendsForSession(ctx, appRoot, cfg, baseEnv, localagent.Session{
+			SessionID: "main-test",
+			StateRoot: filepath.Join(root, "state"),
+		})
+		done <- frontendResult{backends: backends, processes: processes, err: err}
+	}()
+
+	waitForFile(t, filepath.Join(markerDir, "alpha.started"), 2*time.Second)
+	waitForFile(t, filepath.Join(markerDir, "beta.started"), 2*time.Second)
+	if err := os.WriteFile(filepath.Join(markerDir, "go"), []byte("go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		t.Cleanup(func() { stopManagedFrontendProcesses(result.processes) })
+		if len(result.processes) != 2 {
+			t.Fatalf("processes = %d, want 2", len(result.processes))
+		}
+		for _, name := range []string{"alpha", "beta"} {
+			backend := result.backends[name]
+			if backend.Network != "tcp" || backend.Addr == "" {
+				t.Fatalf("%s backend = %+v, want tcp addr", name, backend)
+			}
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
 func writeFrontendPackage(t *testing.T, root, data string) {
 	t.Helper()
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -232,4 +322,55 @@ func writeFrontendBinWithScript(t *testing.T, root, name, script string) string 
 		t.Fatal(err)
 	}
 	return bin
+}
+
+func TestManagedFrontendTestServerHelper(t *testing.T) {
+	if os.Getenv("SCENERY_FRONTEND_TEST_SERVER_HELPER") != "1" {
+		return
+	}
+	port := ""
+	for i, arg := range os.Args {
+		if arg == "--" && i+1 < len(os.Args) {
+			port = os.Args[i+1]
+			break
+		}
+	}
+	if port == "" {
+		t.Fatal("missing port")
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = conn.Close()
+	}
+}
+
+func frontendTestServerBinary(t *testing.T) string {
+	t.Helper()
+	path, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func waitForFile(t *testing.T, path string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", path)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }

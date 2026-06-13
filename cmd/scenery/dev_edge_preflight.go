@@ -155,7 +155,10 @@ func rejectInternalRouterRoutesForConfiguredEdge(baseDomain string, session loca
 // transient failure modes (a just-restarted Caddy, certificate storage lock
 // contention with renewal maintenance), so a single failed attempt must not
 // fail `scenery up`; retry with backoff before giving up.
-var edgeProbeRetryWindow = 10 * time.Second
+var (
+	edgeProbeRetryWindow   = 10 * time.Second
+	edgeProbeRetryInterval = 500 * time.Millisecond
+)
 
 func defaultConfiguredEdgeRouteProbe(ctx context.Context, rawURL string) error {
 	deadline := time.Now().Add(edgeProbeRetryWindow)
@@ -171,7 +174,7 @@ func defaultConfiguredEdgeRouteProbe(ctx context.Context, rawURL string) error {
 		select {
 		case <-ctx.Done():
 			return lastErr
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(edgeProbeRetryInterval):
 		}
 	}
 }

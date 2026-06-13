@@ -735,7 +735,8 @@ func TestManagedAppEnvUsesConfiguredPostgresBranchDatabaseURLEnv(t *testing.T) {
 }
 
 func TestManagedAppEnvSkipsBranchingWhenExternalPostgresIsConfigured(t *testing.T) {
-	t.Setenv("SCENERY_AGENT_HOME", t.TempDir())
+	t.Parallel()
+
 	root := t.TempDir()
 	s := &devSupervisor{
 		root: root,

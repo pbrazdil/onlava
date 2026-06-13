@@ -20,7 +20,7 @@ The longer goal is a warm-cache full-suite runtime near five seconds. That requi
 - [x] 2026-05-28: Verified P3 partial results. Root package JSON timing improved from 24.728s to 15.087s isolated. Full `go test -count=1 ./...` stayed green with root package at 20.419s and `internal/build` still below 3s at 2.806s.
 - [x] 2026-05-28: P4 complete for `internal/localproxy`. The slow path was proxy shutdown waiting on idle test client keep-alive connections, not certificate generation. Added explicit test client idle-connection cleanup in full proxy tests without changing their requests or assertions.
 - [x] 2026-05-28: Verified `internal/localproxy` isolated runtime improved from 3.588s to 0.428s in JSON timing, and `go test -count=1 ./internal/localproxy` reported 0.334s.
-- [ ] P5: Finish `cmd/scenery` speed work by removing fixed sleeps and keeping full-path process lifecycle tests focused.
+- [x] P5: Finish `cmd/scenery` speed work by removing fixed sleeps and keeping full-path process lifecycle tests focused.
 - [x] 2026-05-28: P5 partial complete. Made watch polling/settle timings test-overridable and reduced `TestWaitForStableChangeEventsPollsWhenEventsAreMissed` from 2.5s to 0.02s while preserving the missed-event fallback path.
 - [x] 2026-05-28: P5 partial complete. Added an internal build Go-runner test hook and used it for CLI JSON/argument plumbing tests that do not need a second real compiler subprocess. Kept real compile, recompile, cache, compile-failure, and generated-workspace `go test` tests intact.
 - [x] 2026-05-28: Verified touched package timings after the P5 partial pass: `internal/build` 1.111s, `internal/localproxy` 0.874s, `cmd/scenery` 13.923s in a plain multi-package run. Full `go test -count=1 -json ./...` stayed green; the slowest package remained root integration at 26.443s under full-suite contention.
@@ -165,6 +165,9 @@ The longer goal is a warm-cache full-suite runtime near five seconds. That requi
 - [x] 2026-06-01: Changed the default self-harness total timing budget from hard-fail to advisory while preserving the complete `go test -count=1 ... ./...` run and timing artifact. Release-mode self-harness can still enforce the total budget when maintainers intentionally want a hard speed gate.
 - [x] 2026-06-07: Raised release-mode self-harness total timing enforcement from seven seconds to twenty seconds. Default self-harness still records the seven-second advisory target, while `scenery harness self --release --json --write` now tolerates current full-suite variance without weakening package/test timing warnings or the complete `go test ./...` scope.
 - [x] 2026-06-11: Changed the default self-harness Go test command from `go test -count=1 -json ./...` to cached `go test -json ./...`, and added `--fresh-tests` for the explicit no-result-cache path. Changed-area recommendations now prefer cached `go test` commands by default.
+- [x] 2026-06-13: Completed the P5 follow-up by removing the remaining fixed edge-probe sleeps from `cmd/scenery` tests, reusing the current test binary for managed-frontend helper servers instead of `go run`, and making the external-Postgres managed-env test prove it does not need `SCENERY_AGENT_HOME`.
+- [x] 2026-06-13: Parallelized managed frontend startup. Configured frontends now start concurrently, preserve deterministic result ordering, and stop every started child process if any sibling startup fails.
+- [x] 2026-06-13: Revalidated this pass with focused frontend/edge/env tests, `go test -count=1 -json ./cmd/scenery` plus `scripts/slowtests.go`, `go test ./cmd/scenery`, `go test ./...`, and `go run ./cmd/scenery harness self --summary --write`. Isolated `cmd/scenery` JSON timing was 7.922s, `go test ./cmd/scenery` reported 8.143s, literal `go test ./...` passed in 7.976s wall, and the source-run self-harness passed with existing architecture/timing warnings only.
 
 ## Surprises & Discoveries
 
@@ -258,6 +261,9 @@ The longer goal is a warm-cache full-suite runtime near five seconds. That requi
 - 2026-06-01: The default test harness no longer owns scheduler limits. Full-suite timing can become noisier, but CPU/process fanout now follows Go defaults and the caller's environment.
 - 2026-06-01: Collapsing workspace binaries back to a single `scenery-app` path made dev reload builds overwrite the currently running app binary. The dashboard/removed agent transport integration test then spent most of its time waiting on reload recovery. The same test could also be charged for the shared one-time CLI build when the installed `scenery` binary was stale.
 - 2026-05-29: The root integration fanout and Go package scheduler have to be tuned together. The final stable pair is root process cap 12 with package fanout 8; cap 6 queued root integration tests under the harness even though it looked attractive in one direct sample.
+- 2026-06-13: The configured edge probe tests were still paying the production 500ms retry interval. Making the interval test-overridable preserves production retry behavior while turning those assertions into millisecond-scale tests.
+- 2026-06-13: The managed-frontend concurrency regression test initially used `go run` to host fake frontends, which made the new coverage one of the package's slower tests. Re-executing the already-built test binary keeps the same real TCP readiness path with much less compile/process overhead.
+- 2026-06-13: `managedAppEnv` exits before branch-registry work when external Postgres is configured. The test no longer needs a fake `SCENERY_AGENT_HOME`, which captures that boundary and lets the assertion run in parallel.
 
 ## Decision Log
 
@@ -408,6 +414,12 @@ The longer goal is a warm-cache full-suite runtime near five seconds. That requi
 - Decision: Use Go's test result cache by default in self-harness Go test steps, with `--fresh-tests` for explicit no-cache validation.
   Rationale: The everyday harness and changed-area recommendations should behave like normal `go test` so repeated validation benefits from the result cache. Fresh `-count=1` runs remain available when a maintainer intentionally wants to bypass cached test results.
   Date/Author: 2026-06-11 / Codex.
+- Decision: Start managed frontends concurrently, but aggregate results in config order and clean up every successful child process before returning a startup error.
+  Rationale: Independent frontend dev servers should not serialize app startup, but failure behavior still needs deterministic errors and no orphaned managed processes.
+  Date/Author: 2026-06-13 / Codex.
+- Decision: Make the configured-edge probe retry interval package-overridable for tests while keeping the production default at 500ms.
+  Rationale: The tests assert retry-window behavior, not the real wall-clock interval. Short test intervals remove fixed sleeps without weakening the production on-demand TLS retry path.
+  Date/Author: 2026-06-13 / Codex.
 - Decision: Keep the dashboard/removed agent transport integration test focused on dashboard/proxy/removed agent transport/reload behavior rather than reusing the broad `basic` fixture.
   Rationale: `TestSceneryRunBasicApp` already covers the `basic` fixture's auth, raw endpoint, CORS, typed request, and status behavior. The dashboard test's required behavior is the dev platform surface around a public endpoint, and a smaller synthetic app preserves that scope with less reload build work.
   Date/Author: 2026-05-29 / Codex.
